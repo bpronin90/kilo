@@ -418,8 +418,7 @@ test('fixture 13: most_common_gap names the strictly-most-common unmet dimension
   expect(bands2.most_common_gap).toBeNull();
 });
 
-// ── fixture 14/15: overview shapes are asserted in analytics-screen.test.js ─────
-// (deriveOverviewRows/overviewAsOf live in analyticsDerivations.js, not here.)
+// ── fixture 14/15: retired with the Analytics Overview card (Home owns the summary) ─
 
 // ── fixture 16: unverified/stale — caller responsibility, asserted via UI tests ──
 // (deriveRecoveryMovement takes no ready/stale flag; the caller must not invoke

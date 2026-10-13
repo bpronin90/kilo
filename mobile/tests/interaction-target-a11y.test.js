@@ -445,9 +445,18 @@ describe('Big 3 mapping rows', () => {
       />
     );
   }
+  // Mapping is setup, so the card starts collapsed; open it to reach the rows.
+  async function renderOpenCard(activeSlot) {
+    const tree = await renderCard(activeSlot);
+    const collapsed = pressableByLabel(tree.root, 'Expand Big 3 mapping');
+    expect(collapsed.props.accessibilityState).toEqual({ expanded: false });
+    expectTarget(collapsed);
+    await act(async () => { collapsed.props.onPress(); });
+    return tree;
+  }
 
   test('the card disclosure and each slot row clear the target', async () => {
-    const tree = await renderCard(null);
+    const tree = await renderOpenCard(null);
     const header = pressableByLabel(tree.root, 'Collapse Big 3 mapping');
     expect(header.props.accessibilityState).toEqual({ expanded: true });
     expectTarget(header);
@@ -459,7 +468,7 @@ describe('Big 3 mapping rows', () => {
   });
 
   test('an open slot picker exposes selected options at the target', async () => {
-    const tree = await renderCard('bench');
+    const tree = await renderOpenCard('bench');
     const selected = pressableByLabel(tree.root, 'Use Bench Press for Bench');
     expect(selected.props.accessibilityRole).toBe('button');
     expect(selected.props.accessibilityState).toEqual({ selected: true });

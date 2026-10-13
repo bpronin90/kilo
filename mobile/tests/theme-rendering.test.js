@@ -2144,9 +2144,9 @@ describe('KUA Analytics surface: createStyles uses KUA tokens in all palettes', 
     ['clayCourt/dark', ClayCourtDarkColors],
     ['grassCourt/light', GrassCourtLightColors],
     ['grassCourt/dark', GrassCourtDarkColors],
-  ])('%s: analyticsStyles stickyHeader background is kua.background', (_name, kua) => {
+  ])('%s: analyticsStyles Progressive Overload info text uses kua.onSurfaceVariant', (_name, kua) => {
     const styles = createAnalyticsStyles(LightColors, kua);
-    expect(styles.signalStickyHeader.backgroundColor).toBe(kua.background);
+    expect(styles.poInfoText.color).toBe(kua.onSurfaceVariant);
   });
 
   test.each([
@@ -2165,7 +2165,7 @@ describe('KUA Analytics surface: createStyles uses KUA tokens in all palettes', 
 
   test('analyticsStyles falls back to legacy colors when kua is null', () => {
     const styles = createAnalyticsStyles(LightColors, null);
-    expect(styles.signalStickyHeader.backgroundColor).toBe(LightColors.background);
+    expect(styles.poInfoText.color).toBe(LightColors.textMuted);
     expect(styles.searchInput.backgroundColor).toBe(LightColors.inputBackground);
   });
 

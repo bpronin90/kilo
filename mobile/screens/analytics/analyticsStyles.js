@@ -22,22 +22,56 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
-  signalStickyHeader: {
-    backgroundColor: kua ? kua.background : colors.background,
-    paddingTop: 8,
-    paddingBottom: 8,
+  routineHealthSection: {
+    gap: 12,
+  },
+  poSection: {
+    gap: 8,
+  },
+  poTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 4,
+    flexShrink: 1,
+  },
+  poInfoBody: {
+    gap: 8,
+    marginBottom: 4,
+  },
+  poInfoText: {
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    lineHeight: 19,
+  },
+  // Exercise Progress counts — same three-up shape as Home's summary.
+  poSummaryRow: {
+    flexDirection: 'row',
+    paddingVertical: 8,
+  },
+  poSummaryCol: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  poSummaryCount: {
+    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : { fontSize: 28, fontWeight: '800' }),
+  },
+  poSummaryLabel: {
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
+    fontWeight: '700',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  poSuggestions: {
+    gap: 12,
+    marginVertical: 4,
   },
   signalHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-  },
-  signalSubTitle: {
-    fontSize: TYPOGRAPHY['body-md'].fontSize,
-    fontWeight: '700',
-    color: kua ? kua.onSurface : colors.text,
-    flexShrink: 1,
   },
   collapseAllButton: {
     flexDirection: 'row',

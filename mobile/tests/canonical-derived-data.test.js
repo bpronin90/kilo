@@ -1,7 +1,7 @@
 // Cross-consumer contract: Home and Analytics read ONE canonical derivation per
 // metric. Each test feeds the same raw notes/weight data through both screens'
 // real derivation entry points (Home: deriveHomeDashboardData; Analytics:
-// deriveParsedSections → deriveAnalytics → deriveOverviewRows; Weight:
+// deriveParsedSections → deriveAnalytics; Weight:
 // deriveWeightGoalAnalytics) and asserts the canonical values are identical.
 
 import { getNoteSections } from '../hooks/useEntries';
@@ -9,7 +9,6 @@ import { deriveHomeDashboardData, resolveHomeOneKSelections } from '../screens/h
 import {
   deriveAnalytics,
   deriveParsedSections,
-  deriveOverviewRows,
 } from '../screens/analytics/analyticsDerivations';
 import {
   DEFAULT_1K_EXERCISES,
@@ -47,8 +46,7 @@ function analyticsPipeline({ notes, currentNote, trackedLifts = {}, activations 
     deloadHistory, sourceNoteId: currentNote?.id ?? null, recoveryBlocks: [],
   });
   const routineStatus = deriveRoutineStatus(parsed.currentSections, currentNote, deloadHistory);
-  const rows = deriveOverviewRows({ exerciseProgress: analytics.exerciseProgress, sessionsSinceDeload: routineStatus.sessionsSinceDeload });
-  return { parsed, selections, analytics, routineStatus, progressRow: rows.find(r => r.key === 'progress') };
+  return { parsed, selections, analytics, routineStatus };
 }
 
 function expectProgressAgrees(home, analytics) {
@@ -60,9 +58,6 @@ function expectProgressAgrees(home, analytics) {
   });
   expect(home.weeklySummary.newlyTrackedCount).toBe(analytics.analytics.exerciseProgress.newlyTracked);
   expect(home.weeklySummary.hasInheritedTracking).toBe(analytics.analytics.exerciseProgress.hasInheritedTracking);
-  const p = home.exerciseProgress;
-  expect(analytics.progressRow.counts).toEqual({ up: p.progressing, flat: p.stalled, down: p.regressing });
-  expect(analytics.progressRow.value).toBe(p.classified > 0 ? p.progressing : null);
 }
 
 const note = (id, raw_text, extra = {}) => ({ id, title: `R-${id}`, raw_text, one_k_exercises: null, saved_at: '2026-01-05T00:00:00Z', ...extra });
@@ -93,9 +88,9 @@ describe('Exercise Progress — one population, one summary', () => {
     expectProgressAgrees(home, analytics);
     // Bench climbs Monday and drops Thursday, but it is ONE exercise with one
     // overall trend. (Home used to count per-day rows: 2 up / 1 down from 3
-    // rows, while Analytics said 1 up of 2.)
+    // rows, while Analytics counted one per exercise.)
     expect(home.exerciseProgress).toMatchObject({ progressing: 1, stalled: 0, regressing: 1, classified: 2 });
-    expect(analytics.progressRow).toMatchObject({ value: 1, valueSuffix: 'of 2 up' });
+    expect(analytics.analytics.exerciseProgress).toMatchObject({ progressing: 1, stalled: 0, regressing: 1, classified: 2 });
   });
 
   test('post-deload history: deload sessions are excluded from progression on both screens', () => {

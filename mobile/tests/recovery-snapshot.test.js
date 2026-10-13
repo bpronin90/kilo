@@ -1,12 +1,11 @@
-// One golden-sourced Recovery snapshot (#1315): Home's panel, the Analytics
-// Overview `Recovery` row and the Analytics Recovery section all read the same
+// One golden-sourced Recovery snapshot (#1315): Home's panel and the Analytics
+// Recovery section read the same
 // snapshot. The derivation runs once per distinct input, and every surface prints
 // identical headline values, including stale, legacy-baseline and empty-cohort.
 
 import React from 'react';
 import render, { act } from 'react-test-renderer';
 import { captureRecoveryBaselineFromText } from '../lib/data/recoveryBlocks';
-import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
 import {
   _resetRecoverySnapshotStore, _snapshotDerivationCount, getRecoverySnapshot, SNAPSHOT_STATE,
 } from '../lib/data/recoverySnapshot';
@@ -40,8 +39,6 @@ const { deriveRecoveryComparison } = require('../lib/data/recoveryAnalytics');
 const { AnalyticsRecoverySection } = require('../components/AnalyticsRecoverySection');
 const { HomeRecoverySummary } = require('../screens/home/HomeRecoverySummary');
 const { useHomeRecoverySummary } = require('../screens/home/homeDashboardData');
-const { deriveOverviewRows } = require('../screens/analytics/analyticsDerivations');
-const { useRecoverySnapshotFromState } = require('../hooks/entries/useRecoveryStrengthSnapshot');
 
 const BASE = '-Bench\n- 100 5\n-Squat\n- 100 5';
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -76,28 +73,21 @@ beforeEach(() => {
   deriveRecoveryWeekBands.mockClear();
 });
 
-// Mounts Home + Overview + Analytics together, each fed its own copy of the data.
+// Mounts Home + Analytics together, each fed its own copy of the data.
 function Surfaces({ fixture, stale, fresh, notesError = null }) {
   const own = fresh ? { block: clone(fixture.block), weeks: clone(fixture.weeks), notes: clone(fixture.notes) } : fixture;
   mockStoreState = { blocks: [own.block], weeks: own.weeks, ready: true, loading: false, stale, activeBlock: own.block, retryRecovery: null };
   const home = useHomeRecoverySummary(own.notes);
-  const overview = useRecoverySnapshotFromState(mockStoreState, own.notes, { notesError });
-  const row = deriveOverviewRows({
-    activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 2 },
-    recoverySnapshot: overview.snapshot,
-  }).find(r => r.key === 'recovery');
   // The Analytics section is handed ITS OWN equal-but-distinct arrays.
   const analytics = { block: clone(fixture.block), weeks: clone(fixture.weeks), notes: clone(fixture.notes) };
   return (
     <>
       <HomeRecoverySummary summary={home} onNavigate={() => {}} />
       {React.createElement('probe', { testID: 'home-summary-probe', summary: home })}
-      <Probe row={row} />
       <AnalyticsRecoverySection blocks={[analytics.block]} weeks={analytics.weeks} notes={analytics.notes} stateStale={stale} notesError={notesError} />
     </>
   );
 }
-function Probe({ row }) { return React.createElement('probe', { testID: 'overview-probe', row }); }
 
 const mount = (props) => {
   let c;
@@ -111,7 +101,6 @@ const homeHeadline = (root) => {
   const v = byId(root, 'home-recovery-headline')[0];
   return v ? v.findAll(n => n.type === 'Text').map(n => [].concat(n.props.children).join('')).join(' ') : null;
 };
-const overviewRow = (root) => byId(root, 'overview-probe')[0].props.row;
 // #1335: Home renders the Big 3 rows again — label, the carried-score week when
 // older than the selected one, then the value — straight from the summary data.
 const homeLift = (root, slot) => byId(root, 'home-summary-probe')[0].props.summary.big3.find(l => l.slot === slot);
@@ -136,7 +125,7 @@ describe('single derivation', () => {
     ['stale', SCORED, true],
     ['legacy baseline', LEGACY, false],
     ['empty cohort', EMPTY_COHORT, false],
-  ])('%s: Home + Overview + Analytics derive strength and comparison exactly once', (_l, fixture, stale) => {
+  ])('%s: Home + Analytics derive strength and comparison exactly once', (_l, fixture, stale) => {
     mount({ fixture, stale });
     expect(deriveRecoveryStrength).toHaveBeenCalledTimes(1);
     expect(deriveRecoveryComparison).toHaveBeenCalledTimes(1);
@@ -151,14 +140,13 @@ describe('single derivation', () => {
     expect(deriveRecoveryComparison).toHaveBeenCalledTimes(1);
   });
 
-  test('a notes-read error (carried by Overview/Analytics, not Home) never re-derives strength or the comparison', () => {
+  test('a notes-read error (carried by Analytics, not Home) never re-derives strength or the comparison', () => {
     const root = mount({ fixture: SCORED, stale: false, notesError: new Error('x') }).root;
     expect(deriveRecoveryStrength).toHaveBeenCalledTimes(1);
     expect(deriveRecoveryComparison).toHaveBeenCalledTimes(1);
     expect(_snapshotDerivationCount()).toBe(1);
     expect(homeHeadline(root)).toBe('80% total recovery');
     expect(analyticsHeadline(root)).toBe('80% | 2 of 2 lifts back · avg 80% · Week 2');
-    expect(overviewRow(root).value).toBe('80%');
   });
 
   test('a real input change derives again, once', () => {
@@ -223,23 +211,17 @@ describe('identical values on every surface', () => {
     expect(homeValue.join(' ')).not.toMatch(/Recovered|In progress|Not started/);
   });
 
-  test('scored: the same % and caption on Home, the Overview row and the Analytics section', () => {
+  test('scored: the same % and caption on Home and the Analytics section', () => {
     const root = mount({ fixture: SCORED, stale: false }).root;
     expect(analyticsHeadline(root)).toBe('80% | 2 of 2 lifts back · avg 80% · Week 2');
     expect(homeHeadline(root)).toBe('80% total recovery');
-    const row = overviewRow(root);
-    expect(`${row.value} | ${row.infoCaption}`).toBe('80% | 2 of 2 lifts back · avg 80% · Week 2');
-    expect(row.label).toBe('Total recovery');
     expect(byId(root, 'recovery-strength-label')[0].props.children).toBe('total recovery');
-    expect(row.accessibilityText).toBe(analyticsSummary(root).props.accessibilityLabel);
   });
 
   test('stale: the numbers are unchanged and every surface still prints them', () => {
     const root = mount({ fixture: SCORED, stale: true }).root;
     expect(analyticsHeadline(root)).toBe('80% | 2 of 2 lifts back · avg 80% · Week 2');
     expect(homeHeadline(root)).toBe('80% total recovery');
-    expect(overviewRow(root).value).toBe('80%');
-    expect(overviewRow(root).accessibilityText).toMatch(/may be out of date\.$/);
   });
 
   test.each([
@@ -252,9 +234,6 @@ describe('identical values on every surface', () => {
     // Home states the snapshot's own reason instead of staying silent.
     expect(byId(root, 'home-recovery-headline-reason')[0].props.children).toBe(snap.display.message);
     expect(analyticsHeadline(root)).toBeNull();
-    const row = overviewRow(root);
-    expect(row.value).toBeNull();
-    expect(row.emptyCaption).toBe(snap.display.message);
     expect(analyticsSummary(root).props.accessibilityLabel).toContain(snap.display.message);
   });
 });
@@ -269,8 +248,6 @@ describe('empty strict cohort no longer hides the total (#1318)', () => {
     const cap = '0 of 2 lifts back · avg 0% · Week 1';
     expect(homeHeadline(root)).toBe('0% total recovery');
     expect(analyticsHeadline(root)).toBe(`0% | ${cap}`);
-    const row = overviewRow(root);
-    expect(`${row.value} | ${row.infoCaption}`).toBe(`0% | ${cap}`);
   });
 });
 
@@ -298,15 +275,13 @@ describe('Home Big 3 latest evidence and age (#1318)', () => {
     expect(value).not.toContain('100%');
   });
 
-  test('all three surfaces print the identical total and caption', () => {
+  test('both surfaces print the identical total and caption', () => {
     const root = mount({ fixture: AGED, stale: false }).root;
     const snap = getRecoverySnapshot({ block: AGED.block, weeks: AGED.weeks, notes: AGED.notes });
     expect(snap.total.perLiftLatest.map(l => [l.key, l.week])).toEqual([['bench', 2], ['squat', 1]]);
     const cap = snap.display.caption;
     expect(homeHeadline(root)).toBe(snap.display.headline);
     expect(analyticsHeadline(root)).toBe(`${snap.display.percent}% | ${cap}`);
-    expect(overviewRow(root).infoCaption).toBe(cap);
-    expect(overviewRow(root).value).toBe(`${snap.display.percent}%`);
     expect(deriveRecoveryStrength).toHaveBeenCalledTimes(1);
   });
 });
@@ -431,7 +406,7 @@ describe('display components never derive (#1315 review)', () => {
     expect(deriveRecoveryWeekBands.mock.calls.length).toBe(bands);
     expect(deriveRecoveryStrength.mock.calls.length).toBe(strength);
     expect(deriveRecoveryComparison.mock.calls.length).toBe(comparison);
-    // The whole mounted tree (Home + Overview + Analytics) derived bands only
+    // The whole mounted tree (Home + Analytics) derived bands only
     // inside the snapshot's one build (selected week + one per detail row).
     expect(bands).toBeLessThanOrEqual(1 + 2);
   });

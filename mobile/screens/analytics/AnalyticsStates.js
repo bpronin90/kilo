@@ -3,31 +3,18 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ArtisanalPanel } from '../../components/UI';
 import { normalizeLiftName } from '../../lib/data';
-import { normalizeExerciseKey } from '../../lib/parser';
 import { formatDuration } from '../../lib/format';
 import { formatLiftWeightValue } from '../../lib/units';
 import { CrossDayComparison, formatOverload } from '../../components/AnalyticsCrossDayComparison';
 
-// #894: a Progressive Overload row's trend can look "stuck" for two very
-// different reasons the icon alone can't tell apart — a movement inherited as
-// tracked with no activation record (#893 legacy/catalog state, full history)
-// versus a movement whose tracked span just opened (an activation record
-// exists, but the span itself holds no comparison yet). Only these two states
-// get a caption; a fully classified row (up/flat/down) needs no explanation,
-// and a row with no capability data at all is already self-explanatory via
-// the dash. `hasActivation` alone can't distinguish "just tracked" from
-// "tracked a while ago, still building history" — `rowTrend === 'first_session'`
-// (or the non-weighted 'dash' arrow) is what actually means "no comparison in
-// this span yet", so the two conditions are checked together.
-export function describePoRowState({ hasActivation, isFirstSpanSession, hasCapabilityData }) {
+// #894: a row whose tracked span holds no comparison yet — a just-opened
+// span (activation record, `first_session`/non-weighted 'dash') or a single
+// logged session — says so in plain words. How tracked spans and inherited
+// (pre-activation) history behave is methodology: it lives behind the
+// Progressive Overload section's info disclosure, not inline on every row.
+export function describePoRowState({ isFirstSpanSession, hasCapabilityData }) {
   if (!hasCapabilityData) return null;
-  if (isFirstSpanSession) {
-    return hasActivation
-      ? 'New tracked span: Est./Kilo/Best above stay historical'
-      : 'First session';
-  }
-  if (!hasActivation) return 'Inherited tracking: full history';
-  return null;
+  return isFirstSpanSession ? 'First session' : null;
 }
 
 // One exercise's Progressive Overload row: its captioned tracking state, its
@@ -35,7 +22,7 @@ export function describePoRowState({ hasActivation, isFirstSpanSession, hasCapab
 // the full cross-day comparison or the plain "Also on ..." fallback line.
 // Moved verbatim out of AnalyticsScreen.js (card #1051) — no presentation
 // change, only the module boundary.
-function renderExerciseRow(sig, { analytics, trackedLiftActivations, unit, styles, colors, kua = null }) {
+function renderExerciseRow(sig, { analytics, unit, styles, colors, kua = null }) {
   const normName = normalizeLiftName(sig.name);
   const dayRow = sig.isMultiDay && sig.daySignals ? sig.daySignals[sig.currentDayHeading] : null;
   const rowPr = dayRow ? dayRow.latest_pr : sig.latest_pr;
@@ -44,16 +31,12 @@ function renderExerciseRow(sig, { analytics, trackedLiftActivations, unit, style
   const rowIsBodyweight = dayRow ? dayRow.is_bodyweight : sig.is_bodyweight;
   const nw = analytics.nonWeightedMetrics?.[normName];
 
-  // #894: `trackedLiftActivations` is keyed by the same canonical key
-  // WorkoutContentRenderer's Track control writes to (#893) — presence of a
-  // record is what makes this an EXPLICIT tracked span, not inherited state.
-  const hasActivation = !!(trackedLiftActivations || {})[normalizeExerciseKey(sig.name)];
   const nwArrow = nw ? (nw.exercise_class === 'reps_only' ? nw.reps_arrow : nw.hold_arrow) : null;
   const hasCapabilityData = nw
     ? (nw.exercise_class === 'reps_only' ? nw.avg_reps != null : nw.avg_hold != null)
     : (rowPr != null || sig.kilo_max != null || rowTopWeight != null);
   const isFirstSpanSession = nw ? nwArrow === 'dash' : rowTrend === 'first_session';
-  const poCaption = describePoRowState({ hasActivation, isFirstSpanSession, hasCapabilityData });
+  const poCaption = describePoRowState({ isFirstSpanSession, hasCapabilityData });
 
   return (
     <View key={normName + sig.currentDayHeading} style={[styles.signalRow, styles.signalRowBorder]}>
@@ -123,9 +106,8 @@ function renderExerciseRow(sig, { analytics, trackedLiftActivations, unit, style
 }
 
 // The Progressive Overload list's own loading / populated / empty-search /
-// empty-tracked states (#821, #737) — the content of the measurable
-// `overload-list` box AnalyticsProgression.js anchors. Moved verbatim out of
-// AnalyticsScreen.js (card #1051): same conditions, same testIDs, same copy.
+// empty-tracked states (#821, #737), rendered inside the Progressive Overload
+// section (AnalyticsProgressiveOverload.js).
 export function renderOverloadListContent({
   isNotesLoading,
   isTrackedLoading,
@@ -133,7 +115,6 @@ export function renderOverloadListContent({
   collapsedGroups,
   toggleGroup,
   analytics,
-  trackedLiftActivations,
   unit,
   colors,
   kua = null,
@@ -171,7 +152,7 @@ export function renderOverloadListContent({
 
               {!isCollapsed && (
                 <View style={styles.exerciseList}>
-                  {group.exercises.map((sig) => renderExerciseRow(sig, { analytics, trackedLiftActivations, unit, styles, colors, kua }))}
+                  {group.exercises.map((sig) => renderExerciseRow(sig, { analytics, unit, styles, colors, kua }))}
                 </View>
               )}
             </View>
@@ -192,7 +173,7 @@ export function renderOverloadListContent({
   return (
     <View key="empty-tracked" style={styles.emptyTracked}>
       <Text style={styles.emptyText}>
-        Tap Track on any exercise in your note to track it here. Logging alone doesn't track it. Track / Tracked is the only control that does.
+        No tracked exercises yet.{'\n'}Track an exercise in Log to see it here.
       </Text>
       <Pressable
         testID="analytics-empty-log-link"

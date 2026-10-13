@@ -4,7 +4,7 @@ import { normalizeExerciseKey } from '../parser.js';
 import { normalizeLiftName, deriveWorkoutNoteAnalytics, deriveNonWeightedTrackedExerciseMetrics } from '../data.js';
 
 // Canonical Exercise Progress / Progressive Overload derivation. Home's summary
-// and Analytics' Overview row + Progressive Overload table all read this one
+// and Analytics' Progressive Overload summary + table all read this one
 // result, so the same tracked exercise can never be counted differently on two
 // screens.
 

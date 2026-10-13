@@ -561,7 +561,7 @@ control name that copy tells the user to tap (ui-design-rules §12).
 is the entry point, not a second evidence surface — but Squat, Bench and Deadlift
 are what Kilo is built around, so they ARE the card. The active branch reads the
 ONE Recovery snapshot (`getRecoverySnapshot`, the same frozen object Analytics'
-section and Overview row read — **Recovery numbers come from one snapshot;
+section reads — **Recovery numbers come from one snapshot;
 surfaces never re-derive**) via `useHomeRecoverySummary`'s unchanged `big3` and
 `headline`. What stays on Analytics Recovery is the prose around them: the
 headline caption (`N of M lifts back · avg …% · Week n`), the roster count line,
@@ -801,39 +801,27 @@ divider ahead of the chart and info disclosure beneath it.
 
 Source: `mobile/screens/AnalyticsScreen.js`
 
-Section order (#821): **Overview → Weight Trends → Recovery → Fatigue →
-Strength**, with Progressive Overload and Big 3 Mapping inside Strength.
-Progressive Overload deliberately stays last on the tab: it is the longest
-surface and the overview summarises it at the top, so it does not need to be
-scrolled past to reach anything else.
+Analytics is the evidence surface; Home owns the summary, so there is no
+Overview card. The legacy `overview` navigation id still means scroll offset 0.
+Ordering lives in `screens/analytics/AnalyticsLayout.js`
+(`orderAnalyticsSections`, pure):
 
-### Overview Card (`AnalyticsOverviewCard.js`, #821)
+- **Normal training:** Strength → Progressive Overload → Weight Trends →
+  Routine Health → Recovery history (only when the Recovery section has
+  something to render).
+- **Active Recovery:** Recovery → Weight Trends → `Baseline training · paused
+  during Recovery` disclosure (collapsed by default) holding Strength →
+  Progressive Overload → Routine Health. Ending Recovery restores the normal
+  order.
 
-The tab's first block and the destination for the `overview` navigation id.
-Reads only display-space series the other sections already plot
-(`oneKChartData`, `rolling7`); `deriveOverviewRows` performs no conversion.
-During active Recovery (#1299, #1315) it shows Recovery (the same headline as the
-Recovery section, read from the one Recovery snapshot: `87%` plus the compact
-`{N} lifts · Week n` caption; the snapshot's short reason when there is no honest
-number), Body Weight, and one noninteractive line
-replacing the paused 1K Total and Exercise Progress rows.
-
-| Element | Property | Value |
-|---|---|---|
-| Panel | `ArtisanalPanel`, `padding: 0` | |
-| "Overview" label | fontSize / weight | `11` / `800` uppercase, `letterSpacing: 1` |
-| As-of caption | fontSize | `11`, `textMuted` |
-| Row | paddingHorizontal / Vertical | `16` / `12`, `minHeight: 44` |
-| | divider | `borderTopWidth: 1` / `colors.divider` |
-| Row label | fontSize / weight | `14` / `600` |
-| Row value | fontSize / weight | `17` / `700`, monospace |
-| Row value unit / suffix | fontSize | `11`, `600`, `textMuted` |
-| Delta | fontSize / weight | `12` / `700`, monospace |
-| | color | `colors.success` up, `colors.error` down |
-| Caption | fontSize | `12`, `textMuted` |
-
-Three distinct no-value states: `unavailable` (failed read), loading, and an
-ordinary empty state carrying its own next action. See `ui-design-rules.md` §8.
+Strength owns the 1K/Big 3 evidence; Big 3 Mapping sits under the 1K panel,
+collapsed by default with a one-line summary of the mapped lifts. Progressive
+Overload (`AnalyticsProgressiveOverload.js`) is its own top-level section: the
+canonical Exercise Progress counts (`analytics.exerciseProgress`), progression
+suggestions, search/collapse controls and the table; tracked-span/inherited and
+column methodology sits behind its `ⓘ`. Routine Health wraps `SessionGauge`
+(`showTitle={false}`, the section titles it) over `deriveRoutineStatus()`, plus
+the Session Check-ins card when fatigue tracking is on.
 
 ### Weight Trends Card
 
@@ -884,19 +872,20 @@ ordinary empty state carrying its own next action. See `ui-design-rules.md` §8.
 | 1K card | padding / bg | `24` / `panelBackground` (ArtisanalPanel) | `174-179` |
 | 1K label | fontSize / weight | `12` / `800`, uppercase, `letterSpacing: 1` | `180-186` |
 | 1K value | style | `HeroMetric.hero` (single hero metric) | `187-190` |
-| Big 3 Mapping card | header | collapsible `Pressable`, default expanded | `111-125` |
+| Big 3 Mapping card | header | collapsible `Pressable`, default collapsed with mapped-lift summary | `111-125` |
 | Big 3 title | fontSize / weight | `12` / `700`, uppercase, `textMuted` | `297-303` |
 | Big 3 / info collapse | icon | `MaterialIcons` `expand-more`/`expand-less`, `14-16`, `textMuted` | `119-124`, `79-84` |
 | 1K explainer (#1245) | shared `InfoButton` | icon beside the `1K Progress` label (`How is the 1K calculated?`); copy in an `InfoNote`, default hidden | `AnalyticsStrengthSection.js` |
 
 ### Recovery Section (`AnalyticsRecoverySection.js`)
 
-Section order on the Analytics tab (R5a/R5b, #790/#793): **Weight → Recovery →
-Fatigue → Strength → Progressive Overload**. Recovery sits directly above
-Fatigue — the two are the tab's "should I be training normally right now?"
-sections — but stay visually distinct: separate `SectionTitle`s, no shared
-measure, no cross-reference. Recovery keeps `HeroMetric` + per-exercise
-meters; Fatigue keeps `SessionGauge` + its check-in card.
+Placement (#1347; see Analytics Screen above): during active Recovery this
+section leads the tab, above Weight Trends and the collapsed baseline-training
+disclosure; otherwise it closes the tab after Routine Health, and only while it
+has something to render (completed-block history, loading, stale or error).
+Completed history stays inside this section. Recovery keeps `HeroMetric` +
+per-exercise meters; Routine Health keeps `SessionGauge` + its Session
+Check-ins card, with no shared measure between them.
 
 Progressive disclosure (#758, R5b, restructured #1315): the section answers "how
 close am I to my normal training?" before it shows any evidence, and it is
@@ -914,8 +903,8 @@ disclosure with ONE list: each lift's row shows its strength % and expands to it
 raw Load/Total-work evidence (`WeekEvidence` rows decorated by the snapshot's
 strength lifts), instead of two parallel lists.
 **Recovery numbers come from one snapshot; surfaces never re-derive** (see
-`lib/data/recoverySnapshot.js`): Home's Recovery panel, the Overview `Recovery`
-row and this section read the same frozen object. **Maintenance lives only in
+`lib/data/recoverySnapshot.js`): Home's Recovery panel and this section read the
+same frozen object. **Maintenance lives only in
 Log** (reason, inclusion, reopen, rebuild baseline, match/tidy names,
 movement-group overrides — Log's Manage block, below); Analytics renders no write
 control. Every sentence the compact view no longer prints is in an accessibility
@@ -1137,12 +1126,12 @@ Wording is part of the contract, not decoration:
   reason evidence is absent. Loading, stale, retry, and unverified copy is
   unchanged and still comes from the recovery state contract.
 
-### Progressive Overload Table (`AnalyticsScreen.js`)
+### Progressive Overload Table (`AnalyticsProgressiveOverload.js`)
 
 | Element | Property | Value | Line |
 |---|---|---|---|
-| Sticky header | paddingTop / paddingBottom | `8` / `8` (`signalStickyHeader`) | `384-388` |
-| Sticky header | pinned via | `stickyHeaderIndices` on ScreenShell | `356`, `366` |
+| Section | gap | `8` (`poSection`); not sticky — it no longer ends the tab | |
+| Exercise Progress counts | three columns | `poSummaryCount` metric display over uppercase `label-sm` | |
 | Column header row | paddingHorizontal / paddingBottom | `16` / `4` | `403-407` |
 | Column label | fontSize / weight | `11` / `800`, uppercase, `letterSpacing: 0.5`, center | `408-416` |
 | Group section | paddingBottom / border | `4` / 1px `divider` top (between groups) | `426+` |
@@ -1733,7 +1722,7 @@ Home has the highest orange density — 6 distinct elements. The wordmark is fix
 | Screen | Between-card SectionTitles |
 |---|---|
 | Home | none — Home does not import `SectionTitle` |
-| Analytics | "Weight Trends", "Fatigue", "Strength", "Progressive Overload" |
+| Analytics | "Strength", "Progressive Overload", "Weight Trends", "Routine Health", "Recovery" |
 | Weight | "Goal", "Trends", "Goal History", "History" |
 | Log | "Recovery", "More Routines" |
 
