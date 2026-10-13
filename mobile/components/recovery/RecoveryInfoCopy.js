@@ -13,8 +13,8 @@ export const NON_MEDICAL_NOTE = 'Training numbers only. Not a medical judgment. 
 // accessibility label.
 export const PERCENT_INFO_LINES = Object.freeze([
   'Total recovery compares your current strength with this block’s frozen baseline.',
-  'It totals your eligible scored lifts: each lift’s best set as a share of its baseline best set.',
-  'Lifts without comparable scored data may be left out.',
+  'It averages every baseline lift that can be scored for strength: each lift’s latest best set as a share of its baseline best set. A lift with no score yet counts as zero.',
+  'Lifts with no load-and-reps baseline set, like timed or bodyweight work, are left out.',
   NON_MEDICAL_NOTE,
 ]);
 

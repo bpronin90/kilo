@@ -184,8 +184,8 @@ describe('movement groups and the explainer', () => {
     tap(root, 'About total recovery');
     expect(noteTexts(root, 'recovery-percent-note')).toEqual([
       'Total recovery compares your current strength with this block’s frozen baseline.',
-      'It totals your eligible scored lifts: each lift’s best set as a share of its baseline best set.',
-      'Lifts without comparable scored data may be left out.',
+      'It averages every baseline lift that can be scored for strength: each lift’s latest best set as a share of its baseline best set. A lift with no score yet counts as zero.',
+      'Lifts with no load-and-reps baseline set, like timed or bodyweight work, are left out.',
       'Training numbers only. Not a medical judgment. Only you end a Recovery block.',
     ]);
   });
