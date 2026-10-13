@@ -835,6 +835,7 @@ the Session Check-ins card when fatigue tracking is on.
 | | fontWeight | `900` | `373` |
 | | color | `colors.accentText` | `374` |
 | Chart | height | `100` | `166` |
+| Window selector (`7D` / `30D`) | one chart; swaps `rolling7` ↔ `rolling30`, clears selection; radio role, `>=44dp` | | |
 | Pace badge | borderRadius | `12` | `379` |
 | | text fontSize | `12` | `387` |
 | | text fontWeight | `800` | `388` |

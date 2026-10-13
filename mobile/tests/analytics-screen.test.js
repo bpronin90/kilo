@@ -1381,16 +1381,18 @@ describe('AnalyticsScreen normal-training section order', () => {
   });
 });
 
-// ── Weight Trends — split 7-day / 30-day charts ───────────────────────────────
+// ── Weight Trends — one chart, 7-day / 30-day window ─────────────────────────
 
-describe('AnalyticsScreen Weight Trends — two rolling charts', () => {
+describe('AnalyticsScreen Weight Trends — one windowed rolling chart', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  test('renders both 7-day and 30-day rolling chart labels', () => {
+  test('renders one chart label with both window options', () => {
     const component = setup({ entries: [] });
     const root = component.root;
     expect(hasText(root, '7-day rolling average')).toBe(true);
-    expect(hasText(root, '30-day rolling average')).toBe(true);
+    expect(hasText(root, '30-day rolling average')).toBe(false);
+    expect(root.findAllByProps({ testID: 'weight-trends-window-7' }).length).toBeGreaterThan(0);
+    expect(root.findAllByProps({ testID: 'weight-trends-window-30' }).length).toBeGreaterThan(0);
   });
 });
 
