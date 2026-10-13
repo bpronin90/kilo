@@ -1689,12 +1689,12 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
     expect(rows.map(r => hostTextsIn(r).pop())).toEqual(['74%', 'No data', '74%']);
   });
 
-  test('cohort names are on demand: spoken in the summary label and shown in the total-recovery explainer (#1315, #1358)', () => {
+  test('cohort names are spoken in the summary label, never printed, not even in the total-recovery explainer (#1315, #1360)', () => {
     const root = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
     expect(hasText(root, 'In the consistent cohort: Bench')).toBe(false);
     expect(summaryLabel(root)).toContain('In the consistent cohort: Bench');
     act(() => { byLabel(root, 'About total recovery').props.onPress(); });
-    expect(hasText(root, 'In the consistent cohort: Bench.')).toBe(true);
+    expect(hasText(root, 'In the consistent cohort: Bench.')).toBe(false);
   });
 
   test('ladder bars sit in a row line so the shared track grows horizontally, never in height (PR #1308 review)', () => {
@@ -1718,10 +1718,11 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
     expect(hasText(root, '100%')).toBe(true);
     expandDetails(root, { rows: false });
     expect(hasText(root, '118%')).toBe(true);
-    // The scale legend is not printed; it is the week bars' own explainer (#1315, #1358).
+    // The scale legend is not printed; the week bars' explainer covers only them (#1315, #1358, #1360).
     expect(hostById(root, 'recovery-strength-scale')).toHaveLength(0);
     act(() => { byLabel(root, 'About the bar scale').props.onPress(); });
-    expect(hasText(root, 'Week bars run 0–100% (total recovery is capped at 100%). Lift bars run 0–120%. The dark mark is your baseline (100%).')).toBe(true);
+    expect(hasText(root, 'Week bars run 0–100%. 100% is your baseline: a full return to baseline strength.')).toBe(true);
+    expect(hasText(root, 'Lift bars run 0–120%.')).toBe(false);
   });
 });
 
@@ -3134,9 +3135,11 @@ describe('AnalyticsRecoverySection — week rows without a scoreable denominator
     expect(hasText(root, 'Select to view')).toBe(false);
   });
 
-  test('the bar-scale explainer names the two bar scales', () => {
+  test('the week-bar explainer covers only the week bars, even when lift bars exceed 100%', () => {
     const root = setup({ blocks: [block()], weeks: [week(1, 'note-w1'), week(2, 'note-w2')], notes: [note('note-w1', '-Bench\n- 135 5'), note('note-w2', '-Bench\n- 160 5')] }).root;
     act(() => { byLabel(root, 'About the bar scale').props.onPress(); });
-    expect(hasText(root, 'Week bars run 0–100% (total recovery is capped at 100%). Lift bars run 0–120%. The dark mark is your baseline (100%).')).toBe(true);
+    const lines = hostTextsIn(hostById(root, 'recovery-scale-note')[0]);
+    expect(lines).toEqual(['Week bars run 0–100%. 100% is your baseline: a full return to baseline strength.']);
+    expect(lines.join(' ')).not.toMatch(/lift|120%/i);
   });
 });

@@ -2,8 +2,8 @@
 // plus ONE short caption (`{N} of {M} lifts back · avg {avg}% · Week {n}`). The
 // wording comes from the single Recovery snapshot's `display`, so Home and the
 // Overview row print the same thing. The cap/denominator, carried scores and the
-// secondary consistent-cohort average are in the accessibility label and the
-// percentage's own explainer (#1358): `info` is its icon, placed beside the
+// secondary consistent-cohort average are in the accessibility label. The
+// percentage's own explainer (#1358, #1360) says only what it means: `info` is its icon, placed beside the
 // number but outside the summary's single accessible node so it stays a
 // separate target. When no aggregate can be honest, a short reason is shown
 // instead of a number, and no icon.

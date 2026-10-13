@@ -7,7 +7,7 @@
 // Pure and read-only. Results live in a content-keyed shared store (see below),
 // so simultaneously mounted consumers resolve to the very same frozen object even
 // when they hold different-but-equal arrays. The wording the surfaces print (headline caption, empty/unavailable
-// messages, full accessibility text, the total-recovery explainer lines) is built
+// messages, full accessibility text) is built
 // here too, so two surfaces can never word the same fact differently.
 
 import {
@@ -95,7 +95,7 @@ function _routineName(block) {
 // The secondary detail the summary does not print: the strict consistent-cohort
 // average (#1305, now secondary to the total, #1318) with its numeric percent or
 // truthful unavailable reason, plus coverage, exclusions and drops. They live in
-// the accessibility label and the total-recovery explainer.
+// the accessibility label.
 function _detailLines(strength) {
   const cohortSize = strength.cohort.length;
   const lines = [];
