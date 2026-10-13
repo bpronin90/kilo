@@ -8,7 +8,7 @@ import { useWeightUnit } from '../lib/unitPreference';
 import { formatPaceElapsed } from '../lib/format';
 import { paceDirection, WEIGHT_TONE, weightPaceBadgeText, weightTrendTone } from '../lib/data/derivedAnalytics';
 
-// One insufficient-data treatment for both charts (#821). It replaces the bare
+// One insufficient-data treatment for either window (#821). It replaces the bare
 // "Not enough data", which named no threshold and offered nothing to do about
 // it. Two weigh-ins is the real threshold: computeWeightRollingAverageSeries
 // emits one point per weigh-in DATE, and LineChart needs two points to draw a
@@ -46,6 +46,13 @@ function ChartEmptyState({ loading, onNavigate }) {
   );
 }
 
+// One chart, two canonical series (#1349). The toggle only picks which
+// already-derived prop to draw; it never merges or recomputes either series.
+const WINDOWS = [
+  { key: '7', short: '7D', label: '7-day rolling average' },
+  { key: '30', short: '30D', label: '30-day rolling average' },
+];
+
 export function AnalyticsWeightTrendsCard({
   handleWeightLayout,
   weightSummary,
@@ -60,6 +67,9 @@ export function AnalyticsWeightTrendsCard({
   // space by AnalyticsScreen, so only the unit label is needed here.
   const unit = useWeightUnit();
   const [selectedPoint, setSelectedPoint] = useState(null);
+  const [windowKey, setWindowKey] = useState('7');
+  const activeWindow = WINDOWS.find(w => w.key === windowKey);
+  const activeSeries = windowKey === '30' ? rolling30 : rolling7;
 
   const byLabel7 = useMemo(() => {
     const m = {};
@@ -75,6 +85,14 @@ export function AnalyticsWeightTrendsCard({
 
   function handleSelect(point) {
     setSelectedPoint(point);
+  }
+
+  // The remounted chart starts unselected, so the header must too — otherwise
+  // it would keep naming a point the visible series no longer highlights.
+  function handleWindow(key) {
+    if (key === windowKey) return;
+    setWindowKey(key);
+    setSelectedPoint(null);
   }
 
   const display = useMemo(() => {
@@ -126,35 +144,39 @@ export function AnalyticsWeightTrendsCard({
         </View>
 
         <View style={styles.chartBlock}>
-          <Text style={styles.chartLabel}>7-day rolling average</Text>
+          <View style={styles.chartHeader}>
+            <Text style={styles.chartLabel}>{activeWindow.label}</Text>
+            <View style={styles.windowToggle} accessibilityRole="radiogroup" accessibilityLabel="Rolling average window">
+              {WINDOWS.map(w => {
+                const selected = w.key === windowKey;
+                return (
+                  <Pressable
+                    key={w.key}
+                    testID={`weight-trends-window-${w.key}`}
+                    onPress={() => handleWindow(w.key)}
+                    style={[styles.windowOption, selected && styles.windowOptionSelected]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={w.label}
+                  >
+                    <Text style={[styles.windowOptionText, selected && styles.windowOptionTextSelected]} accessible={false}>
+                      {w.short}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
           <View style={styles.chartArea}>
-            {rolling7.length > 1 ? (
+            {activeSeries.length > 1 ? (
               <LineChart
-                data={rolling7}
+                key={windowKey}
+                data={activeSeries}
                 height={100}
                 hideHeader
                 showScale
                 color={kua ? kua.primary : undefined}
-                seriesLabel="7-day rolling average bodyweight"
-                onSelect={handleSelect}
-              />
-            ) : (
-              <ChartEmptyState loading={isWeightLoading} onNavigate={onNavigate} />
-            )}
-          </View>
-        </View>
-
-        <View style={styles.chartBlock}>
-          <Text style={styles.chartLabel}>30-day rolling average</Text>
-          <View style={styles.chartArea}>
-            {rolling30.length > 1 ? (
-              <LineChart
-                data={rolling30}
-                height={100}
-                hideHeader
-                showScale
-                color={kua ? kua.primary : colors.textMuted}
-                seriesLabel="30-day rolling average bodyweight"
+                seriesLabel={`${activeWindow.label} bodyweight`}
                 onSelect={handleSelect}
               />
             ) : (
@@ -189,6 +211,35 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   chartBlock: {
     gap: 4,
+  },
+  chartHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  windowToggle: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  // Rule 15: grow the box to the 44dp floor rather than lean on hitSlop.
+  windowOption: {
+    minHeight: 44,
+    minWidth: 44,
+    paddingHorizontal: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: GEOMETRY['radius-lg'],
+  },
+  windowOptionSelected: {
+    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
+  },
+  windowOptionText: {
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
+    fontWeight: '700',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
+  windowOptionTextSelected: {
+    color: kua ? kua.primary : colors.accentText,
   },
   chartLabel: {
     fontSize: TYPOGRAPHY['label-sm'].fontSize,
