@@ -3,8 +3,10 @@
 // wording comes from the single Recovery snapshot's `display`, so Home and the
 // Overview row print the same thing. The cap/denominator, carried scores and the
 // secondary consistent-cohort average are in the accessibility label and the
-// "About these numbers" explainer. When no
-// aggregate can be honest, a short reason is shown instead of a number.
+// percentage's own explainer (#1358): `info` is its icon, placed beside the
+// number but outside the summary's single accessible node so it stays a
+// separate target. When no aggregate can be honest, a short reason is shown
+// instead of a number, and no icon.
 
 import React, { useMemo } from 'react';
 import { Text, View } from 'react-native';
@@ -14,7 +16,7 @@ import { createStrengthStyles } from './recoveryStrengthStyles';
 
 export { STRENGTH_EMPTY_COPY };
 
-export function RecoveryStrengthSummary({ display }) {
+export function RecoveryStrengthSummary({ display, info = null }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStrengthStyles(colors, kua), [colors, kua]);
   if (!display) return null;
@@ -28,12 +30,15 @@ export function RecoveryStrengthSummary({ display }) {
     );
   }
   return (
-    <View testID="recovery-strength-summary" style={styles.summary} accessible accessibilityLabel={display.a11y}>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 6 }}>
-        <Text testID="recovery-strength-number" style={styles.number}>{`${display.percent}%`}</Text>
-        <Text testID="recovery-strength-label" style={styles.numberLabel}>total recovery</Text>
+    <View testID="recovery-strength-summary-row" style={styles.summaryRow}>
+      <View testID="recovery-strength-summary" style={[styles.summary, styles.summaryMain]} accessible accessibilityLabel={display.a11y}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 6 }}>
+          <Text testID="recovery-strength-number" style={styles.number}>{`${display.percent}%`}</Text>
+          <Text testID="recovery-strength-label" style={styles.numberLabel}>total recovery</Text>
+        </View>
+        <Text testID="recovery-strength-caption" style={styles.caption}>{display.caption}</Text>
       </View>
-      <Text testID="recovery-strength-caption" style={styles.caption}>{display.caption}</Text>
+      {info}
     </View>
   );
 }

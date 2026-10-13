@@ -159,13 +159,14 @@ export function AnalyticsProgressiveOverloadSection({
               testID="po-metrics-info-toggle"
               expanded={metricsInfoShown}
               onPress={toggleMetricsInfo}
-              label="What 1RM, Kilo, and Best mean"
+              label="What 1RM, Kilo, Best, and Trend mean"
             />
           </View>
           <InfoNote shown={metricsInfoShown} testID="po-metrics-info-body" style={styles.poInfoBody}>
             <Text style={styles.poInfoText}>1RM: your estimated one-rep max.</Text>
             <Text style={styles.poInfoText}>Kilo: Kilo's estimate of your strength from your logged history.</Text>
             <Text style={styles.poInfoText}>Best: your latest top set.</Text>
+            <Text style={styles.poInfoText}>Trend: the Exercise Progress state shown above.</Text>
           </InfoNote>
           <View style={styles.signalColumnHeader}>
             <View style={styles.signalColumnMetrics}>

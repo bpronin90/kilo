@@ -7,6 +7,7 @@ import { useTheme } from '../../theme/ThemeContext';
 import { formatDate } from '../../lib/format';
 import { RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from '../../lib/data/recoveryAnalytics';
 import { STRENGTH_STATUS } from '../../lib/data/recoveryStrength';
+import { SNAPSHOT_STATE } from '../../lib/data/recoverySnapshot';
 import { useRecoveryStrengthSnapshot } from '../../hooks/entries/useRecoveryStrengthSnapshot';
 import { WeekEvidence, WeekUnavailableNotice } from './RecoveryStateGroups';
 import { createStyles } from './analyticsRecoveryStyles';
@@ -16,7 +17,7 @@ import { scoredLifts } from './RecoveryStrengthLadder';
 import { RecoveryMovementGroupsPanel } from './RecoveryMovementGroupsPanel';
 import { RecoveryStrengthWeeks } from './RecoveryStrengthWeeks';
 import { NotRetestedDisclosure, NotScoredDisclosure, RecoveryDisclosure, notScoredEntries } from './RecoveryStrengthDisclosures';
-import { numbersInfoLines } from './RecoveryNumbersInfo';
+import { hasVisiblePace, paceInfoLines, percentInfoLines } from './RecoveryInfoCopy';
 import { deriveRecoveryBig3, recoveryBig3Rows } from '../../lib/data/recoveryBig3';
 import { Big3Bars } from '../Big3Bars';
 
@@ -66,8 +67,11 @@ export function BlockEvidence({
   const [localWeekId, setLocalWeekId] = useState(null);
   const selectedWeekId = onSelectWeek ? controlledWeekId : localWeekId;
   const setSelectedWeekId = onSelectWeek || setLocalWeekId;
-  // The non-medical note and every relocated sentence sit behind one info button.
-  const [aboutShown, toggleAbout] = useInfoExplainer();
+  // #1358: each explainer is scoped to the one thing beside it — the total
+  // recovery percentage or the per-lift pace (the bar scale's lives with the
+  // week bars). Block metadata has none.
+  const [percentShown, togglePercent] = useInfoExplainer();
+  const [paceShown, togglePace] = useInfoExplainer();
 
   const snapshot = useRecoveryStrengthSnapshot({ block, weeks, notes, selectedWeekId, stale: stateStale, notesError });
   const { comparison, weekResults, selectedWeek, strength, total, scaleMax, bands, display } = snapshot;
@@ -116,7 +120,10 @@ export function BlockEvidence({
   const hasGroups = showStrength && strengthOk && !!snapshot.movementGroups
     && snapshot.movementGroups.breakdown.groups.length > 0;
   const hasDisclosures = hasLifts || hasGroups || hasNotRetested || hasNotScored;
-  const infoLines = useMemo(() => numbersInfoLines({ snapshot, routineTitle }), [snapshot, routineTitle]);
+  const percentLines = useMemo(() => percentInfoLines(snapshot), [snapshot]);
+  const paceLines = useMemo(() => paceInfoLines(snapshot), [snapshot]);
+  const showPercentInfo = display.state === SNAPSHOT_STATE.SCORE;
+  const showPaceInfo = strengthOk && hasVisiblePace(strength);
   // The first disclosure has no top rule (the card edge is its boundary).
   let firstDisc = true;
   const first = () => { const f = firstDisc; firstDisc = false; return f; };
@@ -153,7 +160,20 @@ export function BlockEvidence({
             <View style={styles.weekStatusRegion} accessibilityLiveRegion="polite">
               {showStrength && (
                 <View style={styles.summaryBlock}>
-                  <RecoveryStrengthSummary display={display} />
+                  {/* One child of the gapped block, so the hidden note adds no space. */}
+                  <View>
+                    <RecoveryStrengthSummary
+                      display={display}
+                      info={showPercentInfo ? (
+                        <InfoButton testID="recovery-percent-info-toggle" expanded={percentShown} onPress={togglePercent} label="About total recovery" />
+                      ) : null}
+                    />
+                    <InfoNote shown={percentShown && showPercentInfo} testID="recovery-percent-note" style={styles.infoNote}>
+                      {percentLines.map((line, i) => (
+                        <Text key={`${i}:${line}`} testID={i === percentLines.length - 1 ? 'recovery-non-medical-note' : undefined} style={styles.nonMedicalText}>{line}</Text>
+                      ))}
+                    </InfoNote>
+                  </View>
                   {big3Rows.length > 0 ? (
                     <Big3Bars rows={big3Rows} idPrefix="recovery-big3-lift" testID="recovery-big3" />
                   ) : null}
@@ -174,14 +194,14 @@ export function BlockEvidence({
                 total={total}
                 selectedWeekId={selectedWeek ? selectedWeek.week_id : null}
                 onSelect={setSelectedWeekId}
+                scaleMax={scaleMax}
               />
             )}
           </>
         )}
 
-        {/* Block context (#1219): a quiet two-row "label  value" list under one
-            divider. The info button sits beside the date it accompanies and its
-            note opens right under it; the other rows are text, not targets. */}
+        {/* Block context (#1219): a quiet "label  value" list under one divider.
+            Plain metadata, so no row carries an explainer (#1358). */}
         <View testID="recovery-footer-row" style={styles.contextBlock}>
           <View testID="recovery-context-routine" style={styles.contextRow}>
             <Text style={labelStyle} {...LABEL_HIDDEN}>Baseline</Text>
@@ -195,10 +215,6 @@ export function BlockEvidence({
           </View>
           <View testID="recovery-context-date" style={[styles.contextRow, styles.contextRowWrap]}>
             <Text style={labelStyle} {...LABEL_HIDDEN}>{dateLabel}</Text>
-            {/* #1245: the shared info icon is anchored beside the label it explains. */}
-            {showInfo && (
-              <InfoButton expanded={aboutShown} onPress={toggleAbout} label="About these numbers" />
-            )}
             {/* A date is never ellipsized: at narrow widths or large text a
                 completed range wraps to a second line instead. */}
             <View
@@ -210,11 +226,6 @@ export function BlockEvidence({
               {!isActive && <Text style={[styles.contextValue, styles.contextDateText]}>{formatDate(block.completed_at)}</Text>}
             </View>
           </View>
-          <InfoNote shown={aboutShown} testID="recovery-about-note">
-            {infoLines.map((line, i) => (
-              <Text key={`${i}:${line}`} testID={i === infoLines.length - 1 ? 'recovery-non-medical-note' : undefined} style={styles.nonMedicalText}>{line}</Text>
-            ))}
-          </InfoNote>
           {/* Quiet read-only context (#1307): editing lives in Log's Manage block. */}
           {block.reason ? (
             <View
@@ -256,6 +267,20 @@ export function BlockEvidence({
             >
               <View testID="recovery-exercise-details" style={styles.detailsBody}>
                 <RecoveryRosterSummary summary={detailSummary} bands={bands} gap={bands.most_common_gap} />
+                {/* Pace help only where a lift row prints a pace (#1358). */}
+                {showPaceInfo ? (
+                  <View>
+                    <View testID="recovery-pace-info-row" style={styles.paceInfoRow}>
+                      <Text style={[styles.contextLabel, styles.paceLabel]}>Pace</Text>
+                      <InfoButton testID="recovery-pace-info-toggle" expanded={paceShown} onPress={togglePace} label="About pace" />
+                    </View>
+                    <InfoNote shown={paceShown} testID="recovery-pace-note" style={styles.infoNote}>
+                      {paceLines.map((line, i) => (
+                        <Text key={`${i}:${line}`} style={styles.nonMedicalText}>{line}</Text>
+                      ))}
+                    </InfoNote>
+                  </View>
+                ) : null}
                 <WeekEvidence
                   key={`${block.id}:${selectedWeek.week_id}`}
                   rows={weekRows} unit={unit} weekNumber={selectedWeek.week_number} elsewhere={trainedElsewhere}

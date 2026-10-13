@@ -7,6 +7,7 @@
 import React, { useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
+import { InfoButton, InfoNote, useInfoExplainer } from '../InfoExplainer';
 import { RECOVERY_WEEK_STATUS } from '../../lib/data/recoveryAnalytics';
 import { STRENGTH_STATUS, displayPercent } from '../../lib/data/recoveryStrength';
 import { createStrengthStyles } from './recoveryStrengthStyles';
@@ -26,8 +27,8 @@ export function StrengthBar({ percent, scaleMax, testID }) {
   );
 }
 
-// The 0-scale legend is no longer printed (#1315); it lives in the explainer.
-// Two scales: week rows plot the capped total (always 0-100); lift bars share the ladder scale.
+// The scale legend is not printed (#1315); it is the bar-scale explainer beside
+// "Week by week" (#1358). Two scales: week rows plot the capped total (always 0-100); lift bars share the ladder scale.
 export const strengthScaleNote = (scaleMax) => `Week bars run 0–100% (total recovery is capped at 100%). Lift bars run 0–${scaleMax}%. The dark mark is your baseline (100%).`;
 
 // The SOLE Analytics week selector (#1307). Membership is every live week of the
@@ -35,14 +36,24 @@ export const strengthScaleNote = (scaleMax) => `Week bars run 0–100% (total re
 // an unreadable or missing one reveals its explicit notice rather than being a
 // silent no-op. The score comes from the as-of trend when it has the week; a week
 // later than the selection (or a baseline with no strength data) says so.
-export function RecoveryStrengthWeeks({ weekResults, strength, total, selectedWeekId, onSelect }) {
+export function RecoveryStrengthWeeks({ weekResults, strength, total, selectedWeekId, onSelect, scaleMax = 100 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStrengthStyles(colors, kua), [colors, kua]);
+  const [scaleShown, toggleScale] = useInfoExplainer();
   if (!weekResults || weekResults.length < 1) return null;
   const trend = new Map((total.trend || []).map(w => [w.week_id, w]));
   return (
     <View testID="recovery-strength-weeks" style={styles.section}>
-      <Text style={styles.sectionTitle}>Week by week</Text>
+      {/* One child of the gapped section, so the hidden note adds no space. */}
+      <View>
+        <View testID="recovery-weeks-title-row" style={styles.titleRow}>
+          <Text style={styles.sectionTitle}>Week by week</Text>
+          <InfoButton testID="recovery-scale-info-toggle" expanded={scaleShown} onPress={toggleScale} label="About the bar scale" />
+        </View>
+        <InfoNote shown={scaleShown} testID="recovery-scale-note">
+          <Text style={styles.scaleNote}>{strengthScaleNote(scaleMax)}</Text>
+        </InfoNote>
+      </View>
       {weekResults.map(w => {
         const t = trend.get(w.week_id);
         const unreadable = w.status !== RECOVERY_WEEK_STATUS.OK || (t && !t.readable);

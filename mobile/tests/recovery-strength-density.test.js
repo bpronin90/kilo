@@ -1,7 +1,7 @@
 // Compact default Recovery evidence with full context on demand (#1315): the %
 // plus ONE caption, compact per-lift rows, one consistent collapsed counted
 // disclosure for every per-exercise list, and every removed sentence preserved in
-// an accessibility label, the "About these numbers" explainer or a disclosure.
+// an accessibility label, a scoped explainer (#1358) or a disclosure.
 
 import React from 'react';
 import render, { act } from 'react-test-renderer';
@@ -11,7 +11,7 @@ import { _resetRecoverySnapshotStore } from '../lib/data/recoverySnapshot';
 import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection';
 import { paceCompact, paceText } from '../components/recovery/RecoveryStrengthLadder';
 import { notScoredEntries } from '../components/recovery/RecoveryStrengthDisclosures';
-import { numbersInfoLines } from '../components/recovery/RecoveryNumbersInfo';
+import { percentInfoLines } from '../components/recovery/RecoveryInfoCopy';
 import { getRecoverySnapshot } from '../lib/data/recoverySnapshot';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({ getItem: jest.fn(), setItem: jest.fn(), removeItem: jest.fn() }));
@@ -63,7 +63,7 @@ describe('summary: % plus one short caption', () => {
     const root = mount({ notes: [NOTES[0], note('w1', '-Sled Push\n- 100 5'), ...NOTES.slice(2)], weeks: [wk(1)] });
     // #1318: nothing is back, so the total is a real 0% (not hidden by the empty strict cohort).
     expect(texts(root)).toContain('0 of 4 lifts back · avg 0% · Week 1');
-    tap(root, 'About these numbers');
+    tap(root, 'About total recovery');
     expect(texts(root).join(' ')).toContain('Consistent-cohort average (secondary): No lift has a strength score in every readable week yet, so there is no average.');
   });
 });
@@ -175,25 +175,61 @@ describe('movement groups and the explainer', () => {
     expect(row.props.accessibilityLabel).toContain('1 of 1 lift in the average scored · 1 lift in the baseline');
   });
 
-  test('About these numbers carries the relocated dynamic context and the non-medical note', () => {
+  // #1358: each explainer is scoped to the thing beside it.
+  const noteTexts = (root, id) => texts(host(root, id)[0]);
+
+  test('the total-recovery explainer covers only the percentage and the non-medical note', () => {
     const root = mount();
-    tap(root, 'About these numbers');
-    const all = texts(root);
+    tap(root, 'About total recovery');
+    const lines = noteTexts(root, 'recovery-percent-note');
+    expect(lines[0]).toMatch(/compares your current strength with this block’s frozen baseline/);
     for (const line of [
-      'Baseline routine: Push Pull Legs.',
       'Consistent-cohort average (secondary): 85% across 2 lifts scored every week · 2 of 5 baseline lifts.',
       'In the consistent cohort: Bench, Squat.',
-      'Week bars run 0–100% (total recovery is capped at 100%). Lift bars run 0–100%. The dark mark is your baseline (100%).',
       'Training numbers only. Not a medical judgment. Only you end a Recovery block.',
-    ]) expect(all).toContain(line);
-    expect(all.some(t => t.startsWith('Pace is a best-case estimate'))).toBe(true);
-    expect(all.some(t => t.startsWith('Squat: '))).toBe(true);
+    ]) expect(lines).toContain(line);
+    expect(lines.some(l => /Total recovery averages every one of your/.test(l))).toBe(true);
+    const joined = lines.join(' ');
+    for (const off of [/Baseline routine/, /Push Pull Legs/, /Week bars run/, /Pace is a best-case/, /^Squat: /m, /Started|05-01-2026/]) {
+      expect(joined).not.toMatch(off);
+    }
+  });
+
+  test('the pace explainer sits in the Lifts list beside the visible pace and covers only pace', () => {
+    const root = mount();
+    expect(byLabel(root, 'About pace')).toBeUndefined();
+    tap(root, 'Expand lifts');
+    tap(root, 'About pace');
+    const lines = noteTexts(root, 'recovery-pace-note');
+    expect(lines[0]).toBe('Pace is a best-case estimate: it assumes your recent weekly rate continues, uses up to your last 4 scored weeks, and needs 3 scored weeks. “~2 wk” means about two more Recovery weeks.');
+    expect(lines.slice(1).every(l => l.startsWith('Total recovery: '))).toBe(true);
+    expect(lines.join(' ')).not.toMatch(/Not a medical|Week bars|Baseline routine/);
+  });
+
+  test('the bar-scale explainer is attached to the week bars and covers only the scale', () => {
+    const root = mount();
+    const titleRow = host(root, 'recovery-weeks-title-row')[0];
+    expect(texts(titleRow)).toEqual(['Week by week']);
+    expect(titleRow.findAll(n => n.props.accessibilityLabel === 'About the bar scale').length).toBeGreaterThan(0);
+    tap(root, 'About the bar scale');
+    expect(noteTexts(root, 'recovery-scale-note')).toEqual([
+      'Week bars run 0–100% (total recovery is capped at 100%). Lift bars run 0–100%. The dark mark is your baseline (100%).',
+    ]);
+  });
+
+  test('no info icon on block metadata; the old multi-topic note is gone', () => {
+    const root = mount();
+    for (const id of ['recovery-context-routine', 'recovery-context-date']) {
+      expect(host(root, id)[0].findAll(n => n.props.accessibilityRole === 'button')).toHaveLength(0);
+    }
+    expect(byLabel(root, 'About these numbers')).toBeUndefined();
+    expect(host(root, 'recovery-about-note')).toHaveLength(0);
   });
 
   test('exclusions and dropped lifts are in the explainer and the label, not the default view', () => {
     const notes = [NOTES[0], NOTES[1], note('w2', 'x'.repeat(2_000_000)), NOTES[3]];
     const snap = getRecoverySnapshot({ block: mkBlock(), weeks: WEEKS, notes });
-    const lines = numbersInfoLines({ snapshot: snap, routineTitle: 'Push Pull Legs' });
+    const lines = percentInfoLines(snap);
     expect(lines.some(l => /Week 2 couldn’t be read and is left out of the comparison\./.test(l))).toBe(true);
     expect(snap.display.a11y).toContain('Week 2 couldn’t be read');
   });
