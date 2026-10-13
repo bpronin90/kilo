@@ -13,9 +13,11 @@ jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
 }));
 jest.mock('@expo/vector-icons/MaterialIcons', () => ({ __esModule: true, default: () => null }), { virtual: true });
 
+// Icon glyphs (private-use code points, when the real icon font renders) are
+// not readable text.
 const texts = (node) => node.findAll(n => n.type === 'Text')
   .map(n => [].concat(n.props.children).join(''))
-  .filter(Boolean);
+  .filter(t => t && !/^[\uE000-\uF8FF]+$/.test(t));
 const button = (root, testID) => root.findAll(n => n.props.testID === testID && n.props.accessibilityRole === 'button')[0];
 // The nearest ancestor of `node` whose text includes `label`.
 const rowWith = (node, label) => {
