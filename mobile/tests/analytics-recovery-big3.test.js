@@ -40,6 +40,8 @@ function mount(props) {
   return c.root;
 }
 const host = (root, id) => root.findAll(n => typeof n.type === 'string' && n.props.testID === id);
+const hasLabel = (root, label) => root.findAll(n => n.type === 'Text' && [].concat(n.props.children).join('') === label)
+  .some(n => { for (let p = n.parent; p; p = p.parent) if (p.props && p.props.testID === 'recovery-big3') return true; return false; });
 const textOf = (root, id) => root.findAll(n => n.type === 'Text' && n.props.testID === id)
   .map(n => [].concat(n.props.children).join(''));
 
@@ -72,11 +74,20 @@ describe('Analytics Recovery primary summary — Big 3 (#1351)', () => {
     expect(host(root, 'recovery-exercise-details')).toHaveLength(1);
   });
 
-  test('the Big 3 follow the effective 1K selection, like Home', () => {
+  test('the Big 3 follow a changed 1K selection on the same mount, like Home (no stale row)', () => {
+    _resetRecoverySnapshotStore();
+    let c;
+    act(() => { c = render.create(<AnalyticsRecoverySection weeks={weeks} notes={notes} blocks={[block()]} oneKSelections={SEL} />); });
+    expect(textOf(c.root, 'recovery-big3-lift-squat-value')).toEqual(['90%']);
+
     const sel = { ...SEL, squat: 'Pull-up' };
-    const root = mount({ blocks: [block()], oneKSelections: sel });
+    act(() => { c.update(<AnalyticsRecoverySection weeks={weeks} notes={notes} blocks={[block()]} oneKSelections={sel} />); });
     const [squat] = deriveHomeRecoveryBig3(getRecoverySnapshot({ block: block(), weeks, notes }), sel).big3;
-    expect(textOf(root, 'recovery-big3-lift-squat-value')).toEqual([liftValue(squat)]);
+    expect(squat.label).toBe('Pull-up');
+    expect(textOf(c.root, 'recovery-big3-lift-squat-value')).toEqual([liftValue(squat)]);
+    expect(textOf(c.root, 'recovery-big3-lift-squat-value')).not.toEqual(['90%']);
+    expect(hasLabel(c.root, 'Pull-up')).toBe(true);
+    expect(hasLabel(c.root, 'Squat')).toBe(false);
   });
 
   test('a completed block, or no selection supplied, shows no Big 3', () => {
