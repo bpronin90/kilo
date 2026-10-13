@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.14.17 - 2026-10-13
+
+- Issue #1360: Recovery's info notes are tighter: total recovery % explains only what the percentage compares, pace explains only what pace means, and Week by week explains only the week bars.
+
+## 1.14.16 - 2026-10-13
+
+- Issue #1358: Recovery's info icons now explain only the thing beside them: total recovery % has its own note, pace has its own note in the Lifts list, and the week bars explain their scale. The block's start date no longer carries an "About these numbers" icon. Progressive Overload's Metrics note now also explains Trend.
+
+## 1.14.15 - 2026-10-13
+
+- Issue #1356: Info icons outside Recovery now explain only the thing beside them, in plain language: Home's Exercise Progress note, 1K Progress, separate Exercise Progress and Metrics explainers in Progressive Overload, the HEURISTIC badge, and Log's "Counting in normal analytics" setting.
+
 ## 1.14.14 - 2026-10-13
 
 - Issue #1351: During an active Recovery block, the Analytics Recovery summary now shows Squat, Bench and Deadlift recovery under the total, the same values Home shows, so you no longer need to open Lifts to see them. The Session Check-ins card now says "Session status" and "No flagged sessions" instead of the old Fatigue wording. No numbers, calculations or stored data changed.
