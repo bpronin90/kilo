@@ -112,13 +112,13 @@ export function AnalyticsFatigueCard({
       >
         <View style={styles.fatigueSummaryMain}>
           <Text style={styles.fatigueInsightLabel}>
-            {checkInHistory.summary.top_reason ? 'Most common reason' : 'Fatigue'}
+            {checkInHistory.summary.top_reason ? 'Most common reason' : 'Session status'}
           </Text>
           <Text style={styles.fatigueInsightValue} numberOfLines={1}>
             {checkInHistory.summary.top_reason
               || (checkInHistory.summary.roughTotal > 0
                 ? `${checkInHistory.summary.roughTotal} flagged session${checkInHistory.summary.roughTotal > 1 ? 's' : ''}`
-                : 'No rough sessions')}
+                : 'No flagged sessions')}
           </Text>
         </View>
         {checkInHistory.summary.pendingTotal > 0 && (

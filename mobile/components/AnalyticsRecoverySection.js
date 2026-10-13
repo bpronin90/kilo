@@ -48,6 +48,8 @@ export function AnalyticsRecoverySection({
   notesError = null,
   onRetry,
   onNavigate,
+  // Effective 1K selection for the active block's Big 3 (#1351).
+  oneKSelections = null,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
@@ -197,6 +199,7 @@ export function AnalyticsRecoverySection({
         selectedWeekId={weekSelection.blockId === focusedBlock.id ? weekSelection.weekId : null}
         onSelectWeek={(weekId) => setWeekSelection({ blockId: focusedBlock.id, weekId })}
         notesError={notesError}
+        oneKSelections={oneKSelections}
         onManageInLog={onNavigate ? () => onNavigate('Log', { kind: 'recovery-manage', blockId: focusedBlock.id }) : null}
       />
 

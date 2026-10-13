@@ -1667,6 +1667,33 @@ describe('AnalyticsScreen Fatigue section — collapse/expand and edit affordanc
     expect(hasText(root, 'Not great')).toBe(false);
   });
 
+  // #1351: no reason to name → neutral `Session status` fallback, never `Fatigue`
+  // or `No rough sessions`; the flagged count and reasons are unchanged.
+  test.each([
+    [{ roughTotal: 0, okTotal: 1, pendingTotal: 0, top_reason: null }, 'No flagged sessions'],
+    [{ roughTotal: 2, okTotal: 0, pendingTotal: 0, top_reason: null }, '2 flagged sessions'],
+  ])('Session Check-ins fallback uses neutral wording (%#)', (summary, value) => {
+    jest.spyOn(data, 'deriveCheckInHistory').mockReturnValue({
+      rough: summary.roughTotal ? [ROUGH_CI] : [], ok: summary.okTotal ? [OK_CI] : [], pending: [], summary,
+    });
+    const root = setup().root;
+    const texts = findAllText(root);
+    expect(texts).toContain('Session status');
+    expect(texts).toContain(value);
+    expect(texts).not.toContain('Fatigue');
+    expect(texts.some(t => t.includes('No rough sessions'))).toBe(false);
+  });
+
+  test('Session Check-ins still leads with the most common reason when one exists', () => {
+    jest.spyOn(data, 'deriveCheckInHistory').mockReturnValue({
+      rough: [ROUGH_CI], ok: [], pending: [],
+      summary: { roughTotal: 1, okTotal: 0, pendingTotal: 0, top_reason: 'tired' },
+    });
+    const texts = findAllText(setup().root);
+    expect(texts).toContain('Most common reason');
+    expect(texts).not.toContain('Session status');
+  });
+
   test('pressing the fatigue summary expands then collapses detailed sections', () => {
     jest.spyOn(data, 'deriveCheckInHistory').mockReturnValue({
       rough: [ROUGH_CI],

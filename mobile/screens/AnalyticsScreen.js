@@ -445,6 +445,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       stateError={recoveryStateError}
       onRetry={retryRecoveryState}
       onNavigate={onNavigate}
+      oneKSelections={oneKSelections}
     />
   );
   // Mirrors AnalyticsRecoverySection's own "nothing to say" condition (#716):
