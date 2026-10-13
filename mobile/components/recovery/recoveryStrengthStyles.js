@@ -16,6 +16,8 @@ export const createStrengthStyles = (colors, kua = null) => {
   const label = { ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }), color: ink };
   return StyleSheet.create({
     summary: { gap: 2 },
+    summaryRow: { flexDirection: 'row', alignItems: 'flex-start', columnGap: 2 },
+    summaryMain: { flexGrow: 1, flexShrink: 1 },
     week: { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600', color: inkMuted },
     // Same hero tier as the sibling Analytics hero (Weight Trends KUA metric).
     number: kua
@@ -28,6 +30,7 @@ export const createStrengthStyles = (colors, kua = null) => {
     section: { gap: 8 },
     sectionTitle: { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '700', color: ink },
     scaleNote: caption,
+    titleRow: { flexDirection: 'row', alignItems: 'center', columnGap: 2 },
     row: { gap: 4, minHeight: 44, justifyContent: 'center', paddingVertical: 6 },
     rowBordered: { borderTopWidth: 1, borderTopColor: border },
     rowHeader: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 8, rowGap: 2 },

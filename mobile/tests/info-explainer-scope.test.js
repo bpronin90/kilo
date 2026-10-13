@@ -136,7 +136,10 @@ describe('Analytics — Progressive Overload has two scoped explainers (#1356)',
       '1RM: your estimated one-rep max.',
       "Kilo: Kilo's estimate of your strength from your logged history.",
       'Best: your latest top set.',
+      'Trend: the Exercise Progress state shown above.',
     ]);
+    // Every visible column (1RM · Kilo · Best · Trend) is covered (#1358).
+    expect(metrics.props.accessibilityLabel).toBe('What 1RM, Kilo, Best, and Trend mean');
     // Opening Metrics never reveals tracking-span rules.
     expect(progressBody()).toEqual([]);
     expect(texts(root.root).some(t => /Track|first tracked|Deload/.test(t) && !t.startsWith('Search'))).toBe(false);

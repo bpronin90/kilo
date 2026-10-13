@@ -563,9 +563,9 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
   // for the same element.
   function liveRegions(root) {
     return root.findAll(
-      // The "About these numbers" note has its own live region (#1219); this
+      // Each scoped info note has its own live region (#1219, #1358); this
       // helper is about the week-status region only.
-      inst => typeof inst.type === 'string' && inst.props.accessibilityLiveRegion === 'polite' && inst.props.testID !== 'recovery-about-note'
+      inst => typeof inst.type === 'string' && inst.props.accessibilityLiveRegion === 'polite' && !/^recovery-(percent|pace|scale)-note$/.test(inst.props.testID || '')
     );
   }
 
@@ -1689,11 +1689,11 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
     expect(rows.map(r => hostTextsIn(r).pop())).toEqual(['74%', 'No data', '74%']);
   });
 
-  test('cohort names are on demand: spoken in the summary label and shown in About these numbers (#1315)', () => {
+  test('cohort names are on demand: spoken in the summary label and shown in the total-recovery explainer (#1315, #1358)', () => {
     const root = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
     expect(hasText(root, 'In the consistent cohort: Bench')).toBe(false);
     expect(summaryLabel(root)).toContain('In the consistent cohort: Bench');
-    act(() => { byLabel(root, 'About these numbers').props.onPress(); });
+    act(() => { byLabel(root, 'About total recovery').props.onPress(); });
     expect(hasText(root, 'In the consistent cohort: Bench.')).toBe(true);
   });
 
@@ -1718,9 +1718,9 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
     expect(hasText(root, '100%')).toBe(true);
     expandDetails(root, { rows: false });
     expect(hasText(root, '118%')).toBe(true);
-    // The scale legend is no longer printed; it is in About these numbers (#1315).
+    // The scale legend is not printed; it is the week bars' own explainer (#1315, #1358).
     expect(hostById(root, 'recovery-strength-scale')).toHaveLength(0);
-    act(() => { byLabel(root, 'About these numbers').props.onPress(); });
+    act(() => { byLabel(root, 'About the bar scale').props.onPress(); });
     expect(hasText(root, 'Week bars run 0–100% (total recovery is capped at 100%). Lift bars run 0–120%. The dark mark is your baseline (100%).')).toBe(true);
   });
 });
@@ -2381,23 +2381,15 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     expect(byLabel(root, 'Expand lifts').props.accessibilityState).toEqual({ expanded: false });
   });
 
-  test('the context block is a labelled list (Started / Reason) with the info button beside the date and the note hidden by default', () => {
+  test('the context block is a plain labelled list (Started / Reason) with no info button (#1358)', () => {
     const root = mountWith({ reason: 'torn hamstring' }, { onSaveReason: saveReason });
     expect(hasText(root, 'Not a medical judgment')).toBe(false);
     const block = hostById(root, 'recovery-footer-row')[0];
     expect(StyleSheet.flatten(block.props.style)).toMatchObject({ borderTopWidth: 1 });
-    // Row order: date (with info), then the note slot, then the reason row.
     expect(findAllText(block)).toEqual(['Baseline', 'Push Pull Legs', 'Started', '05-01-2026', 'Reason', 'torn hamstring']);
-    const dateRow = hostById(root, 'recovery-context-date')[0];
-    // The info control is INSIDE the date row, right after its text — not margin-pushed to the edge.
-    expect(dateRow.findAll(m => m.props.accessibilityLabel === 'About these numbers').length).toBeGreaterThan(0);
-    const info = byLabel(root, 'About these numbers');
-    // #1245: anchored beside the "Started" label, before the date value.
-    const order = dateRow.findAll(n => n.type === 'Text' || n.props.accessibilityLabel === 'About these numbers', { deep: true })
-      .map(n => (n.type === 'Text' ? [].concat(n.props.children).join('') : 'INFO'));
-    expect(order.indexOf('INFO')).toBe(order.indexOf('Started') + 1);
-    expect(StyleSheet.flatten(info.props.style).marginLeft).not.toBe('auto');
-    expect(StyleSheet.flatten(info.props.style)).toMatchObject({ minHeight: 44, minWidth: 44 });
+    // Metadata carries no methodology explainer.
+    expect(block.findAll(n => n.props.accessibilityRole === 'button' && n.props.testID !== 'recovery-manage-in-log')).toHaveLength(0);
+    expect(byLabel(root, 'About these numbers')).toBeUndefined();
     // Evidence keeps the reason as quiet read-only context (#1307) ...
     const context = hostById(root, 'recovery-reason-context')[0];
     expect(context.props.accessibilityRole).toBeUndefined();
@@ -2414,20 +2406,24 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     expect(hostById(root, 'recovery-reason-context')[0].props.accessibilityLabel).toBe(`Reason: ${long}`);
   });
 
-  test('the info button reveals the exact note inline in a live region and toggles it closed', () => {
+  test('the total-recovery info button sits beside the percentage and reveals its note inline in a live region', () => {
     const root = mountWith();
-    const info = byLabel(root, 'About these numbers');
+    const info = byLabel(root, 'About total recovery');
     expect(info.props.accessibilityRole).toBe('button');
     expect(StyleSheet.flatten(info.props.style)).toMatchObject({ minHeight: 44, minWidth: 44 });
-    expect(hostById(root, 'recovery-about-note')[0].props.accessibilityLiveRegion).toBe('polite');
-    act(() => { byLabel(root, 'About these numbers').props.onPress(); });
+    // Beside the number, but outside the summary's single accessible node.
+    const summaryRow = hostById(root, 'recovery-strength-summary-row')[0];
+    expect(summaryRow.findAll(n => n.props.accessibilityLabel === 'About total recovery').length).toBeGreaterThan(0);
+    expect(hostById(root, 'recovery-strength-summary')[0].findAll(n => n.props.accessibilityLabel === 'About total recovery')).toHaveLength(0);
+    expect(hostById(root, 'recovery-percent-note')[0].props.accessibilityLiveRegion).toBe('polite');
+    act(() => { byLabel(root, 'About total recovery').props.onPress(); });
     expect(hasText(root, NOTE)).toBe(true);
-    expect(byLabel(root, 'About these numbers').props.accessibilityState).toEqual({ expanded: true });
-    act(() => { byLabel(root, 'About these numbers').props.onPress(); });
+    expect(byLabel(root, 'About total recovery').props.accessibilityState).toEqual({ expanded: true });
+    act(() => { byLabel(root, 'About total recovery').props.onPress(); });
     expect(hasText(root, NOTE)).toBe(false);
   });
 
-  test('no-hero context: a long routine title ellipsizes with its full name on the label; a completed range is never truncated; reason and info stay reachable at fontScale 2', () => {
+  test('no-hero context: a long routine title ellipsizes with its full name on the label; a completed range is never truncated; reason stays reachable at fontScale 2', () => {
     const longTitle = 'Hypertrophy Block With An Extremely Long Routine Name '.repeat(3).trim();
     const longReason = 'returning after a long layoff and a slow ramp-up '.repeat(4).trim();
     for (const fontScale of [1, 2]) {
@@ -2459,8 +2455,9 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
       expect(StyleSheet.flatten(date.props.style).flexWrap).toBe('wrap');
       const reason = hostById(root, 'recovery-reason-context')[0];
       expect(reason.props.accessibilityLabel).toBe(`Reason: ${longReason}`);
-      const info = byLabel(root, 'About these numbers');
-      expect(StyleSheet.flatten(info.props.style)).toMatchObject({ minWidth: 44, minHeight: 44, flexShrink: 0 });
+      // No score, so no percentage explainer; metadata never has one (#1358).
+      expect(byLabel(root, 'About these numbers')).toBeUndefined();
+      expect(byLabel(root, 'About total recovery')).toBeUndefined();
     }
     mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
   });
@@ -3050,24 +3047,15 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
   });
 
   // --- 4. context block -----------------------------------------------------------
-  test('owner context: Started + date + info on one row, Reason + value + edit glyph on the next, no far-edge floating control', () => {
+  test('owner context: Started + date on one row, Reason + value on the next, no info button and no far-edge floating control', () => {
     const root = mountOwner({}, { onSaveReason: async () => ({ ok: true }) });
     const ctx = hostById(root, 'recovery-footer-row')[0];
     expect(findAllText(ctx)).toEqual(['Baseline', 'Summer 2026 Routine', 'Started', '08-08-2026', 'Reason', 'Back injury']);
     const dateRow = hostById(root, 'recovery-context-date')[0];
     expect(flat(dateRow)).toMatchObject({ flexDirection: 'row', flexWrap: 'wrap', minHeight: 44 });
-    const info = byLabel(root, 'About these numbers');
-    expect(dateRow.findAll(n => n === info || n.props.accessibilityLabel === 'About these numbers').length).toBeGreaterThan(0);
-    // Adjacent by ordinary row gap — never margin-pushed to the edge, and NO
-    // negative margin: the 44x44 box is fully reserved (cannot overlap the date or
-    // start outside the row), and wraps whole to the next line when it cannot fit.
-    const infoStyle = flat(info);
-    expect(infoStyle.marginLeft).not.toBe('auto');
-    for (const side of ['margin', 'marginLeft', 'marginRight', 'marginTop', 'marginBottom', 'marginHorizontal', 'marginVertical']) {
-      expect(infoStyle[side] === undefined || infoStyle[side] >= 0).toBe(true);
-    }
-    expect(infoStyle).toMatchObject({ minWidth: 44, minHeight: 44, flexShrink: 0 });
-    expect(flat(dateRow).columnGap).toBeGreaterThan(0);
+    // #1358: the date is plain metadata — no info button in the row.
+    expect(dateRow.findAll(n => n.props.accessibilityRole === 'button')).toHaveLength(0);
+    expect(byLabel(root, 'About these numbers')).toBeUndefined();
     // No row in the block uses space-between / auto margins to float a control away from its text.
     const floaters = ctx.findAll(n => typeof n.type === 'string' && (flat(n).justifyContent === 'space-between' || flat(n).marginLeft === 'auto'));
     expect(floaters).toHaveLength(0);
@@ -3146,9 +3134,9 @@ describe('AnalyticsRecoverySection — week rows without a scoreable denominator
     expect(hasText(root, 'Select to view')).toBe(false);
   });
 
-  test('the explainer names the two bar scales', () => {
+  test('the bar-scale explainer names the two bar scales', () => {
     const root = setup({ blocks: [block()], weeks: [week(1, 'note-w1'), week(2, 'note-w2')], notes: [note('note-w1', '-Bench\n- 135 5'), note('note-w2', '-Bench\n- 160 5')] }).root;
-    act(() => { byLabel(root, 'About these numbers').props.onPress(); });
+    act(() => { byLabel(root, 'About the bar scale').props.onPress(); });
     expect(hasText(root, 'Week bars run 0–100% (total recovery is capped at 100%). Lift bars run 0–120%. The dark mark is your baseline (100%).')).toBe(true);
   });
 });

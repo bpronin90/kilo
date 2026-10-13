@@ -257,6 +257,17 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: '700',
     color: kua ? kua.primary : colors.accentText,
   },
+  paceInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 2,
+  },
+  paceLabel: {
+    minWidth: 0,
+  },
+  infoNote: {
+    gap: 4,
+  },
   detailsBody: {
     gap: 12,
     paddingTop: 12,

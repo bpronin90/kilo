@@ -264,9 +264,9 @@ describe('#1052 refactor — preserved states reach the screen', () => {
     // #1219 (owner-directed): the non-medical note sits behind an info button
     // instead of a persistent line — hidden by default, revealed inline on tap.
     expect(hasText(root, 'Not a medical judgment')).toBe(false);
-    act(() => { byLabel(root, 'About these numbers').props.onPress(); });
+    act(() => { byLabel(root, 'About total recovery').props.onPress(); });
     expect(hasText(root, 'Training numbers only. Not a medical judgment. Only you end a Recovery block.')).toBe(true);
-    act(() => { byLabel(root, 'About these numbers').props.onPress(); });
+    act(() => { byLabel(root, 'About total recovery').props.onPress(); });
     expect(hasText(root, 'Not a medical judgment')).toBe(false);
   });
 
