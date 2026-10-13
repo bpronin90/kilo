@@ -39,6 +39,10 @@
 //   notebook could not be read. The rule changes the generated release
 //   proguard-rules.pro, so preview-11 installs need this rebuilt APK (installed
 //   over preview-11; no data is cleared).
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+
 const PREVIEW_RUNTIME = 'preview-12';
 
 // Large-screen resizing (#1126). The SDK 54 template's MainActivity already
@@ -103,6 +107,106 @@ function applyDevelopmentIdentity(config) {
   };
 }
 
+// Production-only signed OTA updates (#1233). A production binary embeds the
+// Kilo code-signing certificate, so expo-updates rejects any manifest that is
+// unsigned or signed by another key: Expo account access alone cannot replace
+// production JavaScript. Preview, simulator, development, and unset APP_ENV
+// (local `expo start`, Jest, web export) stay unsigned and byte-for-byte
+// unchanged. The certificate is public but is supplied from outside Git (EAS
+// file variable or local path); the private key never reaches EAS or the
+// binary. Errors name variables and paths only, never file contents.
+const OTA_CERTIFICATE_ENV = 'KILO_OTA_CODE_SIGNING_CERTIFICATE';
+const OTA_PRIVATE_KEY_ENV = 'KILO_OTA_CODE_SIGNING_PRIVATE_KEY';
+const OTA_CODE_SIGNING_METADATA = { keyid: 'main', alg: 'rsa-v1_5-sha256' };
+const CODE_SIGNING_EKU = '1.3.6.1.5.5.7.3.3';
+
+function requiresOtaSigning(env = process.env) {
+  return env.APP_ENV === 'production' || env.EAS_BUILD_PROFILE === 'production';
+}
+
+function signingError(message) {
+  return new Error(`Production OTA signing: ${message} See mobile/certs/KEYS.md.`);
+}
+
+function readSigningFile(envName, env) {
+  const filePath = env[envName];
+  if (!filePath || !String(filePath).trim()) {
+    throw signingError(`${envName} is not set; production builds and updates fail closed without it.`);
+  }
+  const absolute = path.resolve(__dirname, filePath);
+  try {
+    return { absolute, pem: fs.readFileSync(absolute, 'utf8') };
+  } catch {
+    throw signingError(`${envName} does not point at a readable file.`);
+  }
+}
+
+function loadOtaCertificate(env = process.env) {
+  const { absolute, pem } = readSigningFile(OTA_CERTIFICATE_ENV, env);
+  if (/PRIVATE KEY/.test(pem)) {
+    throw signingError(`${OTA_CERTIFICATE_ENV} contains private key material; it must hold only the public certificate.`);
+  }
+  let certificate;
+  try {
+    certificate = new crypto.X509Certificate(pem);
+  } catch {
+    throw signingError(`${OTA_CERTIFICATE_ENV} is not a valid PEM X.509 certificate.`);
+  }
+  if (certificate.publicKey.asymmetricKeyType !== 'rsa') {
+    throw signingError(`${OTA_CERTIFICATE_ENV} must carry an RSA key (${OTA_CODE_SIGNING_METADATA.alg}).`);
+  }
+  const now = Date.now();
+  if (now < Date.parse(certificate.validFrom) || now > Date.parse(certificate.validTo)) {
+    throw signingError(`${OTA_CERTIFICATE_ENV} is outside its validity period; rotate it.`);
+  }
+  if (!(certificate.keyUsage || []).includes(CODE_SIGNING_EKU)) {
+    throw signingError(`${OTA_CERTIFICATE_ENV} lacks the codeSigning extended key usage.`);
+  }
+  return { absolute, certificate };
+}
+
+// Signed production gets its own runtime, `<version>-signed`, rather than the
+// plain appVersion runtime. expo-updates does not re-verify cached updates, so
+// sharing the unsigned runtime would let an unsigned OTA cached by an older
+// install launch after an in-place upgrade to the signed binary. Each version
+// still gets a distinct runtime, as with the appVersion policy.
+function signedProductionRuntime(config) {
+  if (!config.version) throw signingError('expo.version is required to derive the signed runtime.');
+  return `${config.version}-signed`;
+}
+
+// expo-updates joins updates.codeSigningCertificate onto the project root, so
+// an absolute EAS file-variable path must be expressed relative to mobile/.
+function withProductionOtaSigning(config, env = process.env) {
+  const { absolute } = loadOtaCertificate(env);
+  return {
+    ...config,
+    runtimeVersion: signedProductionRuntime(config),
+    updates: {
+      ...config.updates,
+      codeSigningCertificate: path.relative(__dirname, absolute),
+      codeSigningMetadata: { ...OTA_CODE_SIGNING_METADATA },
+    },
+  };
+}
+
+// Preflight for `update:*:production`: the private key must parse and match the
+// certificate before eas update signs anything with it.
+function assertProductionUpdateSigning(env = process.env) {
+  const { certificate } = loadOtaCertificate(env);
+  const { pem } = readSigningFile(OTA_PRIVATE_KEY_ENV, env);
+  let publicFromKey;
+  try {
+    publicFromKey = crypto.createPublicKey(crypto.createPrivateKey(pem));
+  } catch {
+    throw signingError(`${OTA_PRIVATE_KEY_ENV} is not a valid unencrypted PEM private key.`);
+  }
+  const spki = (key) => key.export({ type: 'spki', format: 'der' });
+  if (!spki(publicFromKey).equals(spki(certificate.publicKey))) {
+    throw signingError(`${OTA_PRIVATE_KEY_ENV} does not match ${OTA_CERTIFICATE_ENV}.`);
+  }
+}
+
 function appendPlugin(existingPlugins, nextPlugin) {
   const plugins = Array.isArray(existingPlugins) ? existingPlugins : [];
   const pluginName = Array.isArray(nextPlugin) ? nextPlugin[0] : nextPlugin;
@@ -130,12 +234,15 @@ module.exports = ({ config }) => {
           },
         ]
       : null;
-  const base = isDevelopment ? applyDevelopmentIdentity(config) : config;
+  const identity = isDevelopment ? applyDevelopmentIdentity(config) : config;
+  const base = requiresOtaSigning() ? withProductionOtaSigning(identity) : identity;
   return withResizableMainActivity({
     ...base,
     plugins: sentryPlugin ? appendPlugin(base.plugins, sentryPlugin) : base.plugins,
-    runtimeVersion: isPreview ? PREVIEW_RUNTIME : { policy: 'appVersion' },
+    runtimeVersion: isPreview ? PREVIEW_RUNTIME : base.runtimeVersion ?? { policy: 'appVersion' },
   });
 };
 
 module.exports.mergeConfigChanges = mergeConfigChanges;
+module.exports.requiresOtaSigning = requiresOtaSigning;
+module.exports.assertProductionUpdateSigning = assertProductionUpdateSigning;

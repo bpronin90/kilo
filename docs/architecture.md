@@ -341,16 +341,20 @@ Preview and production builds receive compatible JavaScript and bundled-asset
 updates through EAS Update (#811).
 
 - `mobile/app.json` enables launch-time checks against the project update URL.
-  The current Expo plan does not provide end-to-end code signing, so these
-  updates are unsigned. Strong MFA on the Expo account is therefore part of the
-  delivery boundary: account compromise could publish replacement JavaScript
-  outside store review. Security-sensitive and native changes ship in native
+  Production updates are signed (#1233): `mobile/app.config.js` embeds Kilo's
+  code-signing certificate in production builds only, so production installs
+  reject unsigned or differently signed bundles and Expo account access alone
+  cannot replace production JavaScript. Preview, simulator, and development
+  updates stay unsigned; strong Expo account MFA remains their delivery
+  boundary. Key custody, rotation, and compromise response live in
+  `mobile/certs/KEYS.md`. Security-sensitive and native changes ship in native
   builds rather than OTA.
 - `mobile/eas.json` isolates preview Android/iOS builds on the `preview` channel
   and production Android builds on `production`. Publish commands name both the
   channel and matching EAS environment explicitly.
-- Preview uses the manual `preview-6` runtime. Production uses the app-version
-  runtime policy. Native dependencies/configuration advance the applicable
+- Preview uses the manual `preview-6` runtime. Signed production uses the
+  per-version `<version>-signed` runtime (#1233), so it never shares a runtime
+  with older unsigned production installs. Native dependencies/configuration advance the applicable
   runtime and require replacement builds; OTA is only for runtime-compatible
   changes.
 - The change from the disabled `preview-5` update client to `preview-6` is itself

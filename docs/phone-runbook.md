@@ -327,9 +327,9 @@ eas build:list --platform android --limit 5
 
 Use this for the app that ships through Google Play (production channel). This
 path is separate from the preview APK flow above: production builds are `.aab`
-app bundles distributed only through Play Console, and they use
-`runtimeVersion.policy: "appVersion"` instead of the stable preview runtime
-string.
+app bundles distributed only through Play Console, and they use the signed
+per-version runtime `<version>-signed` (#1233) instead of the stable preview
+runtime string.
 
 ### Build And Upload The Production AAB
 
@@ -357,6 +357,8 @@ Native and runtime-incompatible production changes ship through a new AAB:
 Compatible JavaScript-only production updates use
 `npm --prefix mobile run update:android:production` as an explicit release
 action after preview verification. Never use it during ordinary implementation.
+Production builds and updates require the signing material described in
+`mobile/certs/KEYS.md` and fail closed without it.
 
 ---
 
@@ -484,7 +486,8 @@ installed runtime cannot be repaired by JavaScript.
 Do not bump the runtime for a pure JavaScript, styling, or bundled-asset change
 that leaves native compatibility unchanged; those changes may use OTA.
 
-Updates are unsigned on the current Expo plan. Keep strong MFA enabled on the
-Expo account, keep preview and production channels isolated, and use native
-store builds for security-sensitive changes. The dormant signed-update work from
-#466 remains historical until its paid-plan trigger is intentionally revisited.
+Production updates are signed and production installs reject anything else
+(#1233); preview updates stay unsigned. Keep strong MFA enabled on the Expo
+account, keep preview and production channels isolated, and use native store
+builds for security-sensitive changes. Signing setup and key handling live in
+`mobile/certs/KEYS.md`.

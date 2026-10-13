@@ -33,7 +33,10 @@
       },
       "channel": "production",
       "environment": "production",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "APP_ENV": "production"
+      }
     },
     "ios-simulator": {
       "channel": "preview",
