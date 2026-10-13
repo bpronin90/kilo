@@ -761,23 +761,24 @@ describe('AnalyticsScreen 1K Progress Card', () => {
     const toggle = root.findAll(n => n.props.testID === 'onek-info-toggle' && n.props.accessibilityRole === 'button')[0];
     expect(toggle).toBeTruthy();
     // #1245: shared info icon beside the 1K heading, no inline toggle copy.
-    expect(toggle.props.accessibilityLabel).toBe('How is the 1K calculated?');
+    expect(toggle.props.accessibilityLabel).toBe('What is 1K Progress?');
     expect(hasText(root, 'How is this calculated?')).toBe(false);
 
     // Explanation is collapsed until the user opens it.
-    expect(hasText(root, 'most recent complete cycle')).toBe(false);
+    expect(hasText(root, 'most recent complete Big 3 cycle')).toBe(false);
 
     render.act(() => {
       toggle.props.onPress();
     });
 
-    // Covers the three required points: what the 1K is, the one-session-behind
-    // residual that resets each routine, and deload graph-vs-stats behavior.
-    expect(hasText(root, 'most recent complete cycle')).toBe(true);
+    // #1356: what the 1K is and which lifts, the one-session-behind lag, and
+    // deload treatment — nothing about other strength stats.
+    expect(hasText(root, 'Squat + Bench + Deadlift one-rep max total')).toBe(true);
+    expect(hasText(root, 'Big 3 mapping')).toBe(true);
+    expect(hasText(root, 'most recent complete Big 3 cycle')).toBe(true);
     expect(hasText(root, 'one session behind')).toBe(true);
-    expect(hasText(root, 'resets when you start a new routine')).toBe(true);
     expect(hasText(root, 'Deload sessions')).toBe(true);
-    expect(hasText(root, 'Kilo Max')).toBe(true);
+    expect(hasText(root, 'Kilo Max')).toBe(false);
   });
 });
 
@@ -945,20 +946,29 @@ describe('AnalyticsScreen Progressive Overload — tracking-state captions (#894
     });
   }
 
-  test('inherited tracking is explained behind the Progressive Overload info toggle, not inline', () => {
+  test('inherited tracking is explained behind the Exercise Progress info toggle, not inline or in Metrics', () => {
     // #893: absent from the activations map means legacy boolean-only tracked
     // state or a catalog `po: true` default — never an explicit Track tap.
+    // #1356: tracking-span rules live only in the Exercise Progress explainer.
     const component = setupOneRow({
       signal: { name: 'Bench Press', latest_pr: 225, kilo_max: 200, latest_top_weight: 185, overload_trend: 'up' },
       trackedLiftActivations: {},
     });
     const root = component.root;
     expect(hasText(root, 'Inherited tracking')).toBe(false);
-    expect(hasText(root, 'inherits its full history')).toBe(false);
-    const toggle = root.findAllByProps({ testID: 'po-info-toggle' }).find(n => typeof n.props.onPress === 'function');
-    render.act(() => { toggle.props.onPress(); });
-    expect(hasText(root, 'inherits its full history')).toBe(true);
-    expect(hasText(root, 'new tracked span')).toBe(true);
+    expect(hasText(root, 'uses its earlier history')).toBe(false);
+    const press = (id) => {
+      const toggle = root.findAllByProps({ testID: id }).find(n => typeof n.props.onPress === 'function');
+      render.act(() => { toggle.props.onPress(); });
+    };
+    press('po-metrics-info-toggle');
+    expect(hasText(root, 'your estimated one-rep max')).toBe(true);
+    expect(hasText(root, 'uses its earlier history')).toBe(false);
+    expect(hasText(root, 'Tapping Track')).toBe(false);
+    press('po-progress-info-toggle');
+    expect(hasText(root, 'uses its earlier history')).toBe(true);
+    expect(hasText(root, 'Tapping Track starts tracking')).toBe(true);
+    expect(root.findAllByProps({ testID: 'po-info-toggle' })).toHaveLength(0);
   });
 
   test('an explicitly tracked exercise mid-classification shows no inherited/first-session caption', () => {

@@ -279,9 +279,13 @@ The one explainer pattern outside More: `InfoButton` (`info-outline`, glyph
 negative margins, `accessibilityState.expanded`) anchored beside the label or
 heading it explains, plus `InfoNote` (always mounted, polite live region) that
 holds the explanation, hidden until tapped. `useInfoExplainer()` owns the
-toggle. Used by 1K Progress, progression-suggestion cards (beside `HEURISTIC`),
-Recovery `Started`/`Dates`. No inline explainer
-paragraphs on these surfaces.
+toggle. Used by Home `Exercise Progress` (only when a count needs explaining:
+first tracked session or inherited history), 1K Progress, Progressive Overload's
+`Exercise Progress` (beside the Progressing/Steady/Regressing trio) and
+`Metrics` (beside the 1RM/Kilo/Best/Trend header) labels, progression-suggestion
+cards (beside `HEURISTIC`), Log's `Counting in normal analytics` row, and
+Recovery `Started`/`Dates`. Each explains only the thing beside it (#1356): no
+multi-topic notes, and no inline explainer paragraphs on these surfaces.
 
 ## ScreenShell
 
@@ -876,7 +880,7 @@ the Session Check-ins card when fatigue tracking is on.
 | Big 3 Mapping card | header | collapsible `Pressable`, default collapsed with mapped-lift summary | `111-125` |
 | Big 3 title | fontSize / weight | `12` / `700`, uppercase, `textMuted` | `297-303` |
 | Big 3 / info collapse | icon | `MaterialIcons` `expand-more`/`expand-less`, `14-16`, `textMuted` | `119-124`, `79-84` |
-| 1K explainer (#1245) | shared `InfoButton` | icon beside the `1K Progress` label (`How is the 1K calculated?`); copy in an `InfoNote`, default hidden | `AnalyticsStrengthSection.js` |
+| 1K explainer (#1245) | shared `InfoButton` | icon beside the `1K Progress` label (`What is 1K Progress?`); copy in an `InfoNote`, default hidden | `AnalyticsStrengthSection.js` |
 
 ### Recovery Section (`AnalyticsRecoverySection.js`)
 

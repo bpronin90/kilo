@@ -1,25 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import Svg, { Circle, Line } from 'react-native-svg';
 import { Card } from '../../components/UI';
+import { InfoButton, InfoNote, useInfoExplainer } from '../../components/InfoExplainer';
 import { useTheme } from '../../theme/ThemeContext';
 import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
 import { DELOAD_NOTE_PREFIX } from '../../lib/LogScreenHelpers';
 import { Chevron, HomeActionStrip } from './HomeActionStrip';
-
-// Info glyph for the classification caption toggle. Replaces the "ⓘ" text
-// character, which is absent from the bundled Space Grotesk / JetBrains Mono
-// faces and rendered as a tofu box on device (#1112).
-function InfoIcon({ color }) {
-  return (
-    <Svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" accessible={false}>
-      <Circle cx="12" cy="12" r="9" />
-      <Line x1="12" y1="11" x2="12" y2="16" />
-      <Circle cx="12" cy="7.5" r="0.6" fill={color} stroke={color} />
-    </Svg>
-  );
-}
 
 // `Exercise Progress` is the same Analytics handoff in every hero state (#1333):
 // the trio below it is the summary, Progressive Overload is the detail.
@@ -62,7 +49,7 @@ export function HomeHeader({
   const { colors, kuaPalette: kua } = useTheme();
   const typography = useKuaTypography();
   const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
-  const [captionExpanded, setCaptionExpanded] = useState(false);
+  const [captionExpanded, toggleCaption] = useInfoExplainer();
 
   // No current routine, or one with nothing written in it yet, is not a
   // training week: no `Week N/A`, no 0·0·0 trio, just the way back in (#1333).
@@ -95,10 +82,10 @@ export function HomeHeader({
   const newlyTrackedCount = dashboardData.weeklySummary.newlyTrackedCount;
   const captionText = newlyTrackedCount > 0
     ? (newlyTrackedCount === 1
-        ? '1 exercise in its first tracked session. Log another to see a trend'
-        : `${newlyTrackedCount} exercises in their first tracked session. Log another to see a trend`)
+        ? '1 exercise is in its first tracked session. Log it again to see a trend.'
+        : `${newlyTrackedCount} exercises are in their first tracked session. Log them again to see a trend.`)
     : dashboardData.weeklySummary.hasInheritedTracking
-      ? 'Includes exercises tracked before this update, using full history'
+      ? 'Some exercises use their existing workout history for these counts.'
       : null;
 
   return (
@@ -121,17 +108,12 @@ export function HomeHeader({
           <View style={styles.classifHeaderRow}>
             <ExerciseProgressLink linkId="home-exercise-progress-link" onNavigate={onNavigate} styles={styles} color={mutedStroke} />
             {captionText && kua ? (
-              <Pressable
+              <InfoButton
                 testID="home-classif-info"
-                onPress={() => setCaptionExpanded(v => !v)}
-                style={styles.heroInfoToggle}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityState={{ expanded: captionExpanded }}
-                accessibilityLabel={captionText}
-              >
-                <InfoIcon color={mutedStroke} />
-              </Pressable>
+                expanded={captionExpanded}
+                onPress={toggleCaption}
+                label="About these Exercise Progress counts"
+              />
             ) : null}
           </View>
           <View style={styles.classifRow}>
@@ -147,10 +129,16 @@ export function HomeHeader({
             ))}
           </View>
           {/* #894: the counts only cover a fully classified tracked span; the
-              caption explains a 0/0/0 row. KUA reveals it from the info icon;
+              caption explains an unusual count (#1356: only that, never the
+              Progressive Overload method). KUA reveals it from the info icon;
               legacy mode shows it plainly. */}
-          {captionText && (!kua || captionExpanded) ? (
+          {captionText && !kua ? (
             <Text style={styles.classifCaption}>{captionText}</Text>
+          ) : null}
+          {captionText && kua ? (
+            <InfoNote shown={captionExpanded} testID="home-classif-info-body">
+              <Text style={styles.classifCaption}>{captionText}</Text>
+            </InfoNote>
           ) : null}
         </View>
       )}

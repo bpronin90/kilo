@@ -2003,20 +2003,16 @@ describe('Recovery inclusion help disclosure (#757)', () => {
 
     const shown = String(helpText(component)[0].props.children);
     expect(shown).toBe(RECOVERY_INCLUSION_HELP);
-    for (const surface of [
-      'normal analytics',
-      'classifications',
-      'overload signals',
-      'Kilo Max',
-      '1K',
-      'Home summaries',
-    ]) {
-      expect(shown).toContain(surface);
-    }
-    // The two questions the paragraph exists to close: the notes are not taken
-    // out of Recovery, and they stay editable either way.
-    expect(shown).toContain('Recovery Analytics');
+    // #1356: plain language — what On and Off mean for normal training views,
+    // and that the workouts stay in Recovery and editable either way. No
+    // internal metric names.
+    expect(shown).toContain('On: Recovery-week workouts also count toward your normal training trends and summaries.');
+    expect(shown).toContain('Off: they stay out of normal training trends and summaries.');
+    expect(shown).toContain('stay visible in Recovery');
     expect(shown).toContain('editable');
+    for (const internal of ['classifications', 'overload signals', 'Kilo Max', '1K']) {
+      expect(shown).not.toContain(internal);
+    }
 
     await render.act(async () => { component.unmount(); });
   });

@@ -37,7 +37,10 @@ export function AnalyticsProgressiveOverloadSection({
   unit,
   onNavigate,
 }) {
-  const [infoShown, toggleInfo] = useInfoExplainer();
+  // Two scoped explainers (#1356): one for the Exercise Progress states, one
+  // for the table's metric columns. Neither documents the whole section.
+  const [progressInfoShown, toggleProgressInfo] = useInfoExplainer();
+  const [metricsInfoShown, toggleMetricsInfo] = useInfoExplainer();
   // #1246: with no rows to search or label, the search box and 1RM/Kilo/Best/
   // Trend headers are empty chrome. An active query stays (it must be clearable).
   const showTableChrome = groupedSignals.length > 0 || Boolean(searchQuery);
@@ -57,15 +60,7 @@ export function AnalyticsProgressiveOverloadSection({
   return (
     <View testID="progressive-overload-section" onLayout={onLayout} style={styles.poSection}>
       <View style={styles.signalHeaderRow}>
-        <View style={styles.poTitleRow}>
-          <SectionTitle>Progressive Overload</SectionTitle>
-          <InfoButton
-            testID="po-info-toggle"
-            expanded={infoShown}
-            onPress={toggleInfo}
-            label="How Progressive Overload is measured"
-          />
-        </View>
+        <SectionTitle>Progressive Overload</SectionTitle>
         {groupedSignals.length > 0 && (
           <Pressable
             testID="po-collapse-all"
@@ -89,25 +84,35 @@ export function AnalyticsProgressiveOverloadSection({
         )}
       </View>
 
-      <InfoNote shown={infoShown} testID="po-info-body" style={styles.poInfoBody}>
-        <Text style={styles.poInfoText}>1RM is your estimated one-rep max from recent sets. Kilo averages Epley estimates from eligible historical sets, then applies the fatigue multiplier from Settings. Best is your latest top set. Trend shows whether the exercise is progressing, steady, or regressing.</Text>
-        <Text style={styles.poInfoText}>Tapping Track starts a new tracked span: Trend builds from that session, while 1RM, Kilo and Best stay historical.</Text>
-        <Text style={styles.poInfoText}>An exercise tracked without a Track tap inherits its full history.</Text>
-        <Text style={styles.poInfoText}>Deload sessions don't count toward progression.</Text>
-      </InfoNote>
-
       {showSummary && (
-        <View testID="po-progress-summary" style={styles.poSummaryRow}>
-          {[
-            { key: 'progressing', label: 'Progressing', count: progress.progressing, color: kua ? kua.success : colors.success },
-            { key: 'stalled', label: 'Steady', count: progress.stalled, color: kua ? kua.warning : colors.caution },
-            { key: 'regressing', label: 'Regressing', count: progress.regressing, color: kua ? kua.errorText : colors.error },
-          ].map(item => (
-            <View key={item.key} style={styles.poSummaryCol} testID={`po-progress-${item.key}`}>
-              <Text style={[styles.poSummaryCount, { color: item.color }]}>{item.count}</Text>
-              <Text style={styles.poSummaryLabel}>{item.label}</Text>
-            </View>
-          ))}
+        <View testID="po-progress-block">
+          <View style={styles.poTitleRow}>
+            <Text style={styles.poSubLabel}>Exercise Progress</Text>
+            <InfoButton
+              testID="po-progress-info-toggle"
+              expanded={progressInfoShown}
+              onPress={toggleProgressInfo}
+              label="What Progressing, Steady, and Regressing mean"
+            />
+          </View>
+          <InfoNote shown={progressInfoShown} testID="po-progress-info-body" style={styles.poInfoBody}>
+            <Text style={styles.poInfoText}>Progressing, Steady, and Regressing show whether each tracked exercise's strength is going up, holding, or going down across its tracked sessions.</Text>
+            <Text style={styles.poInfoText}>An exercise in its first tracked session needs another logged session before it gets a trend.</Text>
+            <Text style={styles.poInfoText}>Tapping Track starts tracking from that session, so its trend builds from there. An exercise tracked without a Track tap uses its earlier history.</Text>
+            <Text style={styles.poInfoText}>Deload sessions don't count toward progression.</Text>
+          </InfoNote>
+          <View testID="po-progress-summary" style={styles.poSummaryRow}>
+            {[
+              { key: 'progressing', label: 'Progressing', count: progress.progressing, color: kua ? kua.success : colors.success },
+              { key: 'stalled', label: 'Steady', count: progress.stalled, color: kua ? kua.warning : colors.caution },
+              { key: 'regressing', label: 'Regressing', count: progress.regressing, color: kua ? kua.errorText : colors.error },
+            ].map(item => (
+              <View key={item.key} style={styles.poSummaryCol} testID={`po-progress-${item.key}`}>
+                <Text style={[styles.poSummaryCount, { color: item.color }]}>{item.count}</Text>
+                <Text style={styles.poSummaryLabel}>{item.label}</Text>
+              </View>
+            ))}
+          </View>
         </View>
       )}
 
@@ -148,6 +153,20 @@ export function AnalyticsProgressiveOverloadSection({
               accessibilityLabel="Search tracked exercises"
             />
           </View>
+          <View style={styles.poTitleRow}>
+            <Text style={styles.poSubLabel}>Metrics</Text>
+            <InfoButton
+              testID="po-metrics-info-toggle"
+              expanded={metricsInfoShown}
+              onPress={toggleMetricsInfo}
+              label="What 1RM, Kilo, and Best mean"
+            />
+          </View>
+          <InfoNote shown={metricsInfoShown} testID="po-metrics-info-body" style={styles.poInfoBody}>
+            <Text style={styles.poInfoText}>1RM: your estimated one-rep max.</Text>
+            <Text style={styles.poInfoText}>Kilo: Kilo's estimate of your strength from your logged history.</Text>
+            <Text style={styles.poInfoText}>Best: your latest top set.</Text>
+          </InfoNote>
           <View style={styles.signalColumnHeader}>
             <View style={styles.signalColumnMetrics}>
               <Text style={styles.signalColumnLabel}>1RM</Text>

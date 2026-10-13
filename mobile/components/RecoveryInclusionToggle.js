@@ -11,13 +11,11 @@ export const RECOVERY_INCLUSION_LABEL = 'Include recovery notes in normal analyt
 // On-demand explanation (#757). Exported for the same reason as the label: one
 // string, asserted where it is disclosed.
 //
-// It describes what turning the switch ON does — the direction the user is
-// about to move, since off is the default they are already in — names every
-// surface that changes, and closes the two questions the old always-visible
-// paragraph existed to answer: the notes are not taken out of Recovery, and
-// they stay editable either way.
+// Plain language (#1356): what On and Off each mean for normal training views,
+// and that the workouts stay in Recovery and editable either way. No internal
+// metric names.
 export const RECOVERY_INCLUSION_HELP =
-  "On: this block's linked recovery notes are included in normal analytics (classifications, overload signals, Kilo Max, 1K, and Home summaries). Off (the default) keeps them out. Either way the notes stay in Recovery Analytics and stay fully visible and editable.";
+  'On: Recovery-week workouts also count toward your normal training trends and summaries. Off: they stay out of normal training trends and summaries. Either way, they stay visible in Recovery and remain editable.';
 
 // Per-block inclusion control (#699 / #728). The switch reads and writes
 // `include_in_normal_analytics` on THIS block only, so two blocks with

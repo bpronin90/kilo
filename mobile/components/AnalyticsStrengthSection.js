@@ -68,18 +68,18 @@ export function AnalyticsStrengthSection({
                   testID="onek-info-toggle"
                   expanded={oneKInfoExpanded}
                   onPress={toggleOneKInfo}
-                  label="How is the 1K calculated?"
+                  label="What is 1K Progress?"
                 />
               </View>
               <InfoNote shown={oneKInfoExpanded} testID="onek-info-body" style={styles.oneKInfoBody}>
                 <Text style={styles.oneKInfoText}>
-                  Your 1K sums the estimated 1-rep maxes from your most recent complete cycle of all three Big 3 lifts.
+                  1K is your estimated Squat + Bench + Deadlift one-rep max total, using the lifts in your Big 3 mapping.
                 </Text>
                 <Text style={styles.oneKInfoText}>
-                  If you train one lift more often than the others within a routine, it can read one session behind until the others catch up. This evens out as you log them and resets when you start a new routine.
+                  It totals your most recent complete Big 3 cycle, so a lift you trained more recently can read one session behind until the others catch up.
                 </Text>
                 <Text style={styles.oneKInfoText}>
-                  Deload sessions don't count toward strength stats like Kilo Max, but they still appear as their own point on the graph.
+                  Deload sessions appear on the graph as their own marked point, kept off the trend line.
                 </Text>
               </InfoNote>
               <Text style={[styles.oneKValue, { color: lerpColor(kua ? kua.primary : colors.accentText, kua ? kua.success : colors.success, Math.min(1, (displayOneK.total || 0) / oneKTarget)) }]}>

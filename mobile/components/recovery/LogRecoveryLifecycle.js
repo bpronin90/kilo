@@ -13,6 +13,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Card } from '../UI';
+import { InfoButton, InfoNote, useInfoExplainer } from '../InfoExplainer';
 import { MAX_RECOVERY_REASON_LENGTH } from '../../lib/data/recoveryBlocks';
 import { RECOVERY_INCLUSION_HELP } from '../RecoveryInclusionToggle';
 import { LOCKED_NOTE, LogRecoveryMaintenance, STALE_NOTE } from './LogRecoveryManageBlock';
@@ -56,7 +57,7 @@ export function LogRecoveryLifecycle({
   const [manageExpanded, setManageExpanded] = useState(false);
   // Mounted on first open and kept mounted (hidden) while collapsed.
   const [everOpened, setEverOpened] = useState(false);
-  const [inclusionHelpShown, setInclusionHelpShown] = useState(false);
+  const [inclusionHelpShown, toggleInclusionHelp] = useInfoExplainer();
 
   useEffect(() => {
     if (!revealKey) return;
@@ -264,16 +265,10 @@ export function LogRecoveryLifecycle({
               >
                 <View style={styles.manageRowInfo}>
                   <Text style={styles.manageRowTitle}>Counting in normal analytics</Text>
-                  {inclusionHelpShown ? (
-                    <Text style={styles.manageRowSubtitle} accessibilityLiveRegion="polite">
-                      {RECOVERY_INCLUSION_HELP}
-                    </Text>
-                  ) : (
-                    <Text style={styles.manageRowSubtitle}>
-                      Off keeps these weeks out of classifications, overload signals, Kilo Max,
-                      1K, and Home summaries.
-                    </Text>
-                  )}
+                  {/* #1356: only the setting's meaning, on request. */}
+                  <InfoNote shown={inclusionHelpShown} testID={`log-inclusion-info-body-${block.id}`}>
+                    <Text style={styles.manageRowSubtitle}>{RECOVERY_INCLUSION_HELP}</Text>
+                  </InfoNote>
                 </View>
                 <Text style={styles.manageRowState}>
                   {inclusionBusy
@@ -281,19 +276,14 @@ export function LogRecoveryLifecycle({
                     : (activeBlock.include_in_normal_analytics === true ? 'On' : 'Off')}
                 </Text>
               </Pressable>
-              {/* On-demand help (#757's pattern, reproduced here rather
-                  than shared; the help text itself is the shared
-                  `RECOVERY_INCLUSION_HELP`). A true sibling of
-                  the switch Pressable above, not nested inside it. */}
-              <Pressable
-                onPress={() => setInclusionHelpShown(v => !v)}
-                style={styles.inclusionHelpToggle}
-                accessibilityRole="button"
-                accessibilityState={{ expanded: inclusionHelpShown }}
-                accessibilityLabel={`${inclusionHelpShown ? 'Hide' : 'Show'} what counting these weeks in normal analytics does`}
-              >
-                <MaterialIcons name="info-outline" size={16} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
-              </Pressable>
+              {/* On-demand help, a true sibling of the switch Pressable above,
+                  not nested inside it. */}
+              <InfoButton
+                testID={`log-inclusion-info-${block.id}`}
+                expanded={inclusionHelpShown}
+                onPress={toggleInclusionHelp}
+                label="What Counting in normal analytics means"
+              />
               <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
             </View>
             {inclusionError ? (

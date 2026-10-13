@@ -92,16 +92,23 @@ describe('AnalyticsStrengthSection — 1K explainer uses the shared info icon', 
       );
     });
     const toggle = root.root.findAll(n => n.props.testID === 'onek-info-toggle' && n.props.accessibilityRole === 'button')[0];
-    expect(toggle.props.accessibilityLabel).toBe('How is the 1K calculated?');
+    expect(toggle.props.accessibilityLabel).toBe('What is 1K Progress?');
+    expect(toggle.props.accessibilityState).toEqual({ expanded: false });
     // Same row as the heading: the nearest ancestor holding the heading holds
     // nothing else from the card (not the 1K value below it).
     let row = toggle.parent;
     while (!texts(row).includes('1K Progress')) row = row.parent;
     expect(texts(row).some(t => t.includes('900'))).toBe(false);
     expect(texts(root.root)).not.toContain('How is this calculated?');
-    expect(texts(root.root).some(t => t.includes('most recent complete cycle'))).toBe(false);
+    expect(texts(root.root).some(t => t.includes('most recent complete Big 3 cycle'))).toBe(false);
     await act(async () => { toggle.props.onPress(); });
-    expect(texts(root.root).some(t => t.includes('most recent complete cycle'))).toBe(true);
+    // #1356: only what 1K is, its lifts, the one-session lag, and deloads.
+    const body = texts(root.root.findAll(n => n.props.testID === 'onek-info-body')[0]);
+    expect(body).toEqual([
+      '1K is your estimated Squat + Bench + Deadlift one-rep max total, using the lifts in your Big 3 mapping.',
+      'It totals your most recent complete Big 3 cycle, so a lift you trained more recently can read one session behind until the others catch up.',
+      'Deload sessions appear on the graph as their own marked point, kept off the trend line.',
+    ]);
   });
 });
 

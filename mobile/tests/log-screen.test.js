@@ -4,6 +4,7 @@ import { LogScreen } from '../screens/LogScreen';
 import { LogActiveRoutineCard } from '../components/LogActiveRoutineCard';
 import { LogPreviousRoutines } from '../components/LogPreviousRoutines';
 import { LogEmptyState } from '../components/LogEmptyState';
+import { RECOVERY_INCLUSION_HELP } from '../components/RecoveryInclusionToggle';
 import { MoreScreen } from '../screens/MoreScreen';
 import * as useEntries from '../hooks/useEntries';
 import { LightColors } from '../theme/colors';
@@ -12236,9 +12237,14 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
     const helpToggle = root.findAll(
       n => n.props && n.props.accessibilityRole === 'button'
         && typeof n.props.accessibilityLabel === 'string'
-        && n.props.accessibilityLabel.includes('counting these weeks in normal analytics')
+        && n.props.accessibilityLabel === 'What Counting in normal analytics means'
     )[0];
     expect(helpToggle).toBeTruthy();
+    // #1356: shared 44dp info icon, beside the setting; help hidden until tapped.
+    expect(helpToggle.props.accessibilityState).toEqual({ expanded: false });
+    expect(root.findAll(n => n.type === 'Text' && String(n.props.children) === RECOVERY_INCLUSION_HELP)).toHaveLength(0);
+    render.act(() => { helpToggle.props.onPress(); });
+    expect(root.findAll(n => n.type === 'Text' && String(n.props.children) === RECOVERY_INCLUSION_HELP)).toHaveLength(1);
     let ancestor = helpToggle.parent;
     let foundSwitchAncestor = false;
     while (ancestor) {
