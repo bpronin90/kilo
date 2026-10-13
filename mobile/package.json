@@ -18,7 +18,7 @@
     "build:ios:simulator": "eas build --platform ios --profile ios-simulator",
     "build:ios:device": "eas build --platform ios --profile ios-device",
     "update:android:preview": "APP_ENV=preview EXPO_PUBLIC_APP_ENV=preview eas update --platform android --channel preview --environment preview",
-    "update:android:production": "APP_ENV=production eas update --platform android --channel production --environment production",
+    "update:android:production": "APP_ENV=production node -e \"try{require('./app.config.js').assertProductionUpdateSigning()}catch(e){console.error(e.message);process.exit(1)}\" && APP_ENV=production eas update --platform android --channel production --environment production --private-key-path \"$KILO_OTA_CODE_SIGNING_PRIVATE_KEY\"",
     "update:ios:preview": "APP_ENV=preview EXPO_PUBLIC_APP_ENV=preview eas update --platform ios --channel preview --environment preview",
     "audit": "npm audit --audit-level=high"
   },
