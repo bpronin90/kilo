@@ -146,9 +146,27 @@ configured certificate is outside its validity period.
   certificate immediately (Rotation above), and ship the new store build. There
   is no remote revocation of an embedded certificate; installs on older
   versions trust the exposed key until they update. If a malicious update was
-  served, publish a signed rollback with
-  `eas update:roll-back-to-embedded --channel production --private-key-path ...`
-  using the old key, which still works for those versions.
+  served, publish a signed rollback (below) with the old key, which still
+  works for those versions.
+
+### Signed rollback to the embedded bundle
+
+A rollback is a signed update like any other, so it needs the production
+marker, the certificate the affected binaries embed, and its matching key.
+Without `APP_ENV=production` the config has no certificate and eas-cli rejects
+`--private-key-path`. From `mobile/`:
+
+```sh
+export KILO_OTA_CODE_SIGNING_CERTIFICATE=<certificate embedded in the affected version>
+export KILO_OTA_CODE_SIGNING_PRIVATE_KEY=<matching private key>
+APP_ENV=production node -e "try{require('./app.config.js').assertProductionUpdateSigning()}catch(e){console.error(e.message);process.exit(1)}" \
+  && APP_ENV=production eas update:roll-back-to-embedded --platform android \
+    --channel production --runtime-version <affected-version>-signed \
+    --private-key-path "$KILO_OTA_CODE_SIGNING_PRIVATE_KEY"
+unset KILO_OTA_CODE_SIGNING_PRIVATE_KEY
+```
+
+Repeat once per affected `<version>-signed` runtime.
 
 ### Lost signing material
 
