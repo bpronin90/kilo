@@ -84,10 +84,14 @@ resolves the same unsigned config as before #1233.
    Do not create this variable in `preview` or `development`. Do not upload
    the private key to EAS.
 
-6. Ship a new production store build (below). Installs built before #1233 do
-   not carry the certificate and remain unsigned until they update from the
-   store; the version bump moves production to a new `appVersion` runtime, so
-   those older installs never receive bundles built for the signed runtime.
+6. Ship a new production store build (below). Signed production uses the
+   runtime `<version>-signed` (for example `1.14.18-signed`) instead of the
+   plain `appVersion` runtime, so signed and unsigned binaries never share a
+   runtime. This matters because expo-updates does not re-verify cached
+   updates: an unsigned OTA cached by an older install must not launch after
+   an in-place upgrade to the signed binary. Installs built before #1233 stay
+   unsigned until they update from the store, and they never receive signed
+   bundles.
 
 ### Production build
 
@@ -122,7 +126,7 @@ The certificate is native configuration, so rotation needs a store build.
 2. Replace the EAS variable with `eas env:update` (or `eas env:create --force`)
    in `production` only.
 3. Bump the app version through the release workflow so the new certificate
-   ships under a new `appVersion` runtime, then build and submit.
+   ships under a new `<version>-signed` runtime, then build and submit.
 4. Sign updates for the new version with the new key. Keep the old key only
    to sign updates for older versions still installed, then destroy it once
    those versions are retired.

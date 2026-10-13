@@ -352,8 +352,9 @@ updates through EAS Update (#811).
 - `mobile/eas.json` isolates preview Android/iOS builds on the `preview` channel
   and production Android builds on `production`. Publish commands name both the
   channel and matching EAS environment explicitly.
-- Preview uses the manual `preview-6` runtime. Production uses the app-version
-  runtime policy. Native dependencies/configuration advance the applicable
+- Preview uses the manual `preview-6` runtime. Signed production uses the
+  per-version `<version>-signed` runtime (#1233), so it never shares a runtime
+  with older unsigned production installs. Native dependencies/configuration advance the applicable
   runtime and require replacement builds; OTA is only for runtime-compatible
   changes.
 - The change from the disabled `preview-5` update client to `preview-6` is itself

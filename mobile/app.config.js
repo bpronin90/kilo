@@ -165,12 +165,23 @@ function loadOtaCertificate(env = process.env) {
   return { absolute, certificate };
 }
 
+// Signed production gets its own runtime, `<version>-signed`, rather than the
+// plain appVersion runtime. expo-updates does not re-verify cached updates, so
+// sharing the unsigned runtime would let an unsigned OTA cached by an older
+// install launch after an in-place upgrade to the signed binary. Each version
+// still gets a distinct runtime, as with the appVersion policy.
+function signedProductionRuntime(config) {
+  if (!config.version) throw signingError('expo.version is required to derive the signed runtime.');
+  return `${config.version}-signed`;
+}
+
 // expo-updates joins updates.codeSigningCertificate onto the project root, so
 // an absolute EAS file-variable path must be expressed relative to mobile/.
 function withProductionOtaSigning(config, env = process.env) {
   const { absolute } = loadOtaCertificate(env);
   return {
     ...config,
+    runtimeVersion: signedProductionRuntime(config),
     updates: {
       ...config.updates,
       codeSigningCertificate: path.relative(__dirname, absolute),
@@ -228,7 +239,7 @@ module.exports = ({ config }) => {
   return withResizableMainActivity({
     ...base,
     plugins: sentryPlugin ? appendPlugin(base.plugins, sentryPlugin) : base.plugins,
-    runtimeVersion: isPreview ? PREVIEW_RUNTIME : { policy: 'appVersion' },
+    runtimeVersion: isPreview ? PREVIEW_RUNTIME : base.runtimeVersion ?? { policy: 'appVersion' },
   });
 };
 

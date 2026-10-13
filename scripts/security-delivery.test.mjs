@@ -94,7 +94,10 @@ const resolveUpdates = (vars) => withEnv(vars, () => resolveAppConfig({ config: 
 
 test('production builds embed the configured certificate and require signed OTA updates', () => {
   for (const marker of [{ APP_ENV: 'production' }, { EAS_BUILD_PROFILE: 'production' }]) {
-    const updates = resolveUpdates({ ...marker, KILO_OTA_CODE_SIGNING_CERTIFICATE: signer.certPath });
+    const resolved = withEnv({ ...marker, KILO_OTA_CODE_SIGNING_CERTIFICATE: signer.certPath }, () => resolveAppConfig({ config: app.expo }));
+    const { updates } = resolved;
+    // Signed builds never share a runtime with unsigned production installs.
+    assert.equal(resolved.runtimeVersion, `${app.expo.version}-signed`);
     assert.equal(resolve(mobileDir, updates.codeSigningCertificate), signer.certPath);
     assert.deepEqual(updates.codeSigningMetadata, { keyid: 'main', alg: 'rsa-v1_5-sha256' });
     assert.notEqual(updates.codeSigningAllowUnsignedManifests, true);
@@ -129,7 +132,9 @@ test('preview, simulator, development, and local config stay unsigned even with 
       const vars = {};
       if (appEnv) vars.APP_ENV = appEnv;
       if (certificate) vars.KILO_OTA_CODE_SIGNING_CERTIFICATE = certificate;
-      assert.deepEqual(resolveUpdates(vars), app.expo.updates);
+      const resolved = withEnv(vars, () => resolveAppConfig({ config: app.expo }));
+      assert.deepEqual(resolved.updates, app.expo.updates);
+      assert.deepEqual(resolved.runtimeVersion, appEnv === 'preview' ? 'preview-12' : { policy: 'appVersion' });
     }
   }
   for (const [name, profile] of Object.entries(eas.build)) {
