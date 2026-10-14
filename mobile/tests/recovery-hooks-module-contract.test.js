@@ -29,6 +29,8 @@ jest.mock('../storage/entries', () => ({
   loadRecoveryBlockWeeks: jest.fn(async () => []),
   loadRecoveryBlocksRaw: jest.fn(async () => []),
   loadRecoveryBlockWeeksRaw: jest.fn(async () => []),
+  loadRecoveryBlocksRaw: jest.fn(async () => []),
+  loadRecoveryBlockWeeksRaw: jest.fn(async () => []),
   loadRecoveryWeeksForBlock: jest.fn(async () => []),
   createRecoveryBlock: jest.fn(async () => ({ id: 'blkNew' })),
   addRecoveryWeek: jest.fn(async () => ({ id: 'wkNew', block_id: 'blkNew', note_id: 'noteNew' })),
@@ -125,6 +127,8 @@ function ownerBSnapshot() {
 function setReadSource(snapshot) {
   Storage.loadRecoveryBlocks.mockImplementation(async () => snapshot.blocks);
   Storage.loadRecoveryBlockWeeks.mockImplementation(async () => snapshot.weeks);
+  Storage.loadRecoveryBlocksRaw.mockImplementation(async () => snapshot.rawBlocks || snapshot.blocks);
+  Storage.loadRecoveryBlockWeeksRaw.mockImplementation(async () => snapshot.weeks);
 }
 function failReadSource(error = new Error('recovery key unreadable')) {
   Storage.loadRecoveryBlocks.mockImplementation(async () => { throw error; });
@@ -417,6 +421,19 @@ describe('invalidation goes through one coalesced read for reload, sync, and mut
 
   // #1366: a confirm-time recheck queued behind an in-flight pass must not be
   // authorized by a pass that runs after a device wipe invalidated the store.
+  // #1366: a malformed tombstone marker survives reconciliation and the
+  // filtered reader hides it; the authoritative pass must not verify Normal.
+  test('malformed persisted records fail the authoritative pass and the confirm gate', async () => {
+    setReadSource({ blocks: [], weeks: [], rawBlocks: [{ id: 'B', baseline_note_id: 'N', completed_at: null, deleted_at: {} }] });
+    const outcome = await barrel.refreshRecoveryState();
+    expect(outcome.ok).toBe(false);
+    expect((await barrel.ensureVerifiedRecoveryState()).ok).toBe(false);
+    const read = mountHook(barrel.useRecoveryBlockState);
+    await flush();
+    expect(read.ref.current.ready).toBe(false);
+    expect(read.ref.current.mutationsAllowed).toBe(false);
+  });
+
   test('a wipe voids a confirmation queued behind an in-flight pass', async () => {
     setReadSource(ownerASnapshot());
     let releaseActive;

@@ -56,11 +56,9 @@ export const RECOVERY_STATUS = Object.freeze({
   ERROR: 'error',
 });
 
-// User-facing copy for the three non-ready conditions, owned by the state
-// contract rather than by either screen so Log and Analytics cannot describe the
-// same condition differently. Each states what is actually true right now and,
-// where one exists, names the control that resolves it — `Retry recovery` is the
-// exact accessible name of the button rendered beside them (ui-design-rules §12).
+// User-facing copy for the non-ready conditions, owned here so no two screens
+// describe one condition differently; `Retry recovery` is the exact accessible
+// name of the button beside them (ui-design-rules §12).
 export const RECOVERY_LOADING_MESSAGE = 'Loading recovery data…';
 export const RECOVERY_UNVERIFIED_MESSAGE =
   'Recovery data could not be read, so recovery status is unknown. Tap Retry recovery.';
@@ -126,13 +124,8 @@ function runAuthoritativeRecoveryRead() {
   // would show the user a transition that is about to be completed anyway.
   return reconcileRecoveryOperations()
     .then((reconciliation) => {
-      // A corrupt journal is NOT a normal reconciliation result: `ok`/`pending`
-      // describe conflicting-action locks over a journal that was actually
-      // readable. When the journal itself could not be read, the contract is
-      // "recovery actions are paused" — this must resolve as a failed read
-      // (never a READY snapshot with `mutationsAllowed` true), so it is routed
-      // into the same catch path as a storage read failure below (#711 review
-      // finding 2).
+      // A corrupt journal means "recovery actions are paused": a failed read,
+      // routed into the storage-failure catch below (#711 finding 2).
       if (reconciliation.corrupt) {
         const corruptError = new Error(
           reconciliation.error || 'Recovery operations could not be read from this device.'
@@ -146,9 +139,13 @@ function runAuthoritativeRecoveryRead() {
       // everything while still explaining itself once.
       pending = reconciliation.pending || [];
       pendingError = reconciliation.error || null;
-      return Promise.all([Storage.loadRecoveryBlocks(), Storage.loadRecoveryBlockWeeks()]);
+      return loadRecoveryLists();
     })
-    .then(([blocks, weeks]) => {
+    .then(([blocks, weeks, wellFormed]) => {
+      // #1366: reconciliation does not repair a malformed persisted record,
+      // and the filtered readers would silently drop it. Such data is a failed
+      // read (ERROR/STALE with retry, mutations closed), never verified Normal.
+      if (!wellFormed) throw new Error('Recovery records on this device are malformed.');
       // Invalidated mid-read (#1366): a device wipe happened after this pass
       // started, so what it read belongs to the previous owner. Publish nothing.
       if (generation !== recoveryReadGeneration) return OBSOLETE_OUTCOME;
@@ -494,6 +491,20 @@ function publishRecoveryFilterSnapshot(blocks, weeks, wellFormed = false) {
 // hooks and piggybacking on an authoritative pass already in flight.
 let recoveryFilterReadInFlight = null;
 
+// The filtered lists plus whether the RAW persisted records behind them are
+// well-formed (#1366). Raw reads hit the same keys concurrently, so the storage
+// boundary serves them from the same decrypt; a raw-read failure only means
+// "not provably well-formed".
+function loadRecoveryLists() {
+  return Promise.all([
+    Storage.loadRecoveryBlocks(),
+    Storage.loadRecoveryBlockWeeks(),
+    Promise.resolve()
+      .then(() => Promise.all([Storage.loadRecoveryBlocksRaw(), Storage.loadRecoveryBlockWeeksRaw()]))
+      .then(([rawBlocks, rawWeeks]) => arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks), () => false),
+  ]);
+}
+
 export function runRecoveryFilterRead() {
   if (!recoveryFilterReadInFlight) {
     const generation = recoveryReadGeneration;
@@ -502,16 +513,7 @@ export function runRecoveryFilterRead() {
         // The authoritative pass already publishes (and reconciles) the
         // shared snapshot; just wait for it rather than re-reading.
         ? recoveryReadInFlight
-        : Promise.all([
-          Storage.loadRecoveryBlocks(),
-          Storage.loadRecoveryBlockWeeks(),
-          // Same keys, read concurrently, so the storage boundary serves them
-          // from the same decrypt. Any failure here only means "not provably
-          // well-formed": unknown for display, never a failed filter read.
-          Promise.resolve()
-            .then(() => Promise.all([Storage.loadRecoveryBlocksRaw(), Storage.loadRecoveryBlockWeeksRaw()]))
-            .then(([rawBlocks, rawWeeks]) => arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks), () => false),
-        ])
+        : loadRecoveryLists()
           .then(([blocks, weeks, wellFormed]) => (
             generation === recoveryReadGeneration ? publishRecoveryFilterSnapshot(blocks, weeks, wellFormed) : lastFilterSnapshot
           ), (e) => {

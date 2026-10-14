@@ -1200,7 +1200,10 @@ week before the latest, well-typed
 identities and lifecycle markers) and when the RAW persisted lists behind it
 (`loadRecovery*Raw`, read concurrently on the same keys) are well-formed, since
 the filtered readers silently drop a record with a malformed truthy
-`deleted_at`; otherwise it shows unknown. Provisional data never sets `ready` or `mutationsAllowed`, and
+`deleted_at`; otherwise it shows unknown. The authoritative pass applies the
+same raw-record check after reconciliation: malformed persisted records are a
+failed read (`error`/`stale`, mutations closed, `Retry recovery`), never a
+verified empty snapshot. Provisional data never sets `ready` or `mutationsAllowed`, and
 it is dropped once the authoritative pass fails. A device wipe calls
 `invalidateRecoveryReadState()`, which clears both snapshots and makes any read
 begun for the wiped data resolve without publishing.
