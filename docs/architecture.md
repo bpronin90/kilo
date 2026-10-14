@@ -540,7 +540,9 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   (`runGuardedRecoveryAction`, `startRecoveryOperation`) re-partition under the
   lock and refuse an action whose scope touches an unresolved record's block,
   week, note, or ordinal slot, or a global action (starting a block) when the
-  data is mode-relevant, as a validation failure with zero writes. Timestamps
+  data is mode-relevant, as a validation failure with zero writes. That gate
+  fails closed: malformed or unreadable evidence seen under the lock refuses
+  the action, since data can change after the confirm-time check. Timestamps
   are not classified (the server columns are nullable and only the winner
   policy reads them). An earlier open week is valid data: per-row LWW sync
   produces it from ordinary use. MALFORMED records keep #1366's fail-closed

@@ -710,3 +710,41 @@ describe('codex round 4 regressions (#1368)', () => {
     expect(R.resolveDuplicateWeekMemberships(weeks, 'c1', { blocks }).changed).toEqual([]);
   });
 });
+
+describe('codex round 5 regressions (#1368)', () => {
+  const R = require('../storage/cloud/syncRecoveryResolution');
+
+  test('a malformed parent never authorizes cloud membership repair, matching local', () => {
+    const blocks = [block('b1', { baseline_note_id: null })];
+    const weeks = [
+      week('w1', 'b1', 'n1', 1, { saved_at: T(2) }),
+      week('w2', 'b1', 'n1', 2, { saved_at: T(3) }),
+    ];
+    expect(R.resolveDuplicateWeekMemberships(weeks, 'c1', { blocks }).changed).toEqual([]);
+    expect(planRecoveryRepair(blocks, weeks, 'c1').changedWeeks).toEqual([]);
+  });
+
+  test('evidence that turns malformed after confirmation refuses the action under the lock', async () => {
+    await seed(RECOVERY_BLOCKS_KEY, [block('b1')]);
+    await seed(RECOVERY_BLOCK_WEEKS_KEY, [week('w1', 'b1', 'n1', 1)]);
+    expect((await ReadState.ensureVerifiedRecoveryState()).ok).toBe(true);
+    // A raw replacement lands between confirmation and the action.
+    await seed(RECOVERY_BLOCK_WEEKS_KEY, [week('w1', 'b1', 'n1', 1e20)]);
+    const writes = countWrites();
+    const action = jest.fn(async () => ({ ok: true }));
+    const res = await journal.runGuardedRecoveryAction({ blockId: 'b1' }, action);
+    expect(res.ok).toBe(false);
+    expect(res.reason).toBe('RECOVERY_STATE_UNVERIFIED');
+    expect(action).not.toHaveBeenCalled();
+    expect(writes).not.toHaveBeenCalled();
+  });
+
+  test('an unreadable list at the action boundary refuses the action', async () => {
+    await seed(RECOVERY_BLOCKS_KEY, [block('b1')]);
+    await seed(RECOVERY_BLOCK_WEEKS_KEY, '{not json');
+    const action = jest.fn(async () => ({ ok: true }));
+    const res = await journal.runGuardedRecoveryAction({ blockId: 'b1' }, action);
+    expect(res.reason).toBe('RECOVERY_STATE_UNVERIFIED');
+    expect(action).not.toHaveBeenCalled();
+  });
+});

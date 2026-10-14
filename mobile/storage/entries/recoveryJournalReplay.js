@@ -147,29 +147,27 @@ function conflictsWith(record, { blockId, weekId, noteId }) {
 // Dependent-action gate (#1368), checked under the lock against what is
 // persisted now. Unresolved records stay in storage; an action is refused only
 // when its `scope` touches one (or, for an unscoped global action such as
-// starting a block, when unresolved data could change the mode). Malformed data
-// and read failures are left to their existing paths: every lifecycle mutation
-// is already refused by the authoritative fail-closed check (#1366) before it
-// gets here, and the action's own read reports a read failure truthfully.
+// starting a block, when unresolved data could change the mode). It fails
+// CLOSED: malformed or unreadable evidence observed here refuses the action,
+// because data can change between the confirm-time check and this lock (#1366).
 // Refusals are validation failures: no journal record and no domain write.
 async function unresolvedGate(scope) {
   let blocks;
   let weeks;
+  const refuse = (reason, error) => ({ ok: false, code: RECOVERY_OPERATION_CODES.VALIDATION_FAILED, reason, error });
   try {
     [blocks, weeks] = await Promise.all([readList(RECOVERY_BLOCKS_KEY), readList(RECOVERY_BLOCK_WEEKS_KEY)]);
   } catch {
-    return null;
+    return refuse('RECOVERY_STATE_UNVERIFIED', 'Recovery data could not be read, so this change was not made. Try again.');
   }
-  if (!arePersistedRecoveryRecordsWellFormed(blocks, weeks)) return null;
+  if (!arePersistedRecoveryRecordsWellFormed(blocks, weeks)) {
+    return refuse('RECOVERY_STATE_UNVERIFIED', 'Recovery data could not be read, so this change was not made. Try again.');
+  }
   const part = partitionRecoveryRecords(blocks, weeks);
   const target = scope && (scope.blockId || scope.weekId || scope.noteId) ? scope : { global: true };
   if (!isRecoveryTargetBlocked(part, target)) return null;
-  return {
-    ok: false,
-    code: RECOVERY_OPERATION_CODES.VALIDATION_FAILED,
-    reason: 'RECOVERY_DATA_UNRESOLVED',
-    error: 'Some recovery records involved in this change could not be resolved, so it was not made.',
-  };
+  return refuse('RECOVERY_DATA_UNRESOLVED',
+    'Some recovery records involved in this change could not be resolved, so it was not made.');
 }
 
 // Run any recovery action (including the single-domain ones) behind the same

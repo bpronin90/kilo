@@ -200,7 +200,9 @@ export function resolveDuplicateWeekMemberships(list, clientId, { blocks } = {})
     const counts = new Map();
     for (const b of blocks) if (b && b.id != null) counts.set(b.id, (counts.get(b.id) || 0) + 1);
     const parents = new Map(
-      blocks.filter((b) => isLiveRecoveryRecord(b) && counts.get(b.id) === 1).map((b) => [b.id, b])
+      blocks
+        .filter((b) => isLiveRecoveryRecord(b) && counts.get(b.id) === 1 && isWellFormedRecoveryBlock(b))
+        .map((b) => [b.id, b])
     );
     isEligible = (w) => {
       const parent = parents.get(w.block_id);
