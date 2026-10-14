@@ -682,3 +682,31 @@ describe('codex round 3 regressions (#1368)', () => {
     expect(action).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('codex round 4 regressions (#1368)', () => {
+  const R = require('../storage/cloud/syncRecoveryResolution');
+
+  test('cloud cascade leaves a malformed child of a valid tombstone untouched, matching local', () => {
+    const blocks = [block('b1', { deleted_at: T(9) })];
+    const bad = week('w1', 'b1', 'n1', 1e20, { completed_at: 'nope' });
+    expect(R.planDeletedBlockCascade(blocks, [bad], 'c1').cascaded).toEqual([]);
+    expect(planRecoveryRepair(blocks, [bad], 'c1').changedWeeks).toEqual([]);
+  });
+
+  test('cloud active-block resolution refuses a malformed active block, matching local', () => {
+    const blocks = [block('b1', { baseline_note_id: null }), block('b2', { started_at: T(3) })];
+    expect(R.resolveDuplicateActiveBlocks(blocks, 'c1').changed).toEqual([]);
+    expect(planRecoveryRepair(blocks, [], 'c1').changedBlocks).toEqual([]);
+  });
+
+  test('a member of an unresolved note group is not renumbered by the ordinal rule', () => {
+    const blocks = [block('b1')];
+    const weeks = [
+      week('wo', 'ghost', 'n1', 1, { saved_at: T(1) }),
+      week('w1', 'b1', 'n1', 1, { saved_at: T(3) }),
+      week('w2', 'b1', 'n2', 1, { saved_at: T(2) }),
+    ];
+    expect(planRecoveryRepair(blocks, weeks, 'c1').changedWeeks).toEqual([]);
+    expect(R.resolveDuplicateWeekMemberships(weeks, 'c1', { blocks }).changed).toEqual([]);
+  });
+});

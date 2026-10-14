@@ -93,6 +93,7 @@ const isWellTypedWeek = w => !!w && isId(w.id) && hasMarkers(w) && isId(w.block_
 export const isRecoveryLifecycleMarker = isMarker;
 export const hasValidRecoveryMarkers = r => !!r && hasMarkers(r);
 export const isWellFormedRecoveryWeek = isWellTypedWeek;
+export const isWellFormedRecoveryBlock = b => !!b && isId(b.id) && isWellTypedBlock(b);
 
 // The storage readers drop any record whose `deleted_at` is truthy before the
 // selector sees it, so a malformed tombstone marker would vanish rather than

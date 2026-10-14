@@ -329,8 +329,8 @@ describe('signed-out reconciliation reconciles only the supported tables and fai
 describe('cross-device duplicate resolution collapses deterministically', () => {
   it('keeps the most recently started active block and completes the older one', () => {
     const blocks = [
-      { id: 'rb-old', started_at: '2026-01-01T00:00:00.000Z', completed_at: null, saved_at: '2026-01-01T00:00:00.000Z' },
-      { id: 'rb-new', started_at: '2026-02-01T00:00:00.000Z', completed_at: null, saved_at: '2026-02-01T00:00:00.000Z' },
+      { id: 'rb-old', baseline_note_id: 'n-old', started_at: '2026-01-01T00:00:00.000Z', completed_at: null, saved_at: '2026-01-01T00:00:00.000Z' },
+      { id: 'rb-new', baseline_note_id: 'n-new', started_at: '2026-02-01T00:00:00.000Z', completed_at: null, saved_at: '2026-02-01T00:00:00.000Z' },
     ];
     const forward = resolveDuplicateActiveBlocks(blocks, 'client-a');
     const reversed = resolveDuplicateActiveBlocks(blocks.slice().reverse(), 'client-b');
@@ -383,7 +383,10 @@ describe('cross-device duplicate resolution collapses deterministically', () => 
   it('orders by instant, not string, for the shared active-block and membership rules (#1368)', () => {
     const later = '2026-12-31T23:00:00-02:00'; // 2027-01-01T01:00Z
     const earlier = '2027-01-01T00:00:00Z';
-    const blocks = [{ id: 'bA', started_at: later }, { id: 'bB', started_at: earlier }];
+    const blocks = [
+      { id: 'bA', baseline_note_id: 'nA', started_at: later },
+      { id: 'bB', baseline_note_id: 'nB', started_at: earlier },
+    ];
     const { changed } = resolveDuplicateActiveBlocks(blocks.slice().reverse(), 'c');
     expect(changed.map((b) => b.id)).toEqual(['bB']);
     expect(changed[0].completed_at).toBe(later);

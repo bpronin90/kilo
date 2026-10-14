@@ -518,9 +518,11 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   byte-for-byte in place. The safety guards live inside the shared helpers, so
   cloud resolution applies the same ones: ambiguous ids, unparseable winner
   timestamps, and missing or ambiguous parents never choose a winner or
-  cascade; a group with any malformed member (e.g. an unsafe ordinal) or a
-  malformed parent tombstone marker is left alone; unresolved rows still
-  reserve their note and ordinal slot.
+  cascade; every record a shared decision touches (cascade parent and child,
+  each active block, each collision-group member) must pass the same full
+  shape check local repair applies, or the decision is skipped; members of a
+  note group that cannot be resolved are protected from ordinal repair, and
+  unresolved rows still reserve their note and ordinal slot.
   Winners compare parsed instants, never timestamp strings. Only the authoritative read / Retry and the sync
   boundary repair; guarded actions and operation starts reconcile without
   repairing. The result rides beside the journal `ok` (never inside it, so sync

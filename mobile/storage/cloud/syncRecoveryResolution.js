@@ -1,6 +1,6 @@
 import { SYNC_TABLES, isTombstone, stampWrite } from '../syncQueue';
 import {
-  hasValidRecoveryMarkers,
+  isWellFormedRecoveryBlock,
   isWellFormedRecoveryWeek,
 } from '../../lib/data/activeTrainingContext';
 
@@ -92,9 +92,11 @@ export function planDeletedBlockCascade(blocks, weeks, clientId) {
   }
   const deletedBlockAt = new Map();
   for (const block of blocks || []) {
-    // Only a unique, well-formed tombstone (parseable `deleted_at`) cascades.
+    // Only a unique, well-formed tombstone (parseable `deleted_at`) cascades,
+    // and only onto well-formed children: every record a shared decision
+    // touches must pass the same shape check local repair applies (#1368).
     if (block && block.id != null && counts.get(block.id) === 1 && isTombstone(block)
-      && hasValidRecoveryMarkers(block)) {
+      && isWellFormedRecoveryBlock(block)) {
       deletedBlockAt.set(block.id, block.deleted_at);
     }
   }
@@ -103,7 +105,7 @@ export function planDeletedBlockCascade(blocks, weeks, clientId) {
   const list = (weeks || []).map((week) => {
     if (!isLiveRecoveryRecord(week)) return week;
     const deletedAt = deletedBlockAt.get(week.block_id);
-    if (!deletedAt) return week;
+    if (!deletedAt || !isWellFormedRecoveryWeek(week)) return week;
     const tombstone = { ...stampWrite(week, clientId), deleted_at: deletedAt };
     cascaded.push(tombstone);
     return tombstone;
@@ -125,7 +127,7 @@ export function resolveDuplicateActiveBlocks(list, clientId) {
   if (
     active.length < 2 ||
     hasAmbiguousIdentity(list) ||
-    !active.every((b) => recoveryInstant(b.started_at) !== null && hasValidRecoveryMarkers(b))
+    !active.every((b) => recoveryInstant(b.started_at) !== null && isWellFormedRecoveryBlock(b))
   ) {
     return { list: list || [], changed: [] };
   }
@@ -217,10 +219,17 @@ export function resolveDuplicateWeekMemberships(list, clientId, { blocks } = {})
   };
   const live = all.filter((w) => isLiveRecoveryRecord(w));
 
-  // Rule 1 — one live membership per note.
+  // Rule 1 — one live membership per note. Members of a note group that
+  // cannot be resolved stay PROTECTED through rule 2: their note ownership is
+  // undecided, so no ordinal decision may depend on them.
   const retracted = new Set();
+  const protectedIds = new Set();
   for (const bucket of groupBy(live.filter((w) => w.note_id != null), (w) => w.note_id).values()) {
-    if (bucket.length < 2 || !repairable(bucket)) continue;
+    if (bucket.length < 2) continue;
+    if (!repairable(bucket)) {
+      for (const w of bucket) protectedIds.add(w.id);
+      continue;
+    }
     const ordered = bucket.slice().sort((a, b) => compareRecoveryRecords(a, b, 'saved_at'));
     for (const loser of ordered.slice(1)) {
       retracted.add(loser.id);
@@ -243,7 +252,8 @@ export function resolveDuplicateWeekMemberships(list, clientId, { blocks } = {})
       else if (ordinal > maxOrdinal) maxOrdinal = ordinal;
     }
     const collisions = [...groupBy(bucket, (w) => w.week_number).entries()]
-      .filter(([, group]) => group.length > 1 && repairable(group))
+      .filter(([, group]) => group.length > 1 && repairable(group)
+        && group.every((w) => !protectedIds.has(w.id)))
       // Ascending ordinal, never input order, so every device allocates the
       // same new ordinals to the same losers.
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
