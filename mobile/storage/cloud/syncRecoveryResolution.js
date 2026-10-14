@@ -43,6 +43,31 @@ export function isLiveRecoveryRecord(record) {
   return Boolean(record) && record.id != null && !isTombstone(record);
 }
 
+// Explicit parent tombstone -> surviving live memberships (issue #693, #1368).
+// Pure and shared by the pull-time sync cascade and local Recovery repair, so
+// there is one policy. A membership inherits the block's own `deleted_at`, so
+// every device writes a byte-identical tombstone. A MISSING block is never
+// treated as deleted: only an explicit tombstone cascades.
+export function planDeletedBlockCascade(blocks, weeks, clientId) {
+  const deletedBlockAt = new Map();
+  for (const block of blocks || []) {
+    if (block && block.id != null && isTombstone(block)) {
+      deletedBlockAt.set(block.id, block.deleted_at);
+    }
+  }
+  const cascaded = [];
+  if (deletedBlockAt.size === 0) return { list: weeks || [], cascaded };
+  const list = (weeks || []).map((week) => {
+    if (!isLiveRecoveryRecord(week)) return week;
+    const deletedAt = deletedBlockAt.get(week.block_id);
+    if (!deletedAt) return week;
+    const tombstone = { ...stampWrite(week, clientId), deleted_at: deletedAt };
+    cascaded.push(tombstone);
+    return tombstone;
+  });
+  return { list: cascaded.length > 0 ? list : weeks, cascaded };
+}
+
 // One active block per user. The most recently STARTED block is the recovery the
 // lifter is actually in, so it survives; every older still-open block is
 // completed as of the survivor's start — the reading a user would give it
@@ -133,18 +158,33 @@ export function resolveDuplicateWeekMemberships(list, clientId) {
     if (bucket) bucket.push(week);
     else byBlock.set(week.block_id, [week]);
   }
-  for (const bucket of byBlock.values()) {
+  const unresolvedBlocks = [];
+  for (const [blockId, bucket] of byBlock) {
     const byOrdinal = new Map();
     let maxOrdinal = 0;
+    let valid = true;
     for (const week of bucket) {
-      const ordinal = Number(week.week_number);
-      if (Number.isInteger(ordinal) && ordinal > maxOrdinal) maxOrdinal = ordinal;
-      const collided = byOrdinal.get(week.week_number);
+      const ordinal = week.week_number;
+      // An ordinal that is not a positive safe integer cannot be ordered or
+      // appended after, so this block is left exactly as found (#1368).
+      if (!Number.isSafeInteger(ordinal) || ordinal < 1) valid = false;
+      else if (ordinal > maxOrdinal) maxOrdinal = ordinal;
+      const collided = byOrdinal.get(ordinal);
       if (collided) collided.push(week);
-      else byOrdinal.set(week.week_number, [week]);
+      else byOrdinal.set(ordinal, [week]);
     }
-    for (const collided of byOrdinal.values()) {
-      if (collided.length < 2) continue;
+    const collisions = [...byOrdinal.entries()]
+      .filter(([, group]) => group.length > 1)
+      // Ascending ordinal, never input order, so every device allocates the
+      // same new ordinals to the same losers.
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    if (collisions.length === 0) continue;
+    const losers = collisions.reduce((n, [, group]) => n + group.length - 1, 0);
+    if (!valid || maxOrdinal + losers > Number.MAX_SAFE_INTEGER) {
+      unresolvedBlocks.push(blockId);
+      continue;
+    }
+    for (const [, collided] of collisions) {
       const ordered = collided
         .slice()
         .sort((a, b) => compareRecoveryRecords(a, b, 'saved_at'));
@@ -158,6 +198,9 @@ export function resolveDuplicateWeekMemberships(list, clientId) {
   return {
     list: (list || []).map((w) => (w && changedById.get(w.id)) || w),
     changed: [...changedById.values()],
+    // Blocks whose ordinal collision could not be renumbered safely; their
+    // records are returned untouched (#1368).
+    unresolvedBlocks,
   };
 }
 

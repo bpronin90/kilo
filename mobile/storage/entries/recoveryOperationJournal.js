@@ -57,6 +57,7 @@ import * as schema from './recoveryJournalSchema';
 import * as store from './recoveryJournalStore';
 import * as operations from './recoveryJournalOperations';
 import * as replay from './recoveryJournalReplay';
+import * as repair from './recoveryRepair';
 
 // schema/validation surface
 export const RECOVERY_JOURNAL_VERSION = schema.RECOVERY_JOURNAL_VERSION;
@@ -81,3 +82,6 @@ export const reconcileRecoveryOperations = replay.reconcileRecoveryOperations;
 export const runGuardedRecoveryAction = replay.runGuardedRecoveryAction;
 export const startRecoveryOperation = replay.startRecoveryOperation;
 export const __resetRecoveryOperationJournal = replay.__resetRecoveryOperationJournal;
+
+// bounded Recovery data repair (#1368)
+export const repairRecoveryRecords = repair.repairRecoveryRecords;

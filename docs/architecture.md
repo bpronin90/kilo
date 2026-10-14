@@ -498,6 +498,24 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   cloud sync sees auth as still loading, and the workout-reminder reconcile
   waits. The device-key canary probe (#1364) and the legacy migration stay
   ahead of paint as safety gates.
+  Persisted Recovery repair (#1368) runs only inside that deferred
+  authoritative pass: `storage/entries/recoveryRepair.js` is called by the
+  journal reconciler under the exclusive Recovery lock, after replay and only
+  when no journaled operation is pending. It makes exactly four repairs through
+  the cloud-resolution helpers in `syncRecoveryResolution.js` (one policy for
+  local and cloud): an explicit parent tombstone cascades to its live weeks,
+  several active blocks complete all but the latest start, a note linked twice
+  keeps the earliest membership, and colliding ordinals renumber in ascending
+  collision order only while every output stays a positive safe integer. No
+  record is ever removed from `recovery_blocks` / `recovery_block_weeks`: a
+  repair rewrites a row (completion, tombstone, ordinal), enqueues it dirty in
+  cloud mode before the raw write, aborts if the list changed since it was read,
+  and re-reads to verify. A missing parent, malformed or unreadable payload,
+  duplicate ids, baseline-note membership, or unsafe ordinal is left
+  byte-for-byte in place. The result rides beside the journal `ok` (never
+  inside it, so sync is not gated), and `isRecoveryDataResolved` classifies the
+  raw lists: unresolved data is ERROR/STALE with `Retry recovery`, never verified
+  Normal. Retry re-reads and re-classifies; it does not promise a fix.
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules, now exposes the note-derived analytics contract used by downstream
   native workout analytics work, and centralizes exercise alias resolution in

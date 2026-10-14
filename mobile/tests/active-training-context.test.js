@@ -4,6 +4,7 @@ import {
   resolveActiveTrainingContext,
   selectProvisionalRecovery,
   arePersistedRecoveryRecordsWellFormed,
+  isRecoveryDataResolved,
 } from '../lib/data/activeTrainingContext';
 import { buildRecoveryBlock, buildRecoveryWeek } from '../lib/data/recoveryBlocks';
 
@@ -317,5 +318,30 @@ describe('raw persisted record check (#1366)', () => {
       expect(arePersistedRecoveryRecordsWellFormed([b], [{ ...w, ...bad }])).toBe(false);
     }
     expect(arePersistedRecoveryRecordsWellFormed([], null)).toBe(false);
+  });
+});
+
+describe('isRecoveryDataResolved (#1368)', () => {
+  const b = (id, extra = {}) => ({ ...block({ id }), ...extra });
+  const w = (id, blockId, noteId, n, extra = {}) => ({
+    ...week({ blockId, noteId, weekNumber: n, id }), ...extra,
+  });
+  const dead = '2026-10-01T00:00:00.000Z';
+
+  test('accepts consistent data, an earlier open week, and tombstones', () => {
+    expect(isRecoveryDataResolved([], [])).toBe(true);
+    expect(isRecoveryDataResolved([b('b1')], [w('w1', 'b1', 'n1', 1), w('w2', 'b1', 'n2', 2)])).toBe(true);
+    expect(isRecoveryDataResolved(
+      [b('b1', { deleted_at: dead })], [w('w1', 'b1', 'n1', 1, { deleted_at: dead })]
+    )).toBe(true);
+  });
+
+  test('rejects missing parents, duplicates, baseline membership, and unsafe ordinals', () => {
+    expect(isRecoveryDataResolved([b('b1')], [w('w1', 'ghost', 'n1', 1)])).toBe(false);
+    expect(isRecoveryDataResolved([b('b1'), b('b1')], [])).toBe(false);
+    expect(isRecoveryDataResolved([b('b1'), b('b2')], [])).toBe(false);
+    expect(isRecoveryDataResolved([b('b1')], [w('w1', 'b1', b('b1').baseline_note_id, 1)])).toBe(false);
+    expect(isRecoveryDataResolved([b('b1')], [w('w1', 'b1', 'n1', 1), w('w2', 'b1', 'n2', 1)])).toBe(false);
+    expect(isRecoveryDataResolved([b('b1')], [w('w1', 'b1', 'n1', 1e20)])).toBe(false);
   });
 });

@@ -7,7 +7,6 @@ import {
 import {
   SYNC_TABLES,
   isTombstone,
-  stampWrite,
   stampTombstone,
   getClientId,
   enqueueDirtyMany,
@@ -15,7 +14,7 @@ import {
 import {
   resolveDuplicateActiveBlocks,
   resolveDuplicateWeekMemberships,
-  isLiveRecoveryRecord,
+  planDeletedBlockCascade,
 } from './syncRecoveryResolution';
 
 // Legacy-note bootstrap provenance. A row is legacy-provenance when EITHER:
@@ -234,24 +233,8 @@ export async function cascadeDeletedBlockMemberships(cache = createPassCache()) 
     cache.read(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, Storage.loadRecoveryBlockWeeksRaw),
   ]);
 
-  const deletedBlockAt = new Map();
-  for (const block of blocks || []) {
-    if (block && block.id != null && isTombstone(block)) {
-      deletedBlockAt.set(block.id, block.deleted_at);
-    }
-  }
-  if (deletedBlockAt.size === 0) return [];
-
   const clientId = await getClientId();
-  const cascaded = [];
-  const next = (weeks || []).map((week) => {
-    if (!isLiveRecoveryRecord(week)) return week;
-    const deletedAt = deletedBlockAt.get(week.block_id);
-    if (!deletedAt) return week;
-    const tombstone = { ...stampWrite(week, clientId), deleted_at: deletedAt };
-    cascaded.push(tombstone);
-    return tombstone;
-  });
+  const { list: next, cascaded } = planDeletedBlockCascade(blocks, weeks, clientId);
   if (cascaded.length === 0) return [];
 
   await cache.write(

@@ -21,6 +21,7 @@ import {
   nextOperationId,
 } from './recoveryJournalStore';
 import { replayRecord, resetRecoveryNoteOperations } from './recoveryJournalOperations';
+import { repairRecoveryRecords } from './recoveryRepair';
 
 let inFlightReconcile = null;
 
@@ -68,7 +69,16 @@ async function reconcileAllUnlocked() {
   const cancelled = results.filter((r) => !r.ok && r.terminal);
   const pending = results.filter((r) => !r.ok && !r.terminal);
   const headline = pending[0] || cancelled[0] || null;
+  // #1368: bounded repair of persisted Recovery data, after replay and only
+  // when no journaled operation is still pending (never beneath a pending
+  // intent's postconditions). Reported beside, never inside, `ok`: an
+  // unresolved or failed repair must not read as a pending/corrupt journal or
+  // stop the sync pass that calls this.
+  const repair = pending.length === 0
+    ? await repairRecoveryRecords()
+    : { ok: true, changed: 0, skipped: true, error: null };
   return {
+    repair,
     ok: pending.length === 0,
     code: pending.length > 0
       ? pending[0].code

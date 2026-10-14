@@ -87,7 +87,7 @@ const hasMarkers = r => isMarker(r.completed_at) && isMarker(r.deleted_at);
 const isWellTypedBlock = b => hasMarkers(b) && isId(b.baseline_note_id)
   && (b.include_in_normal_analytics === undefined || typeof b.include_in_normal_analytics === 'boolean');
 const isWellTypedWeek = w => !!w && isId(w.id) && hasMarkers(w) && isId(w.block_id) && isId(w.note_id)
-  && Number.isInteger(w.week_number) && w.week_number >= 1;
+  && Number.isSafeInteger(w.week_number) && w.week_number >= 1;
 
 // The storage readers drop any record whose `deleted_at` is truthy before the
 // selector sees it, so a malformed tombstone marker would vanish rather than
@@ -99,18 +99,36 @@ export function arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks) {
     && rawWeeks.every(isWellTypedWeek);
 }
 
-function isProvisionalSnapshotConsistent(blocks, weeks) {
+// Cross-record consistency shared by the provisional display selector and the
+// authoritative classifier (#1368). It does NOT include the earlier-open-week
+// rule: that state is reachable through ordinary use (uncompleting an earlier
+// week) so it is no authoritative gate, only a provisional-display one.
+function isSnapshotStructurallyConsistent(blocks, weeks) {
   if (!hasUniqueIds(blocks) || !hasUniqueIds(weeks)) return false;
   if (!blocks.every(isWellTypedBlock) || !weeks.every(hasMarkers)) return false;
   if (blocks.filter(isBlockActive).length > 1) return false;
   const liveBlocks = new Map(blocks.filter(isLiveRecord).map(b => [b.id, b]));
   const live = weeks.filter(isLiveRecord);
   const wellFormed = live.every(w => isId(w.block_id) && isId(w.note_id)
-    && Number.isInteger(w.week_number) && w.week_number >= 1 && liveBlocks.has(w.block_id)
+    && Number.isSafeInteger(w.week_number) && w.week_number >= 1 && liveBlocks.has(w.block_id)
     && w.note_id !== liveBlocks.get(w.block_id).baseline_note_id);
   if (!wellFormed || new Set(live.map(w => w.note_id)).size !== live.length) return false;
   // Ordinals are unique per block, completed blocks included.
-  if (new Set(live.map(w => `${w.block_id}|${w.week_number}`)).size !== live.length) return false;
+  return new Set(live.map(w => `${w.block_id}|${w.week_number}`)).size === live.length;
+}
+
+// Authoritative classifier over the RAW persisted lists (tombstones included):
+// true only when the shape is well formed and nothing is ambiguous or orphaned
+// (duplicate ids, several active blocks, a live week without a live parent, a
+// baseline-note membership, duplicate note or ordinal). False means unresolved
+// data that must stay in place and never read as verified Normal (#1368).
+export function isRecoveryDataResolved(rawBlocks, rawWeeks) {
+  return arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks)
+    && isSnapshotStructurallyConsistent(rawBlocks, rawWeeks);
+}
+
+function isProvisionalSnapshotConsistent(blocks, weeks) {
+  if (!isSnapshotStructurallyConsistent(blocks, weeks)) return false;
   const activeBlock = findActiveBlock(blocks);
   if (!activeBlock) return true;
   return orderedLiveWeeks(weeks, activeBlock.id).slice(0, -1).every(w => !!w.completed_at);

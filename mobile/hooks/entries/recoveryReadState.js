@@ -13,7 +13,10 @@ import {
   reconcileRecoveryOperations,
 } from '../../storage/entries/recoveryOperationJournal';
 import { findActiveBlock } from '../../lib/data/recoveryBlocks';
-import { arePersistedRecoveryRecordsWellFormed } from '../../lib/data/activeTrainingContext';
+import {
+  arePersistedRecoveryRecordsWellFormed,
+  isRecoveryDataResolved,
+} from '../../lib/data/activeTrainingContext';
 import { safeNotify } from './shared';
 import {
   markStartupPhase,
@@ -21,11 +24,9 @@ import {
   whenStartupBackgroundWorkReleased,
 } from '../../storage/entries/startupTiming';
 import { SYNC_PHASE, SYNC_STATUS, subscribeSyncState } from '../../storage/syncRecovery';
-// Imported for its module-load side effect as well as nothing else: it
-// registers the mode-aware note-deletion operations into the recovery journal
-// (see hooks/entries/storageMode.js). Without it the journal would fall back to
-// its local-only default even in cloud mode, and the reconcile-then-read pass
-// below replays journaled operations that depend on those registrations.
+// Side-effect import: registers the mode-aware note-deletion operations into
+// the recovery journal (hooks/entries/storageMode.js); the reconcile-then-read
+// pass below replays journaled operations that depend on them.
 import './storageMode';
 
 let recoveryListeners = [];
@@ -60,8 +61,9 @@ export const RECOVERY_STATUS = Object.freeze({
 // describe one condition differently; `Retry recovery` is the exact accessible
 // name of the button beside them (ui-design-rules §12).
 export const RECOVERY_LOADING_MESSAGE = 'Loading recovery data…';
+// Unreadable AND unresolved data (#1368); Retry only re-reads, no promised fix.
 export const RECOVERY_UNVERIFIED_MESSAGE =
-  'Recovery data could not be read, so recovery status is unknown. Tap Retry recovery.';
+  'Recovery data could not be read or is inconsistent, so recovery status is unknown. Tap Retry recovery.';
 export const RECOVERY_STALE_MESSAGE =
   'Showing the last recovery data that loaded successfully. The latest refresh failed. Tap Retry recovery.';
 
@@ -119,9 +121,7 @@ function runAuthoritativeRecoveryRead() {
   });
   let pending = [];
   let pendingError = null;
-  // Reconciliation first, reads second: replaying a pending operation can
-  // change what these two reads return, and publishing the pre-replay values
-  // would show the user a transition that is about to be completed anyway.
+  // Reconciliation first, reads second: replay can change what the reads return.
   return reconcileRecoveryOperations()
     .then((reconciliation) => {
       // A corrupt journal means "recovery actions are paused": a failed read,
@@ -139,13 +139,17 @@ function runAuthoritativeRecoveryRead() {
       // everything while still explaining itself once.
       pending = reconciliation.pending || [];
       pendingError = reconciliation.error || null;
+      // #1368: a failed repair pass is a failure of this exact pass.
+      if (reconciliation.repair && !reconciliation.repair.ok) throw reconciliation.repair.error;
       return loadRecoveryLists();
     })
-    .then(([blocks, weeks, wellFormed]) => {
-      // #1366: reconciliation does not repair a malformed persisted record,
-      // and the filtered readers would silently drop it. Such data is a failed
-      // read (ERROR/STALE with retry, mutations closed), never verified Normal.
+    .then(([blocks, weeks, wellFormed, resolved]) => {
+      // #1366: a malformed persisted record is a failed read (ERROR/STALE with
+      // retry, mutations closed), never verified Normal.
       if (!wellFormed) throw new Error('Recovery records on this device are malformed.');
+      // #1368: records still unresolved after the bounded repair stay in place
+      // and are never published as verified Normal or a partial snapshot.
+      if (!resolved) throw new Error('Recovery records on this device are inconsistent.');
       // Invalidated mid-read (#1366): a device wipe happened after this pass
       // started, so what it read belongs to the previous owner. Publish nothing.
       if (generation !== recoveryReadGeneration) return OBSOLETE_OUTCOME;
@@ -338,15 +342,12 @@ export function useRecoveryBlockState() {
       recoveryPendingError,
       // `Retry recovery` is the same call every other read path makes.
       retryRecovery: refresh,
-      // Display-only persisted read (#1366): the plain, UNRECONCILED
-      // blocks/weeks the analytics filter already read, offered while the
-      // first authoritative pass is still pending so Home can paint the
-      // last-known mode instead of a skeleton. It never feeds `ready`,
-      // `mutationsAllowed`, or `ensureVerifiedRecoveryState`; it is null once
-      // anything verified exists or the authoritative read has failed, since a
-      // failure must render as unknown rather than as the pre-replay data. A
-      // FAILED plain read is offered as unreadable (null arrays), which every
-      // consumer treats as inconsistent: unknown, never a skeleton or Normal.
+      // Display-only persisted read (#1366): the plain, UNRECONCILED lists,
+      // offered while the first authoritative pass is pending so Home can paint
+      // the last-known mode. It never feeds `ready`, `mutationsAllowed`, or
+      // `ensureVerifiedRecoveryState`; null once anything verified exists or the
+      // authoritative read failed. A FAILED plain read is offered as unreadable
+      // (null arrays): unknown, never a skeleton or Normal.
       provisional: verified || status === RECOVERY_STATUS.ERROR ? null
         : view.filterRead && view.filter.wellFormed ? { blocks: view.filter.blocks, weeks: view.filter.weeks }
           : view.filterRead || view.filterFailed ? { blocks: null, weeks: null } : null,
@@ -358,8 +359,7 @@ export function useRecoveryBlockState() {
 let recoveryBlockStateConsumerCount = 0;
 
 // The ONE mutation/import listener and ONE sync-completion subscription for
-// the shared subscription's lifetime — module singletons, so "N consumers, one
-// refresh per signal" holds for every later trigger too (#711 round 2).
+// the shared subscription's lifetime (#711 round 2).
 const sharedRecoveryBlockStateRefresh = () => refreshRecoveryState();
 let recoverySharedSyncUnsubscribe = null;
 let recoverySharedLastSyncStatus = null;
@@ -468,13 +468,10 @@ function publishRecoverySnapshot(blocks, weeks) {
 }
 
 // Filter-only publish: called by the read-only `useRecoveryAnalyticsFilter`
-// refresh. Touches ONLY `lastFilterSnapshot` — an ordinary, unreconciled
-// filter read can never reach `lastAuthoritativeSnapshot`, so it can neither
-// grant mutation trust it never earned (finding 1, round 1) nor evict the
-// last-known-good data `useRecoveryBlockState` is rendering (finding 1,
-// round 3).
-// `wellFormed` (#1366) says whether the RAW persisted records behind this read
-// passed validation; only then may it back a provisional display.
+// refresh. Touches ONLY `lastFilterSnapshot`, so an unreconciled filter read
+// can neither grant mutation trust nor evict last-known-good data.
+// `wellFormed` (#1366): whether the RAW persisted records passed validation;
+// only then may it back a provisional display.
 function publishRecoveryFilterSnapshot(blocks, weeks, wellFormed = false) {
   const signature = _recoverySignature(blocks, weeks);
   if (signature !== lastFilterSignature || !recoveryFilterVerified || lastFilterSnapshot.wellFormed !== wellFormed) {
@@ -501,8 +498,14 @@ function loadRecoveryLists() {
     Storage.loadRecoveryBlockWeeks(),
     Promise.resolve()
       .then(() => Promise.all([Storage.loadRecoveryBlocksRaw(), Storage.loadRecoveryBlockWeeksRaw()]))
-      .then(([rawBlocks, rawWeeks]) => arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks), () => false),
-  ]);
+      .then(
+        ([rawBlocks, rawWeeks]) => [
+          arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks),
+          isRecoveryDataResolved(rawBlocks, rawWeeks),
+        ],
+        () => [false, false]
+      ),
+  ]).then(([blocks, weeks, [wellFormed, resolved]]) => [blocks, weeks, wellFormed, resolved]);
 }
 
 export function runRecoveryFilterRead() {
@@ -531,12 +534,9 @@ export function runRecoveryFilterRead() {
   return recoveryFilterReadInFlight;
 }
 
-// Everything the boundary decision depends on, and nothing else. A reload that
-// produces the same signature republishes the SAME snapshot object, so the
-// functional `setSnapshot` below bails out instead of re-rendering Home,
-// Analytics, and the Log editor. That matters beyond performance: the common
-// case (no recovery records at all) would otherwise force one extra render of
-// three screens on every mount, sync completion, and recovery notification.
+// Everything the boundary decision depends on, and nothing else. A reload with
+// the same signature republishes the SAME snapshot object, so consumers bail
+// out instead of re-rendering Home, Analytics, and the Log editor.
 function _recoverySignature(blocks, weeks) {
   const blockPart = (blocks || []).map(
     b => `${b.id}|${b.updated_at}|${b.include_in_normal_analytics === true ? 1 : 0}|${b.deleted_at ? 1 : 0}`

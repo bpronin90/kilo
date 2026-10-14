@@ -367,6 +367,35 @@ describe('cross-device duplicate resolution collapses deterministically', () => 
     expect(changed[0].week_number).toBe(3);
   });
 
+  it('allocates ordinals for several collision groups in a fixed order (#1368)', () => {
+    const mk = (id, n, at) => ({ id, note_id: `n_${id}`, block_id: 'b1', week_number: n, saved_at: at });
+    const weeks = [
+      mk('c1', 2, '2026-01-01T00:00:00.000Z'), mk('c2', 2, '2026-01-02T00:00:00.000Z'),
+      mk('a1', 1, '2026-01-01T00:00:00.000Z'), mk('a2', 1, '2026-01-02T00:00:00.000Z'),
+    ];
+    const result = (input) => Object.fromEntries(
+      resolveDuplicateWeekMemberships(input, 'c').changed.map((w) => [w.id, w.week_number])
+    );
+    expect(result(weeks)).toEqual({ a2: 3, c2: 4 });
+    expect(result(weeks.slice().reverse())).toEqual({ a2: 3, c2: 4 });
+  });
+
+  it('leaves a block untouched when renumbering would leave the safe-integer range (#1368)', () => {
+    const max = Number.MAX_SAFE_INTEGER;
+    const weeks = [
+      { id: 'w1', note_id: 'n1', block_id: 'b1', week_number: max, saved_at: '2026-01-01T00:00:00.000Z' },
+      { id: 'w2', note_id: 'n2', block_id: 'b1', week_number: max, saved_at: '2026-01-02T00:00:00.000Z' },
+      { id: 'w3', note_id: 'n3', block_id: 'b2', week_number: 1, saved_at: '2026-01-01T00:00:00.000Z' },
+      { id: 'w4', note_id: 'n4', block_id: 'b2', week_number: 1, saved_at: '2026-01-02T00:00:00.000Z' },
+    ];
+    const { list, changed, unresolvedBlocks } = resolveDuplicateWeekMemberships(weeks, 'c');
+    expect(unresolvedBlocks).toEqual(['b1']);
+    expect(changed.map((w) => w.id)).toEqual(['w4']);
+    expect(list.find((w) => w.id === 'w2')).toBe(weeks[1]);
+    const bad = [{ ...weeks[0], week_number: 1e20 }, { ...weeks[1], week_number: 1e20 }];
+    expect(resolveDuplicateWeekMemberships(bad, 'c').changed).toEqual([]);
+  });
+
   it('converges a two-device duplicate active block inside one sync() call', async () => {
     await seedSyncedDevice();
     // Another device already holds an active block; this device started its own
