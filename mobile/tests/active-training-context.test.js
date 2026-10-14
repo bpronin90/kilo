@@ -309,7 +309,13 @@ describe('raw persisted record check (#1366)', () => {
     for (const raw of [
       [{ ...b, deleted_at: {} }], [{ ...b, deleted_at: 1 }], [{ ...b, deleted_at: 'not a date' }],
       [{ ...b, completed_at: [] }], [{ ...b, id: 3 }], [null],
+      [{ ...b, baseline_note_id: '' }], [{ ...b, include_in_normal_analytics: 'yes' }],
     ]) expect(arePersistedRecoveryRecordsWellFormed(raw, [])).toBe(false);
+    const w = week({ blockId: 'b1', noteId: 'n1', weekNumber: 1, id: 'w1' });
+    expect(arePersistedRecoveryRecordsWellFormed([b], [w])).toBe(true);
+    for (const bad of [{ week_number: 'x' }, { week_number: 1.5 }, { note_id: '' }, { block_id: null }]) {
+      expect(arePersistedRecoveryRecordsWellFormed([b], [{ ...w, ...bad }])).toBe(false);
+    }
     expect(arePersistedRecoveryRecordsWellFormed([], null)).toBe(false);
   });
 });

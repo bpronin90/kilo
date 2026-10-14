@@ -434,6 +434,17 @@ describe('invalidation goes through one coalesced read for reload, sync, and mut
     expect(read.ref.current.mutationsAllowed).toBe(false);
   });
 
+  test('a malformed membership field fails the authoritative pass too', async () => {
+    const blocks = [{ id: 'B', baseline_note_id: 'base', completed_at: '2026-10-01T00:00:00.000Z', deleted_at: null }];
+    for (const bad of [{ week_number: 'invalid' }, { week_number: 0 }, { note_id: null }, { block_id: '' }]) {
+      barrel._resetRecoveryAnalyticsFilterCache();
+      const weeks = [{ id: 'W', block_id: 'B', note_id: 'N', week_number: 1, completed_at: null, deleted_at: null, ...bad }];
+      setReadSource({ blocks, weeks });
+      expect((await barrel.refreshRecoveryState()).ok).toBe(false);
+      expect((await barrel.ensureVerifiedRecoveryState()).ok).toBe(false);
+    }
+  });
+
   test('a wipe voids a confirmation queued behind an in-flight pass', async () => {
     setReadSource(ownerASnapshot());
     let releaseActive;

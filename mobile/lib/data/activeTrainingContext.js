@@ -86,13 +86,17 @@ const isMarker = v => v == null || (typeof v === 'string' && !Number.isNaN(Date.
 const hasMarkers = r => isMarker(r.completed_at) && isMarker(r.deleted_at);
 const isWellTypedBlock = b => hasMarkers(b) && isId(b.baseline_note_id)
   && (b.include_in_normal_analytics === undefined || typeof b.include_in_normal_analytics === 'boolean');
+const isWellTypedWeek = w => !!w && isId(w.id) && hasMarkers(w) && isId(w.block_id) && isId(w.note_id)
+  && Number.isInteger(w.week_number) && w.week_number >= 1;
 
 // The storage readers drop any record whose `deleted_at` is truthy before the
 // selector sees it, so a malformed tombstone marker would vanish rather than
 // read as unknown. This checks the RAW persisted lists, tombstones included.
+// Shape only — cross-record consistency is #1368's (repair first, then enforce).
 export function arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks) {
   return Array.isArray(rawBlocks) && Array.isArray(rawWeeks)
-    && [...rawBlocks, ...rawWeeks].every(r => r && isId(r.id) && hasMarkers(r));
+    && rawBlocks.every(b => b && isId(b.id) && isWellTypedBlock(b))
+    && rawWeeks.every(isWellTypedWeek);
 }
 
 function isProvisionalSnapshotConsistent(blocks, weeks) {
