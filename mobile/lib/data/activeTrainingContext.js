@@ -65,7 +65,10 @@ const EMPTY_CONTEXT = Object.freeze({
 // supply the last-known mode. It can reflect a half-applied journal operation
 // or a malformed record, so it is used only when every identity in it is
 // unambiguous and the active block's weeks line up:
-//   - every block and week is a record with a string id, unique among its kind;
+//   - every block and week is a record with a string id, unique among its kind,
+//     and every field the mode decision reads is well-typed: lifecycle markers
+//     (`completed_at`, `deleted_at`) absent/null or a parseable timestamp,
+//     `baseline_note_id` a string, the inclusion preference a boolean if set;
 //   - at most one active block;
 //   - every live week has string block/note ids, a positive integer week
 //     number, and belongs to a LIVE block;
@@ -76,9 +79,14 @@ const EMPTY_CONTEXT = Object.freeze({
 // normal.
 const hasUniqueStringIds = records => records.every(r => r && typeof r.id === 'string')
   && new Set(records.map(r => r.id)).size === records.length;
+const isMarker = v => v == null || (typeof v === 'string' && !Number.isNaN(Date.parse(v)));
+const hasMarkers = r => isMarker(r.completed_at) && isMarker(r.deleted_at);
+const isWellTypedBlock = b => hasMarkers(b) && typeof b.baseline_note_id === 'string'
+  && (b.include_in_normal_analytics === undefined || typeof b.include_in_normal_analytics === 'boolean');
 
 function isProvisionalSnapshotConsistent(blocks, weeks) {
   if (!hasUniqueStringIds(blocks) || !hasUniqueStringIds(weeks)) return false;
+  if (!blocks.every(isWellTypedBlock) || !weeks.every(hasMarkers)) return false;
   if (blocks.filter(isBlockActive).length > 1) return false;
   const liveBlockIds = new Set(blocks.filter(isLiveRecord).map(b => b.id));
   const live = weeks.filter(isLiveRecord);

@@ -254,6 +254,14 @@ describe('provisional display context (#1366)', () => {
       { blocks: [{ ...b, id: 7 }], weeks: [] },
       { blocks: [b, block({ id: 'b0', deleted_at: '2026-10-01T00:00:00.000Z' })],
         weeks: [open, week({ blockId: 'b0', noteId: 'w8', weekNumber: 1, id: 'wk8' })] },
+      // Malformed lifecycle fields: truthiness must not decide the mode.
+      { blocks: [{ ...b, completed_at: {} }], weeks: [] },
+      { blocks: [{ ...b, completed_at: 'not a date' }], weeks: [] },
+      { blocks: [{ ...b, deleted_at: 1 }], weeks: [] },
+      { blocks: [{ ...b, baseline_note_id: null }], weeks: [] },
+      { blocks: [{ ...b, include_in_normal_analytics: 'yes' }], weeks: [] },
+      { blocks: [b], weeks: [{ ...open, completed_at: [] }] },
+      { blocks: [b], weeks: [{ ...open, deleted_at: true }] },
       { blocks: null, weeks: [] },
     ];
     for (const provisional of cases) {
