@@ -488,9 +488,12 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   it lands), plus `!recoveryBoundaryReady` only when boundary-dependent
   aggregates would render (#699). Recovery journal replay is not a term. The
   shell holds background startup work during its first render
-  (`holdStartupBackgroundWork` in `storage/entries/startupTiming.js`), and
-  Home's first usable paint releases it (a fallback timer releases it if Home
-  never paints). Until then no mounted `useRecoveryBlockState` consumer — Home
+  (`holdStartupBackgroundWork` in `storage/entries/startupTiming.js`). Home
+  claims the hold while rendering, which cancels the fallback timer, and
+  releases it at its first usable paint or on unmount, so a slow hydration
+  never times out into replay; the fallback only covers a shell whose Home
+  never mounts. A failed bounded Recovery read renders unknown rather than
+  holding the skeleton, so Home always reaches a paint. Until then no mounted `useRecoveryBlockState` consumer — Home
   or the hidden Log/Analytics tabs — starts reconciliation, the automatic
   cloud sync sees auth as still loading, and the workout-reminder reconcile
   waits. The device-key canary probe (#1364) and the legacy migration stay

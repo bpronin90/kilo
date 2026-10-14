@@ -92,22 +92,34 @@ export function markStartupStorageReads(now = Date.now()) {
 // that keeps background startup work (Recovery journal replay, the automatic
 // cloud sync, reminder reconciliation) off the storage queues until Home has
 // painted from local data. The shell holds it during its first render — before
-// any child effect can start a read — and Home releases it from its first-paint
-// effect. A fallback timer releases it anyway, so a launch that never paints
-// Home (another initial tab, an unmounted shell) cannot leave that work parked.
+// any child effect can start a read. Home claims it while rendering, which
+// cancels the fallback timer: from then on only Home's first paint (or Home
+// unmounting) releases it, however long local hydration takes. The fallback
+// only covers a shell whose Home never mounts.
 const STARTUP_HOLD_FALLBACK_MS = 2500;
 let backgroundHold = null;
 let backgroundWaiters = [];
 
 export function holdStartupBackgroundWork(fallbackMs = STARTUP_HOLD_FALLBACK_MS) {
   if (backgroundHold) return;
-  const timer = setTimeout(releaseStartupBackgroundWork, fallbackMs);
-  timer?.unref?.();
-  backgroundHold = { timer };
+  const hold = {};
+  hold.timer = setTimeout(() => releaseHold(hold), fallbackMs);
+  hold.timer?.unref?.();
+  backgroundHold = hold;
 }
 
 export function isStartupBackgroundWorkHeld() {
   return !!backgroundHold;
+}
+
+// Home's claim: cancels the fallback and returns the release for THIS hold
+// only, so a Home unmounting after a wipe remount re-held cannot release the
+// new shell's hold.
+export function claimStartupFirstPaint() {
+  const hold = backgroundHold;
+  if (!hold) return () => {};
+  clearTimeout(hold.timer);
+  return () => releaseHold(hold);
 }
 
 // Runs `task` now when nothing is held; otherwise once the hold is released, in
@@ -124,8 +136,12 @@ export function whenStartupBackgroundWorkReleased(task) {
 }
 
 export function releaseStartupBackgroundWork() {
-  if (!backgroundHold) return;
-  clearTimeout(backgroundHold.timer);
+  if (backgroundHold) releaseHold(backgroundHold);
+}
+
+function releaseHold(hold) {
+  if (backgroundHold !== hold) return;
+  clearTimeout(hold.timer);
   backgroundHold = null;
   const waiters = backgroundWaiters;
   backgroundWaiters = [];

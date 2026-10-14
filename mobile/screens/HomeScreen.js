@@ -9,7 +9,7 @@ import { useWeightUnit } from '../lib/unitPreference';
 import { deriveHomeDashboardData, HOME_RECOVERY_STATUS, useHomeNormalNotes, useHomeRecoverySummary } from './home/homeDashboardData';
 import { HomeRecoverySummary } from './home/HomeRecoverySummary';
 import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
-import { markStartupPhase, markStartupStorageReads, releaseStartupBackgroundWork } from '../storage/entries/startupTiming';
+import { markStartupPhase, markStartupStorageReads, claimStartupFirstPaint } from '../storage/entries/startupTiming';
 import { DEVICE_KEY_RECOVERY_MESSAGE, isDeviceKeyUnavailable, secureStorage } from '../storage/secureStorage';
 import { createStyles } from './home/homeStyles';
 import { useKuaTypography } from '../theme/typography';
@@ -351,15 +351,18 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   // loaded. The read counts alongside it (#818) report how many device reads
   // the launch paid for and how many were served by an in-flight read of the
   // same key — counts only, no key names and no values.
-  // Releasing the startup hold here is what lets deferred background work —
-  // Recovery reconciliation, the automatic sync — start after this paint.
+  // Home owns the shell's startup hold (#1366): claimed while rendering, so a
+  // slow hydration never times out into replay or sync; released by this first
+  // paint, or by unmounting, so deferred background work starts after it.
+  const [releaseStartupHold] = useState(claimStartupFirstPaint);
+  useEffect(() => releaseStartupHold, [releaseStartupHold]);
   useEffect(() => {
     if (!isLoading) {
       markStartupPhase('home:first-paint');
       markStartupStorageReads();
-      releaseStartupBackgroundWork();
+      releaseStartupHold();
     }
-  }, [isLoading]);
+  }, [isLoading, releaseStartupHold]);
 
   // Whether Home holds anything real to draw, regardless of why it might not.
   // Used to keep a failed read from being dressed up as a populated dashboard:

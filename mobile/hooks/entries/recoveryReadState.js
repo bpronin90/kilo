@@ -255,6 +255,7 @@ export function useRecoveryBlockState() {
     lifecycle: recoveryLifecycle,
     filter: lastFilterSnapshot,
     filterRead: recoveryFilterVerified,
+    filterFailed: recoveryFilterReadFailed,
   }));
 
   const sync = useCallback(() => {
@@ -263,12 +264,14 @@ export function useRecoveryBlockState() {
         && prev.lifecycle === recoveryLifecycle
         && prev.filter === lastFilterSnapshot
         && prev.filterRead === recoveryFilterVerified
+        && prev.filterFailed === recoveryFilterReadFailed
         ? prev
         : {
           snapshot: lastAuthoritativeSnapshot,
           lifecycle: recoveryLifecycle,
           filter: lastFilterSnapshot,
           filterRead: recoveryFilterVerified,
+          filterFailed: recoveryFilterReadFailed,
         }
     ));
   }, []);
@@ -345,10 +348,12 @@ export function useRecoveryBlockState() {
       // last-known mode instead of a skeleton. It never feeds `ready`,
       // `mutationsAllowed`, or `ensureVerifiedRecoveryState`; it is null once
       // anything verified exists or the authoritative read has failed, since a
-      // failure must render as unknown rather than as the pre-replay data.
-      provisional: !verified && status !== RECOVERY_STATUS.ERROR && view.filterRead
-        ? { blocks: view.filter.blocks, weeks: view.filter.weeks }
-        : null,
+      // failure must render as unknown rather than as the pre-replay data. A
+      // FAILED plain read is offered as unreadable (null arrays), which every
+      // consumer treats as inconsistent: unknown, never a skeleton or Normal.
+      provisional: verified || status === RECOVERY_STATUS.ERROR ? null
+        : view.filterRead ? { blocks: view.filter.blocks, weeks: view.filter.weeks }
+          : view.filterFailed ? { blocks: null, weeks: null } : null,
     };
   }, [view, refresh]);
 }
@@ -414,6 +419,7 @@ export function invalidateRecoveryReadState() {
   lastFilterSnapshot = { blocks: [], weeks: [] };
   lastFilterSignature = '';
   recoveryFilterVerified = false;
+  recoveryFilterReadFailed = false;
   recoveryReadInFlight = null;
   recoveryReadQueued = null;
   recoveryFilterReadInFlight = null;
@@ -441,6 +447,8 @@ let lastFilterSignature = '';
 // True once either pass has produced a real (possibly unreconciled) result.
 // Gates the filter's `ready` only — never Log's mutations.
 let recoveryFilterVerified = false;
+// The latest plain filter read failed and none has succeeded since (#1366).
+let recoveryFilterReadFailed = false;
 
 // Every mounted filter hook AND `useRecoveryBlockState`; each `sync` re-renders
 // only when a record it reads changed identity.
@@ -461,6 +469,7 @@ function publishRecoverySnapshot(blocks, weeks) {
     lastFilterSnapshot = { blocks, weeks };
   }
   recoveryFilterVerified = true;
+  recoveryFilterReadFailed = false;
   safeNotify(recoverySnapshotSubscribers);
   return lastAuthoritativeSnapshot;
 }
@@ -478,6 +487,7 @@ function publishRecoveryFilterSnapshot(blocks, weeks) {
     lastFilterSnapshot = { blocks, weeks };
   }
   recoveryFilterVerified = true;
+  recoveryFilterReadFailed = false;
   safeNotify(recoverySnapshotSubscribers);
   return lastFilterSnapshot;
 }
@@ -498,7 +508,13 @@ export function runRecoveryFilterRead() {
         : Promise.all([Storage.loadRecoveryBlocks(), Storage.loadRecoveryBlockWeeks()])
           .then(([blocks, weeks]) => (
             generation === recoveryReadGeneration ? publishRecoveryFilterSnapshot(blocks, weeks) : lastFilterSnapshot
-          ))
+          ), (e) => {
+            if (generation === recoveryReadGeneration && !recoveryFilterReadFailed) {
+              recoveryFilterReadFailed = true;
+              safeNotify(recoverySnapshotSubscribers);
+            }
+            throw e;
+          })
     ).finally(() => {
       if (recoveryFilterReadInFlight === read) recoveryFilterReadInFlight = null;
     });
@@ -571,6 +587,7 @@ export function _resetRecoveryAnalyticsFilterCache() {
   lastFilterSnapshot = { blocks: [], weeks: [] };
   lastFilterSignature = '';
   recoveryFilterVerified = false;
+  recoveryFilterReadFailed = false;
   recoveryLifecycle = { ...INITIAL_RECOVERY_LIFECYCLE };
   deferredRecoveryRead?.cancel();
   deferredRecoveryRead = null;

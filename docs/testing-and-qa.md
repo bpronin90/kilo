@@ -477,8 +477,8 @@ Coverage:
   ineligible until reconciliation; a corrupt journal, an inconsistent persisted
   snapshot, and unreadable Recovery data show unknown (never Normal) with the
   weight card still painted; an early `ensureVerifiedRecoveryState` reconciles
-  immediately; the fallback release still reconciles; a wipe mid-replay
-  publishes nothing.
+  immediately; a slow local hydration keeps the hold past the fallback until
+  Home paints; a wipe mid-replay publishes nothing.
 - `mobile/tests/app-startup.test.js`: the real App holds the automatic sync
   (auth seen as loading) and the reminder reconcile until release.
 - `mobile/tests/active-training-context.test.js`: provisional derivation and

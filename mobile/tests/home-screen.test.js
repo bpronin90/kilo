@@ -1941,13 +1941,17 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     beforeEach(() => {
       timing._resetStartupScheduling();
       atPaint = null;
-      const real = timing.releaseStartupBackgroundWork;
-      releaseSpy = jest.spyOn(timing, 'releaseStartupBackgroundWork').mockImplementation(() => {
-        if (!atPaint) {
-          atPaint = { journalReads: journalReads(), replays: timing.getStartupReconcileStartCount() };
-          paintState = { ...offscreen };
-        }
-        real();
+      // Observe the moment Home releases its claimed hold.
+      const realClaim = timing.claimStartupFirstPaint;
+      releaseSpy = jest.spyOn(timing, 'claimStartupFirstPaint').mockImplementation(() => {
+        const release = realClaim();
+        return () => {
+          if (!atPaint && timing.isStartupBackgroundWorkHeld()) {
+            atPaint = { journalReads: journalReads(), replays: timing.getStartupReconcileStartCount() };
+            paintState = { ...offscreen };
+          }
+          release();
+        };
       });
     });
     afterEach(async () => {
@@ -2039,20 +2043,48 @@ describe('Home recovery summary (#757, #779, #782)', () => {
       expect(has(component, 'home-weight-card')).toBe(true);
     });
 
-    test('unreadable local Recovery data never paints Normal; the fallback still reconciles', async () => {
-      AsyncStorage.getItem.mockImplementation(storageWith({ fail: [BLOCKS_KEY, WEEKS_KEY] }));
+    test('unreadable local Recovery data paints unknown, never Normal, then reconciles', async () => {
+      AsyncStorage.getItem.mockImplementation(withHeldJournal(storageWith({ fail: [BLOCKS_KEY, WEEKS_KEY] })));
       const component = await mountHeld();
-      // The bounded local read failed: nothing to show yet, and no hero.
-      expect(hasText(component, 'Log workout')).toBe(false);
-      expect(timing.getStartupReconcileStartCount()).toBe(0);
-
-      // The shell's fallback releases the hold even though Home never painted.
-      await render.act(async () => { timing.releaseStartupBackgroundWork(); });
       await settle();
+      // The bounded local read failed: unknown, not a skeleton and not a hero.
+      expect(atPaint).toEqual({ journalReads: 0, replays: 0 });
+      expect(has(component, 'home-skeleton')).toBe(false);
+      expect(hasText(component, 'Log workout')).toBe(false);
+      expect(has(component, 'home-weight-card')).toBe(true);
+
+      await reconcile();
       expect(timing.getStartupReconcileStartCount()).toBe(1);
       expect(hasText(component, hooks.RECOVERY_UNVERIFIED_MESSAGE)).toBe(true);
       expect(has(component, 'home-skeleton')).toBe(false);
       expect(hasText(component, 'Log workout')).toBe(false);
+    });
+
+    test('a slow local hydration keeps the hold past the fallback until Home paints', async () => {
+      AsyncStorage.getItem.mockImplementation(storageWith({}));
+      const p = props({ loading: true });
+      function ShortHoldShell(over) {
+        React.useState(() => { timing.holdStartupBackgroundWork(10); return null; });
+        return (
+          <>
+            <HomeScreen {...p} {...over} />
+            <OffscreenTabs currentId={p.workoutNote.id} notes={p.notes} />
+          </>
+        );
+      }
+      let component;
+      await render.act(async () => { component = render.create(<ShortHoldShell />); });
+      mounted = component;
+      await render.act(async () => { await new Promise(r => setTimeout(r, 40)); });
+      // Home is still hydrating: the fallback must not have released anything.
+      expect(has(component, 'home-skeleton')).toBe(true);
+      expect(timing.isStartupBackgroundWorkHeld()).toBe(true);
+      expect(timing.getStartupReconcileStartCount()).toBe(0);
+
+      await render.act(async () => { component.update(<ShortHoldShell loading={false} />); });
+      await settle();
+      expect(timing.isStartupBackgroundWorkHeld()).toBe(false);
+      expect(timing.getStartupReconcileStartCount()).toBe(1);
     });
 
     test('a wipe during reconciliation discards the previous owner\'s result', async () => {
