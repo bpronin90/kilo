@@ -76,7 +76,12 @@ jest.mock('../storage/syncRecovery', () => {
   };
 });
 
-jest.mock('../storage/entries/startupTiming', () => ({ markStartupPhase: jest.fn() }));
+jest.mock('../storage/entries/startupTiming', () => ({
+  markStartupPhase: jest.fn(),
+  recordStartupReconcileStart: jest.fn(),
+  // Nothing holds startup work in this suite (#1366): run deferred reads now.
+  whenStartupBackgroundWorkReleased: jest.fn((task) => { task(); return () => {}; }),
+}));
 jest.mock('../hooks/entries/workoutNoteHooks', () => ({ reloadWorkoutNotes: jest.fn() }));
 jest.mock('../hooks/entries/storageMode', () => ({}));
 
@@ -92,7 +97,7 @@ const WorkoutNoteHooks = require('../hooks/entries/workoutNoteHooks');
 
 const ALL_EXPORTS = [
   'RECOVERY_STATUS', 'RECOVERY_LOADING_MESSAGE', 'RECOVERY_UNVERIFIED_MESSAGE', 'RECOVERY_STALE_MESSAGE',
-  'refreshRecoveryState', 'ensureVerifiedRecoveryState', 'useRecoveryBlockState', 'useActiveTrainingContext',
+  'refreshRecoveryState', 'ensureVerifiedRecoveryState', 'invalidateRecoveryReadState', 'useRecoveryBlockState', 'useActiveTrainingContext',
   'useRecoveryAnalyticsFilter', 'reloadRecoveryBlocks', '_resetRecoveryAnalyticsFilterCache',
   'loadRecoveryExcludedNoteIds', 'isEligibleBaselineNote', 'isEligibleRecoveryWeekNote',
   'startRecoveryBlockCore', 'useStartRecoveryBlock', 'completeCurrentWeekCore', 'uncompleteCurrentWeekCore',

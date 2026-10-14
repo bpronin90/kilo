@@ -483,10 +483,18 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   (weight goal, tracked lifts, tracked-lift activations, recovery blocks,
   recovery block weeks, notebook, current-routine pointer, weight table) are
   then issued as one overlapping batch rather than one after another (#984).
-  The gate itself is unchanged: `loading || goalLoading || trackedLiftsLoading
-  || !recoveryBoundaryReady` still holds the skeleton until every one of those
-  sources has resolved, because `recoveryBoundaryReady` is a correctness
-  boundary (#699), not a cosmetic one.
+  Since #1366 the gate is local-first: `loading || goalLoading ||
+  trackedLiftsLoading`, plus the bounded persisted Recovery read (LOADING until
+  it lands), plus `!recoveryBoundaryReady` only when boundary-dependent
+  aggregates would render (#699). Recovery journal replay is not a term. The
+  shell holds background startup work during its first render
+  (`holdStartupBackgroundWork` in `storage/entries/startupTiming.js`), and
+  Home's first usable paint releases it (a fallback timer releases it if Home
+  never paints). Until then no mounted `useRecoveryBlockState` consumer — Home
+  or the hidden Log/Analytics tabs — starts reconciliation, the automatic
+  cloud sync sees auth as still loading, and the workout-reminder reconcile
+  waits. The device-key canary probe (#1364) and the legacy migration stay
+  ahead of paint as safety gates.
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules, now exposes the note-derived analytics contract used by downstream
   native workout analytics work, and centralizes exercise alias resolution in
@@ -1175,6 +1183,20 @@ Every read goes through `refreshRecoveryState()`, which runs at most one
 reconcile-then-read at a time and coalesces concurrent requests into a single
 queued follow-up, so two mounted consumers can never reconcile the journal
 concurrently.
+
+Automatic reads (the first consumer's mount, a completed sync) are deferred
+while the shell holds startup background work, so replay starts after Home's
+first usable paint (#1366); explicit reads (`ensureVerifiedRecoveryState`,
+`Retry recovery`, mutation notifications) never wait. While the first
+authoritative pass is pending, `useRecoveryBlockState` exposes the plain filter
+read as display-only `provisional` blocks/weeks. Home alone opts into it
+(`useActiveTrainingContext({ allowProvisional: true })`) and uses it only when
+internally consistent (`selectProvisionalRecovery`: one active block at most,
+no orphan or duplicate weeks, no open week before the latest); otherwise it
+shows unknown. Provisional data never sets `ready` or `mutationsAllowed`, and
+it is dropped once the authoritative pass fails. A device wipe calls
+`invalidateRecoveryReadState()`, which clears both snapshots and makes any read
+begun for the wiped data resolve without publishing.
 
 The store distinguishes `idle`, `loading`, `ready`, `refreshing`, `stale`, and
 `error` (`RECOVERY_STATUS`). The load-bearing distinction is `ready`: it is true

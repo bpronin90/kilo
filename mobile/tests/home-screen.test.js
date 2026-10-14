@@ -1752,9 +1752,11 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(has(component, 'home-recovery-summary')).toBe(true);
     expect(hasText(component, hooks.RECOVERY_UNVERIFIED_MESSAGE)).toBe(true);
     expect(has(component, 'home-recovery-big3')).toBe(false);
-    // #1241: unknown is not "normal" — the skeleton holds, never the normal hero.
-    expect(has(component, 'home-skeleton')).toBe(true);
+    // #1241: unknown is not "normal" — never the normal hero. #1366: nor a
+    // global skeleton; unrelated readable content (the weight card) paints.
+    expect(has(component, 'home-skeleton')).toBe(false);
     expect(hasText(component, 'Log workout')).toBe(false);
+    expect(has(component, 'home-weight-card')).toBe(true);
   });
 
   test('the unknown state offers exactly the control its message names', async () => {
@@ -1833,7 +1835,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(has(component, 'home-recovery-remaining')).toBe(false);
   });
 
-  test('a still-unresolved read holds the skeleton, never the normal hero, and offers no retry', async () => {
+  test('a still-unresolved reconciliation paints the persisted Recovery mode, with no retry', async () => {
     let releaseRecoveryRead;
     const gate = new Promise(resolve => { releaseRecoveryRead = resolve; });
     AsyncStorage.getItem.mockImplementation(async (key) => {
@@ -1845,10 +1847,12 @@ describe('Home recovery summary (#757, #779, #782)', () => {
 
     const component = await mount({ loading: false });
     try {
-      // #1241: the cold-start flash. The boundary read has resolved, but the
-      // authoritative Recovery read has not, so the hero mode is unknown.
-      expect(has(component, 'home-skeleton')).toBe(true);
-      expect(hasText(component, 'Log workout')).toBe(false);
+      // #1366: replay has not settled, but the persisted read is consistent,
+      // so Home paints the last-known Recovery mode — never the normal hero
+      // (#1241) and never a skeleton waiting on the journal.
+      expect(has(component, 'home-skeleton')).toBe(false);
+      expect(has(component, 'home-recovery-headline')).toBe(true);
+      expect(has(component, 'home-one-k-link')).toBe(false);
       expect(has(component, 'home-recovery-retry')).toBe(false);
     } finally {
       await render.act(async () => { releaseRecoveryRead(); await gate; });
@@ -1858,15 +1862,16 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(hasText(component, hooks.RECOVERY_LOADING_MESSAGE)).toBe(false);
   });
 
-  test('a pending Recovery operation holds the skeleton with its own message and retry', async () => {
+  test('a pending Recovery operation shows unknown with its own message and retry, not a hero', async () => {
     const replay = require('../storage/entries/recoveryOperationJournal');
     const spy = jest.spyOn(replay, 'reconcileRecoveryOperations')
       .mockResolvedValue({ ok: false, pending: [{ ok: false, code: 'X' }], cancelled: [], error: null });
     AsyncStorage.getItem.mockImplementation(storageWith({}));
     try {
       const component = await mount();
-      expect(has(component, 'home-skeleton')).toBe(true);
+      expect(has(component, 'home-skeleton')).toBe(false);
       expect(hasText(component, 'Log workout')).toBe(false);
+      expect(has(component, 'home-weight-card')).toBe(true);
       expect(hasText(component, require('../screens/HomeScreen').RECOVERY_PENDING_HOLD_MESSAGE)).toBe(true);
       const retry = component.root.findByProps({ testID: 'home-recovery-retry' });
 
@@ -1878,6 +1883,197 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  // ── local-first startup (#1366) ──────────────────────────────────────────
+  //
+  // The shell holds background startup work during its first render (as
+  // AppShell does) and Home's first usable paint releases it. The hidden-tab
+  // stand-in mounts the same hooks Log and Analytics do, so an off-screen
+  // subscriber that starts replay early would show up in the counts.
+  describe('local-first startup (#1366)', () => {
+    const timing = require('../storage/entries/startupTiming');
+    const offscreen = {};
+    function OffscreenTabs({ currentId, notes }) {
+      const state = hooks.useRecoveryBlockState();
+      const context = hooks.useActiveTrainingContext({ currentId, notes });
+      hooks.useRecoveryAnalyticsFilter();
+      offscreen.mutationsAllowed = state.mutationsAllowed;
+      offscreen.status = context.status;
+      return null;
+    }
+    function HeldShell(p) {
+      React.useState(() => { timing.holdStartupBackgroundWork(60000); return null; });
+      return (
+        <>
+          <HomeScreen {...p} />
+          <OffscreenTabs currentId={p.workoutNote?.id ?? null} notes={p.notes} />
+        </>
+      );
+    }
+    const journalReads = () => AsyncStorage.getItem.mock.calls.filter(([k]) => k === JOURNAL_KEY).length;
+    let atPaint;
+    let paintState;
+    let releaseSpy;
+    const mountHeld = async (over) => {
+      let component;
+      await render.act(async () => { component = render.create(<HeldShell {...props(over)} />); });
+      mounted = component;
+      return component;
+    };
+    const settle = () => render.act(async () => { await new Promise(r => setTimeout(r, 5)); });
+    // Holds the journal read (the first step of replay) until released, so the
+    // pre-reconciliation render is observable deterministically.
+    let openJournal;
+    const withHeldJournal = (base, { journalFails = false } = {}) => {
+      const gate = new Promise(r => { openJournal = r; });
+      return async (key) => {
+        if (key === JOURNAL_KEY) {
+          await gate;
+          if (journalFails) throw new Error('storage unavailable');
+          return null;
+        }
+        return base(key);
+      };
+    };
+    const reconcile = async () => { await render.act(async () => { openJournal(); }); await settle(); };
+
+    beforeEach(() => {
+      timing._resetStartupScheduling();
+      atPaint = null;
+      const real = timing.releaseStartupBackgroundWork;
+      releaseSpy = jest.spyOn(timing, 'releaseStartupBackgroundWork').mockImplementation(() => {
+        if (!atPaint) {
+          atPaint = { journalReads: journalReads(), replays: timing.getStartupReconcileStartCount() };
+          paintState = { ...offscreen };
+        }
+        real();
+      });
+    });
+    afterEach(async () => {
+      // A still-held journal read would wedge the journal's own queue for the
+      // next test; let it finish before the store is reset.
+      if (openJournal) await render.act(async () => { openJournal(); });
+      openJournal = null;
+      releaseSpy.mockRestore();
+      timing._resetStartupScheduling();
+    });
+
+    test('Recovery: paints the persisted week before any journal read or replay, then reconciles', async () => {
+      AsyncStorage.getItem.mockImplementation(withHeldJournal(storageWith({ blocks: [block()], weeks: [week()] })));
+      const component = await mountHeld();
+
+      expect(atPaint).toEqual({ journalReads: 0, replays: 0 });
+      expect(has(component, 'home-skeleton')).toBe(false);
+      expect(has(component, 'home-recovery-headline')).toBe(true);
+      expect(hasText(component, 'Log workout')).toBe(true);
+      // Display only: nothing reconciled, so no mutation is eligible yet.
+      expect(paintState.mutationsAllowed).toBe(false);
+      await settle();
+      expect(offscreen.mutationsAllowed).toBe(false);
+
+      await reconcile();
+      expect(timing.getStartupReconcileStartCount()).toBe(1);
+      expect(journalReads()).toBeGreaterThan(0);
+      expect(has(component, 'home-recovery-headline')).toBe(true);
+      expect(offscreen.mutationsAllowed).toBe(true);
+      expect(offscreen.status).toBe('recovery_open_week');
+    });
+
+    test('Normal and Deload: the current routine paints before replay, unpromoted', async () => {
+      AsyncStorage.getItem.mockImplementation(withHeldJournal(storageWith({})));
+      const deload = { ...NOTE, id: 'nd', title: 'Deload · Routine A' };
+      const component = await mountHeld({ workoutNote: deload, notes: [deload] });
+
+      expect(atPaint).toEqual({ journalReads: 0, replays: 0 });
+      expect(hasText(component, 'Deload · Routine A')).toBe(true);
+      expect(hasText(component, 'Log workout')).toBe(true);
+      expect(paintState.mutationsAllowed).toBe(false);
+      // Hidden tabs never see the provisional answer.
+      expect(paintState.status).toBe('loading');
+
+      await reconcile();
+      expect(offscreen.status).toBe('normal');
+      expect(offscreen.mutationsAllowed).toBe(true);
+    });
+
+    test('a conflicting early action reconciles immediately instead of waiting for paint', async () => {
+      AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
+      timing.holdStartupBackgroundWork(60000);
+      let outcome;
+      await render.act(async () => { outcome = await hooks.ensureVerifiedRecoveryState(); });
+      expect(outcome).toEqual({ ok: true });
+      expect(timing.getStartupReconcileStartCount()).toBe(1);
+    });
+
+    test('a corrupt journal after paint keeps local content and offers retry, never Normal', async () => {
+      AsyncStorage.getItem.mockImplementation(withHeldJournal(
+        storageWith({ blocks: [block()], weeks: [week()] }), { journalFails: true }
+      ));
+      const component = await mountHeld();
+      await settle();
+      expect(has(component, 'home-recovery-headline')).toBe(true);
+
+      await reconcile();
+      expect(hasText(component, hooks.RECOVERY_UNVERIFIED_MESSAGE)).toBe(true);
+      expect(has(component, 'home-recovery-retry')).toBe(true);
+      expect(has(component, 'home-weight-card')).toBe(true);
+      expect(has(component, 'home-skeleton')).toBe(false);
+      expect(hasText(component, 'Log workout')).toBe(false);
+      expect(offscreen.mutationsAllowed).toBe(false);
+    });
+
+    test('an inconsistent persisted snapshot is unknown, not a guessed week or Normal', async () => {
+      // Two active blocks: a half-applied operation could leave this behind.
+      AsyncStorage.getItem.mockImplementation(withHeldJournal(storageWith({
+        blocks: [block(), block({ id: 'rb2' })], weeks: [week()],
+      })));
+      const component = await mountHeld();
+      await settle();
+
+      expect(atPaint).toEqual({ journalReads: 0, replays: 0 });
+      expect(has(component, 'home-skeleton')).toBe(false);
+      expect(hasText(component, hooks.RECOVERY_LOADING_MESSAGE)).toBe(true);
+      expect(hasText(component, 'Log workout')).toBe(false);
+      expect(has(component, 'home-recovery-headline')).toBe(false);
+      expect(has(component, 'home-weight-card')).toBe(true);
+    });
+
+    test('unreadable local Recovery data never paints Normal; the fallback still reconciles', async () => {
+      AsyncStorage.getItem.mockImplementation(storageWith({ fail: [BLOCKS_KEY, WEEKS_KEY] }));
+      const component = await mountHeld();
+      // The bounded local read failed: nothing to show yet, and no hero.
+      expect(hasText(component, 'Log workout')).toBe(false);
+      expect(timing.getStartupReconcileStartCount()).toBe(0);
+
+      // The shell's fallback releases the hold even though Home never painted.
+      await render.act(async () => { timing.releaseStartupBackgroundWork(); });
+      await settle();
+      expect(timing.getStartupReconcileStartCount()).toBe(1);
+      expect(hasText(component, hooks.RECOVERY_UNVERIFIED_MESSAGE)).toBe(true);
+      expect(has(component, 'home-skeleton')).toBe(false);
+      expect(hasText(component, 'Log workout')).toBe(false);
+    });
+
+    test('a wipe during reconciliation discards the previous owner\'s result', async () => {
+      let releaseJournal;
+      const journalGate = new Promise(r => { releaseJournal = r; });
+      AsyncStorage.getItem.mockImplementation(async (key) => {
+        if (key === JOURNAL_KEY) { await journalGate; return null; }
+        return storageWith({ blocks: [block()], weeks: [week()] })(key);
+      });
+      await mountHeld();
+      await settle();
+      expect(timing.getStartupReconcileStartCount()).toBe(1);
+
+      await render.act(async () => { hooks.invalidateRecoveryReadState(); });
+      AsyncStorage.getItem.mockImplementation(async () => null);
+      await render.act(async () => { releaseJournal(); await journalGate; });
+      await settle();
+      // The in-flight pass resolved after the wipe and published nothing.
+      expect(offscreen.mutationsAllowed).toBe(false);
+      expect(offscreen.status).not.toBe('recovery_open_week');
+    });
   });
 
   // A realistic roster (#1171): the default 1K picks plus three other lifts.

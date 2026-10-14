@@ -79,6 +79,77 @@ export function markStartupStorageReads(now = Date.now()) {
   if (typeof __DEV__ === 'undefined' || !__DEV__) return null;
   const elapsedMs = now - startedAt;
   // eslint-disable-next-line no-console
-  console.log(`[startup] storage:reads: issued=${storageReads.issued} coalesced=${storageReads.coalesced} keycheck:canary=${keyChecks.canary} keycheck:scan=${keyChecks.scan} at ${elapsedMs}ms`);
-  return { ...storageReads, keyChecks: { ...keyChecks } };
+  console.log(`[startup] storage:reads: issued=${storageReads.issued} coalesced=${storageReads.coalesced} keycheck:canary=${keyChecks.canary} keycheck:scan=${keyChecks.scan} reconcile:starts=${reconcileStarts} at ${elapsedMs}ms`);
+  return { ...storageReads, keyChecks: { ...keyChecks }, reconcileStarts };
+}
+
+// ── first-usable-paint scheduling (#1366) ─────────────────────────────────────
+//
+// NOT dev-only, unlike everything above: this is the one production contract
+// that keeps background startup work (Recovery journal replay, the automatic
+// cloud sync, reminder reconciliation) off the storage queues until Home has
+// painted from local data. The shell holds it during its first render — before
+// any child effect can start a read — and Home releases it from its first-paint
+// effect. A fallback timer releases it anyway, so a launch that never paints
+// Home (another initial tab, an unmounted shell) cannot leave that work parked.
+const STARTUP_HOLD_FALLBACK_MS = 2500;
+let backgroundHold = null;
+let backgroundWaiters = [];
+let reconcileStarts = 0;
+
+export function holdStartupBackgroundWork(fallbackMs = STARTUP_HOLD_FALLBACK_MS) {
+  if (backgroundHold) return;
+  const timer = setTimeout(releaseStartupBackgroundWork, fallbackMs);
+  timer?.unref?.();
+  backgroundHold = { timer };
+}
+
+export function isStartupBackgroundWorkHeld() {
+  return !!backgroundHold;
+}
+
+// Runs `task` now when nothing is held; otherwise once the hold is released, in
+// a later macrotask so it lands after the paint that released it rather than
+// inside that commit. Returns a cancel function.
+export function whenStartupBackgroundWorkReleased(task) {
+  if (!backgroundHold) {
+    task();
+    return () => {};
+  }
+  const entry = { task };
+  backgroundWaiters.push(entry);
+  return () => { backgroundWaiters = backgroundWaiters.filter(e => e !== entry); };
+}
+
+export function releaseStartupBackgroundWork() {
+  if (!backgroundHold) return;
+  clearTimeout(backgroundHold.timer);
+  backgroundHold = null;
+  const waiters = backgroundWaiters;
+  backgroundWaiters = [];
+  if (waiters.length === 0) return;
+  setTimeout(() => {
+    for (const { task } of waiters) {
+      try { task(); } catch { /* one waiter cannot starve the rest */ }
+    }
+  }, 0);
+}
+
+// Journal replay starts (#1366): a count, reported with the read counters so a
+// trace shows whether replay ran before `home:first-paint`.
+export function recordStartupReconcileStart() {
+  reconcileStarts += 1;
+  if (typeof __DEV__ !== 'undefined' && __DEV__) markStartupPhase('recovery:reconcile:start');
+}
+
+export function getStartupReconcileStartCount() {
+  return reconcileStarts;
+}
+
+// Test seam: drop any hold, parked task, and replay count.
+export function _resetStartupScheduling() {
+  if (backgroundHold) clearTimeout(backgroundHold.timer);
+  backgroundHold = null;
+  backgroundWaiters = [];
+  reconcileStarts = 0;
 }

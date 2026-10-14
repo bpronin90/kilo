@@ -34,6 +34,7 @@ export const refreshRecoveryState = ReadState.refreshRecoveryState;
 export const ensureVerifiedRecoveryState = ReadState.ensureVerifiedRecoveryState;
 export const useRecoveryBlockState = ReadState.useRecoveryBlockState;
 export const reloadRecoveryBlocks = ReadState.reloadRecoveryBlocks;
+export const invalidateRecoveryReadState = ReadState.invalidateRecoveryReadState;
 export const _resetRecoveryAnalyticsFilterCache = ReadState._resetRecoveryAnalyticsFilterCache;
 
 // ── analytics filtering + read-derived hooks ──────────────────────────────────

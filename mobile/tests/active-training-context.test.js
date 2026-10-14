@@ -2,6 +2,7 @@ import {
   ACTIVE_TRAINING_STATUS,
   deriveActiveTrainingContext,
   resolveActiveTrainingContext,
+  selectProvisionalRecovery,
 } from '../lib/data/activeTrainingContext';
 import { buildRecoveryBlock, buildRecoveryWeek } from '../lib/data/recoveryBlocks';
 
@@ -203,5 +204,57 @@ describe('resolveActiveTrainingContext', () => {
     expect(loading.activeNote).toBeNull();
     expect(loading.baselineNote).toBeNull();
     expect(loading.status).toBe(ACTIVE_TRAINING_STATUS.LOADING);
+  });
+});
+
+// #1366: a bounded persisted read may answer for display while the first
+// authoritative pass is pending — only when internally consistent, and never
+// after that pass has failed.
+describe('provisional display context (#1366)', () => {
+  const b = block({ id: 'b1' });
+  const open = week({ blockId: 'b1', noteId: 'w1', weekNumber: 1, id: 'wk1' });
+  const pendingRead = (provisional) => deriveActiveTrainingContext({
+    currentId: 'note-1', recoveryReady: false, recoveryLoading: true, provisional,
+  });
+
+  test('a consistent Recovery read gives the persisted week, flagged provisional', () => {
+    const ctx = pendingRead({ blocks: [b], weeks: [open] });
+    expect(ctx.status).toBe(ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK);
+    expect(ctx.recoveryWeekNumber).toBe(1);
+    expect(ctx.provisional).toBe(true);
+  });
+
+  test('an empty consistent read is a provisional normal, not a verified one', () => {
+    const ctx = pendingRead({ blocks: [], weeks: [] });
+    expect(ctx.status).toBe(ACTIVE_TRAINING_STATUS.NORMAL);
+    expect(ctx.provisional).toBe(true);
+  });
+
+  test('inconsistent reads are unknown: two active blocks, duplicate weeks, orphan or out-of-order weeks', () => {
+    const cases = [
+      { blocks: [b, block({ id: 'b2' })], weeks: [] },
+      { blocks: [b], weeks: [open, week({ blockId: 'b1', noteId: 'w2', weekNumber: 1, id: 'wk2' })] },
+      { blocks: [b], weeks: [week({ blockId: 'gone', noteId: 'w1', weekNumber: 1, id: 'wk3' })] },
+      { blocks: [b], weeks: [open, week({ blockId: 'b1', noteId: 'w2', weekNumber: 2, id: 'wk4' })] },
+      { blocks: null, weeks: [] },
+    ];
+    for (const provisional of cases) {
+      expect(selectProvisionalRecovery(provisional).consistent).toBe(false);
+      const ctx = pendingRead(provisional);
+      expect(ctx.status).toBe(ACTIVE_TRAINING_STATUS.UNVERIFIED);
+      expect(ctx.baselinePaused).toBeNull();
+    }
+  });
+
+  test('a failed authoritative read ignores the provisional data entirely', () => {
+    const ctx = deriveActiveTrainingContext({
+      currentId: 'note-1', recoveryReady: false, recoveryLoading: false, provisional: { blocks: [], weeks: [] },
+    });
+    expect(ctx.status).toBe(ACTIVE_TRAINING_STATUS.UNVERIFIED);
+    expect(ctx.provisional).toBeUndefined();
+  });
+
+  test('no provisional read yet stays loading', () => {
+    expect(pendingRead(null).status).toBe(ACTIVE_TRAINING_STATUS.LOADING);
   });
 });

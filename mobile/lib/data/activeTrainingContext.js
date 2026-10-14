@@ -12,7 +12,7 @@
 // ordered memberships (`orderedLiveWeeks`), never from note titles, `currentId`,
 // or array order — mirroring the same rule `recoveryBlockHooks.js` documents
 // for Recovery eligibility.
-import { orderedLiveWeeks } from './recoveryBlocks';
+import { findActiveBlock, isBlockActive, isLiveRecord, orderedLiveWeeks } from './recoveryBlocks';
 
 export const ACTIVE_TRAINING_STATUS = Object.freeze({
   // The authoritative Recovery read has not verified anything yet (first load,
@@ -60,6 +60,32 @@ const EMPTY_CONTEXT = Object.freeze({
   pending: false,
 });
 
+// Local-first display (#1366). While the first authoritative (reconciled) read
+// is still pending, a bounded plain read of the persisted blocks/weeks may
+// supply the last-known mode. It can reflect a half-applied journal operation,
+// so it is used only when it is internally consistent: at most one active
+// block, every live week attached to a block that exists, unique week numbers
+// in the active block, and no open week before its latest. Anything else is
+// unknown — never a guessed week and never a fallback to normal.
+export function selectProvisionalRecovery(provisional) {
+  if (!provisional) return null;
+  const blocks = Array.isArray(provisional.blocks) ? provisional.blocks : null;
+  const weeks = Array.isArray(provisional.weeks) ? provisional.weeks : null;
+  if (!blocks || !weeks) return { consistent: false, activeBlock: null, weeks: [] };
+  const activeBlock = findActiveBlock(blocks);
+  const blockIds = new Set(blocks.map(b => b?.id));
+  const live = weeks.filter(w => w && isLiveRecord(w));
+  let consistent = blocks.filter(b => b && isBlockActive(b)).length <= 1
+    && live.every(w => blockIds.has(w.block_id));
+  if (consistent && activeBlock) {
+    const ordered = orderedLiveWeeks(weeks, activeBlock.id);
+    const numbers = new Set(ordered.map(w => w.week_number));
+    consistent = numbers.size === ordered.length
+      && ordered.slice(0, -1).every(w => !!w.completed_at);
+  }
+  return { consistent, activeBlock: consistent ? activeBlock : null, weeks: consistent ? weeks : [] };
+}
+
 // Pure derivation. Takes the exact fields `useRecoveryBlockState()` already
 // publishes (`ready`, `loading`, `stale`, `pendingRecovery`, `activeBlock`,
 // `weeks`) plus the workout-note `currentId`, and returns one deterministic
@@ -77,13 +103,27 @@ export function deriveActiveTrainingContext({
   pendingRecovery = [],
   activeBlock = null,
   weeks = [],
+  provisional = null,
 } = {}) {
   // A read that is not yet verified — a first load in flight, or a terminal
-  // first-load failure — is unknown, not normal.
+  // first-load failure — is unknown, not normal. A consistent provisional read
+  // (#1366, only offered while the first authoritative read is pending) answers
+  // with the last-known mode, flagged `provisional`; an inconsistent one is
+  // UNVERIFIED so the caller shows unknown rather than waiting or guessing.
   if (!recoveryReady) {
+    const local = recoveryLoading ? selectProvisionalRecovery(provisional) : null;
+    if (local && local.consistent) {
+      return {
+        ...deriveActiveTrainingContext({
+          currentId, recoveryReady: true, activeBlock: local.activeBlock, weeks: local.weeks,
+        }),
+        provisional: true,
+      };
+    }
     return {
       ...EMPTY_CONTEXT,
-      status: recoveryLoading ? ACTIVE_TRAINING_STATUS.LOADING : ACTIVE_TRAINING_STATUS.UNVERIFIED,
+      status: recoveryLoading && !local ? ACTIVE_TRAINING_STATUS.LOADING : ACTIVE_TRAINING_STATUS.UNVERIFIED,
+      ...(local ? { provisional: true } : {}),
     };
   }
 

@@ -20,6 +20,7 @@ import { AnalyticsScreen } from './screens/AnalyticsScreen';
 
 import { CloudSyncContext } from './hooks/useEntries';
 import { reloadRecoveryBlocks } from './hooks/entries/recoveryBlockHooks';
+import { invalidateRecoveryReadState } from './hooks/entries/recoveryReadState';
 import { importBackup, getStorageMode } from './storage/entries';
 import { RestTimerBanner } from './components/RestTimerBanner';
 import { useAppShell } from './app/AppShell';
@@ -110,6 +111,9 @@ function WipeAwareAppShell() {
   }, []);
 
   const handleDeviceDataWiped = useCallback(() => new Promise((resolve) => {
+    // The Recovery store is module state that outlives the remount (#1366):
+    // drop it, and any read begun for the wiped data, before the new shell.
+    invalidateRecoveryReadState();
     remountResolversRef.current.push(resolve);
     setDeviceDataGeneration((generation) => generation + 1);
   }), []);
