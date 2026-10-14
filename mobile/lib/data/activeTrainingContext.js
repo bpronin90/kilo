@@ -65,8 +65,9 @@ const EMPTY_CONTEXT = Object.freeze({
 // supply the last-known mode. It can reflect a half-applied journal operation,
 // so it is used only when it is internally consistent: at most one active
 // block, every live week attached to a block that exists, at most one live
-// membership per note, unique week numbers in the active block, and no open
-// week before its latest. Anything else is
+// membership per note, every live week shaped as a record (string ids, a
+// positive integer week number), unique week numbers in the active block, and
+// no open week before its latest. Anything else is
 // unknown — never a guessed week and never a fallback to normal.
 export function selectProvisionalRecovery(provisional) {
   if (!provisional) return null;
@@ -77,6 +78,8 @@ export function selectProvisionalRecovery(provisional) {
   const blockIds = new Set(blocks.map(b => b?.id));
   const live = weeks.filter(w => w && isLiveRecord(w));
   let consistent = blocks.filter(b => b && isBlockActive(b)).length <= 1
+    && live.every(w => typeof w.block_id === 'string' && typeof w.note_id === 'string'
+      && Number.isInteger(w.week_number) && w.week_number >= 1)
     && live.every(w => blockIds.has(w.block_id))
     && new Set(live.map(w => w.note_id)).size === live.length;
   if (consistent && activeBlock) {

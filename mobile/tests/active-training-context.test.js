@@ -241,6 +241,11 @@ describe('provisional display context (#1366)', () => {
         week({ blockId: 'b1', noteId: 'w1', weekNumber: 1, id: 'wk5', completedAt: '2026-01-02T00:00:00.000Z' }),
         week({ blockId: 'b1', noteId: 'w1', weekNumber: 2, id: 'wk6' }),
       ] },
+      // Malformed persisted ordinals and identities are not a week to show.
+      { blocks: [b], weeks: [{ ...open, week_number: 0 }] },
+      { blocks: [b], weeks: [{ ...open, week_number: 1.5 }] },
+      { blocks: [b], weeks: [{ ...open, week_number: '1' }] },
+      { blocks: [b], weeks: [{ ...open, note_id: null }] },
       { blocks: null, weeks: [] },
     ];
     for (const provisional of cases) {
