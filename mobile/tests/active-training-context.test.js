@@ -236,6 +236,11 @@ describe('provisional display context (#1366)', () => {
       { blocks: [b], weeks: [open, week({ blockId: 'b1', noteId: 'w2', weekNumber: 1, id: 'wk2' })] },
       { blocks: [b], weeks: [week({ blockId: 'gone', noteId: 'w1', weekNumber: 1, id: 'wk3' })] },
       { blocks: [b], weeks: [open, week({ blockId: 'b1', noteId: 'w2', weekNumber: 2, id: 'wk4' })] },
+      // One note with two live memberships (distinct weeks, earlier completed).
+      { blocks: [b], weeks: [
+        week({ blockId: 'b1', noteId: 'w1', weekNumber: 1, id: 'wk5', completedAt: '2026-01-02T00:00:00.000Z' }),
+        week({ blockId: 'b1', noteId: 'w1', weekNumber: 2, id: 'wk6' }),
+      ] },
       { blocks: null, weeks: [] },
     ];
     for (const provisional of cases) {

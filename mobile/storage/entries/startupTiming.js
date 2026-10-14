@@ -19,6 +19,8 @@ let storageReads = { issued: 0, coalesced: 0 };
 // Device-key validation counters (#1364): how many launches proved the key by
 // the constant-time canary versus the full-store envelope scan. Counts only.
 let keyChecks = { canary: 0, scan: 0 };
+// Journal replay starts (#1366). Counts only.
+let reconcileStarts = 0;
 
 // Exported for tests: pins the reference instant a "cold start" is measured
 // from, since module import time (the real cold-start signal) is not
@@ -28,6 +30,7 @@ export function resetStartupTiming(now = Date.now()) {
   marks = [];
   storageReads = { issued: 0, coalesced: 0 };
   keyChecks = { canary: 0, scan: 0 };
+  reconcileStarts = 0;
 }
 
 export function markStartupPhase(name, now = Date.now()) {
@@ -95,7 +98,6 @@ export function markStartupStorageReads(now = Date.now()) {
 const STARTUP_HOLD_FALLBACK_MS = 2500;
 let backgroundHold = null;
 let backgroundWaiters = [];
-let reconcileStarts = 0;
 
 export function holdStartupBackgroundWork(fallbackMs = STARTUP_HOLD_FALLBACK_MS) {
   if (backgroundHold) return;
