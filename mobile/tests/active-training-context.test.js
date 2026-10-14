@@ -257,6 +257,16 @@ describe('provisional display context (#1366)', () => {
         weeks: [open, week({ blockId: 'b0', noteId: 'w8', weekNumber: 1, id: 'wk8' })] },
       // A week whose note is its own block's frozen baseline (NOTE_IS_BASELINE).
       { blocks: [b], weeks: [{ ...open, note_id: b.baseline_note_id }] },
+      // Empty identities are not identities.
+      { blocks: [{ ...b, baseline_note_id: '' }], weeks: [] },
+      { blocks: [b], weeks: [{ ...open, note_id: '' }] },
+      { blocks: [{ ...b, id: '' }], weeks: [] },
+      { blocks: [b], weeks: [{ ...open, id: '' }] },
+      // Duplicate ordinals on a COMPLETED block still make the data inconsistent.
+      { blocks: [{ ...b, completed_at: '2026-10-01T00:00:00.000Z' }], weeks: [
+        week({ blockId: 'b1', noteId: 'r1', weekNumber: 1, id: 'c1', completedAt: '2026-09-01T00:00:00.000Z' }),
+        week({ blockId: 'b1', noteId: 'r2', weekNumber: 1, id: 'c2' }),
+      ] },
       // Malformed lifecycle fields: truthiness must not decide the mode.
       { blocks: [{ ...b, completed_at: {} }], weeks: [] },
       { blocks: [{ ...b, completed_at: 'not a date' }], weeks: [] },

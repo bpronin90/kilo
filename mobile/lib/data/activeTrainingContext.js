@@ -65,24 +65,26 @@ const EMPTY_CONTEXT = Object.freeze({
 // supply the last-known mode. It can reflect a half-applied journal operation
 // or a malformed record, so it is used only when every identity in it is
 // unambiguous and the active block's weeks line up:
-//   - every block and week is a record with a string id, unique among its kind,
-//     and every field the mode decision reads is well-typed: lifecycle markers
-//     (`completed_at`, `deleted_at`) absent/null or a parseable timestamp,
-//     `baseline_note_id` a string, the inclusion preference a boolean if set;
+//   - every block and week is a record with a non-empty string id, unique
+//     among its kind, and every field the mode decision reads is well-typed:
+//     lifecycle markers (`completed_at`, `deleted_at`) absent/null or a
+//     parseable timestamp, `baseline_note_id` a non-empty string, the
+//     inclusion preference a boolean if set;
 //   - at most one active block;
-//   - every live week has string block/note ids, a positive integer week
+//   - every live week has non-empty block/note ids, a positive integer week
 //     number, belongs to a LIVE block, and is not that block's own baseline
 //     note (storage's NOTE_IS_BASELINE rule);
 //   - at most one live membership per note;
-//   - the active block's live weeks have unique numbers, with no open week
-//     before the latest.
+//   - every live block's live weeks have unique numbers, and the active
+//     block has no open week before its latest.
 // Anything else is unknown — never a guessed week and never a fallback to
 // normal.
-const hasUniqueStringIds = records => records.every(r => r && typeof r.id === 'string')
+const isId = v => typeof v === 'string' && v.length > 0;
+const hasUniqueIds = records => records.every(r => r && isId(r.id))
   && new Set(records.map(r => r.id)).size === records.length;
 const isMarker = v => v == null || (typeof v === 'string' && !Number.isNaN(Date.parse(v)));
 const hasMarkers = r => isMarker(r.completed_at) && isMarker(r.deleted_at);
-const isWellTypedBlock = b => hasMarkers(b) && typeof b.baseline_note_id === 'string'
+const isWellTypedBlock = b => hasMarkers(b) && isId(b.baseline_note_id)
   && (b.include_in_normal_analytics === undefined || typeof b.include_in_normal_analytics === 'boolean');
 
 // The storage readers drop any record whose `deleted_at` is truthy before the
@@ -90,24 +92,24 @@ const isWellTypedBlock = b => hasMarkers(b) && typeof b.baseline_note_id === 'st
 // read as unknown. This checks the RAW persisted lists, tombstones included.
 export function arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks) {
   return Array.isArray(rawBlocks) && Array.isArray(rawWeeks)
-    && [...rawBlocks, ...rawWeeks].every(r => r && typeof r.id === 'string' && hasMarkers(r));
+    && [...rawBlocks, ...rawWeeks].every(r => r && isId(r.id) && hasMarkers(r));
 }
 
 function isProvisionalSnapshotConsistent(blocks, weeks) {
-  if (!hasUniqueStringIds(blocks) || !hasUniqueStringIds(weeks)) return false;
+  if (!hasUniqueIds(blocks) || !hasUniqueIds(weeks)) return false;
   if (!blocks.every(isWellTypedBlock) || !weeks.every(hasMarkers)) return false;
   if (blocks.filter(isBlockActive).length > 1) return false;
   const liveBlocks = new Map(blocks.filter(isLiveRecord).map(b => [b.id, b]));
   const live = weeks.filter(isLiveRecord);
-  const wellFormed = live.every(w => typeof w.block_id === 'string' && typeof w.note_id === 'string'
+  const wellFormed = live.every(w => isId(w.block_id) && isId(w.note_id)
     && Number.isInteger(w.week_number) && w.week_number >= 1 && liveBlocks.has(w.block_id)
     && w.note_id !== liveBlocks.get(w.block_id).baseline_note_id);
   if (!wellFormed || new Set(live.map(w => w.note_id)).size !== live.length) return false;
+  // Ordinals are unique per block, completed blocks included.
+  if (new Set(live.map(w => `${w.block_id}|${w.week_number}`)).size !== live.length) return false;
   const activeBlock = findActiveBlock(blocks);
   if (!activeBlock) return true;
-  const ordered = orderedLiveWeeks(weeks, activeBlock.id);
-  return new Set(ordered.map(w => w.week_number)).size === ordered.length
-    && ordered.slice(0, -1).every(w => !!w.completed_at);
+  return orderedLiveWeeks(weeks, activeBlock.id).slice(0, -1).every(w => !!w.completed_at);
 }
 
 export function selectProvisionalRecovery(provisional) {
