@@ -1124,7 +1124,11 @@ makes the sync read throw rather than shrink the view. While a journaled
 operation is pending only the cross-record consistency repairs wait; shape
 classification, set-aside of malformed records and the corrupt-payload route
 always run, so a pending operation stuck on a malformed row is unblocked.
-Quarantined versions get full-content collision suffixes. If the block never arrives the record stays held, unaltered and
+Quarantined versions get full-content collision suffixes. The view's baseline read is
+strict (a snapshot storage error throws; only an absent or undecodable value is
+"no snapshot"), and a held-store entry repair cannot interpret is kept verbatim
+in place, never dropped. The only versions repair discards are byte-identical
+duplicates and the LWW loser among versions of one logical record id. If the block never arrives the record stays held, unaltered and
 inspectable (`loadHeldRecoveryRecords`).
 
 Unrepairable records: the first pass that sees a set of them leaves them alone

@@ -232,9 +232,13 @@ export function planRecoveryRepair({ blocks, weeks, held = [], clientId, quarant
       fresh.push(a);
     }
   }
-  const keep = held.filter(isHeld).filter(h => !replaced.has(h.held_id));
+  // An entry this version cannot interpret (no held_id, non-object record, ...)
+  // is kept VERBATIM and in place: repair never drops an input it did not
+  // understand. Only a recognised entry that was superseded under LWW (same
+  // logical record id) or re-attached leaves the store.
+  const keep = held.filter(h => !isHeld(h) || !replaced.has(h.held_id));
   const heldBefore = [...keep, ...fresh];
-  const heldAfter = heldBefore.filter(h => !spent.has(h.held_id));
+  const heldAfter = heldBefore.filter(h => !(isHeld(h) && spent.has(h.held_id)));
 
   const sameList = (a, b) => a.length === b.length && a.every((r, i) => r === b[i]);
   return {

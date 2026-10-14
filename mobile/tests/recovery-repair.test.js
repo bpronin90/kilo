@@ -28,6 +28,7 @@ import { reconcileAgainstBaseline } from '../storage/sync/reconciliation';
 import '../storage/entries'; // entries first: avoids the pre-existing entries/sync-adapter import cycle
 import { createTableIo } from '../storage/cloud/syncTableIo';
 import { SYNC_TABLES } from '../storage/sync/records';
+import { reconcileLocalWrites } from '../storage/sync/reconciliation';
 import { secureStorage } from '../storage/secureStorage';
 import * as readState from '../hooks/entries/recoveryReadState';
 import { withRecoveryReconciliation } from '../hooks/entries/storageMode';
@@ -905,3 +906,46 @@ describe('review rules (#1369, round 3)', () => {
   });
 });
 const stableJson = v => JSON.stringify(v);
+
+describe('review class audit (#1369, round 4)', () => {
+  test('a snapshot read error in the sync view rejects; no tombstone is queued for a set-aside id', async () => {
+    const week = wk('w1', 'hb', 'n1', 1);
+    const bad = wk('bw', 'hb', 'n2', 'x');
+    await seed([blk('hb')], [week, bad]);
+    await setSyncSnapshot(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, [week, bad]);
+    await repairRecoveryRecords();
+    await repairRecoveryRecords(); // bad week set aside -> view consults the snapshot
+    const original = secureStorage.getItem.bind(secureStorage);
+    const snapshotKey = `kilo_sync_snapshot_${SYNC_TABLES.RECOVERY_BLOCK_WEEKS}`;
+    let calls = 0;
+    // reconcileLocalWrites reads its own baseline first; fail only the view's read.
+    const spy = jest.spyOn(secureStorage, 'getItem').mockImplementation(async (k) => {
+      if (k === snapshotKey && (calls += 1) === 2) throw new Error('snapshot read failed');
+      return original(k);
+    });
+    const io = createTableIo(() => {});
+    await expect(
+      reconcileLocalWrites({ table: SYNC_TABLES.RECOVERY_BLOCK_WEEKS, readLocal: io[SYNC_TABLES.RECOVERY_BLOCK_WEEKS].read })
+    ).rejects.toThrow('snapshot read failed');
+    spy.mockRestore();
+    const queued = await AsyncStorage.getItem(`kilo_sync_dirty_${SYNC_TABLES.RECOVERY_BLOCK_WEEKS}`);
+    expect(queued == null || queued === '{}' || queued === '[]').toBe(true);
+  });
+
+  test.each([
+    ['missing held_id', { kind: 'missing_parent', collection: 'weeks', record: { id: 'x', block_id: 'nope' } }],
+    ['non-object record', { held_id: 'h1', kind: 'quarantined', collection: 'weeks', record: 'bytes' }],
+    ['unknown kind', { held_id: 'h2', kind: 'from_the_future', collection: 'weeks', record: { id: 'y' } }],
+    ['null entry', null],
+  ])('a held entry with %s is preserved verbatim and in place', async (_n, entry) => {
+    const good = wk('mp', 'absent', 'n', 1);
+    await seed([blk('hb')], [good]);
+    await put(RECOVERY_HELD_KEY, [entry]);
+    await repairRecoveryRecords(); // detaches `mp` and rewrites the held store
+    await repairRecoveryRecords();
+    const held = await get(RECOVERY_HELD_KEY);
+    expect(held[0]).toEqual(entry);
+    expect(held.some(h => h && h.held_id === 'missing_parent:weeks:mp')).toBe(true);
+    expect((await read()).weeks).toEqual([]);
+  });
+});

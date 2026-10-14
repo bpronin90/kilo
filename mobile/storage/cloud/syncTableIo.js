@@ -1,6 +1,7 @@
 import * as Storage from '../entries';
 import { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY } from '../entries/keys';
-import { getSyncSnapshot } from '../sync/snapshots';
+import { secureStorage as SnapshotStorage } from '../secureStorage';
+import { SNAPSHOT_KEY_PREFIX } from '../sync/records';
 import { RECOVERY_HELD_KEY } from '../entries/recoveryRepair';
 import { isWellTypedRecoveryBlock, isWellTypedRecoveryWeek } from '../../lib/data/activeTrainingContext';
 import { withWorkoutNotebookLock } from '../entries/workoutNotes';
@@ -215,6 +216,22 @@ export async function tombstoneLocalPhantoms(cache) {
 // or a deletion. A healthy raw row of the same id (e.g. the surviving copy of a
 // duplicate id) is never replaced. Any read error on held/archive state throws,
 // so sync fails and retries instead of silently shrinking the view.
+// Strict read of the same snapshot key getSyncSnapshot decodes. getSyncSnapshot
+// turns a storage ERROR into "no snapshot", which here would silently drop the
+// baseline rows the view must hold and let reconciliation infer deletions. So a
+// read error throws (sync fails and retries); only a genuinely absent or
+// undecodable value is "no snapshot", exactly as getSyncSnapshot treats those.
+async function readSnapshotStrict(table) {
+  const raw = await SnapshotStorage.getItem(`${SNAPSHOT_KEY_PREFIX}${table}`);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 async function loadSyncView(table, collection, key, loadRaw, isHealthy) {
   const raw = await loadRaw();
   if (typeof Storage.loadHeldRecoveryRecords !== 'function') return raw;
@@ -228,7 +245,7 @@ async function loadSyncView(table, collection, key, loadRaw, isHealthy) {
   if (setAside.size === 0 && !wholeCollection) return raw;
 
   const baselineById = new Map();
-  for (const row of (await getSyncSnapshot(table)) || []) if (row && row.id != null) baselineById.set(row.id, row);
+  for (const row of (await readSnapshotStrict(table)) || []) if (row && row.id != null) baselineById.set(row.id, row);
   const healthyIds = new Set();
   const out = [];
   for (const r of raw || []) {
