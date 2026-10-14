@@ -21,6 +21,14 @@ import {
   nextOperationId,
 } from './recoveryJournalStore';
 import { replayRecord, resetRecoveryNoteOperations } from './recoveryJournalOperations';
+import { repairRecoveryRecords } from './recoveryRepair';
+import { readList } from './jsonStorage';
+import { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY } from './keys';
+import {
+  arePersistedRecoveryRecordsWellFormed,
+  isRecoveryTargetBlocked,
+  partitionRecoveryRecords,
+} from '../../lib/data/activeTrainingContext';
 
 let inFlightReconcile = null;
 
@@ -49,7 +57,7 @@ function corruptReconciliation(error) {
 
 // Replay every journaled operation once. Never called directly by a caller
 // outside this module — every entry point runs it under the shared lock.
-async function reconcileAllUnlocked() {
+async function reconcileAllUnlocked({ repairData = false } = {}) {
   let journal;
   try {
     journal = await readRecoveryJournal();
@@ -68,7 +76,18 @@ async function reconcileAllUnlocked() {
   const cancelled = results.filter((r) => !r.ok && r.terminal);
   const pending = results.filter((r) => !r.ok && !r.terminal);
   const headline = pending[0] || cancelled[0] || null;
+  // #1368: bounded repair of persisted Recovery data, after replay and only
+  // when no journaled operation is still pending (never beneath a pending
+  // intent's postconditions). Reported beside, never inside, `ok`: an
+  // unresolved or failed repair must not read as a pending/corrupt journal or
+  // stop the sync pass that calls this. Only the authoritative read / Retry and
+  // the sync boundary repair; guarded actions and operation starts reconcile
+  // WITHOUT repairing (they are already gated on a verified read).
+  const repair = repairData && pending.length === 0
+    ? await repairRecoveryRecords()
+    : { ok: true, changed: 0, skipped: true, error: null };
   return {
+    repair,
     ok: pending.length === 0,
     code: pending.length > 0
       ? pending[0].code
@@ -100,7 +119,7 @@ async function reconcileAllUnlocked() {
 // the guard this function is already holding. Competing UI actions simply queue
 // behind it and run once the pass is done.
 export function withExclusiveRecoveryAccess(run) {
-  return withRecoveryOperationLock(() => run({ reconcile: () => reconcileAllUnlocked() }));
+  return withRecoveryOperationLock(() => run({ reconcile: () => reconcileAllUnlocked({ repairData: true }) }));
 }
 
 // Public reconciler. Startup/remount, the `Retry recovery` action, pre-action
@@ -109,7 +128,7 @@ export function withExclusiveRecoveryAccess(run) {
 // in-flight pass instead of starting a competing replay.
 export function reconcileRecoveryOperations() {
   if (inFlightReconcile) return inFlightReconcile;
-  const pass = withRecoveryOperationLock(() => reconcileAllUnlocked());
+  const pass = withRecoveryOperationLock(() => reconcileAllUnlocked({ repairData: true }));
   inFlightReconcile = pass;
   const clear = () => {
     if (inFlightReconcile === pass) inFlightReconcile = null;
@@ -123,6 +142,32 @@ function conflictsWith(record, { blockId, weekId, noteId }) {
   if (weekId && record.week_id === weekId) return true;
   if (noteId && record.note_id === noteId) return true;
   return false;
+}
+
+// Dependent-action gate (#1368), checked under the lock against what is
+// persisted now. Unresolved records stay in storage; an action is refused only
+// when its `scope` touches one (or, for an unscoped global action such as
+// starting a block, when unresolved data could change the mode). It fails
+// CLOSED: malformed or unreadable evidence observed here refuses the action,
+// because data can change between the confirm-time check and this lock (#1366).
+// Refusals are validation failures: no journal record and no domain write.
+async function unresolvedGate(scope) {
+  let blocks;
+  let weeks;
+  const refuse = (reason, error) => ({ ok: false, code: RECOVERY_OPERATION_CODES.VALIDATION_FAILED, reason, error });
+  try {
+    [blocks, weeks] = await Promise.all([readList(RECOVERY_BLOCKS_KEY), readList(RECOVERY_BLOCK_WEEKS_KEY)]);
+  } catch {
+    return refuse('RECOVERY_STATE_UNVERIFIED', 'Recovery data could not be read, so this change was not made. Try again.');
+  }
+  if (!arePersistedRecoveryRecordsWellFormed(blocks, weeks)) {
+    return refuse('RECOVERY_STATE_UNVERIFIED', 'Recovery data could not be read, so this change was not made. Try again.');
+  }
+  const part = partitionRecoveryRecords(blocks, weeks);
+  const target = scope && (scope.blockId || scope.weekId || scope.noteId) ? scope : { global: true };
+  if (!isRecoveryTargetBlocked(part, target)) return null;
+  return refuse('RECOVERY_DATA_UNRESOLVED',
+    'Some recovery records involved in this change could not be resolved, so it was not made.');
 }
 
 // Run any recovery action (including the single-domain ones) behind the same
@@ -143,6 +188,8 @@ export function runGuardedRecoveryAction(scope, action) {
         error: blocking[0].error,
       };
     }
+    const unresolved = await unresolvedGate(scope);
+    if (unresolved) return unresolved;
     return action();
   });
 }
@@ -199,6 +246,8 @@ export function startRecoveryOperation({ scope, validate }) {
         error: blocking[0].error,
       };
     }
+    const unresolved = await unresolvedGate(scope);
+    if (unresolved) return unresolved;
 
     let validation;
     try {

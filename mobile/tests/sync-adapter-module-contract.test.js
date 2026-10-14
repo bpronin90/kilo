@@ -329,8 +329,8 @@ describe('signed-out reconciliation reconciles only the supported tables and fai
 describe('cross-device duplicate resolution collapses deterministically', () => {
   it('keeps the most recently started active block and completes the older one', () => {
     const blocks = [
-      { id: 'rb-old', started_at: '2026-01-01T00:00:00.000Z', completed_at: null, saved_at: '2026-01-01T00:00:00.000Z' },
-      { id: 'rb-new', started_at: '2026-02-01T00:00:00.000Z', completed_at: null, saved_at: '2026-02-01T00:00:00.000Z' },
+      { id: 'rb-old', baseline_note_id: 'n-old', started_at: '2026-01-01T00:00:00.000Z', completed_at: null, saved_at: '2026-01-01T00:00:00.000Z' },
+      { id: 'rb-new', baseline_note_id: 'n-new', started_at: '2026-02-01T00:00:00.000Z', completed_at: null, saved_at: '2026-02-01T00:00:00.000Z' },
     ];
     const forward = resolveDuplicateActiveBlocks(blocks, 'client-a');
     const reversed = resolveDuplicateActiveBlocks(blocks.slice().reverse(), 'client-b');
@@ -365,6 +365,52 @@ describe('cross-device duplicate resolution collapses deterministically', () => 
     expect(changed.map((w) => w.id)).toEqual(['rw-b']);
     expect(isTombstone(changed[0])).toBe(false);
     expect(changed[0].week_number).toBe(3);
+  });
+
+  it('allocates ordinals for several collision groups in a fixed order (#1368)', () => {
+    const mk = (id, n, at) => ({ id, note_id: `n_${id}`, block_id: 'b1', week_number: n, saved_at: at });
+    const weeks = [
+      mk('c1', 2, '2026-01-01T00:00:00.000Z'), mk('c2', 2, '2026-01-02T00:00:00.000Z'),
+      mk('a1', 1, '2026-01-01T00:00:00.000Z'), mk('a2', 1, '2026-01-02T00:00:00.000Z'),
+    ];
+    const result = (input) => Object.fromEntries(
+      resolveDuplicateWeekMemberships(input, 'c').changed.map((w) => [w.id, w.week_number])
+    );
+    expect(result(weeks)).toEqual({ a2: 3, c2: 4 });
+    expect(result(weeks.slice().reverse())).toEqual({ a2: 3, c2: 4 });
+  });
+
+  it('orders by instant, not string, for the shared active-block and membership rules (#1368)', () => {
+    const later = '2026-12-31T23:00:00-02:00'; // 2027-01-01T01:00Z
+    const earlier = '2027-01-01T00:00:00Z';
+    const blocks = [
+      { id: 'bA', baseline_note_id: 'nA', started_at: later },
+      { id: 'bB', baseline_note_id: 'nB', started_at: earlier },
+    ];
+    const { changed } = resolveDuplicateActiveBlocks(blocks.slice().reverse(), 'c');
+    expect(changed.map((b) => b.id)).toEqual(['bB']);
+    expect(changed[0].completed_at).toBe(later);
+    const weeks = [
+      { id: 'w1', note_id: 'n', block_id: 'b', week_number: 1, saved_at: later },
+      { id: 'w2', note_id: 'n', block_id: 'b', week_number: 2, saved_at: earlier },
+    ];
+    expect(resolveDuplicateWeekMemberships(weeks, 'c').changed.map((w) => w.id)).toEqual(['w1']);
+  });
+
+  it('leaves a block untouched when renumbering would leave the safe-integer range (#1368)', () => {
+    const max = Number.MAX_SAFE_INTEGER;
+    const weeks = [
+      { id: 'w1', note_id: 'n1', block_id: 'b1', week_number: max, saved_at: '2026-01-01T00:00:00.000Z' },
+      { id: 'w2', note_id: 'n2', block_id: 'b1', week_number: max, saved_at: '2026-01-02T00:00:00.000Z' },
+      { id: 'w3', note_id: 'n3', block_id: 'b2', week_number: 1, saved_at: '2026-01-01T00:00:00.000Z' },
+      { id: 'w4', note_id: 'n4', block_id: 'b2', week_number: 1, saved_at: '2026-01-02T00:00:00.000Z' },
+    ];
+    const { list, changed, unresolvedBlocks } = resolveDuplicateWeekMemberships(weeks, 'c');
+    expect(unresolvedBlocks).toEqual(['b1']);
+    expect(changed.map((w) => w.id)).toEqual(['w4']);
+    expect(list.find((w) => w.id === 'w2')).toBe(weeks[1]);
+    const bad = [{ ...weeks[0], week_number: 1e20 }, { ...weeks[1], week_number: 1e20 }];
+    expect(resolveDuplicateWeekMemberships(bad, 'c').changed).toEqual([]);
   });
 
   it('converges a two-device duplicate active block inside one sync() call', async () => {

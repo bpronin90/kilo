@@ -545,7 +545,7 @@ async function replayAddWeekWithNewNote(operationRecord) {
   return finishVerified(record);
 }
 
-export function replayRecord(record) {
+function dispatchReplay(record) {
   if (record.type === RECOVERY_OPERATION_TYPES.COMPLETE_BLOCK_WITH_WEEK) {
     return replayCompleteBlockWithWeek(record);
   }
@@ -553,4 +553,20 @@ export function replayRecord(record) {
     return replayAddWeekWithNewNote(record);
   }
   return replayDeleteLinkedNote(record);
+}
+
+// Defensive (#1368): an unexpected throw (e.g. from a malformed persisted row)
+// is a truthful pending result with the intent retained, never an exception
+// that aborts the whole reconciliation pass.
+export async function replayRecord(record) {
+  try {
+    return await dispatchReplay(record);
+  } catch (e) {
+    return pendingResult(record, {
+      code: RECOVERY_OPERATION_CODES.OPERATION_FAILED,
+      stage: record.stage,
+      error: e,
+      message: 'This recovery operation could not be completed yet. It will be retried.',
+    });
+  }
 }

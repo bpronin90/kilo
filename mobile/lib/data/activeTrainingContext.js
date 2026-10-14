@@ -87,7 +87,13 @@ const hasMarkers = r => isMarker(r.completed_at) && isMarker(r.deleted_at);
 const isWellTypedBlock = b => hasMarkers(b) && isId(b.baseline_note_id)
   && (b.include_in_normal_analytics === undefined || typeof b.include_in_normal_analytics === 'boolean');
 const isWellTypedWeek = w => !!w && isId(w.id) && hasMarkers(w) && isId(w.block_id) && isId(w.note_id)
-  && Number.isInteger(w.week_number) && w.week_number >= 1;
+  && Number.isSafeInteger(w.week_number) && w.week_number >= 1;
+// Shared with the cloud/local winner helpers (#1368) so both refuse the same
+// malformed evidence.
+export const isRecoveryLifecycleMarker = isMarker;
+export const hasValidRecoveryMarkers = r => !!r && hasMarkers(r);
+export const isWellFormedRecoveryWeek = isWellTypedWeek;
+export const isWellFormedRecoveryBlock = b => !!b && isId(b.id) && isWellTypedBlock(b);
 
 // The storage readers drop any record whose `deleted_at` is truthy before the
 // selector sees it, so a malformed tombstone marker would vanish rather than
@@ -99,18 +105,114 @@ export function arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks) {
     && rawWeeks.every(isWellTypedWeek);
 }
 
-function isProvisionalSnapshotConsistent(blocks, weeks) {
+// Cross-record consistency shared by the provisional display selector and the
+// authoritative classifier (#1368). It does NOT include the earlier-open-week
+// rule: that state is reachable through ordinary use (uncompleting an earlier
+// week) so it is no authoritative gate, only a provisional-display one.
+function isSnapshotStructurallyConsistent(blocks, weeks) {
   if (!hasUniqueIds(blocks) || !hasUniqueIds(weeks)) return false;
   if (!blocks.every(isWellTypedBlock) || !weeks.every(hasMarkers)) return false;
   if (blocks.filter(isBlockActive).length > 1) return false;
   const liveBlocks = new Map(blocks.filter(isLiveRecord).map(b => [b.id, b]));
   const live = weeks.filter(isLiveRecord);
   const wellFormed = live.every(w => isId(w.block_id) && isId(w.note_id)
-    && Number.isInteger(w.week_number) && w.week_number >= 1 && liveBlocks.has(w.block_id)
+    && Number.isSafeInteger(w.week_number) && w.week_number >= 1 && liveBlocks.has(w.block_id)
     && w.note_id !== liveBlocks.get(w.block_id).baseline_note_id);
   if (!wellFormed || new Set(live.map(w => w.note_id)).size !== live.length) return false;
   // Ordinals are unique per block, completed blocks included.
-  if (new Set(live.map(w => `${w.block_id}|${w.week_number}`)).size !== live.length) return false;
+  return new Set(live.map(w => `${w.block_id}|${w.week_number}`)).size === live.length;
+}
+
+// Authoritative classifier over WELL-FORMED raw lists (tombstones included)
+// (#1368). Names the ids to exclude from operational state: duplicate ids,
+// several active blocks, a live week without a live parent, a baseline-note
+// membership, duplicate note or ordinal. Records stay persisted untouched.
+//
+// Timestamps are not classified here: the server columns are nullable, and no
+// operational decision reads them except the winner policy, which only compares
+// `started_at`/`saved_at` inside groups this classifier already excludes whole
+// (several active blocks; duplicate note/ordinal groups). The shared helpers
+// refuse to pick a winner from an unparseable timestamp (syncRecoveryResolution).
+//
+// An earlier open week is deliberately NOT unresolved: per-row LWW sync can
+// produce it from ordinary use (device A completes week 1 and adds week 2 while
+// device B reopens week 1), so it is a valid, reachable state.
+//
+// Result: `unresolvedCount`; `modeRelevant` (an unresolved record could change
+// the operational answer: any unresolved block that is or could be active, a
+// duplicate block id, or an unresolved week of the operative active block);
+// and `scope`, what unresolved records touch, for dependent-mutation gating.
+export function partitionRecoveryRecords(rawBlocks, rawWeeks) {
+  const dupIds = (list) => {
+    const seen = new Set();
+    const dups = new Set();
+    for (const r of list) (seen.has(r.id) ? dups : seen).add(r.id);
+    return dups;
+  };
+  const dupB = dupIds(rawBlocks);
+  const dupW = dupIds(rawWeeks);
+  const live = rawBlocks.filter(b => isLiveRecord(b) && !dupB.has(b.id));
+  const active = live.filter(isBlockActive);
+  const blocks = active.length > 1 ? live.filter(b => !isBlockActive(b)) : live;
+  const blockById = new Map(blocks.map(b => [b.id, b]));
+  // Collisions are found over EVERY live week before anything is excluded: a
+  // week sharing a note or slot with an unresolved row is itself unresolved,
+  // since that row could still win the collision once its evidence resolves.
+  const liveWeeks = rawWeeks.filter(isLiveRecord);
+  const badW = new Set(liveWeeks.filter(w => dupW.has(w.id) || !blockById.has(w.block_id)
+    || w.note_id === blockById.get(w.block_id).baseline_note_id).map(w => w.id));
+  for (const keyOf of [w => w.note_id, w => `${w.block_id}|${w.week_number}`]) {
+    const counts = new Map();
+    for (const w of liveWeeks) counts.set(keyOf(w), (counts.get(keyOf(w)) || 0) + 1);
+    for (const w of liveWeeks) if (counts.get(keyOf(w)) > 1) badW.add(w.id);
+  }
+  const weeks = liveWeeks.filter(w => !badW.has(w.id));
+  const keptB = new Set(blocks.map(b => b.id));
+  const keptW = new Set(weeks.map(w => w.id));
+  const badBlocks = rawBlocks.filter(b => dupB.has(b.id) || (isLiveRecord(b) && !keptB.has(b.id)));
+  const badWeeks = rawWeeks.filter(w => dupW.has(w.id) || (isLiveRecord(w) && !keptW.has(w.id)));
+  const operativeId = findActiveBlock(blocks)?.id;
+  const scope = {
+    blockIds: new Set([...badBlocks.map(b => b.id), ...badWeeks.map(w => w.block_id)]),
+    weekIds: new Set(badWeeks.map(w => w.id)),
+    noteIds: new Set(badWeeks.map(w => w.note_id)),
+    slots: new Set(badWeeks.map(w => `${w.block_id}|${w.week_number}`)),
+  };
+  const excludedBlockIds = new Set(badBlocks.map(b => b.id));
+  const excludedWeekIds = scope.weekIds;
+  return {
+    excludedBlockIds,
+    excludedWeekIds,
+    unresolvedCount: excludedBlockIds.size + excludedWeekIds.size,
+    modeRelevant: dupB.size > 0 || badBlocks.some(b => !b.completed_at)
+      || (!!operativeId && badWeeks.some(w => w.block_id === operativeId)),
+    scope,
+  };
+}
+
+// Dependent-action gate (#1368) over a partition result: a mutation is blocked
+// only when it targets an unresolved record or something related to one (same
+// block id, week id, note id, or reserved ordinal slot). A `global` decision
+// (starting a block) is blocked only when unresolved data could change the
+// mode. `target` = { blockId?, weekId?, noteId?, slot?, global? }.
+export function isRecoveryTargetBlocked(part, target) {
+  if (!part || part.unresolvedCount === 0) return false;
+  if (!target) return true;
+  if (target.global) return !!part.modeRelevant;
+  const scope = part.scope;
+  return (!!target.blockId && scope.blockIds.has(target.blockId))
+    || (!!target.weekId && scope.weekIds.has(target.weekId))
+    || (!!target.noteId && scope.noteIds.has(target.noteId))
+    || (!!target.slot && scope.slots.has(target.slot));
+}
+
+export function isRecoveryDataResolved(rawBlocks, rawWeeks) {
+  return arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks)
+    && partitionRecoveryRecords(rawBlocks, rawWeeks).unresolvedCount === 0;
+}
+
+function isProvisionalSnapshotConsistent(blocks, weeks) {
+  if (!isSnapshotStructurallyConsistent(blocks, weeks)) return false;
   const activeBlock = findActiveBlock(blocks);
   if (!activeBlock) return true;
   return orderedLiveWeeks(weeks, activeBlock.id).slice(0, -1).every(w => !!w.completed_at);

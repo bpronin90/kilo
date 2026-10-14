@@ -380,6 +380,19 @@ CI). They live beside the behavioral sync coverage:
   claimed; the baseline is recorded from what `writeLocal` persisted; an
   unchanged baseline is not rewritten, a changed one is, and a baseline removed
   underneath the engine is re-persisted.
+- `mobile/tests/recovery-repair.test.js` — persisted Recovery repair (#1368)
+  through the real reconcile boundary, dirty queue, and authoritative read: the
+  four repairs, deterministic permuted-order convergence, idempotent second
+  passes, byte-identical retention of missing-parent / malformed / duplicate-id /
+  unsafe-ordinal data, a verified read that excludes unresolved records with an
+  `unresolvedCount` notice and Retry, mode-relevant unresolved data giving
+  first-load ERROR and refresh STALE with last-known-good plus exact-pass
+  denial, malformed data still failing closed, dependent-action gating (an
+  unrelated edit runs, actions touching the unresolved block/week/note are
+  refused with zero writes, a global start is refused only when mode-relevant),
+  reserved ordinal slots, compare-and-set against a concurrent writer, cloud
+  resolution applying the same guards, guarded actions performing no repair
+  writes, and read/write/enqueue/verification failure injection.
 - `mobile/tests/sync-recovery.test.js` — with independent tables running
   concurrently, a note is still pushed before the recovery block whose baseline
   names it and a block before its memberships; a failure in one independent

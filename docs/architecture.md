@@ -498,6 +498,55 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   cloud sync sees auth as still loading, and the workout-reminder reconcile
   waits. The device-key canary probe (#1364) and the legacy migration stay
   ahead of paint as safety gates.
+  Persisted Recovery repair (#1368) runs only inside that deferred
+  authoritative pass: `storage/entries/recoveryRepair.js` is called by the
+  journal reconciler under the exclusive Recovery lock, after replay and only
+  when no journaled operation is pending. It makes exactly four repairs through
+  the cloud-resolution helpers in `syncRecoveryResolution.js` (one policy for
+  local and cloud): an explicit parent tombstone cascades to its live weeks,
+  several active blocks complete all but the latest start, a note linked twice
+  keeps the earliest membership, and colliding ordinals renumber in ascending
+  collision order only while every output stays a positive safe integer. No
+  record is ever removed from `recovery_blocks` / `recovery_block_weeks`: a
+  repair rewrites a row (completion, tombstone, ordinal) with one atomic
+  compare-and-set through `secureStorage.updateItem` against the exact list it
+  planned from (a concurrent writer forces a re-plan, never an overwrite),
+  re-reads to verify every repaired row, then enqueues the rows dirty in cloud
+  mode (a crash before the enqueue loses nothing: sync's baseline diff picks up
+  the local change). A missing parent, malformed or unreadable payload,
+  duplicate ids, baseline-note membership, or unsafe ordinal is left
+  byte-for-byte in place. The safety guards live inside the shared helpers, so
+  cloud resolution applies the same ones: ambiguous ids, unparseable winner
+  timestamps, and missing or ambiguous parents never choose a winner or
+  cascade; every record a shared decision touches (cascade parent and child,
+  each active block, each collision-group member) must pass the same full
+  shape check local repair applies, or the decision is skipped; members of a
+  note group that cannot be resolved are protected from ordinal repair, and
+  unresolved rows still reserve their note and ordinal slot.
+  Winners compare parsed instants, never timestamp strings. Only the authoritative read / Retry and the sync
+  boundary repair; guarded actions and operation starts reconcile without
+  repairing. The result rides beside the journal `ok` (never inside it, so sync
+  is not gated). For WELL-FORMED but unresolved records,
+  `partitionRecoveryRecords` finds note/ordinal collisions over every live week
+  before excluding anything (a week colliding with an unresolved row is itself
+  unresolved), names the ids to exclude, and whether any could
+  change the mode answer (`modeRelevant`: a duplicate block id, an unresolved
+  block that is or could be active, or an unresolved week of the active block).
+  Mode-relevant: the pass fails, so first load is ERROR/unknown and a refresh is
+  STALE keeping last-known-good; `ensureVerifiedRecoveryState` reports
+  `{ ok: true, unresolved: true }` rather than refusing every edit. Otherwise the read verifies the rest, publishes
+  `unresolvedCount`, and shows the stale-style notice with `Retry recovery`.
+  Only DEPENDENT actions are refused: the journal entry points
+  (`runGuardedRecoveryAction`, `startRecoveryOperation`) re-partition under the
+  lock and refuse an action whose scope touches an unresolved record's block,
+  week, note, or ordinal slot, or a global action (starting a block) when the
+  data is mode-relevant, as a validation failure with zero writes. That gate
+  fails closed: malformed or unreadable evidence seen under the lock refuses
+  the action, since data can change after the confirm-time check. Timestamps
+  are not classified (the server columns are nullable and only the winner
+  policy reads them). An earlier open week is valid data: per-row LWW sync
+  produces it from ordinary use. MALFORMED records keep #1366's fail-closed
+  ERROR/STALE. Retry re-reads and re-classifies; it does not promise a fix.
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules, now exposes the note-derived analytics contract used by downstream
   native workout analytics work, and centralizes exercise alias resolution in
