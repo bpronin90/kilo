@@ -246,6 +246,14 @@ describe('provisional display context (#1366)', () => {
       { blocks: [b], weeks: [{ ...open, week_number: 1.5 }] },
       { blocks: [b], weeks: [{ ...open, week_number: '1' }] },
       { blocks: [b], weeks: [{ ...open, note_id: null }] },
+      // Ambiguous identities: one block id with conflicting lifecycle state,
+      // duplicate or missing week ids, a week of a tombstoned block.
+      { blocks: [b, { ...b, completed_at: '2026-10-01T00:00:00.000Z' }], weeks: [open] },
+      { blocks: [b], weeks: [open, { ...open, note_id: 'w9' }] },
+      { blocks: [b], weeks: [{ ...open, id: undefined }] },
+      { blocks: [{ ...b, id: 7 }], weeks: [] },
+      { blocks: [b, block({ id: 'b0', deleted_at: '2026-10-01T00:00:00.000Z' })],
+        weeks: [open, week({ blockId: 'b0', noteId: 'w8', weekNumber: 1, id: 'wk8' })] },
       { blocks: null, weeks: [] },
     ];
     for (const provisional of cases) {

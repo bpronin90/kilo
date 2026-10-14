@@ -62,33 +62,44 @@ const EMPTY_CONTEXT = Object.freeze({
 
 // Local-first display (#1366). While the first authoritative (reconciled) read
 // is still pending, a bounded plain read of the persisted blocks/weeks may
-// supply the last-known mode. It can reflect a half-applied journal operation,
-// so it is used only when it is internally consistent: at most one active
-// block, every live week attached to a block that exists, at most one live
-// membership per note, every live week shaped as a record (string ids, a
-// positive integer week number), unique week numbers in the active block, and
-// no open week before its latest. Anything else is
-// unknown — never a guessed week and never a fallback to normal.
+// supply the last-known mode. It can reflect a half-applied journal operation
+// or a malformed record, so it is used only when every identity in it is
+// unambiguous and the active block's weeks line up:
+//   - every block and week is a record with a string id, unique among its kind;
+//   - at most one active block;
+//   - every live week has string block/note ids, a positive integer week
+//     number, and belongs to a LIVE block;
+//   - at most one live membership per note;
+//   - the active block's live weeks have unique numbers, with no open week
+//     before the latest.
+// Anything else is unknown — never a guessed week and never a fallback to
+// normal.
+const hasUniqueStringIds = records => records.every(r => r && typeof r.id === 'string')
+  && new Set(records.map(r => r.id)).size === records.length;
+
+function isProvisionalSnapshotConsistent(blocks, weeks) {
+  if (!hasUniqueStringIds(blocks) || !hasUniqueStringIds(weeks)) return false;
+  if (blocks.filter(isBlockActive).length > 1) return false;
+  const liveBlockIds = new Set(blocks.filter(isLiveRecord).map(b => b.id));
+  const live = weeks.filter(isLiveRecord);
+  const wellFormed = live.every(w => typeof w.block_id === 'string' && typeof w.note_id === 'string'
+    && Number.isInteger(w.week_number) && w.week_number >= 1 && liveBlockIds.has(w.block_id));
+  if (!wellFormed || new Set(live.map(w => w.note_id)).size !== live.length) return false;
+  const activeBlock = findActiveBlock(blocks);
+  if (!activeBlock) return true;
+  const ordered = orderedLiveWeeks(weeks, activeBlock.id);
+  return new Set(ordered.map(w => w.week_number)).size === ordered.length
+    && ordered.slice(0, -1).every(w => !!w.completed_at);
+}
+
 export function selectProvisionalRecovery(provisional) {
   if (!provisional) return null;
-  const blocks = Array.isArray(provisional.blocks) ? provisional.blocks : null;
-  const weeks = Array.isArray(provisional.weeks) ? provisional.weeks : null;
-  if (!blocks || !weeks) return { consistent: false, activeBlock: null, weeks: [] };
-  const activeBlock = findActiveBlock(blocks);
-  const blockIds = new Set(blocks.map(b => b?.id));
-  const live = weeks.filter(w => w && isLiveRecord(w));
-  let consistent = blocks.filter(b => b && isBlockActive(b)).length <= 1
-    && live.every(w => typeof w.block_id === 'string' && typeof w.note_id === 'string'
-      && Number.isInteger(w.week_number) && w.week_number >= 1)
-    && live.every(w => blockIds.has(w.block_id))
-    && new Set(live.map(w => w.note_id)).size === live.length;
-  if (consistent && activeBlock) {
-    const ordered = orderedLiveWeeks(weeks, activeBlock.id);
-    const numbers = new Set(ordered.map(w => w.week_number));
-    consistent = numbers.size === ordered.length
-      && ordered.slice(0, -1).every(w => !!w.completed_at);
-  }
-  return { consistent, activeBlock: consistent ? activeBlock : null, weeks: consistent ? weeks : [] };
+  const { blocks, weeks } = provisional;
+  const consistent = Array.isArray(blocks) && Array.isArray(weeks)
+    && isProvisionalSnapshotConsistent(blocks, weeks);
+  return consistent
+    ? { consistent, activeBlock: findActiveBlock(blocks), weeks }
+    : { consistent: false, activeBlock: null, weeks: [] };
 }
 
 // Pure derivation. Takes the exact fields `useRecoveryBlockState()` already
