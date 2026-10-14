@@ -1195,8 +1195,11 @@ authoritative pass is pending, `useRecoveryBlockState` exposes the plain filter
 read as display-only `provisional` blocks/weeks. Home alone opts into it
 (`useActiveTrainingContext({ allowProvisional: true })`) and uses it only when
 internally consistent (`selectProvisionalRecovery`: one active block at most,
-no orphan or duplicate weeks, no open week before the latest); otherwise it
-shows unknown. Provisional data never sets `ready` or `mutationsAllowed`, and
+no orphan or duplicate weeks, no open week before the latest, well-typed
+identities and lifecycle markers) and when the RAW persisted lists behind it
+(`loadRecovery*Raw`, read concurrently on the same keys) are well-formed, since
+the filtered readers silently drop a record with a malformed truthy
+`deleted_at`; otherwise it shows unknown. Provisional data never sets `ready` or `mutationsAllowed`, and
 it is dropped once the authoritative pass fails. A device wipe calls
 `invalidateRecoveryReadState()`, which clears both snapshots and makes any read
 begun for the wiped data resolve without publishing.

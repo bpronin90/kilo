@@ -2043,6 +2043,21 @@ describe('Home recovery summary (#757, #779, #782)', () => {
       expect(has(component, 'home-weight-card')).toBe(true);
     });
 
+    test('a malformed tombstone marker the storage reader would drop is unknown, not Normal', async () => {
+      // `deleted_at: {}` is truthy, so the filtered reader drops the block and
+      // the plain lists look empty. The raw-record check must catch it.
+      AsyncStorage.getItem.mockImplementation(withHeldJournal(storageWith({
+        blocks: [block({ deleted_at: {} })], weeks: [],
+      })));
+      const component = await mountHeld();
+      await settle();
+      expect(atPaint).toEqual({ journalReads: 0, replays: 0 });
+      expect(has(component, 'home-skeleton')).toBe(false);
+      expect(hasText(component, 'Log workout')).toBe(false);
+      expect(hasText(component, hooks.RECOVERY_LOADING_MESSAGE)).toBe(true);
+      expect(has(component, 'home-weight-card')).toBe(true);
+    });
+
     test('unreadable local Recovery data paints unknown, never Normal, then reconciles', async () => {
       AsyncStorage.getItem.mockImplementation(withHeldJournal(storageWith({ fail: [BLOCKS_KEY, WEEKS_KEY] })));
       const component = await mountHeld();

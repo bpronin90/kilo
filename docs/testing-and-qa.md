@@ -475,7 +475,8 @@ Coverage:
   under the shell's hold. Recovery, Normal, and Deload paint from persisted data
   with zero journal reads and zero replay starts at paint, and mutations stay
   ineligible until reconciliation; a corrupt journal, an inconsistent persisted
-  snapshot, and unreadable Recovery data show unknown (never Normal) with the
+  snapshot, a malformed tombstone marker the filtered reader would hide, and
+  unreadable Recovery data show unknown (never Normal) with the
   weight card still painted; an early `ensureVerifiedRecoveryState` reconciles
   immediately; a slow local hydration keeps the hold past the fallback until
   Home paints; a wipe mid-replay publishes nothing.

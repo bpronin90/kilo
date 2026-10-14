@@ -84,6 +84,14 @@ const hasMarkers = r => isMarker(r.completed_at) && isMarker(r.deleted_at);
 const isWellTypedBlock = b => hasMarkers(b) && typeof b.baseline_note_id === 'string'
   && (b.include_in_normal_analytics === undefined || typeof b.include_in_normal_analytics === 'boolean');
 
+// The storage readers drop any record whose `deleted_at` is truthy before the
+// selector sees it, so a malformed tombstone marker would vanish rather than
+// read as unknown. This checks the RAW persisted lists, tombstones included.
+export function arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks) {
+  return Array.isArray(rawBlocks) && Array.isArray(rawWeeks)
+    && [...rawBlocks, ...rawWeeks].every(r => r && typeof r.id === 'string' && hasMarkers(r));
+}
+
 function isProvisionalSnapshotConsistent(blocks, weeks) {
   if (!hasUniqueStringIds(blocks) || !hasUniqueStringIds(weeks)) return false;
   if (!blocks.every(isWellTypedBlock) || !weeks.every(hasMarkers)) return false;

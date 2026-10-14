@@ -3,6 +3,7 @@ import {
   deriveActiveTrainingContext,
   resolveActiveTrainingContext,
   selectProvisionalRecovery,
+  arePersistedRecoveryRecordsWellFormed,
 } from '../lib/data/activeTrainingContext';
 import { buildRecoveryBlock, buildRecoveryWeek } from '../lib/data/recoveryBlocks';
 
@@ -282,5 +283,21 @@ describe('provisional display context (#1366)', () => {
 
   test('no provisional read yet stays loading', () => {
     expect(pendingRead(null).status).toBe(ACTIVE_TRAINING_STATUS.LOADING);
+  });
+});
+
+describe('raw persisted record check (#1366)', () => {
+  const b = block({ id: 'b1' });
+  test('accepts well-formed records, tombstones included', () => {
+    expect(arePersistedRecoveryRecordsWellFormed(
+      [b, { ...block({ id: 'b2' }), deleted_at: '2026-10-01T00:00:00.000Z' }], []
+    )).toBe(true);
+  });
+  test('rejects malformed markers and identities that the filtered readers would hide', () => {
+    for (const raw of [
+      [{ ...b, deleted_at: {} }], [{ ...b, deleted_at: 1 }], [{ ...b, deleted_at: 'not a date' }],
+      [{ ...b, completed_at: [] }], [{ ...b, id: 3 }], [null],
+    ]) expect(arePersistedRecoveryRecordsWellFormed(raw, [])).toBe(false);
+    expect(arePersistedRecoveryRecordsWellFormed([], null)).toBe(false);
   });
 });

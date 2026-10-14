@@ -13,6 +13,7 @@ import {
   reconcileRecoveryOperations,
 } from '../../storage/entries/recoveryOperationJournal';
 import { findActiveBlock } from '../../lib/data/recoveryBlocks';
+import { arePersistedRecoveryRecordsWellFormed } from '../../lib/data/activeTrainingContext';
 import { safeNotify } from './shared';
 import {
   markStartupPhase,
@@ -102,23 +103,16 @@ function setRecoveryLifecycle(patch) {
   safeNotify(recoveryStateListeners);
 }
 
-// The single in-flight authoritative read, plus at most one coalesced
-// follow-up. A request that arrives while a read is running does NOT reuse that
-// read's result — it may have started before the mutation the caller is
-// refreshing for — but it also never starts a second concurrent reconciliation.
-// Every such caller shares one queued follow-up instead.
+// The single in-flight authoritative read, plus at most one queued follow-up
+// shared by every caller that arrives mid-read (it may predate their mutation).
 let recoveryReadInFlight = null;
 let recoveryReadQueued = null;
 
-// Resolves with the OUTCOME of this exact pass — `{ ok, pendingCount, corrupt,
-// error }` — in addition to its side effects on the shared lifecycle/snapshot
-// display state. This return value is what `ensureVerifiedRecoveryState`
-// gates mutations on (see below); display state (`recoveryLifecycle.status`,
-// `lastAuthoritativeSnapshot`) is a separate concern that must keep degrading
-// to STALE-with-last-known-good exactly as before, no matter what this pass's
-// own outcome was (a confirm-time recheck that merely FAILED or found
-// operations still pending must never be conflated with "safe to mutate" just
-// because the DISPLAY state resolves to something other than terminal ERROR).
+// Resolves with the OUTCOME of this exact pass (`{ ok, pendingCount, corrupt,
+// error }`), which is what `ensureVerifiedRecoveryState` gates mutations on.
+// Display state (`recoveryLifecycle.status`, `lastAuthoritativeSnapshot`) is
+// separate and keeps degrading to STALE-with-last-known-good regardless, so a
+// recheck that FAILED or found pending work is never read as "safe to mutate".
 function runAuthoritativeRecoveryRead() {
   const generation = recoveryReadGeneration;
   recordStartupReconcileStart();
@@ -357,8 +351,8 @@ export function useRecoveryBlockState() {
       // FAILED plain read is offered as unreadable (null arrays), which every
       // consumer treats as inconsistent: unknown, never a skeleton or Normal.
       provisional: verified || status === RECOVERY_STATUS.ERROR ? null
-        : view.filterRead ? { blocks: view.filter.blocks, weeks: view.filter.weeks }
-          : view.filterFailed ? { blocks: null, weeks: null } : null,
+        : view.filterRead && view.filter.wellFormed ? { blocks: view.filter.blocks, weeks: view.filter.weeks }
+          : view.filterRead || view.filterFailed ? { blocks: null, weeks: null } : null,
     };
   }, [view, refresh]);
 }
@@ -453,8 +447,7 @@ let recoveryFilterVerified = false;
 // The latest plain filter read failed and none has succeeded since (#1366).
 let recoveryFilterReadFailed = false;
 
-// Every mounted filter hook AND `useRecoveryBlockState`; each `sync` re-renders
-// only when a record it reads changed identity.
+// Every mounted filter hook AND `useRecoveryBlockState`.
 let recoverySnapshotSubscribers = [];
 
 // Authoritative publish: called ONLY by the reconcile-then-read pass. Updates
@@ -483,11 +476,13 @@ function publishRecoverySnapshot(blocks, weeks) {
 // grant mutation trust it never earned (finding 1, round 1) nor evict the
 // last-known-good data `useRecoveryBlockState` is rendering (finding 1,
 // round 3).
-function publishRecoveryFilterSnapshot(blocks, weeks) {
+// `wellFormed` (#1366) says whether the RAW persisted records behind this read
+// passed validation; only then may it back a provisional display.
+function publishRecoveryFilterSnapshot(blocks, weeks, wellFormed = false) {
   const signature = _recoverySignature(blocks, weeks);
-  if (signature !== lastFilterSignature || !recoveryFilterVerified) {
+  if (signature !== lastFilterSignature || !recoveryFilterVerified || lastFilterSnapshot.wellFormed !== wellFormed) {
     lastFilterSignature = signature;
-    lastFilterSnapshot = { blocks, weeks };
+    lastFilterSnapshot = { blocks, weeks, wellFormed };
   }
   recoveryFilterVerified = true;
   recoveryFilterReadFailed = false;
@@ -495,9 +490,8 @@ function publishRecoveryFilterSnapshot(blocks, weeks) {
   return lastFilterSnapshot;
 }
 
-// The single in-flight filter read (#711 finding 4): mounted filter hooks share
-// one storage read, and piggyback on an authoritative pass already in flight
-// rather than reading the same two keys concurrently.
+// The single in-flight filter read (#711 finding 4), shared by mounted filter
+// hooks and piggybacking on an authoritative pass already in flight.
 let recoveryFilterReadInFlight = null;
 
 export function runRecoveryFilterRead() {
@@ -508,9 +502,18 @@ export function runRecoveryFilterRead() {
         // The authoritative pass already publishes (and reconciles) the
         // shared snapshot; just wait for it rather than re-reading.
         ? recoveryReadInFlight
-        : Promise.all([Storage.loadRecoveryBlocks(), Storage.loadRecoveryBlockWeeks()])
-          .then(([blocks, weeks]) => (
-            generation === recoveryReadGeneration ? publishRecoveryFilterSnapshot(blocks, weeks) : lastFilterSnapshot
+        : Promise.all([
+          Storage.loadRecoveryBlocks(),
+          Storage.loadRecoveryBlockWeeks(),
+          // Same keys, read concurrently, so the storage boundary serves them
+          // from the same decrypt. Any failure here only means "not provably
+          // well-formed": unknown for display, never a failed filter read.
+          Promise.resolve()
+            .then(() => Promise.all([Storage.loadRecoveryBlocksRaw(), Storage.loadRecoveryBlockWeeksRaw()]))
+            .then(([rawBlocks, rawWeeks]) => arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks), () => false),
+        ])
+          .then(([blocks, weeks, wellFormed]) => (
+            generation === recoveryReadGeneration ? publishRecoveryFilterSnapshot(blocks, weeks, wellFormed) : lastFilterSnapshot
           ), (e) => {
             if (generation === recoveryReadGeneration && !recoveryFilterReadFailed) {
               recoveryFilterReadFailed = true;
@@ -566,9 +569,7 @@ export function removeSnapshotSubscriber(subscriber) {
   recoverySnapshotSubscribers = recoverySnapshotSubscribers.filter(l => l !== subscriber);
 }
 
-// Broadcast for recovery records changed outside the mutation hooks — today a
-// restored local backup — so every mounted subscriber re-reads (mirrors
-// `reloadWorkoutNotes`).
+// Broadcast for records changed outside the mutation hooks (a restored backup).
 export function reloadRecoveryBlocks() {
   notifyRecoveryBlocks();
 }
@@ -576,9 +577,7 @@ export function reloadRecoveryBlocks() {
 // Fired by every mutation hook after a verified result so consumers re-read.
 export { notifyRecoveryBlocks };
 
-// Test seam: drop the shared snapshot AND the lifecycle state built on it, so
-// one test's recovery records or failed read cannot seed the next test's first
-// render.
+// Test seam: drop the shared snapshot and the lifecycle state built on it.
 export function _resetRecoveryAnalyticsFilterCache() {
   lastAuthoritativeSnapshot = { blocks: [], weeks: [], verified: false };
   lastAuthoritativeSignature = '';
