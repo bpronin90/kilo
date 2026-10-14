@@ -331,7 +331,9 @@ export function createTableIo(
       cache.read(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, Storage.loadRecoveryBlockWeeksRaw),
     write: async (list) => {
       const clientId = await getClientId();
-      const { list: resolved, changed } = resolveDuplicateWeekMemberships(list, clientId);
+      // Parent evidence is part of the shared policy (#1368): blocks sync first.
+      const blocks = await cache.read(SYNC_TABLES.RECOVERY_BLOCKS, Storage.loadRecoveryBlocksRaw);
+      const { list: resolved, changed } = resolveDuplicateWeekMemberships(list, clientId, { blocks });
       const persisted = await cache.write(
         SYNC_TABLES.RECOVERY_BLOCK_WEEKS,
         resolved,

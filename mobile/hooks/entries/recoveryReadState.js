@@ -65,6 +65,8 @@ export const RECOVERY_UNVERIFIED_MESSAGE =
   'Recovery data could not be read, so recovery status is unknown. Tap Retry recovery.';
 // Also the unresolved-data notice (#1368): some readable records are set aside
 // and shown data may be incomplete. Retry re-checks; it promises no fix.
+export const RECOVERY_UNRESOLVED_ACTION_MESSAGE =
+  'Some recovery records involved in this change could not be resolved, so it was not made.';
 export const RECOVERY_STALE_MESSAGE =
   'Showing recovery data that may be out of date or incomplete: the latest refresh failed or some records could not be resolved. Tap Retry recovery.';
 
@@ -146,8 +148,10 @@ function runAuthoritativeRecoveryRead() {
       // #1366: a malformed persisted record is a failed read (ERROR/STALE with
       // retry, mutations closed), never verified Normal.
       if (!wellFormed) throw new Error('Recovery records on this device are malformed.');
-      // #1368: well-formed but unresolved records stay persisted and are
-      // excluded from operational state; the pass still verifies the rest.
+      // #1368: well-formed unresolved records stay persisted. When one could
+      // change the mode answer, this pass fails (ERROR, or STALE keeping
+      // last-known-good); otherwise they are excluded and the rest verifies.
+      if (part.modeRelevant) throw Object.assign(new Error('Recovery data is unresolved.'), { unresolved: true });
       const blocks = allBlocks.filter(b => !part.excludedBlockIds.has(b.id));
       const weeks = allWeeks.filter(w => !part.excludedWeekIds.has(w.id));
       unresolvedCount = part.unresolvedCount;
@@ -165,10 +169,11 @@ function runAuthoritativeRecoveryRead() {
         recoveryPendingError: pendingError,
       });
       markStartupPhase('recovery:reload:done');
-      // READY does NOT by itself mean "safe to mutate": pending operations or
-      // set-aside unresolved records make this pass's own outcome not clean.
+      // Pending operations make this pass not clean. Unresolved records that
+      // cannot change the mode do not: actions that touch them are refused
+      // per target at the journal entry points (recoveryJournalReplay.js).
       return {
-        ok: pending.length === 0 && unresolvedCount === 0,
+        ok: pending.length === 0,
         pendingCount: pending.length,
         unresolvedCount,
         corrupt: false,
@@ -240,12 +245,8 @@ export async function ensureVerifiedRecoveryState() {
       error: 'A recovery change is still finishing. Try again in a moment.',
     };
   }
-  if (outcome && outcome.unresolvedCount > 0) {
-    return {
-      ok: false,
-      code: 'RECOVERY_DATA_UNRESOLVED',
-      error: 'Some recovery records could not be resolved, so recovery changes are paused.',
-    };
+  if (outcome && outcome.error && outcome.error.unresolved) {
+    return { ok: false, code: 'RECOVERY_DATA_UNRESOLVED', error: RECOVERY_UNRESOLVED_ACTION_MESSAGE };
   }
   return {
     ok: false,
@@ -346,11 +347,9 @@ export function useRecoveryBlockState() {
       staleError: refreshError,
       unresolvedCount: unresolvedCount || 0,
       error,
-      // Closed until verified, while the journal is corrupt even over a STALE
-      // snapshot (#711), and while unresolved records exist (#1368: whole
-      // collections are rewritten, so no per-record scoping).
-      mutationsAllowed: !!verified && status !== RECOVERY_STATUS.ERROR && !journalCorrupt
-        && !(unresolvedCount > 0),
+      // Closed until verified and while the journal is corrupt even over a STALE
+      // snapshot (#711). Unresolved records gate per target (#1368).
+      mutationsAllowed: !!verified && status !== RECOVERY_STATUS.ERROR && !journalCorrupt,
       refresh,
       pendingRecovery,
       recoveryPendingError,

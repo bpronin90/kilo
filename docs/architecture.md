@@ -509,20 +509,34 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   collision order only while every output stays a positive safe integer. No
   record is ever removed from `recovery_blocks` / `recovery_block_weeks`: a
   repair rewrites a row (completion, tombstone, ordinal), enqueues it dirty in
-  cloud mode before the raw write, aborts if the list changed since it was read,
-  and re-reads to verify. A missing parent, malformed or unreadable payload,
+  cloud mode, then compare-and-sets the raw write against the exact bytes it
+  planned from (a concurrent writer forces a re-plan, never an overwrite), and
+  re-reads to verify. A missing parent, malformed or unreadable payload,
   duplicate ids, baseline-note membership, or unsafe ordinal is left
-  byte-for-byte in place. Only the authoritative read / Retry and the sync
+  byte-for-byte in place. The safety guards live inside the shared helpers, so
+  cloud resolution applies the same ones: ambiguous ids, unparseable winner
+  timestamps, and missing or ambiguous parents never choose a winner or
+  cascade, and unresolved rows still reserve their note and ordinal slot.
+  Winners compare parsed instants, never timestamp strings. Only the authoritative read / Retry and the sync
   boundary repair; guarded actions and operation starts reconcile without
   repairing. The result rides beside the journal `ok` (never inside it, so sync
   is not gated). For WELL-FORMED but unresolved records,
-  `partitionRecoveryRecords` names the ids to exclude: the authoritative read
-  still verifies the rest of the snapshot, publishes `unresolvedCount`, shows
-  the stale-style notice with `Retry recovery`, and closes Recovery mutations
-  (and `ensureVerifiedRecoveryState`, code `RECOVERY_DATA_UNRESOLVED`) while any
-  exist, since mutations rewrite whole collections. MALFORMED records keep
-  #1366's fail-closed ERROR/STALE. Retry re-reads and re-classifies; it does not
-  promise a fix.
+  `partitionRecoveryRecords` names the ids to exclude and whether any could
+  change the mode answer (`modeRelevant`: a duplicate block id, an unresolved
+  block that is or could be active, or an unresolved week of the active block).
+  Mode-relevant: the pass fails, so first load is ERROR/unknown and a refresh is
+  STALE keeping last-known-good; `ensureVerifiedRecoveryState` refuses with
+  `RECOVERY_DATA_UNRESOLVED`. Otherwise the read verifies the rest, publishes
+  `unresolvedCount`, and shows the stale-style notice with `Retry recovery`.
+  Only DEPENDENT actions are refused: the journal entry points
+  (`runGuardedRecoveryAction`, `startRecoveryOperation`) re-partition under the
+  lock and refuse an action whose scope touches an unresolved record's block,
+  week, note, or ordinal slot, or a global action (starting a block) when the
+  data is mode-relevant, as a validation failure with zero writes. Timestamps
+  are not classified (the server columns are nullable and only the winner
+  policy reads them). An earlier open week is valid data: per-row LWW sync
+  produces it from ordinary use. MALFORMED records keep #1366's fail-closed
+  ERROR/STALE. Retry re-reads and re-classifies; it does not promise a fix.
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules, now exposes the note-derived analytics contract used by downstream
   native workout analytics work, and centralizes exercise alias resolution in

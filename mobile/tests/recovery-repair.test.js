@@ -327,7 +327,9 @@ describe('authoritative read honesty', () => {
     await TestRenderer.act(async () => { await run(); });
     const view = model.get();
 
-    expect(outcome.ok).toBe(false);
+    // The orphan cannot change the mode, so the rest verifies (owner direction:
+    // ignored for operational state, surfaced, only dependent actions blocked).
+    expect(outcome.ok).toBe(true);
     expect(outcome.unresolvedCount).toBe(1);
     // Unrelated Recovery data stays usable; the orphan is excluded.
     expect(view.ready).toBe(true);
@@ -337,9 +339,10 @@ describe('authoritative read honesty', () => {
     expect(view.unresolvedCount).toBe(1);
     expect(view.stale).toBe(true);
     expect(typeof view.retryRecovery).toBe('function');
-    // Recovery mutations stay closed; the confirm-time gate names why.
-    expect(view.mutationsAllowed).toBe(false);
-    expect((await ReadState.ensureVerifiedRecoveryState()).code).toBe('RECOVERY_DATA_UNRESOLVED');
+    // Recovery actions stay open; only ones touching the orphan are refused
+    // (see the dependent-action tests below).
+    expect(view.mutationsAllowed).toBe(true);
+    expect((await ReadState.ensureVerifiedRecoveryState()).ok).toBe(true);
     // Raw bytes untouched, and a second unchanged pass writes nothing.
     expect(await weeksRaw()).toBe(before);
     const writes = countWrites();
@@ -374,14 +377,34 @@ describe('authoritative read honesty', () => {
     model.unmount();
   });
 
-  test('a later pass that finds unresolved records keeps the verified snapshot and denies the exact pass', async () => {
+  test('mode-relevant unresolved data on refresh is STALE keeping last-known-good; the exact pass is denied', async () => {
     await seed(RECOVERY_BLOCKS_KEY, [block('b1')]);
     await seed(RECOVERY_BLOCK_WEEKS_KEY, [week('w1', 'b1', 'n1', 1)]);
-    expect((await run()).ok).toBe(true);
-    await seed(RECOVERY_BLOCK_WEEKS_KEY, [week('w1', 'b1', 'n1', 1), week('w2', 'ghost', 'n2', 1)]);
-    const denied = await ReadState.ensureVerifiedRecoveryState();
+    const model = readModel();
+    await TestRenderer.act(async () => { await run(); });
+    expect(model.get().activeBlock.id).toBe('b1');
+    // A second record with the active block's id: which one is active is now
+    // ambiguous, so the mode answer cannot be trusted.
+    await seed(RECOVERY_BLOCKS_KEY, [block('b1'), block('b1', { completed_at: T(4) })]);
+    let denied;
+    await TestRenderer.act(async () => { denied = await ReadState.ensureVerifiedRecoveryState(); });
     expect(denied.ok).toBe(false);
     expect(denied.code).toBe('RECOVERY_DATA_UNRESOLVED');
+    expect(model.get().stale).toBe(true);
+    expect(model.get().activeBlock.id).toBe('b1');
+    expect(model.get().mutationsAllowed).toBe(true);
+    model.unmount();
+  });
+
+  test('mode-relevant unresolved data on first load is unknown (ERROR), never Normal', async () => {
+    await seed(RECOVERY_BLOCKS_KEY, [block('b1'), block('b1', { completed_at: T(4) })]);
+    await seed(RECOVERY_BLOCK_WEEKS_KEY, []);
+    const model = readModel();
+    await TestRenderer.act(async () => { await run(); });
+    expect(model.get().ready).toBe(false);
+    expect(model.get().error).toBeTruthy();
+    expect(model.get().mutationsAllowed).toBe(false);
+    model.unmount();
   });
 
   test('repair makes a safely repairable dataset verify in one pass', async () => {
@@ -500,12 +523,16 @@ describe('failure injection', () => {
     const [b, w] = [await blocksRaw(), await weeksRaw()];
     const writes = countWrites();
     const action = jest.fn(async () => ({ ok: true }));
-    await journal.runGuardedRecoveryAction({ blockId: 'b1' }, action);
+    // An unrelated block's action runs; the tombstoned block's live week is
+    // unresolved until the sync-boundary repair cascades it, so b1 is refused.
+    await journal.runGuardedRecoveryAction({ blockId: 'b2' }, action);
+    const refused = await journal.runGuardedRecoveryAction({ blockId: 'b1' }, action);
     await journal.startRecoveryOperation({
-      scope: { blockId: 'b1' },
+      scope: { blockId: 'b2' },
       validate: async () => ({ ok: false, error: 'rejected' }),
     });
     expect(action).toHaveBeenCalledTimes(1);
+    expect(refused.reason).toBe('RECOVERY_DATA_UNRESOLVED');
     expect(writes).not.toHaveBeenCalled();
     expect([await blocksRaw(), await weeksRaw()]).toEqual([b, w]);
     // The sync boundary's reconcile does repair.
@@ -520,5 +547,89 @@ describe('failure injection', () => {
     expect(res.ok).toBe(true);
     expect(res.pending).toEqual([]);
     expect(res.corrupt).toBe(false);
+  });
+});
+
+describe('dependent-action gate (#1368)', () => {
+  const orphanSeed = async () => {
+    await seed(RECOVERY_BLOCKS_KEY, [block('b1', { completed_at: T(3) })]);
+    await seed(RECOVERY_BLOCK_WEEKS_KEY, [week('w1', 'b1', 'n1', 1, { completed_at: T(3) }), week('wo', 'ghost', 'n9', 1)]);
+  };
+
+  test('an unrelated orphan does not block an independent edit (include_in_normal_analytics on b1)', async () => {
+    await orphanSeed();
+    const action = jest.fn(async () => ({ ok: true }));
+    const res = await journal.runGuardedRecoveryAction({ blockId: 'b1' }, action);
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(res.ok).toBe(true);
+  });
+
+  test('actions touching the unresolved record or its note are refused with zero writes', async () => {
+    await orphanSeed();
+    const writes = countWrites();
+    const action = jest.fn(async () => ({ ok: true }));
+    for (const scope of [{ blockId: 'ghost' }, { weekId: 'wo' }, { noteId: 'n9' }]) {
+      const res = await journal.runGuardedRecoveryAction(scope, action);
+      expect(res.ok).toBe(false);
+      expect(res.reason).toBe('RECOVERY_DATA_UNRESOLVED');
+    }
+    expect(action).not.toHaveBeenCalled();
+    expect(writes).not.toHaveBeenCalled();
+  });
+
+  test('a global action (start a block) is refused only when unresolved data could change the mode', async () => {
+    await orphanSeed();
+    const action = jest.fn(async () => ({ ok: true }));
+    expect((await journal.runGuardedRecoveryAction({}, action)).ok).toBe(true);
+    await seed(RECOVERY_BLOCKS_KEY, [block('bA'), block('bA', { completed_at: T(4) })]);
+    const res = await journal.runGuardedRecoveryAction({}, action);
+    expect(res.reason).toBe('RECOVERY_DATA_UNRESOLVED');
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('repair safety: reserved slots and concurrent writers (#1368)', () => {
+  test('an excluded baseline-note row still reserves its ordinal slot', () => {
+    const blocks = [block('b1', { completed_at: T(3) })];
+    const weeks = [
+      week('w1', 'b1', 'n1', 1, { saved_at: T(2) }),
+      week('w2', 'b1', 'n2', 1, { saved_at: T(3) }),
+      week('wb', 'b1', 'base_b1', 2),
+    ];
+    const plan = planRecoveryRepair(blocks, weeks, 'c1');
+    const numbers = plan.weeks.filter((w) => !w.deleted_at).map((w) => `${w.id}:${w.week_number}`).sort();
+    expect(numbers).toEqual(['w1:1', 'w2:3', 'wb:2']);
+  });
+
+  test('a write that lands while repair is planning is never overwritten (compare-and-set)', async () => {
+    await seed(RECOVERY_BLOCKS_KEY, [block('b1', { deleted_at: T(9) })]);
+    await seed(RECOVERY_BLOCK_WEEKS_KEY, [week('w1', 'b1', 'n1', 1)]);
+    const original = jsonStorage.readList;
+    let weekReads = 0;
+    jest.spyOn(jsonStorage, 'readList').mockImplementation(async (key) => {
+      if (key === RECOVERY_BLOCK_WEEKS_KEY) {
+        weekReads += 1;
+        // The compare-and-set read: another writer added w2 just before it.
+        if (weekReads === 2) {
+          const current = JSON.parse(await AsyncStorage.getItem(key));
+          await AsyncStorage.setItem(key, JSON.stringify([...current, week('w2', 'b2', 'n2', 1)]));
+        }
+      }
+      return original(key);
+    });
+    await journal.withExclusiveRecoveryAccess(({ reconcile }) => reconcile());
+    const weeks = await load(RECOVERY_BLOCK_WEEKS_KEY);
+    expect(ids(weeks)).toEqual(['w1', 'w2']);
+    expect(byId(weeks, 'w1').deleted_at).toBe(T(9));
+  });
+
+  test('cloud resolution applies the same guards: a missing-parent membership is never retracted', () => {
+    const { resolveDuplicateWeekMemberships } = require('../storage/cloud/syncRecoveryResolution');
+    const blocks = [block('b1')];
+    const w1 = week('w1', 'b1', 'n1', 1, { saved_at: T(2) });
+    const wo = week('wo', 'ghost', 'n1', 1, { saved_at: T(3) });
+    const res = resolveDuplicateWeekMemberships([w1, wo], 'c1', { blocks });
+    expect(res.changed).toEqual([]);
+    expect(res.list).toEqual([w1, wo]);
   });
 });

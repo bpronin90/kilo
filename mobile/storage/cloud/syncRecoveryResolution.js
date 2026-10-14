@@ -59,20 +59,41 @@ export function isLiveRecoveryRecord(record) {
   return Boolean(record) && record.id != null && !isTombstone(record);
 }
 
+// Shared safety guards (#1368). EVERY caller (pull/push cloud resolution and
+// local Recovery repair) gets the same policy because the guards live here:
+// evidence that makes a winner arbitrary leaves the records untouched.
+//   * a null/non-object row, a missing id, or a DUPLICATE id is ambiguous
+//     identity: nothing in that list is resolved;
+//   * an unparseable timestamp the winner policy depends on is never compared;
+//   * a membership whose parent block is missing (or ambiguous) is never
+//     treated as deleted, and neither wins nor loses a collision.
+function hasAmbiguousIdentity(list) {
+  const seen = new Set();
+  for (const r of list || []) {
+    if (!r || typeof r !== 'object' || r.id == null || seen.has(r.id)) return true;
+    seen.add(r.id);
+  }
+  return false;
+}
+
 // Explicit parent tombstone -> surviving live memberships (issue #693, #1368).
-// Pure and shared by the pull-time sync cascade and local Recovery repair, so
-// there is one policy. A membership inherits the block's own `deleted_at`, so
-// every device writes a byte-identical tombstone. A MISSING block is never
-// treated as deleted: only an explicit tombstone cascades.
+// A membership inherits the block's own `deleted_at`, so every device writes a
+// byte-identical tombstone. A MISSING block is never treated as deleted, and a
+// block id that appears on more than one row (a live/deleted conflict) is
+// ambiguous: only an UNIQUE explicit tombstone cascades.
 export function planDeletedBlockCascade(blocks, weeks, clientId) {
+  const counts = new Map();
+  for (const block of blocks || []) {
+    if (block && block.id != null) counts.set(block.id, (counts.get(block.id) || 0) + 1);
+  }
   const deletedBlockAt = new Map();
   for (const block of blocks || []) {
-    if (block && block.id != null && isTombstone(block)) {
+    if (block && block.id != null && counts.get(block.id) === 1 && isTombstone(block)) {
       deletedBlockAt.set(block.id, block.deleted_at);
     }
   }
   const cascaded = [];
-  if (deletedBlockAt.size === 0) return { list: weeks || [], cascaded };
+  if (deletedBlockAt.size === 0 || hasAmbiguousIdentity(weeks)) return { list: weeks || [], cascaded };
   const list = (weeks || []).map((week) => {
     if (!isLiveRecoveryRecord(week)) return week;
     const deletedAt = deletedBlockAt.get(week.block_id);
@@ -95,7 +116,13 @@ export function resolveDuplicateActiveBlocks(list, clientId) {
   const active = (list || []).filter(
     (b) => isLiveRecoveryRecord(b) && !b.completed_at
   );
-  if (active.length < 2) return { list: list || [], changed: [] };
+  if (
+    active.length < 2 ||
+    hasAmbiguousIdentity(list) ||
+    !active.every((b) => recoveryInstant(b.started_at) !== null)
+  ) {
+    return { list: list || [], changed: [] };
+  }
 
   const ordered = active.slice().sort((a, b) => compareRecoveryRecords(a, b, 'started_at'));
   const survivor = ordered[ordered.length - 1];
@@ -131,6 +158,17 @@ function retractedAt(record) {
   return record.saved_at || record.started_at || record.updated_at || EPOCH_ISO;
 }
 
+function groupBy(list, keyOf) {
+  const groups = new Map();
+  for (const item of list) {
+    const key = keyOf(item);
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(item);
+    else groups.set(key, [item]);
+  }
+  return groups;
+}
+
 // One live membership per note, and one live ordinal per (block, week).
 //
 // Both rules keep the EARLIEST membership, which is the one that was already
@@ -140,24 +178,43 @@ function retractedAt(record) {
 // legitimate — it is renumbered to the next free ordinal in its block, which
 // preserves the established order and appends the newcomer after it rather than
 // renumbering anything that already existed.
-export function resolveDuplicateWeekMemberships(list, clientId) {
+//
+// `blocks` (the block list the weeks belong to) makes parent evidence part of
+// the policy: a membership whose parent is missing/ambiguous or that names its
+// block's baseline note is UNRESOLVED. It is never changed, still RESERVES its
+// note and ordinal slot, and any collision group it belongs to is left alone.
+export function resolveDuplicateWeekMemberships(list, clientId, { blocks } = {}) {
+  const all = list || [];
+  if (hasAmbiguousIdentity(all)) return { list: all, changed: [], unresolvedBlocks: [] };
+
+  let isEligible = () => true;
+  if (blocks) {
+    const counts = new Map();
+    for (const b of blocks) if (b && b.id != null) counts.set(b.id, (counts.get(b.id) || 0) + 1);
+    const parents = new Map(
+      blocks.filter((b) => isLiveRecoveryRecord(b) && counts.get(b.id) === 1).map((b) => [b.id, b])
+    );
+    isEligible = (w) => {
+      const parent = parents.get(w.block_id);
+      return !!parent && w.note_id !== parent.baseline_note_id;
+    };
+  }
+  // A group may be repaired only when every member is eligible and carries a
+  // timestamp the ordering can compare.
+  const repairable = (group) =>
+    group.every((w) => isEligible(w) && recoveryInstant(w.saved_at) !== null);
+
   const changedById = new Map();
   const record = (rec) => {
     changedById.set(rec.id, rec);
     return rec;
   };
+  const live = all.filter((w) => isLiveRecoveryRecord(w));
 
   // Rule 1 — one live membership per note.
-  const byNote = new Map();
-  for (const week of list || []) {
-    if (!isLiveRecoveryRecord(week) || week.note_id == null) continue;
-    const bucket = byNote.get(week.note_id);
-    if (bucket) bucket.push(week);
-    else byNote.set(week.note_id, [week]);
-  }
   const retracted = new Set();
-  for (const bucket of byNote.values()) {
-    if (bucket.length < 2) continue;
+  for (const bucket of groupBy(live.filter((w) => w.note_id != null), (w) => w.note_id).values()) {
+    if (bucket.length < 2 || !repairable(bucket)) continue;
     const ordered = bucket.slice().sort((a, b) => compareRecoveryRecords(a, b, 'saved_at'));
     for (const loser of ordered.slice(1)) {
       retracted.add(loser.id);
@@ -166,17 +223,10 @@ export function resolveDuplicateWeekMemberships(list, clientId) {
   }
 
   // Rule 2 — one live ordinal per (block, week_number), over what rule 1 left
-  // live. Grouping by block first keeps this O(rows) rather than a nested scan.
-  const byBlock = new Map();
-  for (const week of list || []) {
-    if (!isLiveRecoveryRecord(week) || retracted.has(week.id)) continue;
-    const bucket = byBlock.get(week.block_id);
-    if (bucket) bucket.push(week);
-    else byBlock.set(week.block_id, [week]);
-  }
+  // live. Unresolved rows stay in the buckets: they RESERVE their ordinal.
   const unresolvedBlocks = [];
+  const byBlock = groupBy(live.filter((w) => !retracted.has(w.id)), (w) => w.block_id);
   for (const [blockId, bucket] of byBlock) {
-    const byOrdinal = new Map();
     let maxOrdinal = 0;
     let valid = true;
     for (const week of bucket) {
@@ -185,12 +235,9 @@ export function resolveDuplicateWeekMemberships(list, clientId) {
       // appended after, so this block is left exactly as found (#1368).
       if (!Number.isSafeInteger(ordinal) || ordinal < 1) valid = false;
       else if (ordinal > maxOrdinal) maxOrdinal = ordinal;
-      const collided = byOrdinal.get(ordinal);
-      if (collided) collided.push(week);
-      else byOrdinal.set(ordinal, [week]);
     }
-    const collisions = [...byOrdinal.entries()]
-      .filter(([, group]) => group.length > 1)
+    const collisions = [...groupBy(bucket, (w) => w.week_number).entries()]
+      .filter(([, group]) => group.length > 1 && repairable(group))
       // Ascending ordinal, never input order, so every device allocates the
       // same new ordinals to the same losers.
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
@@ -212,7 +259,7 @@ export function resolveDuplicateWeekMemberships(list, clientId) {
   }
 
   return {
-    list: (list || []).map((w) => (w && changedById.get(w.id)) || w),
+    list: all.map((w) => (w && changedById.get(w.id)) || w),
     changed: [...changedById.values()],
     // Blocks whose ordinal collision could not be renumbered safely; their
     // records are returned untouched (#1368).

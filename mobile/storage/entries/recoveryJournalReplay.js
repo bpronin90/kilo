@@ -22,6 +22,13 @@ import {
 } from './recoveryJournalStore';
 import { replayRecord, resetRecoveryNoteOperations } from './recoveryJournalOperations';
 import { repairRecoveryRecords } from './recoveryRepair';
+import { readList } from './jsonStorage';
+import { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY } from './keys';
+import {
+  arePersistedRecoveryRecordsWellFormed,
+  isRecoveryTargetBlocked,
+  partitionRecoveryRecords,
+} from '../../lib/data/activeTrainingContext';
 
 let inFlightReconcile = null;
 
@@ -137,6 +144,34 @@ function conflictsWith(record, { blockId, weekId, noteId }) {
   return false;
 }
 
+// Dependent-action gate (#1368), checked under the lock against what is
+// persisted now. Unresolved records stay in storage; an action is refused only
+// when its `scope` touches one (or, for an unscoped global action such as
+// starting a block, when unresolved data could change the mode). Malformed data
+// and read failures are left to their existing paths: every lifecycle mutation
+// is already refused by the authoritative fail-closed check (#1366) before it
+// gets here, and the action's own read reports a read failure truthfully.
+// Refusals are validation failures: no journal record and no domain write.
+async function unresolvedGate(scope) {
+  let blocks;
+  let weeks;
+  try {
+    [blocks, weeks] = await Promise.all([readList(RECOVERY_BLOCKS_KEY), readList(RECOVERY_BLOCK_WEEKS_KEY)]);
+  } catch {
+    return null;
+  }
+  if (!arePersistedRecoveryRecordsWellFormed(blocks, weeks)) return null;
+  const part = partitionRecoveryRecords(blocks, weeks);
+  const target = scope && (scope.blockId || scope.weekId || scope.noteId) ? scope : { global: true };
+  if (!isRecoveryTargetBlocked(part, target)) return null;
+  return {
+    ok: false,
+    code: RECOVERY_OPERATION_CODES.VALIDATION_FAILED,
+    reason: 'RECOVERY_DATA_UNRESOLVED',
+    error: 'Some recovery records involved in this change could not be resolved, so it was not made.',
+  };
+}
+
 // Run any recovery action (including the single-domain ones) behind the same
 // guard, after reconciling. `scope` names the records the action touches so a
 // still-pending operation over the same block/week/note blocks it rather than
@@ -155,6 +190,8 @@ export function runGuardedRecoveryAction(scope, action) {
         error: blocking[0].error,
       };
     }
+    const unresolved = await unresolvedGate(scope);
+    if (unresolved) return unresolved;
     return action();
   });
 }
@@ -211,6 +248,8 @@ export function startRecoveryOperation({ scope, validate }) {
         error: blocking[0].error,
       };
     }
+    const unresolved = await unresolvedGate(scope);
+    if (unresolved) return unresolved;
 
     let validation;
     try {

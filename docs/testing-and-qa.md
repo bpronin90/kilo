@@ -385,8 +385,13 @@ CI). They live beside the behavioral sync coverage:
   four repairs, deterministic permuted-order convergence, idempotent second
   passes, byte-identical retention of missing-parent / malformed / duplicate-id /
   unsafe-ordinal data, a verified read that excludes unresolved records with an
-  `unresolvedCount` notice, Retry, closed mutations and exact-pass denial (and
-  malformed data still failing closed), guarded actions performing no repair
+  `unresolvedCount` notice and Retry, mode-relevant unresolved data giving
+  first-load ERROR and refresh STALE with last-known-good plus exact-pass
+  denial, malformed data still failing closed, dependent-action gating (an
+  unrelated edit runs, actions touching the unresolved block/week/note are
+  refused with zero writes, a global start is refused only when mode-relevant),
+  reserved ordinal slots, compare-and-set against a concurrent writer, cloud
+  resolution applying the same guards, guarded actions performing no repair
   writes, and read/write/enqueue/verification failure injection.
 - `mobile/tests/sync-recovery.test.js` — with independent tables running
   concurrently, a note is still pushed before the recovery block whose baseline
