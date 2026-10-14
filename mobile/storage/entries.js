@@ -115,6 +115,7 @@ export {
   uncompleteRecoveryWeek,
   deleteRecoveryWeek,
 } from './entries/recoveryStorage';
+export { loadHeldRecoveryRecords } from './entries/recoveryRepair';
 
 // Durable write-ahead journal for the two multi-record recovery lifecycle
 // operations (#696). Device-local protocol metadata: deliberately absent from

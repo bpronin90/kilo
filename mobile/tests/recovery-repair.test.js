@@ -11,7 +11,7 @@ import {
 } from '../storage/entries/keys';
 import * as jsonStorage from '../storage/entries/jsonStorage';
 import {
-  RECOVERY_CORRUPT_PAYLOADS_KEY,
+  RECOVERY_CORRUPT_PAYLOAD_PREFIX,
   RECOVERY_HELD_KEY,
   __resetRecoveryRepairState,
   loadHeldRecoveryRecords,
@@ -23,6 +23,10 @@ import * as journal from '../storage/entries/recoveryOperationJournal';
 import { arePersistedRecoveryRecordsConsistent } from '../lib/data/activeTrainingContext';
 import { CLIENT_ID_KEY, mergeRecords } from '../storage/sync/records';
 import { resetClientIdCacheForTests } from '../storage/syncQueue';
+import { reconcileAgainstBaseline } from '../storage/sync/reconciliation';
+import '../storage/entries'; // entries first: avoids the pre-existing entries/sync-adapter import cycle
+import { createTableIo } from '../storage/cloud/syncTableIo';
+import { SYNC_TABLES } from '../storage/sync/records';
 import * as readState from '../hooks/entries/recoveryReadState';
 import { withRecoveryReconciliation } from '../hooks/entries/storageMode';
 
@@ -52,6 +56,10 @@ const domain = ({ blocks, weeks }) => {
   const strip = ({ updated_at, client_id, ...rest }) => rest; // eslint-disable-line no-unused-vars
   const sort = l => l.map(strip).sort((a, b) => a.id.localeCompare(b.id));
   return { blocks: sort(blocks), weeks: sort(weeks) };
+};
+const archived = async () => {
+  const keys = (await AsyncStorage.getAllKeys()).filter(k => k.startsWith(RECOVERY_CORRUPT_PAYLOAD_PREFIX)).sort();
+  return Promise.all(keys.map(async k => JSON.parse(await AsyncStorage.getItem(k))));
 };
 const spyWrites = () => jest.spyOn(jsonStorage, 'writeList');
 
@@ -357,7 +365,7 @@ describe('unrepairable records always have a non-destructive way forward', () =>
     await expect(repairRecoveryRecords()).rejects.toThrow('Corrupt list data');
     await expect(repairRecoveryRecords()).resolves.toMatchObject({ ok: true });
     expect(await get(RECOVERY_BLOCK_WEEKS_KEY)).toEqual([]);
-    expect(await get(RECOVERY_CORRUPT_PAYLOADS_KEY)).toEqual([
+    expect(await archived()).toEqual([
       expect.objectContaining({ key: RECOVERY_BLOCK_WEEKS_KEY, raw: '{not json' }),
     ]);
   });
@@ -597,5 +605,103 @@ describe('two devices converge', () => {
     expect(domain(a)).toEqual(domain(b));
     expect(a.held.map(h => h.record.id)).toEqual(['o']);
     expect(isConsistent(a)).toBe(true);
+  });
+});
+
+describe('review findings (#1369)', () => {
+  test('a detached week is part of the synced view, so baseline reconciliation never fabricates its deletion', async () => {
+    const week = wk('w', 'late', 'n', 1);
+    await seed([], [week]);
+    await repairRecoveryRecords();
+    expect((await read()).weeks).toEqual([]);
+    const current = await createTableIo(() => {})[SYNC_TABLES.RECOVERY_BLOCK_WEEKS].read();
+    expect(current).toEqual([week]);
+    const { dirty } = reconcileAgainstBaseline({ current, baseline: [week], clientId: 'c' });
+    expect(dirty).toEqual([]);
+  });
+
+  test('a pending operation cannot make corruption unreachable: the next pass sets it aside', async () => {
+    await put(RECOVERY_BLOCKS_KEY, [blk('b')]);
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, '{broken');
+    await put(RECOVERY_OPERATION_JOURNAL_KEY, [{
+      version: journal.RECOVERY_JOURNAL_VERSION, operation_id: 'op1', created_at: T0, updated_at: T0,
+      stage: 'intent', attempts: 0, last_error: null,
+      type: journal.RECOVERY_OPERATION_TYPES.COMPLETE_BLOCK_WITH_WEEK, block_id: 'b', week_id: 'w', requested_completed_at: T1,
+    }]);
+    const first = await journal.reconcileRecoveryOperations();
+    expect(first.ok).toBe(false);
+    expect(await AsyncStorage.getItem(RECOVERY_BLOCK_WEEKS_KEY)).toBe('{broken');
+    await journal.reconcileRecoveryOperations();
+    expect(await get(RECOVERY_BLOCK_WEEKS_KEY)).toEqual([]);
+    expect(await archived()).toEqual([expect.objectContaining({ raw: '{broken' })]);
+    expect((await journal.reconcileRecoveryOperations()).pending).toHaveLength(0);
+  });
+
+  test('a newer held edit beats an older live row on re-attach; an older one does not', async () => {
+    const heldNewer = wk('w', 'late', 'n', 1, { completed_at: T2, updated_at: T3 });
+    await seed([], [heldNewer]);
+    await repairRecoveryRecords();
+    await seed([blk('late')], [wk('w', 'late', 'n', 1, { updated_at: T1 })]);
+    await repairRecoveryRecords();
+    let s = await read();
+    expect(s.weeks).toHaveLength(1);
+    expect(s.weeks[0]).toMatchObject({ completed_at: T2 });
+    expect(s.held).toEqual([]);
+
+    await AsyncStorage.clear();
+    const heldOlder = wk('w', 'late', 'n', 1, { updated_at: T1 });
+    await seed([], [heldOlder]);
+    await repairRecoveryRecords();
+    await seed([blk('late')], [wk('w', 'late', 'n', 1, { completed_at: T2, updated_at: T3 })]);
+    await repairRecoveryRecords();
+    s = await read();
+    expect(s.weeks[0]).toMatchObject({ completed_at: T2 });
+  });
+
+  test('a different quarantined version of the same id never overwrites the preserved one', async () => {
+    const a = { id: 'bad', baseline: 'text A', completed_at: null };
+    const b = { id: 'bad', baseline: 'text B', completed_at: null };
+    await seed([a], []);
+    await repairRecoveryRecords();
+    await repairRecoveryRecords();
+    await seed([b], []);
+    await repairRecoveryRecords();
+    await repairRecoveryRecords();
+    const kept = (await read()).held.filter(h => h.kind === 'quarantined').map(h => h.record.baseline).sort();
+    expect(kept).toEqual(['text A', 'text B']);
+  });
+
+  test('earlier salvaged corrupt payloads survive a later one', async () => {
+    await put(RECOVERY_BLOCKS_KEY, [blk('b')]);
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, '{first');
+    await expect(repairRecoveryRecords()).rejects.toThrow();
+    await repairRecoveryRecords();
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, '{second');
+    await expect(repairRecoveryRecords()).rejects.toThrow();
+    await repairRecoveryRecords();
+    expect((await archived()).map(p => p.raw).sort()).toEqual(['{first', '{second']);
+  });
+
+  test('several ordinal collision groups renumber identically for reversed input', async () => {
+    const blocks = [blk('b', { completed_at: T1 })];
+    const weeks = [
+      wk('a', 'b', 'n1', 1, { saved_at: T0 }), wk('b', 'b', 'n2', 1, { saved_at: T2 }),
+      wk('c', 'b', 'n3', 2, { saved_at: T1 }), wk('d', 'b', 'n4', 2, { saved_at: T3 }),
+    ];
+    const run = async list => { await AsyncStorage.clear(); await seed(blocks, list); await repairRecoveryRecords(); return byId((await read()).weeks); };
+    const fwd = await run(weeks);
+    const rev = await run([...weeks].reverse());
+    expect(rev.b.week_number).toBe(fwd.b.week_number);
+    expect(rev.d.week_number).toBe(fwd.d.week_number);
+    expect([fwd.b.week_number, fwd.d.week_number]).toEqual([3, 4]);
+  });
+
+  test('unsafe ordinals are malformed: set aside on the second pass, never an endless loop', async () => {
+    await seed([blk('b')], [wk('x', 'b', 'n1', 1e20), wk('y', 'b', 'n2', 1e20)]);
+    expect(await repairRecoveryRecords()).toMatchObject({ ok: false, unrepairable: 2 });
+    expect(await repairRecoveryRecords()).toMatchObject({ ok: true, quarantined: 2 });
+    const s = await read();
+    expect(isConsistent(s)).toBe(true);
+    expect(s.held.map(h => h.kind)).toEqual(['quarantined', 'quarantined']);
   });
 });

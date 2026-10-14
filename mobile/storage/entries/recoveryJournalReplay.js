@@ -65,11 +65,10 @@ const RECOVERY_REPAIR_INCOMPLETE_MESSAGE =
   'Recovery data on this device needs repair before it can sync. Try again.';
 
 async function repairAfterReplay(operationsPending) {
-  if (operationsPending) return { ok: true, deferred: true };
   try {
-    return await repairRecoveryRecords();
+    return await repairRecoveryRecords({ corruptOnly: operationsPending });
   } catch (e) {
-    return { ok: false, failed: true, error: e };
+    return { ok: false, failed: true, deferred: operationsPending, error: e };
   }
 }
 

@@ -175,7 +175,10 @@ export function resolveDuplicateWeekMemberships(list, clientId) {
       if (collided) collided.push(week);
       else byOrdinal.set(week.week_number, [week]);
     }
-    for (const collided of byOrdinal.values()) {
+    // Ascending ordinal, so new ordinals are allocated in the same order for
+    // any input order (Map iteration would follow insertion order).
+    const groups = [...byOrdinal].sort((x, y) => Number(x[0]) - Number(y[0]));
+    for (const [, collided] of groups) {
       if (collided.length < 2) continue;
       const ordered = collided
         .slice()

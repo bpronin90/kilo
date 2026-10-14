@@ -63,7 +63,7 @@ import { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY } from './keys';
 import { CorruptStorageError, readList, writeList } from './jsonStorage';
 import { secureStorage as AsyncStorage } from '../secureStorage';
 import { getClientId, stampWrite } from '../syncQueue';
-import { stableStringify } from '../sync/records';
+import { pickWinner, stableStringify } from '../sync/records';
 import {
   cascadeTombstonedParents,
   resolveDuplicateActiveBlocks,
@@ -78,7 +78,7 @@ import {
 } from '../../lib/data/activeTrainingContext';
 
 export const RECOVERY_HELD_KEY = 'kilo_recovery_held_records_v1';
-export const RECOVERY_CORRUPT_PAYLOADS_KEY = 'kilo_recovery_corrupt_payloads_v1';
+export const RECOVERY_CORRUPT_PAYLOAD_PREFIX = 'kilo_recovery_corrupt_payload_v1_';
 export const HELD_KINDS = Object.freeze({ MISSING_PARENT: 'missing_parent', QUARANTINED: 'quarantined' });
 
 const MAX_ATTEMPTS = 3;
@@ -118,7 +118,17 @@ function advance(record, original) {
   return Number.isNaN(ms) ? record : { ...record, updated_at: new Date(ms + 1).toISOString() };
 }
 
-const heldId = (collection, record) => `${collection}:${record.id ?? stableStringify(record)}`;
+function hashOf(text) {
+  let h = 5381;
+  for (let i = 0; i < text.length; i += 1) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+  return `${h.toString(36)}${text.length.toString(36)}`;
+}
+// A quarantined record's id includes a hash of its content, so a later,
+// different version of the same id is a NEW entry: preserved history is never
+// overwritten. A missing-parent week is one logical record per id (LWW).
+const heldId = (kind, collection, record) => (kind === HELD_KINDS.QUARANTINED
+  ? `${kind}:${collection}:${record.id ?? ''}:${hashOf(stableStringify(record))}`
+  : `${kind}:${collection}:${record.id}`);
 const isHeld = h => !!h && typeof h.held_id === 'string' && !!h.record && typeof h.record === 'object';
 
 // Pure planner. `quarantine` sets unrepairable records aside instead of
@@ -133,7 +143,7 @@ export function planRecoveryRepair({ blocks, weeks, held = [], clientId, quarant
   const heldAdds = [];
   const addHeld = (kind, collection, original, reason) => {
     const record = original && typeof original === 'object' ? original : { __raw: original };
-    heldAdds.push({ held_id: heldId(collection, record), kind, collection, reason, held_at: now, record });
+    heldAdds.push({ held_id: heldId(kind, collection, record), kind, collection, reason, held_at: now, record });
   };
   if (quarantine) {
     unrepairable.forEach(u => addHeld(HELD_KINDS.QUARANTINED, u.collection, u.record, 'unrepairable'));
@@ -144,21 +154,22 @@ export function planRecoveryRepair({ blocks, weeks, held = [], clientId, quarant
   let B = cb.good;
   let W = cw.good;
   const knownBlockIds = new Set([...B, ...cb.bad.filter(r => !removedBadBlocks.has(r))].map(b => b?.id));
-  const weekIds = new Set([...W, ...cw.bad.filter(r => !removedBadWeeks.has(r))].map(w => w?.id));
+  const badWeekIds = new Set(cw.bad.filter(r => !removedBadWeeks.has(r)).map(w => w?.id));
 
   // 1. re-attach (or drop superseded) held weeks
   const spent = new Set();
-  const reattached = [];
+  const goodW = new Map(W.map(w => [w.id, w]));
   for (const h of held.filter(isHeld)) {
     if (h.kind !== HELD_KINDS.MISSING_PARENT || h.collection !== 'weeks') continue;
     if (!knownBlockIds.has(h.record.block_id)) continue;
+    if (badWeekIds.has(h.record.id) || !isWellTypedRecoveryWeek(h.record)) continue; // stays held
     spent.add(h.held_id);
-    if (!weekIds.has(h.record.id) && isWellTypedRecoveryWeek(h.record)) {
-      reattached.push(h.record);
-      weekIds.add(h.record.id);
-    }
+    const existing = goodW.get(h.record.id);
+    // The existing winner policy decides: a newer held edit must not lose to an
+    // older live row, and an older one never overwrites a newer row.
+    if (!existing || pickWinner(existing, h.record) === h.record) goodW.set(h.record.id, h.record);
   }
-  W = [...W, ...reattached];
+  W = [...goodW.values()];
 
   // 2-7
   B = resolveDuplicateActiveBlocks(B, clientId).list;
@@ -194,10 +205,19 @@ export function planRecoveryRepair({ blocks, weeks, held = [], clientId, quarant
 
   // Held store: additions first (replace same id only when content differs),
   // then removals (re-attached / superseded).
-  const keep = held.filter(isHeld).filter(h => !heldAdds.some(
-    a => a.held_id === h.held_id && stableStringify(a.record) !== stableStringify(h.record)
-  ));
-  const fresh = heldAdds.filter(a => !keep.some(h => h.held_id === a.held_id));
+  const existingHeld = new Map(held.filter(isHeld).map(h => [h.held_id, h]));
+  const replaced = new Set();
+  const fresh = [];
+  for (const a of heldAdds) {
+    const ex = existingHeld.get(a.held_id);
+    if (fresh.some(f => f.held_id === a.held_id)) continue;
+    if (!ex) fresh.push(a);
+    else if (stableStringify(ex.record) !== stableStringify(a.record) && pickWinner(ex.record, a.record) === a.record) {
+      replaced.add(a.held_id);
+      fresh.push(a);
+    }
+  }
+  const keep = held.filter(isHeld).filter(h => !replaced.has(h.held_id));
   const heldBefore = [...keep, ...fresh];
   const heldAfter = heldBefore.filter(h => !spent.has(h.held_id));
 
@@ -240,10 +260,21 @@ async function readRepairList(key) {
       throw e;
     }
     const raw = await AsyncStorage.getItem(key);
-    let kept = [];
-    try { kept = await readList(RECOVERY_CORRUPT_PAYLOADS_KEY); } catch { /* replaced below */ }
-    if (!kept.some(p => p && p.key === key && p.raw === raw)) {
-      await writeList(RECOVERY_CORRUPT_PAYLOADS_KEY, [...kept, { key, raw, quarantined_at: new Date().toISOString() }]);
+    // One archive entry per payload (no read-modify-write of a shared list), so
+    // an earlier salvage can never be erased or mis-read as empty.
+    const base = `${RECOVERY_CORRUPT_PAYLOAD_PREFIX}${hashOf(`${key}|${raw}`)}`;
+    for (let n = 0; ; n += 1) {
+      const archiveKey = n === 0 ? base : `${base}_${n}`;
+      // eslint-disable-next-line no-await-in-loop
+      const existing = await AsyncStorage.getItem(archiveKey);
+      if (existing == null) {
+        // eslint-disable-next-line no-await-in-loop
+        await AsyncStorage.setItem(archiveKey, JSON.stringify({ key, raw, quarantined_at: new Date().toISOString() }));
+        break;
+      }
+      let same = false;
+      try { const p = JSON.parse(existing); same = p.key === key && p.raw === raw; } catch { /* distinct */ }
+      if (same) break;
     }
     await writeList(key, []);
     lastCorruptKeys.delete(key);
@@ -264,7 +295,15 @@ export const loadHeldRecoveryRecords = () => readList(RECOVERY_HELD_KEY);
 // reports it as a failed read; the next pass re-plans from persisted state).
 // Resolves `{ ok, changed, unrepairable, detached, quarantined }`: `ok` is false
 // while unrepairable records remain.
-export async function repairRecoveryRecords() {
+export async function repairRecoveryRecords({ corruptOnly = false } = {}) {
+  if (corruptOnly) {
+    // Reached while a journaled operation is pending: only the corrupt-payload
+    // route runs (first sighting fails, the next sets it aside), because a
+    // pending operation whose own read hits that corruption could otherwise
+    // never settle.
+    await readAll();
+    return { ok: true, deferred: true };
+  }
   const clientId = await getClientId();
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     const [blocks, weeks, held] = await readAll();

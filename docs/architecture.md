@@ -927,7 +927,7 @@ chip is gone; nothing in the active path produces or reads `rep_drop_off_flags`.
 | `kilo_recovery_blocks` | JSON array of recovery-block records (`baseline_note_id`, the frozen versioned `baseline` snapshot, `include_in_normal_analytics`, the optional free-text `reason` a block was started, `started_at`, `completed_at`) plus sync metadata and retained tombstones. `reason` is `null` when none was given, including on every record written before it existed; nothing in the domain reads it, so it changes no membership, baseline, comparison, or analytics result |
 | `kilo_recovery_block_weeks` | JSON array of ordered recovery-week memberships linking a workout note to a block (`block_id`, `note_id`, domain-assigned `week_number`, `completed_at`) plus sync metadata and retained tombstones |
 | `kilo_recovery_held_records_v1` | Device-local records storage repair set aside (#1368): `missing_parent` weeks awaiting their block and `quarantined` unrepairable records, each with its untouched raw record. Not a sync table, not exported in a backup; wiped with every `kilo_` key |
-| `kilo_recovery_corrupt_payloads_v1` | Device-local byte-for-byte copies of a Recovery collection payload that was not a JSON list, kept when repair resets that key (#1368) |
+| `kilo_recovery_corrupt_payload_v1_<hash>` | Device-local byte-for-byte copy of a Recovery collection payload that was not a JSON list, one key per payload and never overwritten, written before repair resets the source key (#1368) |
 | `kilo_recovery_operation_journal_v1` | Device-local write-ahead journal of in-flight multi-record recovery lifecycle operations (`operation_id`, schema `version`, `type`, affected `block_id`/`week_id`/`note_id`, immutable requested timestamp, intended outcome, stage/attempt metadata, `created_at`/`updated_at`, last-error diagnostics). Protocol metadata, not user health data: never exported in a backup, never a sync table, and never stores workout-note text |
 
 ### Recovery lifecycle operation journal
@@ -1114,15 +1114,20 @@ row may not have downloaded). Repair never tombstones such a week, since that
 tombstone would sync and win over a legitimate membership. It moves the raw
 record to the held store, so it cannot block its note or ordinal and the read
 verifies immediately, with no waiting. If the block arrives, the next pass
-re-attaches it (a newer copy already in the list wins; a tombstoned block
-cascades it). If the block never arrives the record stays held, unaltered and
+re-attaches it (the existing LWW winner policy picks between the held and any
+list copy; a tombstoned block cascades it). Sync's view of the week collection
+includes held missing-parent weeks (`loadWeeksForSync`), so baseline
+reconciliation never reads a detached week as a local deletion. If the block never arrives the record stays held, unaltered and
 inspectable (`loadHeldRecoveryRecords`).
 
 Unrepairable records: the first pass that sees a set of them leaves them alone
 and reports them, so the read fails with Retry. The next pass that sees the
 same set quarantines them non-destructively (held store, raw record intact) and
 repairs the rest, so Retry never loops over unchanged corruption and needs
-neither the cloud nor a device wipe. A collection payload that is not a JSON
+neither the cloud nor a device wipe. Quarantined versions are keyed by content, so
+a later different version of the same id never replaces an earlier one. While a
+journaled operation is pending only this corrupt-payload route runs, so a pending
+operation blocked by a corrupt payload still settles. A collection payload that is not a JSON
 list is handled the same way, copied aside before the key is reset.
 
 Persistence: held additions, then blocks, then weeks, then held removals, so a

@@ -87,7 +87,7 @@ const hasMarkers = r => isMarker(r.completed_at) && isMarker(r.deleted_at);
 const isWellTypedBlock = b => hasMarkers(b) && isId(b.baseline_note_id)
   && (b.include_in_normal_analytics === undefined || typeof b.include_in_normal_analytics === 'boolean');
 const isWellTypedWeek = w => !!w && isId(w.id) && hasMarkers(w) && isId(w.block_id) && isId(w.note_id)
-  && Number.isInteger(w.week_number) && w.week_number >= 1;
+  && Number.isSafeInteger(w.week_number) && w.week_number >= 1;
 
 // The storage readers drop any record whose `deleted_at` is truthy before the
 // selector sees it, so a malformed tombstone marker would vanish rather than
@@ -112,7 +112,7 @@ function isProvisionalSnapshotConsistent(blocks, weeks, { strictOpenWeeks = true
   const liveBlocks = new Map(blocks.filter(isLiveRecord).map(b => [b.id, b]));
   const live = weeks.filter(isLiveRecord);
   const wellFormed = live.every(w => isId(w.block_id) && isId(w.note_id)
-    && Number.isInteger(w.week_number) && w.week_number >= 1 && liveBlocks.has(w.block_id)
+    && Number.isSafeInteger(w.week_number) && w.week_number >= 1 && liveBlocks.has(w.block_id)
     && w.note_id !== liveBlocks.get(w.block_id).baseline_note_id);
   if (!wellFormed || new Set(live.map(w => w.note_id)).size !== live.length) return false;
   // Ordinals are unique per block, completed blocks included.

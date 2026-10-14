@@ -199,6 +199,25 @@ export async function tombstoneLocalPhantoms(cache) {
   await enqueueDirtyMany(SYNC_TABLES.WORKOUT_NOTES, tombstoned);
 }
 
+// The membership list sync reconciles against its baseline (#1368). A week that
+// storage repair DETACHED because its block is not present locally lives in the
+// device-local held store, not the raw list. Reading only the raw list would make
+// it look physically deleted, and reconcileAgainstBaseline would turn that
+// absence into an uploaded tombstone: a guessed deletion of a membership whose
+// block may simply not have downloaded yet. So held missing-parent weeks are
+// part of the synced view; a pull merges into them, and the post-pass repair
+// detaches them again.
+async function loadWeeksForSync() {
+  const raw = await Storage.loadRecoveryBlockWeeksRaw();
+  if (typeof Storage.loadHeldRecoveryRecords !== 'function') return raw;
+  const held = await Storage.loadHeldRecoveryRecords();
+  const have = new Set((raw || []).map((w) => w && w.id));
+  const detached = (held || [])
+    .filter((h) => h && h.kind === 'missing_parent' && h.collection === 'weeks' && h.record && !have.has(h.record.id))
+    .map((h) => h.record);
+  return detached.length ? [...raw, ...detached] : raw;
+}
+
 // Cascade a PULLED block tombstone to the memberships it should have taken with
 // it (issue #693).
 //
@@ -231,7 +250,7 @@ export async function tombstoneLocalPhantoms(cache) {
 export async function cascadeDeletedBlockMemberships(cache = createPassCache()) {
   const [blocks, weeks] = await Promise.all([
     cache.read(SYNC_TABLES.RECOVERY_BLOCKS, Storage.loadRecoveryBlocksRaw),
-    cache.read(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, Storage.loadRecoveryBlockWeeksRaw),
+    cache.read(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, loadWeeksForSync),
   ]);
 
   if (!(blocks || []).some((block) => block && block.id != null && isTombstone(block))) return [];
@@ -244,7 +263,7 @@ export async function cascadeDeletedBlockMemberships(cache = createPassCache()) 
     SYNC_TABLES.RECOVERY_BLOCK_WEEKS,
     next,
     Storage.replaceRecoveryBlockWeeksRaw,
-    Storage.loadRecoveryBlockWeeksRaw
+    loadWeeksForSync
   );
   await enqueueDirtyMany(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, cascaded);
   return cascaded;
@@ -331,7 +350,7 @@ export function createTableIo(
   },
   [SYNC_TABLES.RECOVERY_BLOCK_WEEKS]: {
     read: () =>
-      cache.read(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, Storage.loadRecoveryBlockWeeksRaw),
+      cache.read(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, loadWeeksForSync),
     write: async (list) => {
       const clientId = await getClientId();
       const { list: resolved, changed } = resolveDuplicateWeekMemberships(list, clientId);
@@ -339,7 +358,7 @@ export function createTableIo(
         SYNC_TABLES.RECOVERY_BLOCK_WEEKS,
         resolved,
         Storage.replaceRecoveryBlockWeeksRaw,
-        Storage.loadRecoveryBlockWeeksRaw
+        loadWeeksForSync
       );
       for (const record of changed) {
         deferRecoveryResolution(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, record);
