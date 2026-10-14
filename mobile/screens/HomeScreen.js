@@ -9,7 +9,7 @@ import { useWeightUnit } from '../lib/unitPreference';
 import { deriveHomeDashboardData, HOME_RECOVERY_STATUS, useHomeNormalNotes, useHomeRecoverySummary } from './home/homeDashboardData';
 import { HomeRecoverySummary } from './home/HomeRecoverySummary';
 import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
-import { markStartupPhase, markStartupStorageReads } from '../storage/entries/startupTiming';
+import { markStartupPhase, markStartupStorageReads, claimStartupFirstPaint } from '../storage/entries/startupTiming';
 import { DEVICE_KEY_RECOVERY_MESSAGE, isDeviceKeyUnavailable, secureStorage } from '../storage/secureStorage';
 import { createStyles } from './home/homeStyles';
 import { useKuaTypography } from '../theme/typography';
@@ -48,6 +48,9 @@ export function KiloWordmark({ width = 140, height = 48 }) {
     </View>
   );
 }
+
+// Below the wordmark on purpose: theme-rendering.test.js pins its line numbers.
+import { HomeWeightCard } from './home/HomeWeightCard';
 
 // Names the same `Retry recovery` control as every other Recovery message.
 export const RECOVERY_PENDING_HOLD_MESSAGE =
@@ -228,9 +231,8 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   const { normalNotes, recoveryBoundaryReady } = useHomeNormalNotes(notes);
 
   // Recovery STATUS is a separate question from the analytics boundary above
-  // (#757). Until it resolves, Home cannot know whether the hero should be the
-  // normal one or the active-Recovery one, so it holds the skeleton (#1241) —
-  // see `recoveryUnresolved` below for how a terminal failure keeps its retry.
+  // (#757). It decides which hero paints; see `recoveryModeUnknown` below for
+  // what renders while it has no answer (#1241, #1366).
   const recoverySummary = useHomeRecoverySummary(notes, workoutNote);
 
   // Product-wide "what am I training now?" context (#868), shared verbatim
@@ -240,7 +242,9 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   // references a missing/tombstoned note leaves `workoutNote` null while
   // `currentId` is still set, and this context must resolve the same
   // activeNoteId Log does — review finding, PR #873).
-  const activeTrainingContext = useActiveTrainingContext({ currentId, notes });
+  // `allowProvisional` (#1366): until the first reconciliation runs, the
+  // persisted blocks/weeks answer the mode for display only.
+  const activeTrainingContext = useActiveTrainingContext({ currentId, notes, allowProvisional: true });
   // #989: post-deload re-entry inputs for the dashboard analytics pass, keyed
   // to the same stable current-routine id Analytics and Log use. The live
   // Recovery blocks come from the same authoritative store Analytics reads
@@ -248,7 +252,8 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   // Analytics passes them so the re-entry label's active-Recovery exclusion
   // matches across both surfaces.
   const { history: deloadHistory } = useDeloadHistory();
-  const { blocks: recoveryBlocks = [] } = useRecoveryBlockState() || {};
+  const recoveryState = useRecoveryBlockState() || {};
+  const recoveryBlocks = (recoveryState.ready ? recoveryState.blocks : recoveryState.provisional?.blocks) || [];
   // Subscribe at startup so unit hydration is concurrent with all other reads
   // rather than deferred behind the loading gate (#1049 feedback).
   const unit = useWeightUnit();
@@ -317,29 +322,28 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
     ? lerpColor(kua.primary, kua.completion, Math.min(1, (dashboardData.oneK?.total || 0) / 1000))
     : lerpColor(colors.accentText, colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000));
 
-  // Gate the whole first paint on every data source Home renders, not just
-  // weight/notes: weight goal and tracked lifts feed the dashboard too, so
-  // including their loading prevents those sections from popping in after
-  // first paint.
-  // `!recoveryBoundaryReady` belongs here for the same reason the others do: the
-  // dashboard's aggregates are derived from a note population that is not yet
-  // known to be correct, so painting them would show numbers that can include
-  // work the user chose to exclude (#699).
-  // `recoveryUnresolved` (#1241): loading, unverified, and pending are not an
-  // answer to "is a Recovery block active?", and painting the normal hero over
-  // one flashed the wrong mode on an active-Recovery cold start. A failed or
-  // still-pending read keeps the skeleton but shows the Recovery card's own
-  // message and `Retry recovery` above it, so Home is never blank without a way
-  // out. STALE is last-known-good and paints normally with its warning; an
-  // active block with a pending change already paints Recovery mode, not normal.
+  // First usable paint waits only on bounded LOCAL reads (#1366): the shell's
+  // weight/note reads, the goal and tracked lifts, and either the persisted
+  // Recovery read (LOADING until it lands) or a reconciled one. Journal replay
+  // is not a term — it is held until this paint (startupTiming.js).
+  // Recovery-boundary aggregates (#699) still need a known boundary, but only
+  // when they would render: an unknown mode renders none of them.
+  // `recoveryModeUnknown` (#1241): an unverified read, an inconsistent
+  // persisted one, or an unresolved pending change is not an answer to "is a
+  // Recovery block active?", so neither hero paints — just the Recovery card's
+  // own message (with `Retry recovery` once it is a failure) and the weight
+  // card, which depends on nothing Recovery decides. STALE and provisional
+  // answers paint normally; an active block with a pending change paints
+  // Recovery mode.
   const recoveryStatus = activeTrainingContext.status;
-  const recoveryUnresolved = recoveryStatus === ACTIVE_TRAINING_STATUS.LOADING
-    || recoveryStatus === ACTIVE_TRAINING_STATUS.UNVERIFIED
+  const recoveryModeUnknown = recoveryStatus === ACTIVE_TRAINING_STATUS.UNVERIFIED
     || recoveryStatus === ACTIVE_TRAINING_STATUS.PENDING;
-  const isLoading = loading || goalLoading || trackedLiftsLoading || !recoveryBoundaryReady || recoveryUnresolved;
+  const isLoading = loading || goalLoading || trackedLiftsLoading
+    || recoveryStatus === ACTIVE_TRAINING_STATUS.LOADING
+    || (!recoveryModeUnknown && !recoveryBoundaryReady);
   const recoveryHoldSummary = recoveryStatus === ACTIVE_TRAINING_STATUS.PENDING
     ? { ...recoverySummary, status: HOME_RECOVERY_STATUS.UNVERIFIED, message: RECOVERY_PENDING_HOLD_MESSAGE }
-    : recoveryStatus === ACTIVE_TRAINING_STATUS.UNVERIFIED ? recoverySummary : null;
+    : recoveryModeUnknown ? recoverySummary : null;
 
   // Marks the moment the skeleton is replaced by real content (#809), so a
   // device timing run can compare this against the encrypted-storage/reload
@@ -347,12 +351,18 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   // loaded. The read counts alongside it (#818) report how many device reads
   // the launch paid for and how many were served by an in-flight read of the
   // same key — counts only, no key names and no values.
+  // Home owns the shell's startup hold (#1366): claimed while rendering, so a
+  // slow hydration never times out into replay or sync; released by this first
+  // paint, or by unmounting, so deferred background work starts after it.
+  const [releaseStartupHold] = useState(claimStartupFirstPaint);
+  useEffect(() => releaseStartupHold, [releaseStartupHold]);
   useEffect(() => {
     if (!isLoading) {
       markStartupPhase('home:first-paint');
       markStartupStorageReads();
+      releaseStartupHold();
     }
-  }, [isLoading]);
+  }, [isLoading, releaseStartupHold]);
 
   // Whether Home holds anything real to draw, regardless of why it might not.
   // Used to keep a failed read from being dressed up as a populated dashboard:
@@ -405,11 +415,13 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
           (welcome or dashboard). A failed read that still has cached data keeps
           rendering it under the banner, which is stale but true. */}
       {isLoading ? (
+        <HomeSkeleton />
+      ) :(hasLoadError && !hasLoadedData) ? null : recoveryHoldSummary ? (
         <>
-          {recoveryHoldSummary ? <HomeRecoverySummary summary={recoveryHoldSummary} onNavigate={onNavigate} /> : null}
-          <HomeSkeleton />
+          <HomeRecoverySummary summary={recoveryHoldSummary} onNavigate={onNavigate} />
+          <HomeWeightCard dashboardData={dashboardData} weightGoal={weightGoal} onNavigate={onNavigate} unit={unit} />
         </>
-      ) :(hasLoadError && !hasLoadedData) ? null : isEmptyState ? (
+      ) : isEmptyState ? (
         // First use (#1333): two ways in, nothing to study. Syntax and tracking
         // are taught inside Log and Weight, where they are used.
         <Card style={styles.welcomeCard}>

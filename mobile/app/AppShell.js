@@ -25,7 +25,7 @@ import { makeWeightEntry } from '../lib/data';
 import { reconcileWorkoutReminder, installForegroundHandler } from '../lib/reminderScheduler';
 import { useRestTimer } from '../hooks/useRestTimer';
 import { buildCloudExport, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed } from '../storage/entries';
-import { markStartupPhase } from '../storage/entries/startupTiming';
+import { markStartupPhase, holdStartupBackgroundWork, whenStartupBackgroundWorkReleased } from '../storage/entries/startupTiming';
 import { purgePersistedDerivedSections } from '../storage/entries/derivedCachePurge';
 import { normalizeNavTarget, analyticsSectionVariant, CLOUD_SYNC_NAV_TARGET, emitMeasurement } from './navigation';
 import { buildExportPayload } from './export';
@@ -37,6 +37,16 @@ import { buildExportPayload } from './export';
 // hydration, auth callbacks, the Android hardware-back precedence, saves and
 // navigation — stays inside this hook and is returned to the view.
 export function useAppShell({ onDeviceDataWiped }) {
+  // #1366: hold background startup work in the FIRST render, before any child
+  // effect reads; Home's first paint (or the fallback timer) releases it.
+  const [startupBackgroundReady, setStartupBackgroundReady] = useState(() => {
+    holdStartupBackgroundWork();
+    return false;
+  });
+  useEffect(() => {
+    const cancel = whenStartupBackgroundWorkReleased(() => setStartupBackgroundReady(true));
+    return cancel;
+  }, []);
   const [activeTab, setActiveTab] = useState('Home');
   // Shell tab history (#1267): tabs visited before the current one, newest last.
   // Refs hold the synchronous truth so stable callbacks can read it; backTarget
@@ -138,6 +148,9 @@ export function useAppShell({ onDeviceDataWiped }) {
   const weightHook = useWeightEntries();
   const noteHook = useWorkoutNotes();
   const auth = useAuthSession({ onDeviceDataWiped });
+  // Until first paint the automatic sync sees auth as still loading ("do
+  // nothing yet"); explicit sync/auth actions use `auth` unchanged.
+  const autoSyncAuth = startupBackgroundReady ? auth : { ...auth, loading: true };
 
   // Stable auth object for MemoMoreScreen (#592 review follow-up):
   // useAuthSession() returns a fresh object literal on every App render, so
@@ -176,7 +189,7 @@ export function useAppShell({ onDeviceDataWiped }) {
     downloadAccountData,
     startFreshOnDevice,
     dismissOwnershipPrompt,
-  } = useAutoSync(auth, {
+  } = useAutoSync(autoSyncAuth, {
     onSyncComplete() {
       // Broadcast, not instance-local: Analytics, Log and Weight each hold their
       // own useWorkoutNotes()/useWeightEntries() state, and reloading only App's
@@ -233,8 +246,8 @@ export function useAppShell({ onDeviceDataWiped }) {
   // own dedup cache skips this if the workout-note broadcast listener in
   // workoutNoteHooks.js already reconciled the same schedule first.
   React.useEffect(() => {
-    reconcileWorkoutReminder().catch(() => {});
-  }, []);
+    if (startupBackgroundReady) reconcileWorkoutReminder().catch(() => {});
+  }, [startupBackgroundReady]);
 
   const toggleWorkoutCollapsed = useCallback(async () => {
     const next = !isWorkoutCollapsed;

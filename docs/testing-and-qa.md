@@ -464,6 +464,33 @@ The dev-only `[startup] storage:reads:` line now also reports
 `keycheck:canary=<n> keycheck:scan=<n>`; an ordinary launch shows `canary=1
 scan=0`, and a legacy first launch after upgrade shows `scan=1`. Counts only.
 
+### Local-first startup (#1366)
+
+Home's first usable paint waits only on bounded local reads; Recovery journal
+replay, the automatic sync, and the reminder reconcile start after it.
+Coverage:
+
+- `mobile/tests/home-screen.test.js` (`local-first startup (#1366)`): the real
+  Home plus a hidden-tab stand-in mounting the Log/Analytics Recovery hooks,
+  under the shell's hold. Recovery, Normal, and Deload paint from persisted data
+  with zero journal reads and zero replay starts at paint, and mutations stay
+  ineligible until reconciliation; a corrupt journal, an inconsistent persisted
+  snapshot, a malformed tombstone marker the filtered reader would hide, and
+  unreadable Recovery data show unknown (never Normal) with the
+  weight card still painted; an early `ensureVerifiedRecoveryState` reconciles
+  immediately; a slow local hydration keeps the hold past the fallback until
+  Home paints; a wipe mid-replay publishes nothing.
+- `mobile/tests/app-startup.test.js`: the real App holds the automatic sync
+  (auth seen as loading) and the reminder reconcile until release.
+- `mobile/tests/active-training-context.test.js`: provisional derivation and
+  its consistency rules.
+
+The dev-only `[startup] storage:reads:` line also reports
+`reconcile:starts=<n>`; an ordinary launch shows `0` at `home:first-paint`, and
+`recovery:reconcile:start` is logged after it. Device traces (force-stopped cold
+launch, populated data, Recovery offline and sync-enabled) are still to be
+captured on a real Android build.
+
 ### Persisted parser cache and sync fan-out (#813)
 
 The app-wide lag that survived #806 and #809 traced to payload, not to the

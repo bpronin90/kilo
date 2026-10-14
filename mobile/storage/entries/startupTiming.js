@@ -19,6 +19,8 @@ let storageReads = { issued: 0, coalesced: 0 };
 // Device-key validation counters (#1364): how many launches proved the key by
 // the constant-time canary versus the full-store envelope scan. Counts only.
 let keyChecks = { canary: 0, scan: 0 };
+// Journal replay starts (#1366). Counts only.
+let reconcileStarts = 0;
 
 // Exported for tests: pins the reference instant a "cold start" is measured
 // from, since module import time (the real cold-start signal) is not
@@ -28,6 +30,7 @@ export function resetStartupTiming(now = Date.now()) {
   marks = [];
   storageReads = { issued: 0, coalesced: 0 };
   keyChecks = { canary: 0, scan: 0 };
+  reconcileStarts = 0;
 }
 
 export function markStartupPhase(name, now = Date.now()) {
@@ -79,6 +82,92 @@ export function markStartupStorageReads(now = Date.now()) {
   if (typeof __DEV__ === 'undefined' || !__DEV__) return null;
   const elapsedMs = now - startedAt;
   // eslint-disable-next-line no-console
-  console.log(`[startup] storage:reads: issued=${storageReads.issued} coalesced=${storageReads.coalesced} keycheck:canary=${keyChecks.canary} keycheck:scan=${keyChecks.scan} at ${elapsedMs}ms`);
-  return { ...storageReads, keyChecks: { ...keyChecks } };
+  console.log(`[startup] storage:reads: issued=${storageReads.issued} coalesced=${storageReads.coalesced} keycheck:canary=${keyChecks.canary} keycheck:scan=${keyChecks.scan} reconcile:starts=${reconcileStarts} at ${elapsedMs}ms`);
+  return { ...storageReads, keyChecks: { ...keyChecks }, reconcileStarts };
+}
+
+// ── first-usable-paint scheduling (#1366) ─────────────────────────────────────
+//
+// NOT dev-only, unlike everything above: this is the one production contract
+// that keeps background startup work (Recovery journal replay, the automatic
+// cloud sync, reminder reconciliation) off the storage queues until Home has
+// painted from local data. The shell holds it during its first render — before
+// any child effect can start a read. Home claims it while rendering, which
+// cancels the fallback timer: from then on only Home's first paint (or Home
+// unmounting) releases it, however long local hydration takes. The fallback
+// only covers a shell whose Home never mounts.
+const STARTUP_HOLD_FALLBACK_MS = 2500;
+let backgroundHold = null;
+let backgroundWaiters = [];
+
+export function holdStartupBackgroundWork(fallbackMs = STARTUP_HOLD_FALLBACK_MS) {
+  if (backgroundHold) return;
+  const hold = {};
+  hold.timer = setTimeout(() => releaseHold(hold), fallbackMs);
+  hold.timer?.unref?.();
+  backgroundHold = hold;
+}
+
+export function isStartupBackgroundWorkHeld() {
+  return !!backgroundHold;
+}
+
+// Home's claim: cancels the fallback and returns the release for THIS hold
+// only, so a Home unmounting after a wipe remount re-held cannot release the
+// new shell's hold.
+export function claimStartupFirstPaint() {
+  const hold = backgroundHold;
+  if (!hold) return () => {};
+  clearTimeout(hold.timer);
+  return () => releaseHold(hold);
+}
+
+// Runs `task` now when nothing is held; otherwise once the hold is released, in
+// a later macrotask so it lands after the paint that released it rather than
+// inside that commit. Returns a cancel function.
+export function whenStartupBackgroundWorkReleased(task) {
+  if (!backgroundHold) {
+    task();
+    return () => {};
+  }
+  const entry = { task };
+  backgroundWaiters.push(entry);
+  return () => { backgroundWaiters = backgroundWaiters.filter(e => e !== entry); };
+}
+
+export function releaseStartupBackgroundWork() {
+  if (backgroundHold) releaseHold(backgroundHold);
+}
+
+function releaseHold(hold) {
+  if (backgroundHold !== hold) return;
+  clearTimeout(hold.timer);
+  backgroundHold = null;
+  const waiters = backgroundWaiters;
+  backgroundWaiters = [];
+  if (waiters.length === 0) return;
+  setTimeout(() => {
+    for (const { task } of waiters) {
+      try { task(); } catch { /* one waiter cannot starve the rest */ }
+    }
+  }, 0);
+}
+
+// Journal replay starts (#1366): a count, reported with the read counters so a
+// trace shows whether replay ran before `home:first-paint`.
+export function recordStartupReconcileStart() {
+  reconcileStarts += 1;
+  if (typeof __DEV__ !== 'undefined' && __DEV__) markStartupPhase('recovery:reconcile:start');
+}
+
+export function getStartupReconcileStartCount() {
+  return reconcileStarts;
+}
+
+// Test seam: drop any hold, parked task, and replay count.
+export function _resetStartupScheduling() {
+  if (backgroundHold) clearTimeout(backgroundHold.timer);
+  backgroundHold = null;
+  backgroundWaiters = [];
+  reconcileStarts = 0;
 }

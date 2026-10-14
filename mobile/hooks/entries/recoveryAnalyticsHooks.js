@@ -130,8 +130,13 @@ export function useRecoveryAnalyticsFilter() {
 // `useWorkoutNotes()` itself: every screen already holds that state locally at
 // its own Recovery-state boundary, and this hook only derives an interpretation
 // over it, never a competing read.
-export function useActiveTrainingContext({ currentId = null, notes = [] } = {}) {
+//
+// `allowProvisional` (#1366) is Home's opt-in to the display-only persisted
+// read while the first authoritative pass is pending. Log and Analytics do not
+// pass it: their Recovery surfaces stay on the authoritative answer.
+export function useActiveTrainingContext({ currentId = null, notes = [], allowProvisional = false } = {}) {
   const recovery = useRecoveryBlockState() || {};
+  const provisional = allowProvisional ? recovery.provisional || null : null;
   return useMemo(
     () => resolveActiveTrainingContext({
       currentId,
@@ -147,10 +152,11 @@ export function useActiveTrainingContext({ currentId = null, notes = [] } = {}) 
       pendingRecovery: recovery.pendingRecovery,
       activeBlock: recovery.activeBlock,
       weeks: recovery.weeks,
+      provisional,
     }),
     [
       currentId, notes, recovery.ready, recovery.loading, recovery.stale,
-      recovery.pendingRecovery, recovery.activeBlock, recovery.weeks,
+      recovery.pendingRecovery, recovery.activeBlock, recovery.weeks, provisional,
     ]
   );
 }

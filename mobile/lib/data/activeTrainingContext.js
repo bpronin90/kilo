@@ -12,7 +12,7 @@
 // ordered memberships (`orderedLiveWeeks`), never from note titles, `currentId`,
 // or array order — mirroring the same rule `recoveryBlockHooks.js` documents
 // for Recovery eligibility.
-import { orderedLiveWeeks } from './recoveryBlocks';
+import { findActiveBlock, isBlockActive, isLiveRecord, orderedLiveWeeks } from './recoveryBlocks';
 
 export const ACTIVE_TRAINING_STATUS = Object.freeze({
   // The authoritative Recovery read has not verified anything yet (first load,
@@ -60,6 +60,72 @@ const EMPTY_CONTEXT = Object.freeze({
   pending: false,
 });
 
+// Local-first display (#1366). While the first authoritative (reconciled) read
+// is still pending, a bounded plain read of the persisted blocks/weeks may
+// supply the last-known mode. It can reflect a half-applied journal operation
+// or a malformed record, so it is used only when every identity in it is
+// unambiguous and the active block's weeks line up:
+//   - every block and week is a record with a non-empty string id, unique
+//     among its kind, and every field the mode decision reads is well-typed:
+//     lifecycle markers (`completed_at`, `deleted_at`) absent/null or a
+//     parseable timestamp, `baseline_note_id` a non-empty string, the
+//     inclusion preference a boolean if set;
+//   - at most one active block;
+//   - every live week has non-empty block/note ids, a positive integer week
+//     number, belongs to a LIVE block, and is not that block's own baseline
+//     note (storage's NOTE_IS_BASELINE rule);
+//   - at most one live membership per note;
+//   - every live block's live weeks have unique numbers, and the active
+//     block has no open week before its latest.
+// Anything else is unknown — never a guessed week and never a fallback to
+// normal.
+const isId = v => typeof v === 'string' && v.length > 0;
+const hasUniqueIds = records => records.every(r => r && isId(r.id))
+  && new Set(records.map(r => r.id)).size === records.length;
+const isMarker = v => v == null || (typeof v === 'string' && !Number.isNaN(Date.parse(v)));
+const hasMarkers = r => isMarker(r.completed_at) && isMarker(r.deleted_at);
+const isWellTypedBlock = b => hasMarkers(b) && isId(b.baseline_note_id)
+  && (b.include_in_normal_analytics === undefined || typeof b.include_in_normal_analytics === 'boolean');
+const isWellTypedWeek = w => !!w && isId(w.id) && hasMarkers(w) && isId(w.block_id) && isId(w.note_id)
+  && Number.isInteger(w.week_number) && w.week_number >= 1;
+
+// The storage readers drop any record whose `deleted_at` is truthy before the
+// selector sees it, so a malformed tombstone marker would vanish rather than
+// read as unknown. This checks the RAW persisted lists, tombstones included.
+// Shape only — cross-record consistency is #1368's (repair first, then enforce).
+export function arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks) {
+  return Array.isArray(rawBlocks) && Array.isArray(rawWeeks)
+    && rawBlocks.every(b => b && isId(b.id) && isWellTypedBlock(b))
+    && rawWeeks.every(isWellTypedWeek);
+}
+
+function isProvisionalSnapshotConsistent(blocks, weeks) {
+  if (!hasUniqueIds(blocks) || !hasUniqueIds(weeks)) return false;
+  if (!blocks.every(isWellTypedBlock) || !weeks.every(hasMarkers)) return false;
+  if (blocks.filter(isBlockActive).length > 1) return false;
+  const liveBlocks = new Map(blocks.filter(isLiveRecord).map(b => [b.id, b]));
+  const live = weeks.filter(isLiveRecord);
+  const wellFormed = live.every(w => isId(w.block_id) && isId(w.note_id)
+    && Number.isInteger(w.week_number) && w.week_number >= 1 && liveBlocks.has(w.block_id)
+    && w.note_id !== liveBlocks.get(w.block_id).baseline_note_id);
+  if (!wellFormed || new Set(live.map(w => w.note_id)).size !== live.length) return false;
+  // Ordinals are unique per block, completed blocks included.
+  if (new Set(live.map(w => `${w.block_id}|${w.week_number}`)).size !== live.length) return false;
+  const activeBlock = findActiveBlock(blocks);
+  if (!activeBlock) return true;
+  return orderedLiveWeeks(weeks, activeBlock.id).slice(0, -1).every(w => !!w.completed_at);
+}
+
+export function selectProvisionalRecovery(provisional) {
+  if (!provisional) return null;
+  const { blocks, weeks } = provisional;
+  const consistent = Array.isArray(blocks) && Array.isArray(weeks)
+    && isProvisionalSnapshotConsistent(blocks, weeks);
+  return consistent
+    ? { consistent, activeBlock: findActiveBlock(blocks), weeks }
+    : { consistent: false, activeBlock: null, weeks: [] };
+}
+
 // Pure derivation. Takes the exact fields `useRecoveryBlockState()` already
 // publishes (`ready`, `loading`, `stale`, `pendingRecovery`, `activeBlock`,
 // `weeks`) plus the workout-note `currentId`, and returns one deterministic
@@ -77,13 +143,27 @@ export function deriveActiveTrainingContext({
   pendingRecovery = [],
   activeBlock = null,
   weeks = [],
+  provisional = null,
 } = {}) {
   // A read that is not yet verified — a first load in flight, or a terminal
-  // first-load failure — is unknown, not normal.
+  // first-load failure — is unknown, not normal. A consistent provisional read
+  // (#1366, only offered while the first authoritative read is pending) answers
+  // with the last-known mode, flagged `provisional`; an inconsistent one is
+  // UNVERIFIED so the caller shows unknown rather than waiting or guessing.
   if (!recoveryReady) {
+    const local = recoveryLoading ? selectProvisionalRecovery(provisional) : null;
+    if (local && local.consistent) {
+      return {
+        ...deriveActiveTrainingContext({
+          currentId, recoveryReady: true, activeBlock: local.activeBlock, weeks: local.weeks,
+        }),
+        provisional: true,
+      };
+    }
     return {
       ...EMPTY_CONTEXT,
-      status: recoveryLoading ? ACTIVE_TRAINING_STATUS.LOADING : ACTIVE_TRAINING_STATUS.UNVERIFIED,
+      status: recoveryLoading && !local ? ACTIVE_TRAINING_STATUS.LOADING : ACTIVE_TRAINING_STATUS.UNVERIFIED,
+      ...(local ? { provisional: true } : {}),
     };
   }
 

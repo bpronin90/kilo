@@ -8,6 +8,7 @@ import {
   useRecoveryBlockState,
 } from '../../hooks/entries/recoveryBlockHooks';
 import { getRecoverySnapshot } from '../../lib/data/recoverySnapshot';
+import { selectProvisionalRecovery } from '../../lib/data/activeTrainingContext';
 import {
   RECOVERY_COMPARISON_STATES,
   RECOVERY_COMPARISON_STATUS,
@@ -111,9 +112,14 @@ export const HOME_RECOVERY_STATUS = Object.freeze({
 // (their 1K lifts) plus one count line for the rest of the roster. Every
 // exercise's full breakdown stays behind the `Recovery` handoff.
 export function useHomeRecoverySummary(notes, workoutNote = null) {
-  const { activeBlock, weeks, ready, loading, stale, retryRecovery } = useRecoveryBlockState() || {};
+  const { activeBlock, weeks, ready, loading, stale, retryRecovery, provisional } = useRecoveryBlockState() || {};
   return useMemo(() => {
-    const status = ready
+    // #1366: while the first authoritative read is pending, a consistent
+    // persisted read answers for display (flagged `provisional`); an
+    // inconsistent one stays LOADING until reconciliation settles it.
+    const local = !ready && loading ? selectProvisionalRecovery(provisional) : null;
+    const usable = !!local && local.consistent;
+    const status = ready || usable
       ? HOME_RECOVERY_STATUS.READY
       : loading
         ? HOME_RECOVERY_STATUS.LOADING
@@ -139,15 +145,17 @@ export function useHomeRecoverySummary(notes, workoutNote = null) {
       big3: [],
       counts: null,
       includedInNormalAnalytics: false,
+      provisional: usable,
     };
-    // An active block is only reported off a verified snapshot. While the read
-    // is unresolved the arrays are placeholders, not evidence of either answer.
-    if (!ready || !activeBlock) return base;
+    // An active block is only reported off a verified or consistent provisional
+    // snapshot. Otherwise the arrays are placeholders, not evidence.
+    const block = ready ? activeBlock : usable ? local.activeBlock : null;
+    if (!block) return base;
 
     // #1315: the one shared Recovery snapshot (content-keyed), never a Home-local
     // derivation. Its comparison feeds the Big 3 / count lines unchanged; its
     // display is the same headline Analytics and the Overview row print.
-    const snapshot = getRecoverySnapshot({ block: activeBlock, weeks, notes, stale: isStale });
+    const snapshot = getRecoverySnapshot({ block, weeks: ready ? weeks : local.weeks, notes, stale: isStale });
     const comparison = snapshot.comparison;
     // The snapshot's selected week (the latest week by default) and its bands.
     const current = snapshot.selectedWeek;
@@ -166,9 +174,9 @@ export function useHomeRecoverySummary(notes, workoutNote = null) {
       weekNoteStatus: current ? current.status : null,
       weekNoteTitle: current && typeof current.note_title === 'string' && current.note_title.trim() ? current.note_title.trim() : null,
       ...deriveRecoveryBig3(snapshot, selections),
-      includedInNormalAnalytics: activeBlock.include_in_normal_analytics === true,
+      includedInNormalAnalytics: block.include_in_normal_analytics === true,
     };
-  }, [activeBlock, weeks, notes, workoutNote, ready, loading, stale, retryRecovery]);
+  }, [activeBlock, weeks, notes, workoutNote, ready, loading, stale, retryRecovery, provisional]);
 }
 
 // The canonical Big 3 selection (lib/data/oneK resolveOneKSelections), kept

@@ -147,6 +147,33 @@ import * as reminderScheduler from '../lib/reminderScheduler';
 describe('app-startup', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    require('../storage/entries/startupTiming')._resetStartupScheduling();
+  });
+
+  // #1366: the shell holds background startup work in its first render. The
+  // automatic sync sees auth as still loading and the reminder reconcile waits
+  // until Home's first paint (here, released directly: Home is mocked) — no
+  // network or sync-queue work ahead of local hydration.
+  test('defers the automatic sync and reminder reconciliation until first paint', async () => {
+    const timing = require('../storage/entries/startupTiming');
+    const { useAutoSync } = require('../hooks/useEntries');
+    await renderer.act(async () => {
+      renderer.create(<App />);
+    });
+
+    expect(timing.isStartupBackgroundWorkHeld()).toBe(true);
+    expect(reminderScheduler.reconcileWorkoutReminder).not.toHaveBeenCalled();
+    expect(useAutoSync.mock.calls.length).toBeGreaterThan(0);
+    expect(useAutoSync.mock.calls.every(([auth]) => auth.loading === true)).toBe(true);
+
+    await renderer.act(async () => {
+      timing.releaseStartupBackgroundWork();
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    });
+
+    expect(reminderScheduler.reconcileWorkoutReminder).toHaveBeenCalledTimes(1);
+    const [lastAuth] = useAutoSync.mock.calls[useAutoSync.mock.calls.length - 1];
+    expect(lastAuth.loading).not.toBe(true);
   });
 
   test('installs foreground handler once on cold start', async () => {

@@ -29,6 +29,8 @@ jest.mock('../storage/entries', () => ({
   loadRecoveryBlockWeeks: jest.fn(async () => []),
   loadRecoveryBlocksRaw: jest.fn(async () => []),
   loadRecoveryBlockWeeksRaw: jest.fn(async () => []),
+  loadRecoveryBlocksRaw: jest.fn(async () => []),
+  loadRecoveryBlockWeeksRaw: jest.fn(async () => []),
   loadRecoveryWeeksForBlock: jest.fn(async () => []),
   createRecoveryBlock: jest.fn(async () => ({ id: 'blkNew' })),
   addRecoveryWeek: jest.fn(async () => ({ id: 'wkNew', block_id: 'blkNew', note_id: 'noteNew' })),
@@ -76,7 +78,12 @@ jest.mock('../storage/syncRecovery', () => {
   };
 });
 
-jest.mock('../storage/entries/startupTiming', () => ({ markStartupPhase: jest.fn() }));
+jest.mock('../storage/entries/startupTiming', () => ({
+  markStartupPhase: jest.fn(),
+  recordStartupReconcileStart: jest.fn(),
+  // Nothing holds startup work in this suite (#1366): run deferred reads now.
+  whenStartupBackgroundWorkReleased: jest.fn((task) => { task(); return () => {}; }),
+}));
 jest.mock('../hooks/entries/workoutNoteHooks', () => ({ reloadWorkoutNotes: jest.fn() }));
 jest.mock('../hooks/entries/storageMode', () => ({}));
 
@@ -92,7 +99,7 @@ const WorkoutNoteHooks = require('../hooks/entries/workoutNoteHooks');
 
 const ALL_EXPORTS = [
   'RECOVERY_STATUS', 'RECOVERY_LOADING_MESSAGE', 'RECOVERY_UNVERIFIED_MESSAGE', 'RECOVERY_STALE_MESSAGE',
-  'refreshRecoveryState', 'ensureVerifiedRecoveryState', 'useRecoveryBlockState', 'useActiveTrainingContext',
+  'refreshRecoveryState', 'ensureVerifiedRecoveryState', 'invalidateRecoveryReadState', 'useRecoveryBlockState', 'useActiveTrainingContext',
   'useRecoveryAnalyticsFilter', 'reloadRecoveryBlocks', '_resetRecoveryAnalyticsFilterCache',
   'loadRecoveryExcludedNoteIds', 'isEligibleBaselineNote', 'isEligibleRecoveryWeekNote',
   'startRecoveryBlockCore', 'useStartRecoveryBlock', 'completeCurrentWeekCore', 'uncompleteCurrentWeekCore',
@@ -120,6 +127,8 @@ function ownerBSnapshot() {
 function setReadSource(snapshot) {
   Storage.loadRecoveryBlocks.mockImplementation(async () => snapshot.blocks);
   Storage.loadRecoveryBlockWeeks.mockImplementation(async () => snapshot.weeks);
+  Storage.loadRecoveryBlocksRaw.mockImplementation(async () => snapshot.rawBlocks || snapshot.blocks);
+  Storage.loadRecoveryBlockWeeksRaw.mockImplementation(async () => snapshot.weeks);
 }
 function failReadSource(error = new Error('recovery key unreadable')) {
   Storage.loadRecoveryBlocks.mockImplementation(async () => { throw error; });
@@ -408,6 +417,48 @@ describe('invalidation goes through one coalesced read for reload, sync, and mut
     await flush();
     // One in-flight pass + one coalesced follow-up = 2, never 1 or 3.
     expect(Journal.reconcileRecoveryOperations).toHaveBeenCalledTimes(2);
+  });
+
+  // #1366: a confirm-time recheck queued behind an in-flight pass must not be
+  // authorized by a pass that runs after a device wipe invalidated the store.
+  // #1366: a malformed tombstone marker survives reconciliation and the
+  // filtered reader hides it; the authoritative pass must not verify Normal.
+  test('malformed persisted records fail the authoritative pass and the confirm gate', async () => {
+    setReadSource({ blocks: [], weeks: [], rawBlocks: [{ id: 'B', baseline_note_id: 'N', completed_at: null, deleted_at: {} }] });
+    const outcome = await barrel.refreshRecoveryState();
+    expect(outcome.ok).toBe(false);
+    expect((await barrel.ensureVerifiedRecoveryState()).ok).toBe(false);
+    const read = mountHook(barrel.useRecoveryBlockState);
+    await flush();
+    expect(read.ref.current.ready).toBe(false);
+    expect(read.ref.current.mutationsAllowed).toBe(false);
+  });
+
+  test('a malformed membership field fails the authoritative pass too', async () => {
+    const blocks = [{ id: 'B', baseline_note_id: 'base', completed_at: '2026-10-01T00:00:00.000Z', deleted_at: null }];
+    for (const bad of [{ week_number: 'invalid' }, { week_number: 0 }, { note_id: null }, { block_id: '' }]) {
+      barrel._resetRecoveryAnalyticsFilterCache();
+      const weeks = [{ id: 'W', block_id: 'B', note_id: 'N', week_number: 1, completed_at: null, deleted_at: null, ...bad }];
+      setReadSource({ blocks, weeks });
+      expect((await barrel.refreshRecoveryState()).ok).toBe(false);
+      expect((await barrel.ensureVerifiedRecoveryState()).ok).toBe(false);
+    }
+  });
+
+  test('a wipe voids a confirmation queued behind an in-flight pass', async () => {
+    setReadSource(ownerASnapshot());
+    let releaseActive;
+    Journal.reconcileRecoveryOperations.mockImplementationOnce(
+      () => new Promise((resolve) => { releaseActive = () => resolve({ ok: true, pending: [] }); })
+    );
+    const active = barrel.refreshRecoveryState();
+    const confirmation = barrel.ensureVerifiedRecoveryState();
+    barrel.invalidateRecoveryReadState();
+    releaseActive();
+    expect((await active).ok).toBe(false);
+    expect((await confirmation).ok).toBe(false);
+    // The queued follow-up never ran a pass under the new generation.
+    expect(Journal.reconcileRecoveryOperations).toHaveBeenCalledTimes(1);
   });
 
   test('two mounted read consumers share ONE sync subscription and one refresh per signal', async () => {
