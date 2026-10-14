@@ -135,7 +135,7 @@ const isHeld = h => !!h && typeof h.held_id === 'string' && !!h.record && typeof
 
 // Pure planner. `quarantine` sets unrepairable records aside instead of
 // reporting them. Never mutates its inputs.
-export function planRecoveryRepair({ blocks, weeks, held = [], clientId, quarantine = false, now = new Date().toISOString() }) {
+export function planRecoveryRepair({ blocks, weeks, held = [], clientId, quarantine = false, deferConsistency = false, now = new Date().toISOString() }) {
   const cb = classify(blocks, isWellTypedRecoveryBlock);
   const cw = classify(weeks, isWellTypedRecoveryWeek);
   const unrepairable = [
@@ -166,30 +166,35 @@ export function planRecoveryRepair({ blocks, weeks, held = [], clientId, quarant
   const knownBlockIds = new Set([...B, ...cb.bad.filter(r => !removedBadBlocks.has(r))].map(b => b?.id));
   const badWeekIds = new Set(cw.bad.filter(r => !removedBadWeeks.has(r)).map(w => w?.id));
 
-  // 1. re-attach (or drop superseded) held weeks
+  // Consistency repairs (1-7) wait for pending journaled operations
+  // (`deferConsistency`); shape classification and set-aside above never do.
   const spent = new Set();
-  const goodW = new Map(W.map(w => [w.id, w]));
-  for (const h of held.filter(isHeld)) {
-    if (h.kind !== HELD_KINDS.MISSING_PARENT || h.collection !== 'weeks') continue;
-    if (!knownBlockIds.has(h.record.block_id)) continue;
-    if (badWeekIds.has(h.record.id) || !isWellTypedRecoveryWeek(h.record)) continue; // stays held
-    spent.add(h.held_id);
-    const existing = goodW.get(h.record.id);
-    // The existing winner policy decides: a newer held edit must not lose to an
-    // older live row, and an older one never overwrites a newer row.
-    if (!existing || pickWinner(existing, h.record) === h.record) goodW.set(h.record.id, h.record);
-  }
-  W = [...goodW.values()];
+  let detached = [];
+  if (!deferConsistency) {
+    // 1. re-attach (or drop superseded) held weeks
+    const goodW = new Map(W.map(w => [w.id, w]));
+    for (const h of held.filter(isHeld)) {
+      if (h.kind !== HELD_KINDS.MISSING_PARENT || h.collection !== 'weeks') continue;
+      if (!knownBlockIds.has(h.record.block_id)) continue;
+      if (badWeekIds.has(h.record.id) || !isWellTypedRecoveryWeek(h.record)) continue; // stays held
+      spent.add(h.held_id);
+      const existing = goodW.get(h.record.id);
+      // The existing winner policy decides: a newer held edit must not lose to an
+      // older live row, and an older one never overwrites a newer row.
+      if (!existing || pickWinner(existing, h.record) === h.record) goodW.set(h.record.id, h.record);
+    }
+    W = [...goodW.values()];
 
-  // 2-7
-  B = resolveDuplicateActiveBlocks(B, clientId).list;
-  W = cascadeTombstonedParents(B, W, clientId).list;
-  const detached = W.filter(w => isLiveRecord(w) && !knownBlockIds.has(w.block_id));
-  detached.forEach(w => addHeld(HELD_KINDS.MISSING_PARENT, 'weeks', w, 'parent block not present'));
-  W = W.filter(w => !detached.includes(w));
-  const baselineOf = new Map(B.filter(isLiveRecord).map(b => [b.id, b.baseline_note_id]));
-  W = W.map(w => (isLiveRecord(w) && baselineOf.get(w.block_id) === w.note_id ? retractMembership(w, clientId) : w));
-  W = resolveDuplicateWeekMemberships(W, clientId).list;
+    // 2-7
+    B = resolveDuplicateActiveBlocks(B, clientId).list;
+    W = cascadeTombstonedParents(B, W, clientId).list;
+    detached = W.filter(w => isLiveRecord(w) && !knownBlockIds.has(w.block_id));
+    detached.forEach(w => addHeld(HELD_KINDS.MISSING_PARENT, 'weeks', w, 'parent block not present'));
+    W = W.filter(w => !detached.includes(w));
+    const baselineOf = new Map(B.filter(isLiveRecord).map(b => [b.id, b.baseline_note_id]));
+    W = W.map(w => (isLiveRecord(w) && baselineOf.get(w.block_id) === w.note_id ? retractMembership(w, clientId) : w));
+    W = resolveDuplicateWeekMemberships(W, clientId).list;
+  }
 
   const origB = new Map(cb.good.map(b => [b.id, b]));
   const origW = new Map(cw.good.map(w => [w.id, w]));
@@ -301,11 +306,19 @@ const readAll = () => Promise.all([
 // Source keys of Recovery payloads archived as corrupt (and then reset). Sync uses
 // this so a reset collection is never read as the deletion of every synced row.
 export async function loadArchivedCorruptKeys() {
+  // Fails closed: a read error propagates (sync then fails and retries) instead
+  // of shrinking the answer. An archive entry that cannot be parsed is treated as
+  // covering BOTH collections, so sync never infers a deletion from it.
   const keys = (await AsyncStorage.getAllKeys()).filter(k => k.startsWith(RECOVERY_CORRUPT_PAYLOAD_PREFIX));
   const out = new Set();
   for (const k of keys) {
     // eslint-disable-next-line no-await-in-loop
-    try { out.add(JSON.parse(await AsyncStorage.getItem(k)).key); } catch { /* unreadable entry */ }
+    const raw = await AsyncStorage.getItem(k);
+    try {
+      out.add(JSON.parse(raw).key);
+    } catch {
+      out.add(RECOVERY_BLOCKS_KEY).add(RECOVERY_BLOCK_WEEKS_KEY);
+    }
   }
   return out;
 }
@@ -317,19 +330,11 @@ export const loadHeldRecoveryRecords = () => readList(RECOVERY_HELD_KEY);
 // reports it as a failed read; the next pass re-plans from persisted state).
 // Resolves `{ ok, changed, unrepairable, detached, quarantined }`: `ok` is false
 // while unrepairable records remain.
-export async function repairRecoveryRecords({ corruptOnly = false } = {}) {
-  if (corruptOnly) {
-    // Reached while a journaled operation is pending: only the corrupt-payload
-    // route runs (first sighting fails, the next sets it aside), because a
-    // pending operation whose own read hits that corruption could otherwise
-    // never settle.
-    await readAll();
-    return { ok: true, deferred: true };
-  }
+export async function repairRecoveryRecords({ deferConsistency = false } = {}) {
   const clientId = await getClientId();
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     const [blocks, weeks, held] = await readAll();
-    let plan = planRecoveryRepair({ blocks, weeks, held, clientId });
+    let plan = planRecoveryRepair({ blocks, weeks, held, clientId, deferConsistency });
     if (plan.unrepairable.length === 0) {
       lastUnrepairableSignature = null;
     } else {
@@ -342,7 +347,7 @@ export async function repairRecoveryRecords({ corruptOnly = false } = {}) {
         u => preserved.has(`${u.collection}|${stableStringify(asHeldRecord(u.record))}`)
       );
       if (signature === lastUnrepairableSignature || alreadyPreserved) {
-        plan = planRecoveryRepair({ blocks, weeks, held, clientId, quarantine: true });
+        plan = planRecoveryRepair({ blocks, weeks, held, clientId, quarantine: true, deferConsistency });
         lastUnrepairableSignature = null;
       } else {
         lastUnrepairableSignature = signature;
@@ -364,16 +369,17 @@ export async function repairRecoveryRecords({ corruptOnly = false } = {}) {
     // Verify what is PERSISTED, not what was planned.
     // eslint-disable-next-line no-await-in-loop
     const [vb, vw, vh] = wrote ? await readAll() : [blocks, weeks, held];
-    const again = planRecoveryRepair({ blocks: vb, weeks: vw, held: vh, clientId });
+    const again = planRecoveryRepair({ blocks: vb, weeks: vw, held: vh, clientId, deferConsistency });
     const unrepaired = again.unrepairable.length;
     const settled = !again.changed.blocks && !again.changed.weeks && !again.changed.held;
-    if (!unrepaired && (!settled || !arePersistedRecoveryRecordsConsistent(vb, vw))) {
+    if (!unrepaired && (!settled || (!deferConsistency && !arePersistedRecoveryRecordsConsistent(vb, vw)))) {
       if (attempt + 1 < MAX_ATTEMPTS) continue;
       throw new Error('Recovery repair could not be verified against stored records.');
     }
     return {
       ok: unrepaired === 0,
       changed: wrote,
+      deferred: deferConsistency,
       unrepairable: unrepaired,
       detached: plan.detached,
       quarantined: plan.quarantined,

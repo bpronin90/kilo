@@ -28,6 +28,7 @@ import { reconcileAgainstBaseline } from '../storage/sync/reconciliation';
 import '../storage/entries'; // entries first: avoids the pre-existing entries/sync-adapter import cycle
 import { createTableIo } from '../storage/cloud/syncTableIo';
 import { SYNC_TABLES } from '../storage/sync/records';
+import { secureStorage } from '../storage/secureStorage';
 import * as readState from '../hooks/entries/recoveryReadState';
 import { withRecoveryReconciliation } from '../hooks/entries/storageMode';
 
@@ -615,6 +616,7 @@ describe('review findings (#1369)', () => {
     await seed([], [week]);
     await repairRecoveryRecords();
     expect((await read()).weeks).toEqual([]);
+    await setSyncSnapshot(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, [week]);
     const current = await createTableIo(() => {})[SYNC_TABLES.RECOVERY_BLOCK_WEEKS].read();
     expect(current).toEqual([week]);
     const { dirty } = reconcileAgainstBaseline({ current, baseline: [week], clientId: 'c' });
@@ -790,3 +792,116 @@ describe('review findings (#1369, round 2)', () => {
     expect(s.blocks).toEqual([]);
   });
 });
+
+describe('review rules (#1369, round 3)', () => {
+  const TBL = { blocks: SYNC_TABLES.RECOVERY_BLOCKS, weeks: SYNC_TABLES.RECOVERY_BLOCK_WEEKS };
+  const viewOf = table => createTableIo(() => {})[table].read();
+  const intent = {
+    version: journal.RECOVERY_JOURNAL_VERSION, operation_id: 'op1', created_at: T0, updated_at: T0,
+    stage: 'intent', attempts: 0, last_error: null,
+    type: journal.RECOVERY_OPERATION_TYPES.COMPLETE_BLOCK_WITH_WEEK, block_id: 'b', week_id: 'w', requested_completed_at: T1,
+  };
+
+  // RULE A: set-aside never waits on replay.
+  test.each([
+    ['blocks', 'first'], ['blocks', 'middle'], ['blocks', 'last'],
+    ['weeks', 'first'], ['weeks', 'middle'], ['weeks', 'last'],
+  ])('a malformed %s row (%s) with a pending intent is set aside within bounded passes', async (coll, pos) => {
+    const blocks = [blk('b'), blk('b2', { completed_at: T1 })];
+    const weeks = [wk('w', 'b', 'n', 1), wk('w2', 'b2', 'n2', 1)];
+    const list = coll === 'blocks' ? blocks : weeks;
+    const at = { first: 0, middle: 1, last: list.length }[pos];
+    list.splice(at, 0, null);
+    await seed(blocks, weeks);
+    await put(RECOVERY_OPERATION_JOURNAL_KEY, [intent]);
+    let rec;
+    let passes = 0;
+    do { rec = await journal.reconcileRecoveryOperations(); passes += 1; } while (!rec.ok && passes < 5);
+    expect(rec.ok).toBe(true);
+    expect(passes).toBeLessThanOrEqual(4);
+    expect(isConsistent(await read())).toBe(true);
+    expect((await read()).held.some(h => h.kind === 'quarantined')).toBe(true);
+  });
+
+  test('consistency repairs still defer while an operation is pending; set-aside does not', async () => {
+    await seed([blk('b'), blk('dead', { deleted_at: DEL })], [wk('w', 'b', 'n', 1), wk('d', 'dead', 'n2', 1), null]);
+    const original = jsonStorage.writeList;
+    jest.spyOn(jsonStorage, 'writeList').mockImplementation(async (k, l, st) => {
+      if (k === RECOVERY_BLOCKS_KEY) throw new Error('Injected write failure');
+      return original(k, l, st);
+    });
+    await put(RECOVERY_OPERATION_JOURNAL_KEY, [intent]);
+    await journal.reconcileRecoveryOperations();
+    await journal.reconcileRecoveryOperations();
+    const s = await read();
+    expect(s.weeks.some(w => w === null)).toBe(false); // set aside
+    expect(byId(s.weeks).d.deleted_at).toBeNull(); // cascade deferred
+  });
+
+  // RULE B: set-aside data is UNCHANGED since the last sync.
+  const healthyBlock = blk('hb');
+  const healthyWeek = wk('hw', 'hb', 'hn', 1);
+  const kinds = {
+    missing_parent: { table: 'weeks', id: 'mp', make: () => wk('mp', 'absent', 'mpn', 1, { completed_at: T2, updated_at: T3 }) },
+    'quarantined block': { table: 'blocks', id: 'qb', make: () => ({ id: 'qb', completed_at: null, deleted_at: null }) },
+    'quarantined week': { table: 'weeks', id: 'qw', make: () => wk('qw', 'hb', 'qwn', 'x') },
+    'archived corrupt payload': { table: 'weeks', id: 'cp', make: () => wk('cp', 'hb', 'cpn', 2), corrupt: true },
+  };
+  describe.each(Object.entries(kinds))('%s', (_name, k) => {
+    test.each([[true], [false]])('baseline row present: %s -> zero dirty rows, healthy baseline', async (withBaseline) => {
+      const record = k.make();
+      const baseBlocks = [healthyBlock].concat(k.table === 'blocks' && withBaseline ? [blk(k.id)] : []);
+      const baseWeeks = [healthyWeek].concat(k.table === 'weeks' && withBaseline ? [wk(k.id, k.id === 'mp' ? 'absent' : 'hb', `${k.id}n`, 1)] : []);
+      await seed([healthyBlock, ...(k.table === 'blocks' ? [record] : [])], [healthyWeek, ...(k.table === 'weeks' && !k.corrupt ? [record] : [])]);
+      await setSyncSnapshot(TBL.blocks, baseBlocks);
+      await setSyncSnapshot(TBL.weeks, baseWeeks);
+      if (k.corrupt) await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, '{corrupt');
+      if (k.corrupt) await expect(repairRecoveryRecords()).rejects.toThrow();
+      await repairRecoveryRecords();
+      await repairRecoveryRecords();
+      for (const [table, base] of [[TBL.blocks, baseBlocks], [TBL.weeks, baseWeeks]]) {
+        const current = await viewOf(table);
+        expect(current.some(r => r && r.id === k.id && stableJson(r) === stableJson(record))).toBe(false); // never the set-aside bytes
+        const { dirty } = reconcileAgainstBaseline({ current, baseline: base, clientId: 'c' });
+        expect(dirty.filter(d => d.id === k.id)).toEqual([]);
+        expect(dirty.map(d => d.id)).toEqual([]);
+      }
+    });
+  });
+
+  // RULE C: an unreadable preservation record fails closed.
+  test('read errors on held / archive state make the sync view throw, never shrink', async () => {
+    await seed([blk('hb')], [wk('mp', 'absent', 'n', 1)]);
+    await repairRecoveryRecords();
+    const weeksView = () => viewOf(TBL.weeks);
+    await expect(weeksView()).resolves.toBeDefined();
+
+    const readSpy = jest.spyOn(jsonStorage, 'readList').mockImplementation(async (k) => {
+      if (k === RECOVERY_HELD_KEY) throw new Error('held read failed');
+      return JSON.parse((await AsyncStorage.getItem(k)) || '[]');
+    });
+    await expect(weeksView()).rejects.toThrow('held read failed');
+    readSpy.mockRestore();
+
+    const keysSpy = jest.spyOn(secureStorage, 'getAllKeys').mockRejectedValue(new Error('keys failed'));
+    await expect(weeksView()).rejects.toThrow('keys failed');
+    keysSpy.mockRestore();
+
+    await AsyncStorage.setItem(`${RECOVERY_CORRUPT_PAYLOAD_PREFIX}x`, JSON.stringify({ key: RECOVERY_BLOCK_WEEKS_KEY, raw: 'r' }));
+    const getSpy = jest.spyOn(secureStorage, 'getItem').mockImplementation(async (k) => {
+      if (String(k).startsWith(RECOVERY_CORRUPT_PAYLOAD_PREFIX)) throw new Error('archive read failed');
+      return AsyncStorage.getItem(k);
+    });
+    await expect(weeksView()).rejects.toThrow('archive read failed');
+    getSpy.mockRestore();
+  });
+
+  test('an unparseable archive entry covers both collections instead of being ignored', async () => {
+    const synced = [wk('w1', 'hb', 'n1', 1)];
+    await seed([blk('hb')], []);
+    await setSyncSnapshot(TBL.weeks, synced);
+    await AsyncStorage.setItem(`${RECOVERY_CORRUPT_PAYLOAD_PREFIX}bad`, '{not json');
+    expect((await viewOf(TBL.weeks)).map(w => w.id)).toEqual(['w1']);
+  });
+});
+const stableJson = v => JSON.stringify(v);

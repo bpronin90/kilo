@@ -53,20 +53,23 @@ function corruptReconciliation(error) {
 // reconciliation entry points (the authoritative read, Retry, and the sync
 // boundary). Guarded actions and operation starts reconcile WITHOUT repairing:
 // they are already gated on a verified read that repaired, and an action must
-// not rewrite records beyond its own scope. Replay
-// may complete a pending operation whose postconditions repair would otherwise
-// change, so while any operation is still pending repair is deferred (and the
-// authoritative read still fails closed on inconsistent data). It runs with an
-// empty journal too, since the journal cannot describe arbitrary inconsistency.
+// not rewrite records beyond its own scope. Replay may complete a pending
+// operation whose postconditions the CONSISTENCY repairs would change, so while
+// any operation is pending only those are deferred (the authoritative read still
+// fails closed on inconsistent data). Shape classification, set-aside of
+// malformed records and the corrupt-payload route ALWAYS run, so a pending
+// operation stuck on a malformed row is unblocked once the row is set aside. It
+// runs with an empty journal too, since the journal cannot describe arbitrary
+// inconsistency.
 // A repair failure never throws out of reconciliation: it is reported as
 // `repair.failed` so the read fails with Retry, which runs this same repair.
 export const RECOVERY_REPAIR_INCOMPLETE = 'RECOVERY_REPAIR_INCOMPLETE';
 const RECOVERY_REPAIR_INCOMPLETE_MESSAGE =
   'Recovery data on this device needs repair before it can sync. Try again.';
 
-async function repairAfterReplay(operationsPending, replayThrew = false) {
+async function repairAfterReplay(operationsPending) {
   try {
-    return await repairRecoveryRecords({ corruptOnly: operationsPending && !replayThrew });
+    return await repairRecoveryRecords({ deferConsistency: operationsPending });
   } catch (e) {
     return { ok: false, failed: true, deferred: operationsPending, error: e };
   }
@@ -83,7 +86,6 @@ async function reconcileAllUnlocked({ repair: runRepair = false } = {}) {
   }
 
   const results = [];
-  let replayThrew = false;
   for (const record of journal) {
     try {
       // eslint-disable-next-line no-await-in-loop
@@ -92,7 +94,6 @@ async function reconcileAllUnlocked({ repair: runRepair = false } = {}) {
       // An unexpected throw (e.g. a malformed row inside an otherwise valid
       // list) is pending, not a rejected reconciliation, so repair still runs
       // and can set the record aside; the operation replays on a later pass.
-      replayThrew = true;
       results.push({
         ok: false, code: RECOVERY_OPERATION_CODES.RECONCILIATION_PENDING, operationId: record.operation_id,
         type: record.type, block_id: record.block_id || null, week_id: record.week_id || null,
@@ -107,7 +108,7 @@ async function reconcileAllUnlocked({ repair: runRepair = false } = {}) {
   const cancelled = results.filter((r) => !r.ok && r.terminal);
   const pending = results.filter((r) => !r.ok && !r.terminal);
   const headline = pending[0] || cancelled[0] || null;
-  const repair = runRepair ? await repairAfterReplay(pending.length > 0, replayThrew) : null;
+  const repair = runRepair ? await repairAfterReplay(pending.length > 0) : null;
   // A repair that did not leave the records consistent is not a clean pass:
   // the sync boundary checks `ok` alone, so it must refuse here too. The next
   // pass sets unrepairable records aside, so this never blocks indefinitely.

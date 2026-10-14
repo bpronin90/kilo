@@ -1116,11 +1116,15 @@ record to the held store, so it cannot block its note or ordinal and the read
 verifies immediately, with no waiting. If the block arrives, the next pass
 re-attaches it (the existing LWW winner policy picks between the held and any
 list copy; a tombstoned block cascades it). Sync's views of both collections
-include everything repair set aside (held weeks, quarantined records, and the
-baseline rows of a reset corrupt collection; `loadSyncView`), so baseline
-reconciliation never reads a device-local set-aside as a deletion. An unexpected
-replay throw is treated as pending so repair still runs and can set the record
-aside; quarantined versions get full-content collision suffixes. If the block never arrives the record stays held, unaltered and
+(`loadSyncView`) show every set-aside id (held weeks, quarantined records) and
+every row of an archived/reset collection as exactly its BASELINE row from the
+last successful sync, or nothing when none exists: never the set-aside bytes (an
+edit) and never an absence (a deletion). A read error on held or archive state
+makes the sync read throw rather than shrink the view. While a journaled
+operation is pending only the cross-record consistency repairs wait; shape
+classification, set-aside of malformed records and the corrupt-payload route
+always run, so a pending operation stuck on a malformed row is unblocked.
+Quarantined versions get full-content collision suffixes. If the block never arrives the record stays held, unaltered and
 inspectable (`loadHeldRecoveryRecords`).
 
 Unrepairable records: the first pass that sees a set of them leaves them alone

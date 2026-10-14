@@ -1,6 +1,8 @@
 import * as Storage from '../entries';
 import { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY } from '../entries/keys';
 import { getSyncSnapshot } from '../sync/snapshots';
+import { RECOVERY_HELD_KEY } from '../entries/recoveryRepair';
+import { isWellTypedRecoveryBlock, isWellTypedRecoveryWeek } from '../../lib/data/activeTrainingContext';
 import { withWorkoutNotebookLock } from '../entries/workoutNotes';
 import {
   loadArchivedWeightGoalsRaw,
@@ -13,7 +15,6 @@ import {
   stampTombstone,
   getClientId,
   enqueueDirtyMany,
-  pickWinner,
 } from '../syncQueue';
 import {
   resolveDuplicateActiveBlocks,
@@ -205,37 +206,49 @@ export async function tombstoneLocalPhantoms(cache) {
 // The views sync reconciles against its baseline (#1368). Storage repair moves
 // records OUT of the raw lists without deleting them: a week detached because its
 // block is absent, a malformed record set aside, or every row of a collection
-// payload that was corrupt and reset. Reading only the raw lists would make each
-// look physically deleted, and reconcileAgainstBaseline would turn that absence
-// into an uploaded tombstone, so a device-local set-aside would become a
-// replicated deletion. The views therefore include everything set aside (held
-// records, and the baseline rows of a reset collection), so absence is never
-// read as intent; a pull merges into them and the post-pass repair sets them
-// aside again.
-async function loadSyncView(table, collection, key, loadRaw) {
+// payload that was corrupt and reset. Two wrong readings must be avoided:
+//   * absence -> reconcileAgainstBaseline infers a DELETION and uploads it;
+//   * the set-aside bytes -> it stamps them as a fresh EDIT over a healthy row.
+// So for every set-aside id (and for every row of an archived/reset collection)
+// the view holds exactly the BASELINE row (the last successful sync) if one
+// exists, and nothing if none does: unchanged since the last sync, never an edit
+// or a deletion. A healthy raw row of the same id (e.g. the surviving copy of a
+// duplicate id) is never replaced. Any read error on held/archive state throws,
+// so sync fails and retries instead of silently shrinking the view.
+async function loadSyncView(table, collection, key, loadRaw, isHealthy) {
   const raw = await loadRaw();
   if (typeof Storage.loadHeldRecoveryRecords !== 'function') return raw;
-  const view = new Map();
-  for (const r of raw || []) if (r && r.id != null) view.set(r.id, r);
-  const rawIds = new Set(view.keys());
-  const consider = (record) => {
-    if (!record || typeof record !== 'object' || record.id == null || rawIds.has(record.id)) return;
-    const current = view.get(record.id);
-    view.set(record.id, current ? pickWinner(current, record) : record);
-  };
   const held = await Storage.loadHeldRecoveryRecords();
-  (held || []).filter((h) => h && h.collection === collection).forEach((h) => consider(h.record));
-  if (typeof Storage.loadArchivedCorruptKeys === 'function' && (await Storage.loadArchivedCorruptKeys()).has(key)) {
-    for (const row of (await getSyncSnapshot(table)) || []) consider(row);
+  const archived = typeof Storage.loadArchivedCorruptKeys === 'function'
+    ? await Storage.loadArchivedCorruptKeys()
+    : new Set();
+  const setAside = new Set((held || []).filter((h) => h && h.collection === collection && h.record && h.record.id != null)
+    .map((h) => h.record.id));
+  const wholeCollection = archived.has(key) || archived.has(RECOVERY_HELD_KEY);
+  if (setAside.size === 0 && !wholeCollection) return raw;
+
+  const baselineById = new Map();
+  for (const row of (await getSyncSnapshot(table)) || []) if (row && row.id != null) baselineById.set(row.id, row);
+  const healthyIds = new Set();
+  const out = [];
+  for (const r of raw || []) {
+    if (r && r.id != null && setAside.has(r.id) && !isHealthy(r)) continue; // replaced below
+    if (r && r.id != null) healthyIds.add(r.id);
+    out.push(r);
   }
-  const extra = [...view].filter(([id]) => !rawIds.has(id)).map(([, r]) => r);
-  return extra.length ? [...(raw || []), ...extra] : raw;
+  for (const [id, row] of baselineById) {
+    if (healthyIds.has(id)) continue;
+    if (setAside.has(id) || wholeCollection) out.push(row);
+  }
+  return out;
 }
 const loadWeeksForSync = () => loadSyncView(
-  SYNC_TABLES.RECOVERY_BLOCK_WEEKS, 'weeks', RECOVERY_BLOCK_WEEKS_KEY, Storage.loadRecoveryBlockWeeksRaw
+  SYNC_TABLES.RECOVERY_BLOCK_WEEKS, 'weeks', RECOVERY_BLOCK_WEEKS_KEY, Storage.loadRecoveryBlockWeeksRaw,
+  isWellTypedRecoveryWeek
 );
 const loadBlocksForSync = () => loadSyncView(
-  SYNC_TABLES.RECOVERY_BLOCKS, 'blocks', RECOVERY_BLOCKS_KEY, Storage.loadRecoveryBlocksRaw
+  SYNC_TABLES.RECOVERY_BLOCKS, 'blocks', RECOVERY_BLOCKS_KEY, Storage.loadRecoveryBlocksRaw,
+  isWellTypedRecoveryBlock
 );
 
 // Cascade a PULLED block tombstone to the memberships it should have taken with
