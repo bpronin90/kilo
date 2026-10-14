@@ -24,6 +24,7 @@ import { arePersistedRecoveryRecordsConsistent } from '../lib/data/activeTrainin
 import { CLIENT_ID_KEY, mergeRecords } from '../storage/sync/records';
 import { resetClientIdCacheForTests } from '../storage/syncQueue';
 import * as readState from '../hooks/entries/recoveryReadState';
+import { withRecoveryReconciliation } from '../hooks/entries/storageMode';
 
 const T0 = '2026-01-01T00:00:00.000Z';
 const T1 = '2026-01-02T00:00:00.000Z';
@@ -404,6 +405,20 @@ describe('reconciliation owns repair', () => {
     });
     const rec = await journal.reconcileRecoveryOperations();
     expect(rec.repair).toMatchObject({ ok: false, failed: true });
+    // The sync boundary checks `ok` alone, so a failed repair must refuse it.
+    expect(rec.ok).toBe(false);
+    expect(rec.code).toBe('RECOVERY_REPAIR_INCOMPLETE');
+  });
+
+  test('the sync boundary refuses an unrepairable pass, then proceeds once it is set aside', async () => {
+    const bad = { id: 'bad', baseline_note_id: 'x', started_at: T0, completed_at: null, deleted_at: { not: 'a marker' } };
+    await seed([blk('good'), bad], []);
+    const run = jest.fn(async () => 'synced');
+    await expect(withRecoveryReconciliation(run)).rejects.toBeTruthy();
+    expect(run).not.toHaveBeenCalled();
+    // The refused pass set nothing aside; the next one does, and sync runs.
+    await expect(withRecoveryReconciliation(run)).resolves.toBe('synced');
+    expect(run).toHaveBeenCalledTimes(1);
   });
 });
 

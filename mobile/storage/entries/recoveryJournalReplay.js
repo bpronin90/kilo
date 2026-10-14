@@ -60,6 +60,10 @@ function corruptReconciliation(error) {
 // empty journal too, since the journal cannot describe arbitrary inconsistency.
 // A repair failure never throws out of reconciliation: it is reported as
 // `repair.failed` so the read fails with Retry, which runs this same repair.
+export const RECOVERY_REPAIR_INCOMPLETE = 'RECOVERY_REPAIR_INCOMPLETE';
+const RECOVERY_REPAIR_INCOMPLETE_MESSAGE =
+  'Recovery data on this device needs repair before it can sync. Try again.';
+
 async function repairAfterReplay(operationsPending) {
   if (operationsPending) return { ok: true, deferred: true };
   try {
@@ -91,18 +95,24 @@ async function reconcileAllUnlocked({ repair: runRepair = false } = {}) {
   const pending = results.filter((r) => !r.ok && !r.terminal);
   const headline = pending[0] || cancelled[0] || null;
   const repair = runRepair ? await repairAfterReplay(pending.length > 0) : null;
+  // A repair that did not leave the records consistent is not a clean pass:
+  // the sync boundary checks `ok` alone, so it must refuse here too. The next
+  // pass sets unrepairable records aside, so this never blocks indefinitely.
+  const repairIncomplete = !!repair && !repair.ok && pending.length === 0;
   return {
     repair,
-    ok: pending.length === 0,
+    ok: pending.length === 0 && !repairIncomplete,
     code: pending.length > 0
       ? pending[0].code
-      : (cancelled.length > 0 ? cancelled[0].code : RECOVERY_OPERATION_CODES.VERIFIED),
+      : repairIncomplete
+        ? RECOVERY_REPAIR_INCOMPLETE
+        : (cancelled.length > 0 ? cancelled[0].code : RECOVERY_OPERATION_CODES.VERIFIED),
     corrupt: false,
     pending,
     cancelled,
     results,
-    error: headline ? headline.error : null,
-    cause: headline ? headline.cause : null,
+    error: headline ? headline.error : repairIncomplete ? RECOVERY_REPAIR_INCOMPLETE_MESSAGE : null,
+    cause: headline ? headline.cause : repairIncomplete ? repair.error || null : null,
   };
 }
 
