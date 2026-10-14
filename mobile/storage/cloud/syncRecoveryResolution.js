@@ -106,7 +106,10 @@ export function retractMembership(week, clientId) {
 export function cascadeTombstonedParents(blocks, weeks, clientId) {
   const deletedBlockAt = new Map();
   for (const block of blocks || []) {
-    if (block && block.id != null && isTombstone(block)) {
+    // Only a parseable marker is a tombstone: a set-aside malformed block that
+    // sync still sees must not cascade a nonsense `deleted_at` onto its weeks.
+    if (block && block.id != null && isTombstone(block) && typeof block.deleted_at === 'string'
+      && !Number.isNaN(Date.parse(block.deleted_at))) {
       deletedBlockAt.set(block.id, block.deleted_at);
     }
   }

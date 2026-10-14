@@ -23,6 +23,7 @@ import * as journal from '../storage/entries/recoveryOperationJournal';
 import { arePersistedRecoveryRecordsConsistent } from '../lib/data/activeTrainingContext';
 import { CLIENT_ID_KEY, mergeRecords } from '../storage/sync/records';
 import { resetClientIdCacheForTests } from '../storage/syncQueue';
+import { setSyncSnapshot } from '../storage/sync/snapshots';
 import { reconcileAgainstBaseline } from '../storage/sync/reconciliation';
 import '../storage/entries'; // entries first: avoids the pre-existing entries/sync-adapter import cycle
 import { createTableIo } from '../storage/cloud/syncTableIo';
@@ -703,5 +704,89 @@ describe('review findings (#1369)', () => {
     const s = await read();
     expect(isConsistent(s)).toBe(true);
     expect(s.held.map(h => h.kind)).toEqual(['quarantined', 'quarantined']);
+  });
+});
+
+describe('review findings (#1369, round 2)', () => {
+  const viewOf = table => createTableIo(() => {})[table].read();
+  const dirtyFor = async (table, baseline) =>
+    reconcileAgainstBaseline({ current: await viewOf(table), baseline, clientId: 'c' }).dirty;
+
+  test('an unexpected replay throw is pending, not a rejection: the malformed row is set aside, then the op replays', async () => {
+    await seed([], [wk('w', 'b', 'n', 1)]);
+    await put(RECOVERY_BLOCKS_KEY, [null, blk('b')]);
+    await put(RECOVERY_OPERATION_JOURNAL_KEY, [{
+      version: journal.RECOVERY_JOURNAL_VERSION, operation_id: 'op1', created_at: T0, updated_at: T0,
+      stage: 'intent', attempts: 0, last_error: null,
+      type: journal.RECOVERY_OPERATION_TYPES.COMPLETE_BLOCK_WITH_WEEK, block_id: 'b', week_id: 'w', requested_completed_at: T1,
+    }]);
+    const first = await journal.reconcileRecoveryOperations();
+    expect(first.ok).toBe(false);
+    expect(first.pending).toHaveLength(1);
+    await journal.reconcileRecoveryOperations();
+    const last = await journal.reconcileRecoveryOperations();
+    expect(last.pending).toHaveLength(0);
+    expect(last.ok).toBe(true);
+    const s = await read();
+    expect(s.blocks.map(b => b.id)).toEqual(['b']);
+    expect(s.held.find(h => h.kind === 'quarantined').record).toEqual({ __raw: null });
+    expect(isConsistent(s)).toBe(true);
+  });
+
+  test('a quarantined block is not read by sync as a deletion (nor does it cascade its weeks)', async () => {
+    const bad = blk('bad', { deleted_at: { not: 'a marker' } });
+    const good = blk('good');
+    const week = wk('w', 'good', 'n', 1);
+    await seed([good, bad], [week]);
+    await setSyncSnapshot(SYNC_TABLES.RECOVERY_BLOCKS, [good, bad]);
+    await repairRecoveryRecords();
+    await repairRecoveryRecords();
+    expect((await read()).blocks.map(b => b.id)).toEqual(['good']);
+    expect(await dirtyFor(SYNC_TABLES.RECOVERY_BLOCKS, [good, bad])).toEqual([]);
+    // A sync write of the merged view puts it back; repair sets it aside again at once.
+    await put(RECOVERY_BLOCKS_KEY, await viewOf(SYNC_TABLES.RECOVERY_BLOCKS));
+    expect(await repairRecoveryRecords()).toMatchObject({ ok: true, quarantined: 1 });
+    expect((await read()).held.filter(h => h.kind === 'quarantined')).toHaveLength(1);
+  });
+
+  test('a quarantined week is not read by sync as a deletion', async () => {
+    const bad = wk('bw', 'b', 'n2', 'x');
+    const ok = wk('w', 'b', 'n', 1);
+    await seed([blk('b')], [ok, bad]);
+    await setSyncSnapshot(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, [ok, bad]);
+    await repairRecoveryRecords();
+    await repairRecoveryRecords();
+    expect((await read()).weeks.map(w => w.id)).toEqual(['w']);
+    expect(await dirtyFor(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, [ok, bad])).toEqual([]);
+  });
+
+  test('a reset corrupt payload is not read by sync as the deletion of every synced row', async () => {
+    const synced = [wk('w1', 'b', 'n1', 1), wk('w2', 'b', 'n2', 2)];
+    await put(RECOVERY_BLOCKS_KEY, [blk('b')]);
+    await setSyncSnapshot(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, synced);
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, '{corrupt');
+    await expect(repairRecoveryRecords()).rejects.toThrow();
+    await repairRecoveryRecords();
+    expect(await get(RECOVERY_BLOCK_WEEKS_KEY)).toEqual([]);
+    expect(await dirtyFor(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, synced)).toEqual([]);
+    expect((await viewOf(SYNC_TABLES.RECOVERY_BLOCK_WEEKS)).map(w => w.id).sort()).toEqual(['w1', 'w2']);
+  });
+
+  test('distinct raw versions that share a hash bucket are all preserved (full-content suffixes)', async () => {
+    const a = { id: 'bad', reason: '00000r', completed_at: null };
+    const c = { id: 'bad', reason: '000020', completed_at: null };
+    await seed([a], []);
+    await repairRecoveryRecords();
+    await repairRecoveryRecords();
+    // Simulate a hash collision: the stored entry now holds different content under A's id.
+    const held = await get(RECOVERY_HELD_KEY);
+    await put(RECOVERY_HELD_KEY, [{ ...held[0], record: c }]);
+    await seed([a], []);
+    await repairRecoveryRecords();
+    await repairRecoveryRecords();
+    const s = await read();
+    expect(s.held.map(h => h.record.reason).sort()).toEqual(['00000r', '000020']);
+    expect(new Set(s.held.map(h => h.held_id)).size).toBe(2);
+    expect(s.blocks).toEqual([]);
   });
 });

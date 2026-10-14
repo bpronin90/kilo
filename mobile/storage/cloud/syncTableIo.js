@@ -1,4 +1,6 @@
 import * as Storage from '../entries';
+import { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY } from '../entries/keys';
+import { getSyncSnapshot } from '../sync/snapshots';
 import { withWorkoutNotebookLock } from '../entries/workoutNotes';
 import {
   loadArchivedWeightGoalsRaw,
@@ -11,6 +13,7 @@ import {
   stampTombstone,
   getClientId,
   enqueueDirtyMany,
+  pickWinner,
 } from '../syncQueue';
 import {
   resolveDuplicateActiveBlocks,
@@ -199,24 +202,41 @@ export async function tombstoneLocalPhantoms(cache) {
   await enqueueDirtyMany(SYNC_TABLES.WORKOUT_NOTES, tombstoned);
 }
 
-// The membership list sync reconciles against its baseline (#1368). A week that
-// storage repair DETACHED because its block is not present locally lives in the
-// device-local held store, not the raw list. Reading only the raw list would make
-// it look physically deleted, and reconcileAgainstBaseline would turn that
-// absence into an uploaded tombstone: a guessed deletion of a membership whose
-// block may simply not have downloaded yet. So held missing-parent weeks are
-// part of the synced view; a pull merges into them, and the post-pass repair
-// detaches them again.
-async function loadWeeksForSync() {
-  const raw = await Storage.loadRecoveryBlockWeeksRaw();
+// The views sync reconciles against its baseline (#1368). Storage repair moves
+// records OUT of the raw lists without deleting them: a week detached because its
+// block is absent, a malformed record set aside, or every row of a collection
+// payload that was corrupt and reset. Reading only the raw lists would make each
+// look physically deleted, and reconcileAgainstBaseline would turn that absence
+// into an uploaded tombstone, so a device-local set-aside would become a
+// replicated deletion. The views therefore include everything set aside (held
+// records, and the baseline rows of a reset collection), so absence is never
+// read as intent; a pull merges into them and the post-pass repair sets them
+// aside again.
+async function loadSyncView(table, collection, key, loadRaw) {
+  const raw = await loadRaw();
   if (typeof Storage.loadHeldRecoveryRecords !== 'function') return raw;
+  const view = new Map();
+  for (const r of raw || []) if (r && r.id != null) view.set(r.id, r);
+  const rawIds = new Set(view.keys());
+  const consider = (record) => {
+    if (!record || typeof record !== 'object' || record.id == null || rawIds.has(record.id)) return;
+    const current = view.get(record.id);
+    view.set(record.id, current ? pickWinner(current, record) : record);
+  };
   const held = await Storage.loadHeldRecoveryRecords();
-  const have = new Set((raw || []).map((w) => w && w.id));
-  const detached = (held || [])
-    .filter((h) => h && h.kind === 'missing_parent' && h.collection === 'weeks' && h.record && !have.has(h.record.id))
-    .map((h) => h.record);
-  return detached.length ? [...raw, ...detached] : raw;
+  (held || []).filter((h) => h && h.collection === collection).forEach((h) => consider(h.record));
+  if (typeof Storage.loadArchivedCorruptKeys === 'function' && (await Storage.loadArchivedCorruptKeys()).has(key)) {
+    for (const row of (await getSyncSnapshot(table)) || []) consider(row);
+  }
+  const extra = [...view].filter(([id]) => !rawIds.has(id)).map(([, r]) => r);
+  return extra.length ? [...(raw || []), ...extra] : raw;
 }
+const loadWeeksForSync = () => loadSyncView(
+  SYNC_TABLES.RECOVERY_BLOCK_WEEKS, 'weeks', RECOVERY_BLOCK_WEEKS_KEY, Storage.loadRecoveryBlockWeeksRaw
+);
+const loadBlocksForSync = () => loadSyncView(
+  SYNC_TABLES.RECOVERY_BLOCKS, 'blocks', RECOVERY_BLOCKS_KEY, Storage.loadRecoveryBlocksRaw
+);
 
 // Cascade a PULLED block tombstone to the memberships it should have taken with
 // it (issue #693).
@@ -249,7 +269,7 @@ async function loadWeeksForSync() {
 // writes a byte-identical tombstone instead of fighting over a timestamp.
 export async function cascadeDeletedBlockMemberships(cache = createPassCache()) {
   const [blocks, weeks] = await Promise.all([
-    cache.read(SYNC_TABLES.RECOVERY_BLOCKS, Storage.loadRecoveryBlocksRaw),
+    cache.read(SYNC_TABLES.RECOVERY_BLOCKS, loadBlocksForSync),
     cache.read(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, loadWeeksForSync),
   ]);
 
@@ -331,7 +351,7 @@ export function createTableIo(
   // sync never recomputes a baseline metric and never reorders an established
   // membership sequence.
   [SYNC_TABLES.RECOVERY_BLOCKS]: {
-    read: () => cache.read(SYNC_TABLES.RECOVERY_BLOCKS, Storage.loadRecoveryBlocksRaw),
+    read: () => cache.read(SYNC_TABLES.RECOVERY_BLOCKS, loadBlocksForSync),
     write: async (list) => {
       const clientId = await getClientId();
       const { list: resolved, changed } = resolveDuplicateActiveBlocks(list, clientId);
@@ -339,7 +359,7 @@ export function createTableIo(
         SYNC_TABLES.RECOVERY_BLOCKS,
         resolved,
         Storage.replaceRecoveryBlocksRaw,
-        Storage.loadRecoveryBlocksRaw
+        loadBlocksForSync
       );
       // Same deferral contract as the phantom-note tombstones above: syncTable
       // snapshots and clears its dirty batch around writeLocal, so a row created

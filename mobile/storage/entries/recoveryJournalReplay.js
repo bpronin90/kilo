@@ -64,9 +64,9 @@ export const RECOVERY_REPAIR_INCOMPLETE = 'RECOVERY_REPAIR_INCOMPLETE';
 const RECOVERY_REPAIR_INCOMPLETE_MESSAGE =
   'Recovery data on this device needs repair before it can sync. Try again.';
 
-async function repairAfterReplay(operationsPending) {
+async function repairAfterReplay(operationsPending, replayThrew = false) {
   try {
-    return await repairRecoveryRecords({ corruptOnly: operationsPending });
+    return await repairRecoveryRecords({ corruptOnly: operationsPending && !replayThrew });
   } catch (e) {
     return { ok: false, failed: true, deferred: operationsPending, error: e };
   }
@@ -83,9 +83,23 @@ async function reconcileAllUnlocked({ repair: runRepair = false } = {}) {
   }
 
   const results = [];
+  let replayThrew = false;
   for (const record of journal) {
-    // eslint-disable-next-line no-await-in-loop
-    results.push(await replayRecord(record));
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      results.push(await replayRecord(record));
+    } catch (e) {
+      // An unexpected throw (e.g. a malformed row inside an otherwise valid
+      // list) is pending, not a rejected reconciliation, so repair still runs
+      // and can set the record aside; the operation replays on a later pass.
+      replayThrew = true;
+      results.push({
+        ok: false, code: RECOVERY_OPERATION_CODES.RECONCILIATION_PENDING, operationId: record.operation_id,
+        type: record.type, block_id: record.block_id || null, week_id: record.week_id || null,
+        note_id: record.note_id || null, cause: e,
+        error: 'Recovery data could not be interpreted, so this change is still pending.',
+      });
+    }
   }
   // A terminal cancellation is RESOLVED, not pending: its record is already
   // cleared, so it must never keep an action locked or be retried. It is still
@@ -93,7 +107,7 @@ async function reconcileAllUnlocked({ repair: runRepair = false } = {}) {
   const cancelled = results.filter((r) => !r.ok && r.terminal);
   const pending = results.filter((r) => !r.ok && !r.terminal);
   const headline = pending[0] || cancelled[0] || null;
-  const repair = runRepair ? await repairAfterReplay(pending.length > 0) : null;
+  const repair = runRepair ? await repairAfterReplay(pending.length > 0, replayThrew) : null;
   // A repair that did not leave the records consistent is not a clean pass:
   // the sync boundary checks `ok` alone, so it must refuse here too. The next
   // pass sets unrepairable records aside, so this never blocks indefinitely.

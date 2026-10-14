@@ -123,12 +123,14 @@ function hashOf(text) {
   for (let i = 0; i < text.length; i += 1) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
   return `${h.toString(36)}${text.length.toString(36)}`;
 }
-// A quarantined record's id includes a hash of its content, so a later,
-// different version of the same id is a NEW entry: preserved history is never
-// overwritten. A missing-parent week is one logical record per id (LWW).
-const heldId = (kind, collection, record) => (kind === HELD_KINDS.QUARANTINED
+// Quarantined entries are keyed by collection, id and a content hash, then by a
+// collision suffix chosen by FULL-content comparison (as the corrupt-payload
+// archive does), so every distinct raw version is preserved and an identical one
+// is not duplicated. A missing-parent week is one logical record per id (LWW).
+const baseHeldId = (kind, collection, record) => (kind === HELD_KINDS.QUARANTINED
   ? `${kind}:${collection}:${record.id ?? ''}:${hashOf(stableStringify(record))}`
   : `${kind}:${collection}:${record.id}`);
+const asHeldRecord = original => (original && typeof original === 'object' ? original : { __raw: original });
 const isHeld = h => !!h && typeof h.held_id === 'string' && !!h.record && typeof h.record === 'object';
 
 // Pure planner. `quarantine` sets unrepairable records aside instead of
@@ -141,9 +143,17 @@ export function planRecoveryRepair({ blocks, weeks, held = [], clientId, quarant
     ...cw.bad.map(r => ({ collection: 'weeks', id: r?.id ?? null, record: r })),
   ];
   const heldAdds = [];
+  const heldText = new Map(held.filter(isHeld).map(h => [h.held_id, stableStringify(h.record)]));
   const addHeld = (kind, collection, original, reason) => {
-    const record = original && typeof original === 'object' ? original : { __raw: original };
-    heldAdds.push({ held_id: heldId(kind, collection, record), kind, collection, reason, held_at: now, record });
+    const record = asHeldRecord(original);
+    let id = baseHeldId(kind, collection, record);
+    if (kind === HELD_KINDS.QUARANTINED) {
+      const text = stableStringify(record);
+      const base = id;
+      for (let n = 1; heldText.has(id) && heldText.get(id) !== text; n += 1) id = `${base}_${n}`;
+      heldText.set(id, text);
+    }
+    heldAdds.push({ held_id: id, kind, collection, reason, held_at: now, record });
   };
   if (quarantine) {
     unrepairable.forEach(u => addHeld(HELD_KINDS.QUARANTINED, u.collection, u.record, 'unrepairable'));
@@ -288,6 +298,18 @@ const readAll = () => Promise.all([
   readRepairList(RECOVERY_HELD_KEY),
 ]);
 
+// Source keys of Recovery payloads archived as corrupt (and then reset). Sync uses
+// this so a reset collection is never read as the deletion of every synced row.
+export async function loadArchivedCorruptKeys() {
+  const keys = (await AsyncStorage.getAllKeys()).filter(k => k.startsWith(RECOVERY_CORRUPT_PAYLOAD_PREFIX));
+  const out = new Set();
+  for (const k of keys) {
+    // eslint-disable-next-line no-await-in-loop
+    try { out.add(JSON.parse(await AsyncStorage.getItem(k)).key); } catch { /* unreadable entry */ }
+  }
+  return out;
+}
+
 // Records set aside by repair, for support/export and recovery tooling.
 export const loadHeldRecoveryRecords = () => readList(RECOVERY_HELD_KEY);
 
@@ -312,7 +334,14 @@ export async function repairRecoveryRecords({ corruptOnly = false } = {}) {
       lastUnrepairableSignature = null;
     } else {
       const signature = stableStringify(plan.unrepairable);
-      if (signature === lastUnrepairableSignature) {
+      // A set already preserved (a sync merge wrote it back from the sync view)
+      // is set aside again immediately: nothing new for the user to see.
+      const preserved = new Set(held.filter(isHeld).filter(h => h.kind === HELD_KINDS.QUARANTINED)
+        .map(h => `${h.collection}|${stableStringify(h.record)}`));
+      const alreadyPreserved = plan.unrepairable.every(
+        u => preserved.has(`${u.collection}|${stableStringify(asHeldRecord(u.record))}`)
+      );
+      if (signature === lastUnrepairableSignature || alreadyPreserved) {
         plan = planRecoveryRepair({ blocks, weeks, held, clientId, quarantine: true });
         lastUnrepairableSignature = null;
       } else {
