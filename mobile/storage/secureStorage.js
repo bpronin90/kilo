@@ -14,16 +14,11 @@ const ENVELOPE_PREFIX = 'kilo.enc.v1:';
 const DEVICE_KEY_NAME = 'kilo.device-data-key.v1';
 const DEVICE_KEY_BYTES = 32;
 const NONCE_BYTES = 12;
-// Startup migration completion marker (#809). Every ordinary getItem() already
-// lazily migrates its OWN key in place (see getItemUnlocked below), so the
-// proactive full-table scan in migrateKiloData() only earns its keep once per
-// device: it catches a legacy plaintext key that first-launch startup never
-// happens to read on its own. Once that one pass confirms every kilo_* key is
-// encrypted, no future write can ever reintroduce plaintext (setItem always
-// encrypts), so re-scanning every key on every later cold start is redundant
-// work blocking every other storage read behind it via the shared operation
-// queue. The marker is plain text on purpose: it carries no sensitive data,
-// and checking it must not itself depend on the device encryption key.
+// Startup migration completion marker (#809). Every getItem() lazily migrates
+// its own key, and setItem always encrypts, so the full-table plaintext scan in
+// migrateKiloData() only needs to succeed once per device; later cold starts
+// read this one marker instead. It is plain text on purpose: it carries no
+// sensitive data and checking it must not depend on the device key.
 const MIGRATION_COMPLETE_KEY = 'kilo_plaintext_migration_v1_complete';
 const MIGRATION_COMPLETE_VALUE = '1';
 // Constant-time device-key ownership proof (#1364): a fixed plaintext sealed
@@ -225,7 +220,7 @@ export function createDeviceStorage({
           // eslint-disable-next-line no-await-in-loop
           if (isEnvelopeLike(raw)) await decrypt(name, raw);
         }
-        await backingStore.setItem(KEY_CHECK_NAME, await seal(KEY_CHECK_NAME, KEY_CHECK_PLAINTEXT));
+        await backingStore.setItem(KEY_CHECK_NAME, unlatched(await seal(KEY_CHECK_NAME, KEY_CHECK_PLAINTEXT)));
       })().catch((error) => {
         validation = null;
         if (error instanceof DeviceKeyUnavailableError) setKeyLatch(true);
@@ -248,14 +243,19 @@ export function createDeviceStorage({
 
   async function seal(key, value) {
     const encryptionKey = await deviceKey();
-    // Re-checked after every await: a concurrent read may have latched meanwhile.
-    if (deviceKeyUnavailable) throw new DeviceKeyUnavailableError();
     const nonce = await crypto.getRandomBytesAsync(NONCE_BYTES);
     if (!(nonce instanceof Uint8Array) || nonce.length !== NONCE_BYTES) {
       throw new Error('Platform cryptographic randomness returned an invalid nonce.');
     }
     const ciphertext = gcm(encryptionKey, nonce, utf8ToBytes(key)).encrypt(utf8ToBytes(String(value)));
     return `${ENVELOPE_PREFIX}${bytesToHex(nonce)}:${bytesToHex(ciphertext)}`;
+  }
+
+  // Every envelope write re-checks the latch in the same tick as the write: a
+  // concurrent read may have latched key loss during any await before it.
+  function unlatched(encoded) {
+    if (encryptValues && deviceKeyUnavailable) throw new DeviceKeyUnavailableError();
+    return encoded;
   }
 
   async function decrypt(key, envelope) {
@@ -381,7 +381,7 @@ export function createDeviceStorage({
     // plaintext in place and propagates to the caller rather than pretending
     // the key was empty.
     const migrated = await encrypt(key, raw);
-    await backingStore.setItem(key, migrated);
+    await backingStore.setItem(key, unlatched(migrated));
     return raw;
   }
 
@@ -393,7 +393,7 @@ export function createDeviceStorage({
       invalidatePendingRead(key);
       return withMutationLock(async () => {
         const next = encryptValues ? await encrypt(key, value) : String(value);
-        await backingStore.setItem(key, next);
+        await backingStore.setItem(key, unlatched(next));
       });
     },
     removeItem(key) {
@@ -415,7 +415,7 @@ export function createDeviceStorage({
           // eslint-disable-next-line no-await-in-loop
           encoded.push([key, encryptValues ? await encrypt(key, value) : String(value)]);
         }
-        await backingStore.multiSet(encoded);
+        await backingStore.multiSet(unlatched(encoded));
       });
     },
     multiRemove(keys) {
@@ -440,7 +440,7 @@ export function createDeviceStorage({
         const next = await transform(current);
         if (next == null || next === current) return { changed: false };
         const encoded = encryptValues ? await encrypt(key, next) : String(next);
-        await backingStore.setItem(key, encoded);
+        await backingStore.setItem(key, unlatched(encoded));
         return { changed: true };
       }, { changed: false });
     },
@@ -564,7 +564,7 @@ export function createDeviceStorage({
           // eslint-disable-next-line no-await-in-loop
           const envelope = await encrypt(key, raw);
           // eslint-disable-next-line no-await-in-loop
-          await backingStore.setItem(key, envelope);
+          await backingStore.setItem(key, unlatched(envelope));
           migrated += 1;
         }
         await backingStore.setItem(MIGRATION_COMPLETE_KEY, MIGRATION_COMPLETE_VALUE);

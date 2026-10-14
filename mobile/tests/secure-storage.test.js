@@ -589,6 +589,30 @@ describe('constant-time device-key canary', () => {
     expect(device.backingStore.values.get('kilo_plain')).toBe('legacy plaintext');
   });
 
+  test('a migration paused on its nonce cannot write after a concurrent read latches', async () => {
+    const device = await populatedDevice();
+    device.backingStore.values.set('kilo_bad', device.backingStore.values.get('kilo_workout_notes'));
+    device.backingStore.values.set('kilo_plain', 'legacy plaintext');
+    const storage = relaunch(device);
+    await storage.probeDeviceKey();
+    const realRandom = device.crypto.getRandomBytesAsync.getMockImplementation();
+    let releaseNonce;
+    const nonceGate = new Promise((resolve) => { releaseNonce = resolve; });
+    let paused = false;
+    device.crypto.getRandomBytesAsync.mockImplementation(async (length) => {
+      paused = true;
+      await nonceGate;
+      return realRandom(length);
+    });
+    const migration = storage.getItem('kilo_plain');
+    while (!paused) await new Promise((resolve) => setImmediate(resolve)); // eslint-disable-line no-await-in-loop
+    await expect(storage.getItem('kilo_bad')).rejects.toBeInstanceOf(EncryptedStorageError);
+    expect(storage.isKeyUnavailable()).toBe(true);
+    releaseNonce();
+    await expect(migration).rejects.toBeInstanceOf(DeviceKeyUnavailableError);
+    expect(device.backingStore.values.get('kilo_plain')).toBe('legacy plaintext');
+  });
+
   test('wipe resets the canary under the new key; clearing the key removes it', async () => {
     const device = await populatedDevice();
     const storage = relaunch(device);
