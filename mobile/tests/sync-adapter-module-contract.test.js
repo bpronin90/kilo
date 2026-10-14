@@ -380,6 +380,20 @@ describe('cross-device duplicate resolution collapses deterministically', () => 
     expect(result(weeks.slice().reverse())).toEqual({ a2: 3, c2: 4 });
   });
 
+  it('orders by instant, not string, for the shared active-block and membership rules (#1368)', () => {
+    const later = '2026-12-31T23:00:00-02:00'; // 2027-01-01T01:00Z
+    const earlier = '2027-01-01T00:00:00Z';
+    const blocks = [{ id: 'bA', started_at: later }, { id: 'bB', started_at: earlier }];
+    const { changed } = resolveDuplicateActiveBlocks(blocks.slice().reverse(), 'c');
+    expect(changed.map((b) => b.id)).toEqual(['bB']);
+    expect(changed[0].completed_at).toBe(later);
+    const weeks = [
+      { id: 'w1', note_id: 'n', block_id: 'b', week_number: 1, saved_at: later },
+      { id: 'w2', note_id: 'n', block_id: 'b', week_number: 2, saved_at: earlier },
+    ];
+    expect(resolveDuplicateWeekMemberships(weeks, 'c').changed.map((w) => w.id)).toEqual(['w1']);
+  });
+
   it('leaves a block untouched when renumbering would leave the safe-integer range (#1368)', () => {
     const max = Number.MAX_SAFE_INTEGER;
     const weeks = [

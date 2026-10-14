@@ -33,11 +33,12 @@ import {
   resolveDuplicateActiveBlocks,
   resolveDuplicateWeekMemberships,
   isLiveRecoveryRecord,
+  recoveryInstant,
 } from '../cloud/syncRecoveryResolution';
 import { arePersistedRecoveryRecordsWellFormed } from '../../lib/data/activeTrainingContext';
 import { replaceRecoveryBlocksRaw, replaceRecoveryBlockWeeksRaw } from './recoveryStorage';
 
-const isTimestamp = (v) => typeof v === 'string' && !Number.isNaN(Date.parse(v));
+const isTimestamp = (v) => recoveryInstant(v) !== null;
 const hasUniqueIds = (list) => new Set(list.map((r) => r.id)).size === list.length;
 
 // Pure plan. `changed*` are the rewritten rows; lists keep every input row.

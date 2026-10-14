@@ -24,19 +24,35 @@ import { SYNC_TABLES, isTombstone, stampWrite } from '../syncQueue';
 // deferred to the caller so they are enqueued and pushed by a follow-up pass
 // rather than being cleared underneath the in-flight one.
 
-// Ascending record order used by every rule below. Both components are
-// client-authored and immutable after creation, so all devices agree on it.
+// The ONE definition of a valid record timestamp (#1368): a string that parses
+// to an instant. Ordering is by instant, never by string, so ISO strings with
+// different offsets or precision compare correctly. Local repair eligibility
+// (recoveryRepair.js) uses the same predicate, so an unparseable value is never
+// compared there; in this shared path it sorts as the oldest instant.
+export function recoveryInstant(value) {
+  if (typeof value !== 'string') return null;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? null : ms;
+}
+const instantOrOldest = (value) => recoveryInstant(value) ?? -Infinity;
+
+// Ascending record order used by every rule below: instant first, then the
+// record id as the deterministic tie-break (equal instants, different strings).
+// Both components are client-authored and immutable after creation, so all
+// devices agree on it.
 function compareRecoveryRecords(a, b, timeField) {
-  return (
-    String(a[timeField] || '').localeCompare(String(b[timeField] || '')) ||
-    String(a.id).localeCompare(String(b.id))
-  );
+  const ta = instantOrOldest(a[timeField]);
+  const tb = instantOrOldest(b[timeField]);
+  return (ta < tb ? -1 : ta > tb ? 1 : 0) || String(a.id).localeCompare(String(b.id));
 }
 
 function laterIso(a, b) {
   if (!a) return b || null;
   if (!b) return a;
-  return a > b ? a : b;
+  const ta = instantOrOldest(a);
+  const tb = instantOrOldest(b);
+  if (ta === tb) return a > b ? a : b;
+  return ta > tb ? a : b;
 }
 
 export function isLiveRecoveryRecord(record) {

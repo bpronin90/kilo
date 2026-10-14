@@ -150,6 +150,52 @@ describe('automatic repairs (shared policy)', () => {
     expect(forward).toEqual(['w1:1:live', 'w2:5:live', 'w3:2:live', 'w4:6:live', 'w5:4:live']);
   });
 
+  test('winners are chosen by instant, not string, across mixed UTC offsets', async () => {
+    const later = '2026-12-31T23:00:00-02:00'; // 2027-01-01T01:00Z
+    const earlier = '2027-01-01T00:00:00Z';
+    await seed(RECOVERY_BLOCKS_KEY, [
+      block('bA', { started_at: later }),
+      block('bB', { started_at: earlier }),
+    ]);
+    await seed(RECOVERY_BLOCK_WEEKS_KEY, [
+      week('w1', 'bA', 'n1', 1, { saved_at: later }),
+      week('w2', 'bA', 'n1', 2, { saved_at: earlier }),
+    ]);
+    await journal.reconcileRecoveryOperations();
+    const blocks = await load(RECOVERY_BLOCKS_KEY);
+    expect(byId(blocks, 'bA').completed_at).toBeNull(); // later instant survives
+    expect(byId(blocks, 'bB').completed_at).toBe(later);
+    const weeks = await load(RECOVERY_BLOCK_WEEKS_KEY);
+    expect(byId(weeks, 'w2').deleted_at).toBeNull(); // earliest instant kept
+    expect(byId(weeks, 'w1').deleted_at).toBeTruthy();
+  });
+
+  test('equal instants with different strings tie-break by id on any input order', async () => {
+    const a = '2027-01-01T00:00:00Z';
+    const b = '2027-01-01T01:00:00+01:00';
+    const blocks = [block('bA', { started_at: a }), block('bB', { started_at: b })];
+    const weeks = [
+      week('w1', 'bA', 'n1', 1, { saved_at: a }),
+      week('w2', 'bA', 'n1', 2, { saved_at: b }),
+    ];
+    const outcome = (bl, wk) => {
+      const plan = planRecoveryRepair(bl, wk, 'c');
+      return [
+        plan.blocks.filter((x) => !x.completed_at).map((x) => x.id),
+        plan.weeks.filter((x) => !x.deleted_at).map((x) => x.id),
+      ];
+    };
+    expect(outcome(blocks, weeks)).toEqual([['bB'], ['w1']]);
+    expect(outcome(blocks.slice().reverse(), weeks.slice().reverse())).toEqual([['bB'], ['w1']]);
+  });
+
+  test('unparseable timestamps are never compared: nothing is repaired', async () => {
+    const blocks = [block('bA', { started_at: 'zzz' }), block('bB')];
+    expect(planRecoveryRepair(blocks, [], 'c').changedBlocks).toEqual([]);
+    const weeks = [week('w1', 'bA', 'n1', 1, { saved_at: 'nope' }), week('w2', 'bA', 'n1', 2)];
+    expect(planRecoveryRepair([block('bA')], weeks, 'c').changedWeeks).toEqual([]);
+  });
+
   test('two devices repairing equivalent conflicts in different orders reach the same domain state', async () => {
     const blocks = [block('bA', { started_at: T(3) }), block('bB', { started_at: T(5) })];
     const weeks = [
