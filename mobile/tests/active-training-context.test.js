@@ -255,6 +255,8 @@ describe('provisional display context (#1366)', () => {
       { blocks: [{ ...b, id: 7 }], weeks: [] },
       { blocks: [b, block({ id: 'b0', deleted_at: '2026-10-01T00:00:00.000Z' })],
         weeks: [open, week({ blockId: 'b0', noteId: 'w8', weekNumber: 1, id: 'wk8' })] },
+      // A week whose note is its own block's frozen baseline (NOTE_IS_BASELINE).
+      { blocks: [b], weeks: [{ ...open, note_id: b.baseline_note_id }] },
       // Malformed lifecycle fields: truthiness must not decide the mode.
       { blocks: [{ ...b, completed_at: {} }], weeks: [] },
       { blocks: [{ ...b, completed_at: 'not a date' }], weeks: [] },

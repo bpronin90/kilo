@@ -71,7 +71,8 @@ const EMPTY_CONTEXT = Object.freeze({
 //     `baseline_note_id` a string, the inclusion preference a boolean if set;
 //   - at most one active block;
 //   - every live week has string block/note ids, a positive integer week
-//     number, and belongs to a LIVE block;
+//     number, belongs to a LIVE block, and is not that block's own baseline
+//     note (storage's NOTE_IS_BASELINE rule);
 //   - at most one live membership per note;
 //   - the active block's live weeks have unique numbers, with no open week
 //     before the latest.
@@ -96,10 +97,11 @@ function isProvisionalSnapshotConsistent(blocks, weeks) {
   if (!hasUniqueStringIds(blocks) || !hasUniqueStringIds(weeks)) return false;
   if (!blocks.every(isWellTypedBlock) || !weeks.every(hasMarkers)) return false;
   if (blocks.filter(isBlockActive).length > 1) return false;
-  const liveBlockIds = new Set(blocks.filter(isLiveRecord).map(b => b.id));
+  const liveBlocks = new Map(blocks.filter(isLiveRecord).map(b => [b.id, b]));
   const live = weeks.filter(isLiveRecord);
   const wellFormed = live.every(w => typeof w.block_id === 'string' && typeof w.note_id === 'string'
-    && Number.isInteger(w.week_number) && w.week_number >= 1 && liveBlockIds.has(w.block_id));
+    && Number.isInteger(w.week_number) && w.week_number >= 1 && liveBlocks.has(w.block_id)
+    && w.note_id !== liveBlocks.get(w.block_id).baseline_note_id);
   if (!wellFormed || new Set(live.map(w => w.note_id)).size !== live.length) return false;
   const activeBlock = findActiveBlock(blocks);
   if (!activeBlock) return true;
