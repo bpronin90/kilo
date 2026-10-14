@@ -436,7 +436,7 @@ each of those reads decrypts; see the next section.
 
 Cold-launch phase marks (weight/note reads, weight-goal hydration,
 tracked-lift hydration, recovery-state hydration, encrypted-storage migration,
-and `home:first-paint`) are logged via `console.log` — and only collected in
+and `app:local-ready`) are logged via `console.log` — and only collected in
 memory at all — when `__DEV__` is true, from
 `mobile/storage/entries/startupTiming.js`; a release build sets `__DEV__` to
 false, so it never emits or retains them. Never sent over the network or
@@ -445,7 +445,7 @@ persisted, and carrying only a phase name and an elapsed-ms number.
 To read the phase-by-phase `[startup] <phase>: <ms>ms` trace, install a
 **debug or dev-client build** (not a release build — its logging is
 compiled out), force-stop the app, launch it, and read the lines between
-`migration:requested` and `home:first-paint` from `adb logcat` or the
+`migration:requested` and `app:local-ready` from `adb logcat` or the
 Metro/dev-client console. To measure the overall wall-clock number the
 acceptance criteria ask for, install a **release build** instead, force-stop
 the app, and time from launch to the skeleton being replaced by real content
@@ -499,7 +499,7 @@ Coverage:
   its consistency rules.
 
 The dev-only `[startup] storage:reads:` line also reports
-`reconcile:starts=<n>`; an ordinary launch shows `0` at `home:first-paint`, and
+`reconcile:starts=<n>`; an ordinary launch shows `0` at `app:local-ready`, and
 `recovery:reconcile:start` is logged after it. Device traces (force-stopped cold
 launch, populated data, Recovery offline and sync-enabled) are still to be
 captured on a real Android build.
@@ -641,7 +641,7 @@ uncoalesced form fails four of the six tests (the two that pin the
 *non*-sharing rules correctly still pass, since they guard correctness rather
 than the optimization).
 
-The `[startup]` trace gained one fixed-name line beside `home:first-paint`:
+The `[startup]` trace gained one fixed-name line beside `app:local-ready`:
 `storage:reads: issued=<n> coalesced=<n> at <ms>ms`. It reports counts only —
 no key names, no values, no sizes — and is compiled out of release builds with
 the rest of `startupTiming.js`.

@@ -38,7 +38,7 @@ import { buildExportPayload } from './export';
 // navigation — stays inside this hook and is returned to the view.
 export function useAppShell({ onDeviceDataWiped }) {
   // #1366: hold background startup work in the FIRST render, before any child
-  // effect reads; Home's first paint (or the fallback timer) releases it.
+  // effect reads; app local-ready (or the fallback timer) releases it.
   const [startupBackgroundReady, setStartupBackgroundReady] = useState(() => {
     holdStartupBackgroundWork();
     return false;
@@ -148,7 +148,7 @@ export function useAppShell({ onDeviceDataWiped }) {
   const weightHook = useWeightEntries();
   const noteHook = useWorkoutNotes();
   const auth = useAuthSession({ onDeviceDataWiped });
-  // Until first paint the automatic sync sees auth as still loading ("do
+  // Until local-ready the automatic sync sees auth as still loading ("do
   // nothing yet"); explicit sync/auth actions use `auth` unchanged.
   const autoSyncAuth = startupBackgroundReady ? auth : { ...auth, loading: true };
 

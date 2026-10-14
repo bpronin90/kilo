@@ -152,9 +152,9 @@ describe('app-startup', () => {
 
   // #1366: the shell holds background startup work in its first render. The
   // automatic sync sees auth as still loading and the reminder reconcile waits
-  // until Home's first paint (here, released directly: Home is mocked) — no
+  // until app local-ready (here, released directly: Home is mocked) — no
   // network or sync-queue work ahead of local hydration.
-  test('defers the automatic sync and reminder reconciliation until first paint', async () => {
+  test('defers the automatic sync and reminder reconciliation until app local-ready', async () => {
     const timing = require('../storage/entries/startupTiming');
     const { useAutoSync } = require('../hooks/useEntries');
     await renderer.act(async () => {

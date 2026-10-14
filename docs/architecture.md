@@ -489,11 +489,17 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   aggregates would render (#699). Recovery journal replay is not a term. The
   shell holds background startup work during its first render
   (`holdStartupBackgroundWork` in `storage/entries/startupTiming.js`). Home
-  claims the hold while rendering, which cancels the fallback timer, and
-  releases it at its first usable paint or on unmount, so a slow hydration
-  never times out into replay; the fallback only covers a shell whose Home
-  never mounts. A failed bounded Recovery read renders unknown rather than
-  holding the skeleton, so Home always reaches a paint. Until then no mounted `useRecoveryBlockState` consumer — Home
+  claims the hold while rendering (`claimAppLocalReady`), which cancels the
+  fallback timer, and releases it at `app:local-ready` — the gate above
+  settling — or on unmount, so a slow hydration never times out into replay;
+  the fallback only covers a shell whose Home never mounts, and neither it nor
+  unmount counts as readiness. A failed bounded Recovery read renders unknown,
+  so Home always reaches local-ready. Since #1372 the shell mounts the app
+  beneath an opaque `AppStartupOverlay` (wordmark, barbell loader, one loading
+  status) that hides the content from touch and accessibility; Home signals
+  `AppLocalReadyContext` in the same effect that releases the hold, and the
+  overlay unmounts immediately. That latch is one-way per shell instance, so
+  only a cold launch or a device-wipe remount shows it. Until local-ready no mounted `useRecoveryBlockState` consumer — Home
   or the hidden Log/Analytics tabs — starts reconciliation, the automatic
   cloud sync sees auth as still loading, and the workout-reminder reconcile
   waits. The device-key canary probe (#1364) and the legacy migration stay

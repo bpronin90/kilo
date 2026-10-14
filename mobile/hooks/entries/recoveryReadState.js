@@ -383,11 +383,11 @@ const handleSharedSyncState = (syncState) => {
 // ── startup scheduling (#1366) ────────────────────────────────────────────────
 //
 // Every AUTOMATIC authoritative read (first mount, completed cloud sync) goes
-// through here, so none starts journal replay before Home's first usable paint
+// through here, so none starts journal replay before app local-ready
 // while the shell holds startup work (startupTiming.js). Deferred requests
 // collapse into one pass. Explicit callers (confirm-time
 // `ensureVerifiedRecoveryState`, `Retry recovery`, mutation notifications) call
-// `refreshRecoveryState` directly and are never parked behind paint.
+// `refreshRecoveryState` directly and are never parked behind local-ready.
 let deferredRecoveryRead = null;
 function requestBackgroundRecoveryRead() {
   if (deferredRecoveryRead) return;

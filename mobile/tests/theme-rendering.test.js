@@ -1066,14 +1066,14 @@ describe('no production surface can hold a stale palette', () => {
       });
     }
     // Sanctioned exceptions:
-    // - The two brand-orange wordmark accents (HomeScreen) and the dev-only
+    // - The two brand-orange wordmark accents (KiloWordmark) and the dev-only
     //   ThemePreviewControl use the Kilo brand color that has no palette token.
     // - The KUA-spec overlay scrim lives once in theme/styleHelpers.js (outside
     //   this scan), so no component carries its own copy.
     expect(leaks).toEqual([
+      'components/KiloWordmark.js:23 "#FF5C00"',
+      'components/KiloWordmark.js:27 "#FF5C00"',
       "components/ThemePreviewControl.js:70 '#FF5C00'",
-      'screens/HomeScreen.js:40 "#FF5C00"',
-      'screens/HomeScreen.js:44 "#FF5C00"',
     ]);
   });
 });
@@ -3109,7 +3109,7 @@ describe('mounted surfaces repaint Hard→Clay→Grass at a fixed mode (#1142)',
   const { createStyles: homeCreateStyles } = require('../screens/home/homeStyles');
   const { createStyles: weightCreateStyles } = require('../screens/weight/weightStyles');
   const { createStyles: analyticsCreateStyles } = require('../screens/analytics/analyticsStyles');
-  const { KiloWordmark } = require('../screens/HomeScreen');
+  const { KiloWordmark } = require('../components/KiloWordmark');
 
   // A screen-level surface reads `useTheme().kuaPalette` directly and applies
   // its real production factory — exactly the Home/Weight/Analytics screen path.

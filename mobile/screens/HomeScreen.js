@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import Svg, { Path, Rect } from 'react-native-svg';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, ErrorBanner } from '../components/UI';
 import { useTheme } from '../theme/ThemeContext';
@@ -9,48 +8,20 @@ import { useWeightUnit } from '../lib/unitPreference';
 import { deriveHomeDashboardData, HOME_RECOVERY_STATUS, useHomeNormalNotes, useHomeRecoverySummary } from './home/homeDashboardData';
 import { HomeRecoverySummary } from './home/HomeRecoverySummary';
 import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
-import { markStartupPhase, markStartupStorageReads, claimStartupFirstPaint } from '../storage/entries/startupTiming';
+import { markStartupPhase, markStartupStorageReads, claimAppLocalReady } from '../storage/entries/startupTiming';
 import { DEVICE_KEY_RECOVERY_MESSAGE, isDeviceKeyUnavailable, secureStorage } from '../storage/secureStorage';
 import { createStyles } from './home/homeStyles';
 import { useKuaTypography } from '../theme/typography';
 import { HomeHeader } from './home/HomeHeader';
 import { HomeDashboard } from './home/HomeDashboard';
+import { HomeWeightCard } from './home/HomeWeightCard';
+import { KiloWordmark } from '../components/KiloWordmark';
+import { AppLocalReadyContext } from '../components/AppStartupOverlay';
 function lerpColor(a, b, t) {
   const p = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
   const [ar,ag,ab] = p(a), [br,bg,bb] = p(b);
   return `rgb(${Math.round(ar+(br-ar)*t)},${Math.round(ag+(bg-ag)*t)},${Math.round(ab+(bb-ab)*t)})`;
 }
-
-// Home title wordmark. Source artwork: src/assets/brand/home-title.svg
-// The letterforms follow the palette `text` so the mark reads in both modes,
-// but the two #FF5C00 accents are the fixed Kilo brand orange and are
-// intentionally NOT themed — they are the only hardcoded colors left in the
-// migrated production surfaces (#689).
-export function KiloWordmark({ width = 140, height = 48 }) {
-  const { colors, kuaPalette: kua } = useTheme();
-  const letterColor = kua ? kua.onSurface : colors.text;
-  return (
-    <View style={{ width, height, justifyContent: 'center', marginLeft: -8 }}>
-      <Svg width="100%" height="100%" viewBox="0 0 303 106">
-        {/* K */}
-        <Rect x="8" y="9" width="7" height="88" rx="3.5" ry="3.5" fill={letterColor} />
-        <Path d="M 21 52 L 43 52 L 78 12 M 43 52 L 78 92" fill="none" stroke={letterColor} strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
-        {/* I */}
-        <Rect x="102" y="30" width="7" height="66" rx="3.5" ry="3.5" fill={letterColor} />
-        <Rect x="102" y="10" width="7" height="15" rx="3.5" ry="3.5" fill="#FF5C00" />
-        {/* L */}
-        <Path d="M 136.5 12.5 V 80.5 A 12 12 0 0 0 148.5 92.5 H 178.5" fill="none" stroke={letterColor} strokeWidth="7" strokeLinecap="round" />
-        {/* O (dot) */}
-        <Rect x="187" y="89.5" width="16" height="7" rx="3.5" ry="3.5" fill="#FF5C00" />
-        {/* O (circle) */}
-        <Path d="M 251.5 11.5 C 282.7 11.5 290.5 19.7 290.5 52.5 C 290.5 85.3 282.7 93.5 251.5 93.5 C 220.3 93.5 212.5 85.3 212.5 52.5 C 212.5 19.7 220.3 11.5 251.5 11.5 Z" fill="none" stroke={letterColor} strokeWidth="7" strokeLinejoin="round" />
-      </Svg>
-    </View>
-  );
-}
-
-// Below the wordmark on purpose: theme-rendering.test.js pins its line numbers.
-import { HomeWeightCard } from './home/HomeWeightCard';
 
 // Names the same `Retry recovery` control as every other Recovery message.
 export const RECOVERY_PENDING_HOLD_MESSAGE =
@@ -163,6 +134,9 @@ export function CloudSyncNotice() {
 //
 // Deliberately static: an animated shimmer is motion the user did not ask for,
 // and this placeholder is usually on screen for a few frames.
+// Never the cold-start view (#1372): inside the shell the startup overlay covers
+// Home until local-ready, so this only paints if Home re-enters loading after
+// that latch, or where no shell overlay exists (standalone renders).
 function HomeSkeleton() {
   const { colors, kuaPalette: kua } = useTheme();
   const typography = useKuaTypography();
@@ -345,24 +319,25 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
     ? { ...recoverySummary, status: HOME_RECOVERY_STATUS.UNVERIFIED, message: RECOVERY_PENDING_HOLD_MESSAGE }
     : recoveryModeUnknown ? recoverySummary : null;
 
-  // Marks the moment the skeleton is replaced by real content (#809), so a
-  // device timing run can compare this against the encrypted-storage/reload
-  // phase marks above it without recording anything about what actually
-  // loaded. The read counts alongside it (#818) report how many device reads
-  // the launch paid for and how many were served by an in-flight read of the
-  // same key — counts only, no key names and no values.
+  // `app:local-ready` (#809, #1372): the moment Home's bounded local reads have
+  // settled, so a device timing run can compare it against the encrypted-
+  // storage/reload phase marks without recording anything about what loaded.
+  // The read counts alongside it (#818) are counts only — no key names or values.
   // Home owns the shell's startup hold (#1366): claimed while rendering, so a
-  // slow hydration never times out into replay or sync; released by this first
-  // paint, or by unmounting, so deferred background work starts after it.
-  const [releaseStartupHold] = useState(claimStartupFirstPaint);
+  // slow hydration never times out into replay or sync; released at local-ready
+  // (or by unmounting, which is NOT readiness), so deferred background work
+  // starts after it. The same commit lifts the shell's startup overlay (#1372).
+  const signalLocalReady = useContext(AppLocalReadyContext);
+  const [releaseStartupHold] = useState(claimAppLocalReady);
   useEffect(() => releaseStartupHold, [releaseStartupHold]);
   useEffect(() => {
     if (!isLoading) {
-      markStartupPhase('home:first-paint');
+      markStartupPhase('app:local-ready');
       markStartupStorageReads();
       releaseStartupHold();
+      signalLocalReady?.();
     }
-  }, [isLoading, releaseStartupHold]);
+  }, [isLoading, releaseStartupHold, signalLocalReady]);
 
   // Whether Home holds anything real to draw, regardless of why it might not.
   // Used to keep a failed read from being dressed up as a populated dashboard:

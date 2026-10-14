@@ -1902,13 +1902,16 @@ describe('Home recovery summary (#757, #779, #782)', () => {
       offscreen.status = context.status;
       return null;
     }
+    // The shell's startup-overlay latch (#1372): Home signals it at local-ready.
+    const { AppLocalReadyContext } = require('../components/AppStartupOverlay');
+    let localReady;
     function HeldShell(p) {
       React.useState(() => { timing.holdStartupBackgroundWork(60000); return null; });
       return (
-        <>
+        <AppLocalReadyContext.Provider value={localReady}>
           <HomeScreen {...p} />
           <OffscreenTabs currentId={p.workoutNote?.id ?? null} notes={p.notes} />
-        </>
+        </AppLocalReadyContext.Provider>
       );
     }
     const journalReads = () => AsyncStorage.getItem.mock.calls.filter(([k]) => k === JOURNAL_KEY).length;
@@ -1940,10 +1943,11 @@ describe('Home recovery summary (#757, #779, #782)', () => {
 
     beforeEach(() => {
       timing._resetStartupScheduling();
+      localReady = jest.fn();
       atPaint = null;
       // Observe the moment Home releases its claimed hold.
-      const realClaim = timing.claimStartupFirstPaint;
-      releaseSpy = jest.spyOn(timing, 'claimStartupFirstPaint').mockImplementation(() => {
+      const realClaim = timing.claimAppLocalReady;
+      releaseSpy = jest.spyOn(timing, 'claimAppLocalReady').mockImplementation(() => {
         const release = realClaim();
         return () => {
           if (!atPaint && timing.isStartupBackgroundWorkHeld()) {
@@ -1968,6 +1972,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
       const component = await mountHeld();
 
       expect(atPaint).toEqual({ journalReads: 0, replays: 0 });
+      expect(localReady).toHaveBeenCalledTimes(1);
       expect(has(component, 'home-skeleton')).toBe(false);
       expect(has(component, 'home-recovery-headline')).toBe(true);
       expect(hasText(component, 'Log workout')).toBe(true);
@@ -2063,7 +2068,9 @@ describe('Home recovery summary (#757, #779, #782)', () => {
       const component = await mountHeld();
       await settle();
       // The bounded local read failed: unknown, not a skeleton and not a hero.
+      // A failed read still reaches local-ready; it never hangs the overlay.
       expect(atPaint).toEqual({ journalReads: 0, replays: 0 });
+      expect(localReady).toHaveBeenCalled();
       expect(has(component, 'home-skeleton')).toBe(false);
       expect(hasText(component, 'Log workout')).toBe(false);
       expect(has(component, 'home-weight-card')).toBe(true);
@@ -2081,10 +2088,10 @@ describe('Home recovery summary (#757, #779, #782)', () => {
       function ShortHoldShell(over) {
         React.useState(() => { timing.holdStartupBackgroundWork(10); return null; });
         return (
-          <>
+          <AppLocalReadyContext.Provider value={localReady}>
             <HomeScreen {...p} {...over} />
             <OffscreenTabs currentId={p.workoutNote.id} notes={p.notes} />
-          </>
+          </AppLocalReadyContext.Provider>
         );
       }
       let component;
@@ -2095,11 +2102,24 @@ describe('Home recovery summary (#757, #779, #782)', () => {
       expect(has(component, 'home-skeleton')).toBe(true);
       expect(timing.isStartupBackgroundWorkHeld()).toBe(true);
       expect(timing.getStartupReconcileStartCount()).toBe(0);
+      // Nor did the overlay reveal on a timer.
+      expect(localReady).not.toHaveBeenCalled();
 
       await render.act(async () => { component.update(<ShortHoldShell loading={false} />); });
       await settle();
+      expect(localReady).toHaveBeenCalledTimes(1);
       expect(timing.isStartupBackgroundWorkHeld()).toBe(false);
       expect(timing.getStartupReconcileStartCount()).toBe(1);
+    });
+
+    test('unmounting before local-ready releases the hold but is not readiness', async () => {
+      AsyncStorage.getItem.mockImplementation(storageWith({}));
+      const component = await mountHeld({ loading: true });
+      expect(timing.isStartupBackgroundWorkHeld()).toBe(true);
+      await render.act(async () => { component.unmount(); });
+      mounted = null;
+      expect(timing.isStartupBackgroundWorkHeld()).toBe(false);
+      expect(localReady).not.toHaveBeenCalled();
     });
 
     test('a wipe during reconciliation discards the previous owner\'s result', async () => {

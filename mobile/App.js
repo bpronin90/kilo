@@ -24,6 +24,7 @@ import { invalidateRecoveryReadState } from './hooks/entries/recoveryReadState';
 import { importBackup, getStorageMode } from './storage/entries';
 import { RestTimerBanner } from './components/RestTimerBanner';
 import { useAppShell } from './app/AppShell';
+import { AppStartupOverlay, AppLocalReadyContext, useAppLocalReadyLatch } from './components/AppStartupOverlay';
 
 // The module's public surface is preserved by re-exporting the pure helpers
 // that moved to ./app/navigation and ./app/export (#1047). Tests and screens
@@ -153,6 +154,11 @@ function ShellView({ onDeviceDataWiped }) {
     analyticsTarget, analyticsTargetKey, logNoteTarget, logNoteTargetKey, logRecoveryTarget,
     logRecoveryTargetKey, moreSubviewTarget, moreSubviewTargetKey,
   } = useAppShell({ onDeviceDataWiped });
+  // Startup overlay (#1372): covers the mounted app until Home reports local-
+  // ready. One-way per shell instance, so a wipe remount starts a new wait and
+  // nothing later (tabs, theme, retries, refreshes) shows it again.
+  const [localReady, markLocalReady] = useAppLocalReadyLatch();
+  const startupCovered = !localReady;
 
   // #1209: scroll-direction auto-hide. ScreenShell forwards every scroll to
   // tabBarScroll.onScroll; the bar shows again on tab change.
@@ -345,11 +351,21 @@ function ShellView({ onDeviceDataWiped }) {
     <TabBarLayoutContext.Provider value={{ tabBarHeight }}>
     <TabBarScrollContext.Provider value={tabBarScroll}>
     <CloudSyncContext.Provider value={cloudSync}>
+    <AppLocalReadyContext.Provider value={markLocalReady}>
       <View style={styles.appContainer}>
         {/* Mounted at the app root, not per-screen: Alert.alert is called
             imperatively from hooks all over the app, so the single host has
             to outlive any one screen. */}
         <WebAlertHost />
+        {/* While the startup overlay is up, everything beneath it is out of
+            the accessibility tree and takes no touches. */}
+        <View
+          testID="app-shell-layer"
+          style={styles.shellLayer}
+          pointerEvents={startupCovered ? 'none' : 'auto'}
+          accessibilityElementsHidden={startupCovered}
+          importantForAccessibility={startupCovered ? 'no-hide-descendants' : 'auto'}
+        >
         <View style={styles.topSafeArea} testID="top-safe-area" />
         {/* Dark chrome needs light status-bar glyphs and vice versa. */}
         <ExpoStatusBar style={mode === 'dark' ? 'light' : 'dark'} />
@@ -428,7 +444,10 @@ function ShellView({ onDeviceDataWiped }) {
             onDismiss={dismissOwnershipPrompt}
           />
         ) : null}
+        </View>
+        {startupCovered ? <AppStartupOverlay /> : null}
       </View>
+    </AppLocalReadyContext.Provider>
     </CloudSyncContext.Provider>
     </TabBarScrollContext.Provider>
     </TabBarLayoutContext.Provider>
@@ -439,6 +458,9 @@ const createStyles = (colors, kua = null, topInset = 0) => StyleSheet.create({
   appContainer: {
     flex: 1,
     backgroundColor: kua ? kua.background : colors.background,
+  },
+  shellLayer: {
+    flex: 1,
   },
   topSafeArea: {
     flex: 0,
