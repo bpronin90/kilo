@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.14.21 - 2026-10-14
+
+- Issue #1368: Recovery now quietly fixes a few kinds of leftover inconsistency on your device, such as weeks still active under a deleted block, two blocks active at once, or the same workout note linked twice, without deleting any history. Anything it cannot fix safely, such as a week whose block is missing, stays exactly as it is: Recovery keeps showing the rest of your data with a notice and Retry recovery (which re-checks but may not change the result), only Recovery changes that involve the unresolved data are paused, and the rest of the app keeps working.
+
+## 1.14.20 - 2026-10-14
+
+- Issue #1366: Kilo's Home screen now shows your training mode, current routine, and dashboard from what is already saved on the device as soon as it opens, instead of waiting behind a loading placeholder while Recovery changes are double-checked in the background. If Recovery status can't be confirmed, Home says so and offers Retry recovery while the rest of your data stays visible, and Recovery changes still wait until the check finishes.
+
+## 1.14.19 - 2026-10-14
+
+- Issue #1364: Kilo now opens faster on devices with a lot of saved data. The check that the device's encryption key still unlocks your data reads one small check value instead of decrypting everything stored on the device each time the app starts. If the key is lost or no longer matches, Kilo still refuses to save and keeps your data.
+
+## 1.14.18 - 2026-10-14
+
+- Issue #1233: Production app builds now accept only over-the-air updates signed with Kilo's own key, so access to the Expo account alone can no longer replace the production app's code. Preview and development builds are unchanged.
+
 ## 1.14.17 - 2026-10-13
 
 - Issue #1360: Recovery's info notes are tighter: total recovery % explains only what the percentage compares, pace explains only what pace means, and Week by week explains only the week bars.
