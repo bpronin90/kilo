@@ -21,6 +21,7 @@ import {
   nextOperationId,
 } from './recoveryJournalStore';
 import { replayRecord, resetRecoveryNoteOperations } from './recoveryJournalOperations';
+import { repairRecoveryRecords, __resetRecoveryRepairState } from './recoveryRepair';
 
 let inFlightReconcile = null;
 
@@ -29,6 +30,7 @@ export function __resetRecoveryOperationJournal() {
   resetRecoveryOperationLock();
   inFlightReconcile = null;
   resetRecoveryNoteOperations();
+  __resetRecoveryRepairState();
 }
 
 // ── reconciliation ───────────────────────────────────────────────────────────
@@ -47,9 +49,29 @@ function corruptReconciliation(error) {
   };
 }
 
+// Storage repair (#1368) runs here, under the same lock, AFTER replay, on the
+// reconciliation entry points (the authoritative read, Retry, and the sync
+// boundary). Guarded actions and operation starts reconcile WITHOUT repairing:
+// they are already gated on a verified read that repaired, and an action must
+// not rewrite records beyond its own scope. Replay
+// may complete a pending operation whose postconditions repair would otherwise
+// change, so while any operation is still pending repair is deferred (and the
+// authoritative read still fails closed on inconsistent data). It runs with an
+// empty journal too, since the journal cannot describe arbitrary inconsistency.
+// A repair failure never throws out of reconciliation: it is reported as
+// `repair.failed` so the read fails with Retry, which runs this same repair.
+async function repairAfterReplay(operationsPending) {
+  if (operationsPending) return { ok: true, deferred: true };
+  try {
+    return await repairRecoveryRecords();
+  } catch (e) {
+    return { ok: false, failed: true, error: e };
+  }
+}
+
 // Replay every journaled operation once. Never called directly by a caller
 // outside this module — every entry point runs it under the shared lock.
-async function reconcileAllUnlocked() {
+async function reconcileAllUnlocked({ repair: runRepair = false } = {}) {
   let journal;
   try {
     journal = await readRecoveryJournal();
@@ -68,7 +90,9 @@ async function reconcileAllUnlocked() {
   const cancelled = results.filter((r) => !r.ok && r.terminal);
   const pending = results.filter((r) => !r.ok && !r.terminal);
   const headline = pending[0] || cancelled[0] || null;
+  const repair = runRepair ? await repairAfterReplay(pending.length > 0) : null;
   return {
+    repair,
     ok: pending.length === 0,
     code: pending.length > 0
       ? pending[0].code
@@ -100,7 +124,7 @@ async function reconcileAllUnlocked() {
 // the guard this function is already holding. Competing UI actions simply queue
 // behind it and run once the pass is done.
 export function withExclusiveRecoveryAccess(run) {
-  return withRecoveryOperationLock(() => run({ reconcile: () => reconcileAllUnlocked() }));
+  return withRecoveryOperationLock(() => run({ reconcile: () => reconcileAllUnlocked({ repair: true }) }));
 }
 
 // Public reconciler. Startup/remount, the `Retry recovery` action, pre-action
@@ -109,7 +133,7 @@ export function withExclusiveRecoveryAccess(run) {
 // in-flight pass instead of starting a competing replay.
 export function reconcileRecoveryOperations() {
   if (inFlightReconcile) return inFlightReconcile;
-  const pass = withRecoveryOperationLock(() => reconcileAllUnlocked());
+  const pass = withRecoveryOperationLock(() => reconcileAllUnlocked({ repair: true }));
   inFlightReconcile = pass;
   const clear = () => {
     if (inFlightReconcile === pass) inFlightReconcile = null;

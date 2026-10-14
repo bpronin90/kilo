@@ -60,7 +60,9 @@ async function getJournal() {
 }
 
 function block(id, extra = {}) {
-  return { id, name: 'Block', created_at: nowISO, updated_at: nowISO, completed_at: null, deleted_at: null, ...extra };
+  // `baseline_note_id` keeps the fixture well-formed: storage repair (#1368)
+  // sets a malformed record aside on its second sighting.
+  return { id, name: 'Block', baseline_note_id: `base_${id}`, created_at: nowISO, updated_at: nowISO, completed_at: null, deleted_at: null, ...extra };
 }
 function week(id, blockId, noteId, weekNumber, extra = {}) {
   return {
@@ -609,7 +611,11 @@ describe('stale identity', () => {
     expect(res.ok).toBe(true);
     expect(res.results[0].code).toBe(CODES.VERIFIED);
     expect(order).not.toContain(RECOVERY_BLOCKS_KEY);
-    expect(order).not.toContain(RECOVERY_BLOCK_WEEKS_KEY);
+    // The operation wrote nothing; the only week write is storage repair
+    // (#1368) tombstoning the live week left under the deleted block.
+    const [repaired] = await getWeeks();
+    expect(repaired.deleted_at).toBe(deletedAt);
+    expect(repaired.completed_at).toBeFalsy();
     expect(await getJournal()).toEqual([]);
   });
 

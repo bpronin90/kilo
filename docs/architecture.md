@@ -926,6 +926,8 @@ chip is gone; nothing in the active path produces or reads `rep_drop_off_flags`.
 | `kilo_log_current_collapsed` | Persisted UI state: whether the current Log routine card is collapsed |
 | `kilo_recovery_blocks` | JSON array of recovery-block records (`baseline_note_id`, the frozen versioned `baseline` snapshot, `include_in_normal_analytics`, the optional free-text `reason` a block was started, `started_at`, `completed_at`) plus sync metadata and retained tombstones. `reason` is `null` when none was given, including on every record written before it existed; nothing in the domain reads it, so it changes no membership, baseline, comparison, or analytics result |
 | `kilo_recovery_block_weeks` | JSON array of ordered recovery-week memberships linking a workout note to a block (`block_id`, `note_id`, domain-assigned `week_number`, `completed_at`) plus sync metadata and retained tombstones |
+| `kilo_recovery_held_records_v1` | Device-local records storage repair set aside (#1368): `missing_parent` weeks awaiting their block and `quarantined` unrepairable records, each with its untouched raw record. Not a sync table, not exported in a backup; wiped with every `kilo_` key |
+| `kilo_recovery_corrupt_payloads_v1` | Device-local byte-for-byte copies of a Recovery collection payload that was not a JSON list, kept when repair resets that key (#1368) |
 | `kilo_recovery_operation_journal_v1` | Device-local write-ahead journal of in-flight multi-record recovery lifecycle operations (`operation_id`, schema `version`, `type`, affected `block_id`/`week_id`/`note_id`, immutable requested timestamp, intended outcome, stage/attempt metadata, `created_at`/`updated_at`, last-error diagnostics). Protocol metadata, not user health data: never exported in a backup, never a sync table, and never stores workout-note text |
 
 ### Recovery lifecycle operation journal
@@ -1071,6 +1073,69 @@ intact. The pull-only restore path (`downloadAccountData`) needs no boundary of 
 own: it uploads nothing, runs only on a verified-empty device, and its follow-on
 sync already goes through the same guard.
 
+### Recovery storage repair (#1368)
+
+The block and week collections are separate keys, so an interrupted
+`deleteRecoveryBlock` cascade or an out-of-order sync pull can persist
+well-formed records that contradict each other. The journal cannot describe
+that, so `storage/entries/recoveryRepair.js` repairs it. It runs inside
+`reconcileAllUnlocked` (`recoveryJournalReplay.js`), under the same exclusive
+Recovery access, AFTER journal replay and also when the journal is empty, for
+the reconciliation entry points: the authoritative read (so startup, `Retry
+recovery`, and every confirm-time `ensureVerifiedRecoveryState`) and both cloud
+sync boundaries. They share one algorithm. Guarded actions and operation starts
+reconcile without repairing; the verified read gating them just repaired. While any journaled operation is still pending, repair is
+deferred (it must not change that operation's postconditions); the read still
+fails closed on inconsistent data.
+
+Repair order (every tie breaks on immutable record fields, so any input order
+and any device yields the same result):
+
+1. Uninterpretable records (wrong shape, duplicate ids) are set aside as
+   unrepairable; byte-identical duplicate copies are dropped.
+2. Held weeks whose block is now present are re-attached.
+3. Duplicate active blocks: latest `started_at` (then id) survives; the others
+   are completed (`resolveDuplicateActiveBlocks`, shared with sync).
+4. A live week under a TOMBSTONED block is tombstoned with the block's
+   `deleted_at` (`cascadeTombstonedParents`, shared with the pull-time cascade).
+5. A live week under a MISSING block is detached (below).
+6. A week whose note is its block's `baseline_note_id` is tombstoned.
+7. One live membership per note (earliest `saved_at`, then id) and one live
+   ordinal per (block, `week_number`), completed blocks included; a colliding
+   ordinal is renumbered to the next free one. Gaps stay valid.
+
+An active block's non-latest OPEN week (for example a reopen racing an add-week
+across devices) is left alone: `selectProvisionalRecovery` stays strict about it
+for the display-only read, but repairing it would rewrite user progress and the
+authoritative gate does not require it, so it never becomes a failed read.
+
+Missing parent policy: a block absent locally is not evidence of deletion (its
+row may not have downloaded). Repair never tombstones such a week, since that
+tombstone would sync and win over a legitimate membership. It moves the raw
+record to the held store, so it cannot block its note or ordinal and the read
+verifies immediately, with no waiting. If the block arrives, the next pass
+re-attaches it (a newer copy already in the list wins; a tombstoned block
+cascades it). If the block never arrives the record stays held, unaltered and
+inspectable (`loadHeldRecoveryRecords`).
+
+Unrepairable records: the first pass that sees a set of them leaves them alone
+and reports them, so the read fails with Retry. The next pass that sees the
+same set quarantines them non-destructively (held store, raw record intact) and
+repairs the rest, so Retry never loops over unchanged corruption and needs
+neither the cloud nor a device wipe. A collection payload that is not a JSON
+list is handled the same way, copied aside before the key is reset.
+
+Persistence: held additions, then blocks, then weeks, then held removals, so a
+crash at any boundary loses nothing and the next pass re-plans from persisted
+state. The planner is pure; the pass re-reads before writing (a concurrent
+change re-plans) and re-reads afterwards to verify the postcondition
+(`arePersistedRecoveryRecordsConsistent`, the same predicate the authoritative
+gate applies). An already-repaired state writes nothing. Changed records
+advance `updated_at` (never backwards over a future clock), and sync's
+baseline diff queues them, so repairs need no network and converge after
+devices exchange records through the existing LWW merge. Slot-release push
+order (`orderRecoveryPush`) is content-derived and unchanged.
+
 ### Cloud sync pass cost
 
 A sync pass is bounded by two things, and both are shaped deliberately (#806).
@@ -1201,9 +1266,10 @@ identities and lifecycle markers) and when the RAW persisted lists behind it
 (`loadRecovery*Raw`, read concurrently on the same keys) are well-formed, since
 the filtered readers silently drop a record with a malformed truthy
 `deleted_at`; otherwise it shows unknown. The authoritative pass applies the
-same raw-record check after reconciliation: malformed persisted records are a
-failed read (`error`/`stale`, mutations closed, `Retry recovery`), never a
-verified empty snapshot. Provisional data never sets `ready` or `mutationsAllowed`, and
+same raw-record check after reconciliation plus, since #1368 and only after
+storage repair (below), the cross-record rules: malformed or still-inconsistent
+persisted records are a failed read (`error`/`stale`, mutations closed, `Retry
+recovery`), never a verified empty snapshot. Provisional data never sets `ready` or `mutationsAllowed`, and
 it is dropped once the authoritative pass fails. A device wipe calls
 `invalidateRecoveryReadState()`, which clears both snapshots and makes any read
 begun for the wiped data resolve without publishing.

@@ -13,7 +13,10 @@ import {
   reconcileRecoveryOperations,
 } from '../../storage/entries/recoveryOperationJournal';
 import { findActiveBlock } from '../../lib/data/recoveryBlocks';
-import { arePersistedRecoveryRecordsWellFormed } from '../../lib/data/activeTrainingContext';
+import {
+  arePersistedRecoveryRecordsConsistent,
+  arePersistedRecoveryRecordsWellFormed,
+} from '../../lib/data/activeTrainingContext';
 import { safeNotify } from './shared';
 import {
   markStartupPhase,
@@ -119,9 +122,8 @@ function runAuthoritativeRecoveryRead() {
   });
   let pending = [];
   let pendingError = null;
-  // Reconciliation first, reads second: replaying a pending operation can
-  // change what these two reads return, and publishing the pre-replay values
-  // would show the user a transition that is about to be completed anyway.
+  // Reconciliation (replay + repair) first, reads second: both can change what
+  // the reads return, so pre-replay values are never published.
   return reconcileRecoveryOperations()
     .then((reconciliation) => {
       // A corrupt journal means "recovery actions are paused": a failed read,
@@ -137,15 +139,18 @@ function runAuthoritativeRecoveryRead() {
       // `pending` locks conflicting actions; `cancelled` does not. A terminal
       // cancellation has already retired its record, so it must unlock
       // everything while still explaining itself once.
+      // Storage repair (#1368) ran inside the reconciliation; a repair that
+      // could not complete is a failed read, and Retry re-runs it.
+      if (reconciliation.repair?.failed) throw reconciliation.repair.error;
       pending = reconciliation.pending || [];
       pendingError = reconciliation.error || null;
       return loadRecoveryLists();
     })
-    .then(([blocks, weeks, wellFormed]) => {
-      // #1366: reconciliation does not repair a malformed persisted record,
-      // and the filtered readers would silently drop it. Such data is a failed
-      // read (ERROR/STALE with retry, mutations closed), never verified Normal.
+    .then(([blocks, weeks, wellFormed, consistent]) => {
+      // Malformed (#1366) or, post-repair, inconsistent (#1368) records are a
+      // failed read, never verified Normal; the next pass sets unfixable ones aside.
       if (!wellFormed) throw new Error('Recovery records on this device are malformed.');
+      if (!consistent) throw new Error('Recovery records on this device are inconsistent.');
       // Invalidated mid-read (#1366): a device wipe happened after this pass
       // started, so what it read belongs to the previous owner. Publish nothing.
       if (generation !== recoveryReadGeneration) return OBSOLETE_OUTCOME;
@@ -159,19 +164,15 @@ function runAuthoritativeRecoveryRead() {
         recoveryPendingError: pendingError,
       });
       markStartupPhase('recovery:reload:done');
-      // READY display status does NOT by itself mean "safe to mutate": a
-      // non-zero `pending` count means this exact pass found conflicting
-      // operations still unresolved, so its own outcome is not clean even
-      // though nothing was corrupt and the read itself succeeded.
+      // READY is not "safe to mutate": a non-zero `pending` count means this
+      // pass found unresolved operations, so its own outcome is not clean.
       return { ok: pending.length === 0, pendingCount: pending.length, corrupt: false, error: null };
     })
     .catch((e) => {
       if (generation !== recoveryReadGeneration) return OBSOLETE_OUTCOME;
       // A failed read never publishes "nothing is recovering": a verified
-      // snapshot goes STALE (last-known-good), an unverified one goes ERROR,
-      // and a corrupt journal blocks mutations in either. Only a successful
-      // authoritative pass ever writes `lastAuthoritativeSnapshot`, so this
-      // check is exactly "did an authoritative read ever succeed" (#711).
+      // snapshot goes STALE, an unverified one ERROR, and a corrupt journal
+      // blocks mutations in either (#711).
       if (lastAuthoritativeSnapshot.verified) {
         setRecoveryLifecycle({ status: RECOVERY_STATUS.STALE, refreshError: e, journalCorrupt: !!e?.corrupt });
       } else {
@@ -338,15 +339,12 @@ export function useRecoveryBlockState() {
       recoveryPendingError,
       // `Retry recovery` is the same call every other read path makes.
       retryRecovery: refresh,
-      // Display-only persisted read (#1366): the plain, UNRECONCILED
-      // blocks/weeks the analytics filter already read, offered while the
-      // first authoritative pass is still pending so Home can paint the
-      // last-known mode instead of a skeleton. It never feeds `ready`,
-      // `mutationsAllowed`, or `ensureVerifiedRecoveryState`; it is null once
-      // anything verified exists or the authoritative read has failed, since a
-      // failure must render as unknown rather than as the pre-replay data. A
-      // FAILED plain read is offered as unreadable (null arrays), which every
-      // consumer treats as inconsistent: unknown, never a skeleton or Normal.
+      // Display-only persisted read (#1366): the plain, UNRECONCILED blocks/weeks
+      // offered while the first authoritative pass is pending so Home can paint
+      // the last-known mode. It never feeds `ready`, `mutationsAllowed`, or
+      // `ensureVerifiedRecoveryState`; it is null once anything verified exists
+      // or the authoritative read failed. A FAILED plain read is offered as
+      // unreadable (null arrays): unknown, never a skeleton or Normal.
       provisional: verified || status === RECOVERY_STATUS.ERROR ? null
         : view.filterRead && view.filter.wellFormed ? { blocks: view.filter.blocks, weeks: view.filter.weeks }
           : view.filterRead || view.filterFailed ? { blocks: null, weeks: null } : null,
@@ -501,8 +499,11 @@ function loadRecoveryLists() {
     Storage.loadRecoveryBlockWeeks(),
     Promise.resolve()
       .then(() => Promise.all([Storage.loadRecoveryBlocksRaw(), Storage.loadRecoveryBlockWeeksRaw()]))
-      .then(([rawBlocks, rawWeeks]) => arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks), () => false),
-  ]);
+      .then(([rawBlocks, rawWeeks]) => [
+        arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks),
+        arePersistedRecoveryRecordsConsistent(rawBlocks, rawWeeks),
+      ], () => [false, false]),
+  ]).then(([blocks, weeks, [wellFormed, consistent]]) => [blocks, weeks, wellFormed, consistent]);
 }
 
 export function runRecoveryFilterRead() {

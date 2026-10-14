@@ -64,7 +64,7 @@ export function resolveDuplicateActiveBlocks(list, clientId) {
     changedById.set(
       loser.id,
       stampWrite(
-        { ...loser, completed_at: laterIso(survivor.started_at, loser.started_at) },
+        { ...loser, completed_at: laterIso(survivor.started_at, loser.started_at) || retractedAt(loser) },
         clientId
       )
     );
@@ -87,7 +87,39 @@ function retractedAt(record) {
   // The final fallback is never reached by a record the domain built (it always
   // stamps saved_at), but it must exist: returning null would leave the row LIVE,
   // so the same collision would be re-resolved and re-pushed on every pass.
-  return record.saved_at || record.started_at || record.updated_at || EPOCH_ISO;
+  const parseable = [record.saved_at, record.started_at, record.updated_at]
+    .find((v) => typeof v === 'string' && !Number.isNaN(Date.parse(v)));
+  return parseable || EPOCH_ISO;
+}
+
+// Retract a membership that must not stay live (#1368 storage repair shares this
+// with the duplicate rules below, so local and cloud policy cannot diverge).
+export function retractMembership(week, clientId) {
+  return { ...stampWrite(week, clientId), deleted_at: retractedAt(week) };
+}
+
+// Tombstone every live membership whose parent block is an explicit tombstone,
+// inheriting the BLOCK's `deleted_at` so each device writes the same value. A
+// parent that is merely ABSENT is never treated as deleted (it may be awaiting
+// download); that case is handled by repair's detach policy, not here. Pure:
+// shared by the pull-time cascade (syncTableIo.js) and local storage repair.
+export function cascadeTombstonedParents(blocks, weeks, clientId) {
+  const deletedBlockAt = new Map();
+  for (const block of blocks || []) {
+    if (block && block.id != null && isTombstone(block)) {
+      deletedBlockAt.set(block.id, block.deleted_at);
+    }
+  }
+  const changed = [];
+  const list = (weeks || []).map((week) => {
+    if (!isLiveRecoveryRecord(week)) return week;
+    const deletedAt = deletedBlockAt.get(week.block_id);
+    if (!deletedAt) return week;
+    const tombstone = { ...stampWrite(week, clientId), deleted_at: deletedAt };
+    changed.push(tombstone);
+    return tombstone;
+  });
+  return { list, changed };
 }
 
 // One live membership per note, and one live ordinal per (block, week).

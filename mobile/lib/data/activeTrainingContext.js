@@ -92,14 +92,20 @@ const isWellTypedWeek = w => !!w && isId(w.id) && hasMarkers(w) && isId(w.block_
 // The storage readers drop any record whose `deleted_at` is truthy before the
 // selector sees it, so a malformed tombstone marker would vanish rather than
 // read as unknown. This checks the RAW persisted lists, tombstones included.
-// Shape only — cross-record consistency is #1368's (repair first, then enforce).
+// Shape only; `arePersistedRecoveryRecordsConsistent` (#1368) adds the
+// cross-record rules, and is only enforced after storage repair has run.
 export function arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks) {
   return Array.isArray(rawBlocks) && Array.isArray(rawWeeks)
     && rawBlocks.every(b => b && isId(b.id) && isWellTypedBlock(b))
     && rawWeeks.every(isWellTypedWeek);
 }
 
-function isProvisionalSnapshotConsistent(blocks, weeks) {
+// Record-level shape predicates, shared with storage repair (#1368) so repair
+// and the authoritative gate agree on what is repairable versus malformed.
+export const isWellTypedRecoveryBlock = b => !!b && isId(b.id) && isWellTypedBlock(b);
+export const isWellTypedRecoveryWeek = isWellTypedWeek;
+
+function isProvisionalSnapshotConsistent(blocks, weeks, { strictOpenWeeks = true } = {}) {
   if (!hasUniqueIds(blocks) || !hasUniqueIds(weeks)) return false;
   if (!blocks.every(isWellTypedBlock) || !weeks.every(hasMarkers)) return false;
   if (blocks.filter(isBlockActive).length > 1) return false;
@@ -112,8 +118,22 @@ function isProvisionalSnapshotConsistent(blocks, weeks) {
   // Ordinals are unique per block, completed blocks included.
   if (new Set(live.map(w => `${w.block_id}|${w.week_number}`)).size !== live.length) return false;
   const activeBlock = findActiveBlock(blocks);
-  if (!activeBlock) return true;
+  if (!activeBlock || !strictOpenWeeks) return true;
   return orderedLiveWeeks(weeks, activeBlock.id).slice(0, -1).every(w => !!w.completed_at);
+}
+
+// The authoritative gate (#1368): well-formed RAW records (tombstones included)
+// that also satisfy every cross-record rule the display selector checks EXCEPT
+// "no open week before the latest". That rule is display-conservative only: the
+// authoritative derivation reads the latest live week structurally, and an
+// earlier open week (e.g. a reopen racing an add-week across devices) is
+// recoverable user data repair must not rewrite, so enforcing it here would
+// create a new unrepairable failure. This is exactly storage repair's
+// postcondition, so a converged state is never rejected; anything left over is
+// unrepairable and fails the read.
+export function arePersistedRecoveryRecordsConsistent(rawBlocks, rawWeeks) {
+  return arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks)
+    && isProvisionalSnapshotConsistent(rawBlocks, rawWeeks, { strictOpenWeeks: false });
 }
 
 export function selectProvisionalRecovery(provisional) {

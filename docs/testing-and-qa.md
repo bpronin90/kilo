@@ -460,6 +460,25 @@ It now reads and authenticates one encrypted canary. Coverage:
   raw backing `getItem()` is accounted for by the startup read counters plus the
   canary and the two plain markers, and `getAllKeys()` is never called.
 
+### Recovery storage repair (#1368)
+
+- `mobile/tests/recovery-repair.test.js`: persisted negative fixtures through the
+  real repair/reconcile/read path for every invariant (tombstoned or missing
+  parent, duplicate active blocks, duplicate note memberships across blocks,
+  baseline-note week, duplicate ordinals incl. completed blocks; an earlier open
+  week is left alone and still verifies), interacting violations in permuted order, equal-timestamp tie-breaks,
+  already-tombstoned/completed/gapped data as a no-op, and an interrupted
+  `deleteRecoveryBlock` cascade with an empty journal. Failure injection at the
+  held-store, blocks, weeks and verification boundaries, then retry: converged,
+  nothing lost. Unrepairable records and corrupt payloads: first-pass ERROR/STALE,
+  confirm denied for that exact pass, next Retry sets them aside. Two simulated
+  devices (reversed order, out-of-order parent/week, newer tombstone, timestamp
+  ties, permanently missing parent) reach identical domain state and then write
+  nothing.
+- `mobile/tests/recovery-blocks.test.js` and
+  `mobile/tests/recovery-journal-module-contract.test.js`: journal fixtures stay
+  well-formed, and read counts account for the repair pass's read.
+
 The dev-only `[startup] storage:reads:` line now also reports
 `keycheck:canary=<n> keycheck:scan=<n>`; an ordinary launch shows `canary=1
 scan=0`, and a legacy first launch after upgrade shows `scan=1`. Counts only.

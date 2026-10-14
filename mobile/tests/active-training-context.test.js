@@ -4,6 +4,7 @@ import {
   resolveActiveTrainingContext,
   selectProvisionalRecovery,
   arePersistedRecoveryRecordsWellFormed,
+  arePersistedRecoveryRecordsConsistent,
 } from '../lib/data/activeTrainingContext';
 import { buildRecoveryBlock, buildRecoveryWeek } from '../lib/data/recoveryBlocks';
 
@@ -317,5 +318,36 @@ describe('raw persisted record check (#1366)', () => {
       expect(arePersistedRecoveryRecordsWellFormed([b], [{ ...w, ...bad }])).toBe(false);
     }
     expect(arePersistedRecoveryRecordsWellFormed([], null)).toBe(false);
+  });
+});
+
+describe('authoritative consistency predicate (#1368)', () => {
+  const b = block({ id: 'b1' });
+  const w = (id, note, n, extra = {}) => week({ blockId: 'b1', noteId: note, weekNumber: n, id, ...extra });
+  const dead = '2026-10-01T00:00:00.000Z';
+
+  test('accepts empty, tombstoned history, ordinal gaps, and an earlier open week', () => {
+    expect(arePersistedRecoveryRecordsConsistent([], [])).toBe(true);
+    expect(arePersistedRecoveryRecordsConsistent(
+      [b], [w('w1', 'n1', 2), w('w2', 'n2', 7), { ...w('w3', 'n1', 2), deleted_at: dead }]
+    )).toBe(true);
+    // The display selector stays strict about this; the authoritative gate does not.
+    const open = [w('w1', 'n1', 1), w('w2', 'n2', 2)];
+    expect(selectProvisionalRecovery({ blocks: [b], weeks: open }).consistent).toBe(false);
+    expect(arePersistedRecoveryRecordsConsistent([b], open)).toBe(true);
+  });
+
+  test('rejects every cross-record violation repair resolves, and duplicate ids across tombstones', () => {
+    const other = block({ id: 'b2', baselineNoteId: 'base2' });
+    const cases = [
+      [[b, other], []],
+      [[{ ...b, deleted_at: dead }], [w('w1', 'n1', 1)]],
+      [[b], [{ ...w('w1', 'n1', 1), block_id: 'missing' }]],
+      [[b], [w('w1', 'n1', 1), w('w2', 'n1', 2)]],
+      [[b], [w('w1', 'n1', 1), w('w2', 'n2', 1)]],
+      [[b], [w('w1', 'baseline-note', 1)]],
+      [[b], [w('w1', 'n1', 1), { ...w('w1', 'n1', 1), deleted_at: dead }]],
+    ];
+    for (const [blocks, weeks] of cases) expect(arePersistedRecoveryRecordsConsistent(blocks, weeks)).toBe(false);
   });
 });
