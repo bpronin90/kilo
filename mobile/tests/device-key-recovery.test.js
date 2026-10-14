@@ -2,6 +2,7 @@
 import {
   createDeviceStorage,
   DEVICE_DATA_ENVELOPE_PREFIX,
+  DEVICE_DATA_KEY_CHECK_NAME,
   DEVICE_DATA_KEY_NAME,
   EncryptedStorageError,
 } from '../storage/secureStorage';
@@ -442,5 +443,61 @@ describe('importBackup as the recovery path', () => {
     const { importBackup, backingStore, primitives, orphans } = await loadImporter();
     await expect(importBackup(backup(), 'merge')).resolves.toMatchObject({ ok: false });
     expectOrphansUntouched(backingStore, orphans, primitives, undefined);
+  });
+});
+
+// #1364: the recovery commit carries a canary under the same fresh key, so the
+// next launch proves the recovered key without rescanning the restored data.
+describe('device-key canary across recovery', () => {
+  async function expectCanaryLaunch(backingStore, primitives) {
+    backingStore.getAllKeys.mockClear();
+    backingStore.getItem.mockClear();
+    const relaunched = open(backingStore, primitives);
+    await relaunched.probeDeviceKey();
+    expect(relaunched.isKeyUnavailable()).toBe(false);
+    expect(backingStore.getAllKeys).not.toHaveBeenCalled();
+    expect(backingStore.getItem.mock.calls.map(([key]) => key).filter((key) => key !== RECOVERY_JOURNAL_KEY))
+      .toEqual([DEVICE_DATA_KEY_CHECK_NAME]);
+    return relaunched;
+  }
+
+  test.each([['missing', false], ['stale', true]])('a %s-key recovery commits a matching canary', async (_label, stale) => {
+    const { backingStore, primitives, orphans, storage } = await orphanedDevice({ stale });
+    const orphanCheck = orphans.get(DEVICE_DATA_KEY_CHECK_NAME);
+    expect(orphanCheck).toMatch(/^kilo\.enc\.v1:/);
+    await storage.recoverDeviceData(restored);
+    expect(backingStore.values.get(DEVICE_DATA_KEY_CHECK_NAME)).toMatch(/^kilo\.enc\.v1:/);
+    expect(backingStore.values.get(DEVICE_DATA_KEY_CHECK_NAME)).not.toBe(orphanCheck);
+    const relaunched = await expectCanaryLaunch(backingStore, primitives);
+    expect(await relaunched.getItem('kilo_weight_entries')).toBe('[{"id":"restored"}]');
+  });
+
+  test('a failed recovery leaves the orphaned canary and key exactly as they were', async () => {
+    const { backingStore, primitives, orphans, storage } = await orphanedDevice({ stale: true });
+    const keyBefore = primitives.secureValues.get(DEVICE_DATA_KEY_NAME);
+    backingStore.multiSet.mockImplementationOnce(async () => { throw new Error('stage write failed'); });
+    await expect(storage.recoverDeviceData(restored)).rejects.toThrow('stage write failed');
+    expectOrphansUntouched(backingStore, orphans, primitives, keyBefore);
+    const relaunched = open(backingStore, primitives);
+    await relaunched.probeDeviceKey();
+    expect(relaunched.isKeyUnavailable()).toBe(true);
+  });
+
+  test('an interrupted commit rolls forward to a key and canary that match', async () => {
+    const { backingStore, primitives, storage } = await orphanedDevice();
+    const real = backingStore.multiSet.getMockImplementation();
+    let calls = 0;
+    backingStore.multiSet.mockImplementation(async (pairs) => {
+      calls += 1;
+      if (calls === 1) return real(pairs);
+      await real(pairs.slice(0, 1));
+      throw new Error('app killed');
+    });
+    await expect(storage.recoverDeviceData(restored)).rejects.toThrow('app killed');
+    backingStore.multiSet.mockImplementation(real);
+
+    const rolledForward = open(backingStore, primitives);
+    expect(await rolledForward.getItem('kilo_weight_entries')).toBe('[{"id":"restored"}]');
+    await expectCanaryLaunch(backingStore, primitives);
   });
 });

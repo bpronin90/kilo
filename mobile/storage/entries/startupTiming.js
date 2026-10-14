@@ -16,6 +16,9 @@ let marks = [];
 // value, or a size — and like the marks they are compiled out of release
 // builds, never persisted, and never transmitted.
 let storageReads = { issued: 0, coalesced: 0 };
+// Device-key validation counters (#1364): how many launches proved the key by
+// the constant-time canary versus the full-store envelope scan. Counts only.
+let keyChecks = { canary: 0, scan: 0 };
 
 // Exported for tests: pins the reference instant a "cold start" is measured
 // from, since module import time (the real cold-start signal) is not
@@ -24,6 +27,7 @@ export function resetStartupTiming(now = Date.now()) {
   startedAt = now;
   marks = [];
   storageReads = { issued: 0, coalesced: 0 };
+  keyChecks = { canary: 0, scan: 0 };
 }
 
 export function markStartupPhase(name, now = Date.now()) {
@@ -58,6 +62,16 @@ export function getStartupStorageReadCounts() {
   return { ...storageReads };
 }
 
+// `kind` is 'canary' or 'scan'. Same dev-only guard as the read counters.
+export function recordStartupKeyCheck(kind) {
+  if (typeof __DEV__ === 'undefined' || !__DEV__) return;
+  if (kind === 'canary' || kind === 'scan') keyChecks[kind] += 1;
+}
+
+export function getStartupKeyCheckCounts() {
+  return { ...keyChecks };
+}
+
 // One fixed-name line, emitted next to `home:first-paint`, so a device trace
 // shows how many device reads the launch actually paid for and how many were
 // avoided — the interval the phase marks alone could not isolate.
@@ -65,6 +79,6 @@ export function markStartupStorageReads(now = Date.now()) {
   if (typeof __DEV__ === 'undefined' || !__DEV__) return null;
   const elapsedMs = now - startedAt;
   // eslint-disable-next-line no-console
-  console.log(`[startup] storage:reads: issued=${storageReads.issued} coalesced=${storageReads.coalesced} at ${elapsedMs}ms`);
-  return { ...storageReads };
+  console.log(`[startup] storage:reads: issued=${storageReads.issued} coalesced=${storageReads.coalesced} keycheck:canary=${keyChecks.canary} keycheck:scan=${keyChecks.scan} at ${elapsedMs}ms`);
+  return { ...storageReads, keyChecks: { ...keyChecks } };
 }

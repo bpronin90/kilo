@@ -439,6 +439,31 @@ the app, and time from launch to the skeleton being replaced by real content
 with a stopwatch or screen recording — the phase marks are diagnostic only
 and are not required for that number.
 
+### Device-key validation off the cold-launch path (#1364)
+
+`probeDeviceKey()` (Home mount) used to decrypt every stored `kilo_` envelope,
+including Cloud Sync dirty queues, cursors, and snapshots, on every cold start.
+It now reads and authenticates one encrypted canary. Coverage:
+
+- `mobile/tests/secure-storage.test.js` (`constant-time device-key canary`):
+  valid-canary launch with zero `getAllKeys()` and one validation read; one-time
+  legacy scan then canary-only relaunch; an unreadable legacy envelope never gets
+  a canary; missing key, stale valid-length key, and malformed / truncated /
+  tampered / wrong-plaintext canaries all latch, preserve data, and refuse
+  writes; fresh install; canary persistence failure and transient canary read
+  failure stay retryable; wipe and `clearDeviceKey()`.
+- `mobile/tests/device-key-recovery.test.js` (`device-key canary across
+  recovery`): recovery commits a matching canary, a failed recovery leaves the
+  orphaned canary and key untouched, and an interrupted commit rolls forward to a
+  matching key and canary.
+- `mobile/tests/home-startup-latency.test.js`: on a populated cold launch every
+  raw backing `getItem()` is accounted for by the startup read counters plus the
+  canary and the two plain markers, and `getAllKeys()` is never called.
+
+The dev-only `[startup] storage:reads:` line now also reports
+`keycheck:canary=<n> keycheck:scan=<n>`; an ordinary launch shows `canary=1
+scan=0`, and a legacy first launch after upgrade shows `scan=1`. Counts only.
+
 ### Persisted parser cache and sync fan-out (#813)
 
 The app-wide lag that survived #806 and #809 traced to payload, not to the

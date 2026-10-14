@@ -7,7 +7,7 @@ import {
   hexToBytes,
   utf8ToBytes,
 } from '@noble/ciphers/utils';
-import { markStartupPhase, recordStartupStorageRead } from './entries/startupTiming';
+import { markStartupPhase, recordStartupKeyCheck, recordStartupStorageRead } from './entries/startupTiming';
 import { createRecoveryGate, createRecoveryJournal, createRecoveryOverlay } from './deviceKeyRecovery';
 
 const ENVELOPE_PREFIX = 'kilo.enc.v1:';
@@ -26,6 +26,12 @@ const NONCE_BYTES = 12;
 // and checking it must not itself depend on the device encryption key.
 const MIGRATION_COMPLETE_KEY = 'kilo_plaintext_migration_v1_complete';
 const MIGRATION_COMPLETE_VALUE = '1';
+// Constant-time device-key ownership proof (#1364): a fixed plaintext sealed
+// under the device key. Authenticating it replaces the per-launch scan that
+// decrypted every stored envelope (#1177); that scan now runs only once, for
+// legacy data predating the canary, and the canary is written only after it.
+const KEY_CHECK_NAME = 'kilo_device_key_check_v1';
+const KEY_CHECK_PLAINTEXT = 'kilo-device-key-check-v1';
 
 // Encryption failures are deliberately distinct from JSON/domain corruption.
 // Callers must never interpret an unreadable encrypted value as absent data.
@@ -193,22 +199,36 @@ export function createDeviceStorage({
     return keyPromise;
   }
 
-  // A present key proves nothing until it authenticates every stored envelope.
-  // Every encrypting write runs this first, so a stale-but-valid key can never
-  // overwrite an orphan. Transient failures reject and are retried next write.
+  // A present key proves nothing until it authenticates the canary (or, with
+  // no canary yet, every stored envelope). Every encrypting write runs this
+  // first, so a stale-but-valid key can never overwrite an orphan. Transient
+  // failures reject and are retried next write; a bad canary always latches.
   function ensureKeyValidated(knownKeys) {
     if (!validation) {
       validation = (async () => {
-        await deviceKey(knownKeys);
-        for (const name of knownKeys || await backingStore.getAllKeys()) {
+        const check = await backingStore.getItem(KEY_CHECK_NAME);
+        if (check != null) {
+          recordStartupKeyCheck('canary');
+          if (!isEnvelopeLike(check)) throw new DeviceKeyUnavailableError();
+          // Missing-key detection only needs the canary: it is encrypted data.
+          await deviceKey([KEY_CHECK_NAME]);
+          if (await decrypt(KEY_CHECK_NAME, check) !== KEY_CHECK_PLAINTEXT) throw new DeviceKeyUnavailableError();
+          return;
+        }
+        recordStartupKeyCheck('scan');
+        const keys = knownKeys || await backingStore.getAllKeys();
+        await deviceKey(keys);
+        for (const name of keys) {
           if (!name.startsWith('kilo_')) continue;
           // eslint-disable-next-line no-await-in-loop
           const raw = await backingStore.getItem(name);
           // eslint-disable-next-line no-await-in-loop
           if (isEnvelopeLike(raw)) await decrypt(name, raw);
         }
+        await backingStore.setItem(KEY_CHECK_NAME, await seal(KEY_CHECK_NAME, KEY_CHECK_PLAINTEXT));
       })().catch((error) => {
         validation = null;
+        if (error instanceof DeviceKeyUnavailableError) setKeyLatch(true);
         if (deviceKeyUnavailable && !(error instanceof DeviceKeyUnavailableError)) {
           throw new DeviceKeyUnavailableError(error);
         }
@@ -223,6 +243,10 @@ export function createDeviceStorage({
     // while the key cannot be trusted. Removal and confirmed wipe stay open.
     if (deviceKeyUnavailable) throw new DeviceKeyUnavailableError();
     await ensureKeyValidated();
+    return seal(key, value);
+  }
+
+  async function seal(key, value) {
     const encryptionKey = await deviceKey();
     const nonce = await crypto.getRandomBytesAsync(NONCE_BYTES);
     if (!(nonce instanceof Uint8Array) || nonce.length !== NONCE_BYTES) {
@@ -261,31 +285,17 @@ export function createDeviceStorage({
     }
   }
 
-  // Readers/writer discipline over the device store (#984).
-  //
-  // Persistence operations used to share ONE strictly serial FIFO. That is more
-  // ordering than correctness needs, and it is what dominates the cold launch:
-  // the four sources Home gates its first paint on read eight DIFFERENT keys,
-  // none of which depends on another, so first paint waited on the SUM of eight
-  // native round trips plus eight AES-GCM decrypts instead of overlapping the
-  // round trips. #818 removed the DUPLICATE reads (twenty down to twelve); the
-  // survivors still queued.
-  //
-  // What the single queue actually exists to guarantee is read-vs-write
-  // ordering, and that is preserved exactly:
+  // Readers/writer discipline over the device store (#984). One strictly serial
+  // FIFO made Home's first paint wait on the SUM of its independent reads. What
+  // the queue must guarantee is read-vs-write ordering, and that is kept:
   //
   //   - a write waits for every read already admitted, and every read or write
   //     enqueued after it waits for the write, so a lazy in-read plaintext
-  //     migration still cannot overwrite a newer write, and a wipe still cannot
-  //     race an autosave/sync write that would recreate sensitive data;
-  //   - reads admitted between two writes run concurrently with each other.
-  //     They cannot observe each other: coalescedRead already guarantees at most
-  //     one in-flight read per key, so concurrent readers touch strictly
-  //     disjoint keys, and each still resolves the same pre-write snapshot its
-  //     old FIFO position would have handed it.
-  //
-  // Writes therefore keep their total order and their exclusivity; only the
-  // read-behind-read waiting is removed.
+  //     migration cannot overwrite a newer write, and a wipe cannot race an
+  //     autosave/sync write that would recreate sensitive data;
+  //   - reads admitted between two writes run concurrently. coalescedRead keeps
+  //     at most one in-flight read per key, so they touch disjoint keys and each
+  //     resolves the same pre-write snapshot its old FIFO position would have.
   function withReadLock(operation) {
     // Captured at enqueue time, not execution time — the same rule
     // invalidatePendingRead relies on: this read is ordered behind exactly the
@@ -333,26 +343,13 @@ export function createDeviceStorage({
     pendingReads.clear();
   }
 
-  // Cold-start read coalescing (#818).
-  //
-  // All five tabs stay mounted (#527) and each one hydrates from the same
-  // device keys, so a cold start issued the SAME encrypted read several times
-  // over: the notebook, the weight table, the current-routine pointer and the
-  // tracked lifts were each read three times, the weight goal twice. Every one
-  // of those is a native round trip plus a full AES-GCM decrypt of the whole
-  // payload, and at the time every operation shared one strictly serial queue,
-  // so they did not overlap — they queued. Worse, child effects run before the
-  // parent's, so the shell's own note/weight reads (the two that gate Home's
-  // first paint) were enqueued LAST, behind every duplicate the four hidden
-  // tabs had already queued. (#984 removed the read-behind-read queueing that
-  // sentence describes; the coalescing below is still what keeps each key to
-  // one decrypt.)
-  //
-  // Sharing one in-flight read per key removes the duplicate decrypt and moves
-  // the shell's reads to the front of that queue at the same time, because they
-  // land on the read a tab already started rather than on a new one behind it.
-  // The user-visible answer is unchanged: a coalesced caller gets exactly the
-  // value its own read would have returned from the same queue position.
+  // Cold-start read coalescing (#818). All five tabs stay mounted (#527) and
+  // hydrate from the same device keys, so a cold start issued the SAME
+  // encrypted read (native round trip plus full AES-GCM decrypt) several times
+  // over, and the shell's own first-paint reads landed behind the hidden tabs'
+  // duplicates. Sharing one in-flight read per key removes the duplicate
+  // decrypt and lets the shell join a read a tab already started. A coalesced
+  // caller gets exactly the value its own read would have returned.
   function coalescedRead(key) {
     const inFlight = pendingReads.get(key);
     if (inFlight) {
@@ -462,6 +459,8 @@ export function createDeviceStorage({
         const scratch = createRecoveryOverlay([['kilo_local_data_owner', 'unclaimed']]);
         const result = await populate(scratch);
         if (result?.ok === false) return result;
+        // The canary is committed with the data, under the same fresh key.
+        scratch.values.set(KEY_CHECK_NAME, KEY_CHECK_PLAINTEXT);
         invalidateAllPendingReads();
         await withWriteLock(async () => {
           // Writes queued against the orphaned state are stale once it is replaced.
@@ -494,6 +493,8 @@ export function createDeviceStorage({
       return withWriteLock(async () => {
         if (!encryptValues) return;
         requireNativePrimitives();
+        // Canary first: a crash in between leaves a key that is re-proven by scan.
+        await backingStore.removeItem(KEY_CHECK_NAME);
         await secureStore.deleteItemAsync(DEVICE_KEY_NAME);
         keyPromise = null;
         validation = null;
@@ -527,16 +528,11 @@ export function createDeviceStorage({
         await backingStore.setItem('kilo_local_data_owner', owner);
       }, false);
     },
-    // Deliberately does NOT invalidate pending reads (#818), unlike every other
-    // mutating method above. This pass only ever re-ENCODES a value that is
-    // already there — plaintext in, the same string back out as an envelope —
-    // and getItemUnlocked returns that same string either way, so no key's
-    // decrypted value can differ across it. That matters because App queues this
-    // between the mounted tabs' hydration reads and the shell's own, so
-    // invalidating here would put the two reads that gate Home's first paint
-    // back at the end of the queue, which is the exact cost #818 removes. The
-    // marker key it writes is read through backingStore directly, never through
-    // the coalesced getItem path.
+    // Deliberately does NOT invalidate pending reads (#818): this pass only
+    // re-ENCODES an existing value (plaintext in, the same string back out as an
+    // envelope), so no key's decrypted value can differ across it, and
+    // invalidating would push Home's first-paint reads to the back of the queue.
+    // Its marker key is read through backingStore directly, never coalesced.
     migrateKiloData() {
       return withMutationLock(async () => {
         if (!encryptValues) return { migrated: 0 };
@@ -598,3 +594,4 @@ export async function migrateSensitiveDeviceData() {
 
 export const DEVICE_DATA_ENVELOPE_PREFIX = ENVELOPE_PREFIX;
 export const DEVICE_DATA_KEY_NAME = DEVICE_KEY_NAME;
+export const DEVICE_DATA_KEY_CHECK_NAME = KEY_CHECK_NAME;
