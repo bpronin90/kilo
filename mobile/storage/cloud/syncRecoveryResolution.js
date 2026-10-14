@@ -1,4 +1,8 @@
 import { SYNC_TABLES, isTombstone, stampWrite } from '../syncQueue';
+import {
+  hasValidRecoveryMarkers,
+  isWellFormedRecoveryWeek,
+} from '../../lib/data/activeTrainingContext';
 
 // ── recovery-block duplicate resolution (issue #693) ─────────────────────────
 //
@@ -88,7 +92,9 @@ export function planDeletedBlockCascade(blocks, weeks, clientId) {
   }
   const deletedBlockAt = new Map();
   for (const block of blocks || []) {
-    if (block && block.id != null && counts.get(block.id) === 1 && isTombstone(block)) {
+    // Only a unique, well-formed tombstone (parseable `deleted_at`) cascades.
+    if (block && block.id != null && counts.get(block.id) === 1 && isTombstone(block)
+      && hasValidRecoveryMarkers(block)) {
       deletedBlockAt.set(block.id, block.deleted_at);
     }
   }
@@ -119,7 +125,7 @@ export function resolveDuplicateActiveBlocks(list, clientId) {
   if (
     active.length < 2 ||
     hasAmbiguousIdentity(list) ||
-    !active.every((b) => recoveryInstant(b.started_at) !== null)
+    !active.every((b) => recoveryInstant(b.started_at) !== null && hasValidRecoveryMarkers(b))
   ) {
     return { list: list || [], changed: [] };
   }
@@ -202,7 +208,7 @@ export function resolveDuplicateWeekMemberships(list, clientId, { blocks } = {})
   // A group may be repaired only when every member is eligible and carries a
   // timestamp the ordering can compare.
   const repairable = (group) =>
-    group.every((w) => isEligible(w) && recoveryInstant(w.saved_at) !== null);
+    group.every((w) => isEligible(w) && isWellFormedRecoveryWeek(w) && recoveryInstant(w.saved_at) !== null);
 
   const changedById = new Map();
   const record = (rec) => {

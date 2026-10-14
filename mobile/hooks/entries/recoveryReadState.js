@@ -65,8 +65,6 @@ export const RECOVERY_UNVERIFIED_MESSAGE =
   'Recovery data could not be read, so recovery status is unknown. Tap Retry recovery.';
 // Also the unresolved-data notice (#1368): some readable records are set aside
 // and shown data may be incomplete. Retry re-checks; it promises no fix.
-export const RECOVERY_UNRESOLVED_ACTION_MESSAGE =
-  'Some recovery records involved in this change could not be resolved, so it was not made.';
 export const RECOVERY_STALE_MESSAGE =
   'Showing recovery data that may be out of date or incomplete: the latest refresh failed or some records could not be resolved. Tap Retry recovery.';
 
@@ -193,7 +191,7 @@ function runAuthoritativeRecoveryRead() {
         setRecoveryLifecycle({ status: RECOVERY_STATUS.ERROR, error: e, journalCorrupt: !!e?.corrupt });
       }
       // THIS pass failed, whatever the display state above resolves to.
-      return { ok: false, pendingCount: 0, corrupt: !!e?.corrupt, error: e };
+      return { ok: false, pendingCount: pending.length, corrupt: !!e?.corrupt, error: e };
     });
 }
 
@@ -245,9 +243,10 @@ export async function ensureVerifiedRecoveryState() {
       error: 'A recovery change is still finishing. Try again in a moment.',
     };
   }
-  if (outcome && outcome.error && outcome.error.unresolved) {
-    return { ok: false, code: 'RECOVERY_DATA_UNRESOLVED', error: RECOVERY_UNRESOLVED_ACTION_MESSAGE };
-  }
+  // Unresolved data that affects the mode keeps the display honest (unknown or
+  // STALE) but does not refuse every edit here: the journal entry points refuse,
+  // per target and under the lock, only actions that depend on it (#1368).
+  if (outcome && outcome.error && outcome.error.unresolved) return { ok: true, unresolved: true };
   return {
     ok: false,
     code: 'RECOVERY_STATE_UNVERIFIED',

@@ -377,7 +377,7 @@ describe('authoritative read honesty', () => {
     model.unmount();
   });
 
-  test('mode-relevant unresolved data on refresh is STALE keeping last-known-good; the exact pass is denied', async () => {
+  test('mode-relevant unresolved data on refresh is STALE keeping last-known-good; only dependent actions refused', async () => {
     await seed(RECOVERY_BLOCKS_KEY, [block('b1')]);
     await seed(RECOVERY_BLOCK_WEEKS_KEY, [week('w1', 'b1', 'n1', 1)]);
     const model = readModel();
@@ -386,10 +386,15 @@ describe('authoritative read honesty', () => {
     // A second record with the active block's id: which one is active is now
     // ambiguous, so the mode answer cannot be trusted.
     await seed(RECOVERY_BLOCKS_KEY, [block('b1'), block('b1', { completed_at: T(4) })]);
-    let denied;
-    await TestRenderer.act(async () => { denied = await ReadState.ensureVerifiedRecoveryState(); });
-    expect(denied.ok).toBe(false);
-    expect(denied.code).toBe('RECOVERY_DATA_UNRESOLVED');
+    let gate;
+    await TestRenderer.act(async () => { gate = await ReadState.ensureVerifiedRecoveryState(); });
+    // The confirm gate does not refuse every edit; it reports the condition and
+    // the journal entry points refuse only dependent actions.
+    expect(gate).toEqual({ ok: true, unresolved: true });
+    const action = jest.fn(async () => ({ ok: true }));
+    expect((await journal.runGuardedRecoveryAction({ blockId: 'b1' }, action)).reason).toBe('RECOVERY_DATA_UNRESOLVED');
+    expect((await journal.runGuardedRecoveryAction({}, action)).reason).toBe('RECOVERY_DATA_UNRESOLVED');
+    expect(action).not.toHaveBeenCalled();
     expect(model.get().stale).toBe(true);
     expect(model.get().activeBlock.id).toBe('b1');
     expect(model.get().mutationsAllowed).toBe(true);
@@ -435,8 +440,9 @@ describe('failure injection', () => {
   test('a write failure keeps the evidence, reports failure, and Retry recovers', async () => {
     await seedCascade();
     const before = await weeksRaw();
-    const original = jsonStorage.writeList;
-    const spy = jest.spyOn(jsonStorage, 'writeList').mockImplementation(async () => { throw new Error('disk'); });
+    const { secureStorage } = require('../storage/secureStorage');
+    const original = secureStorage.updateItem.bind(secureStorage);
+    const spy = jest.spyOn(secureStorage, 'updateItem').mockImplementation(async () => { throw new Error('disk'); });
     const res = await journal.reconcileRecoveryOperations();
     expect(res.ok).toBe(true);
     expect(res.repair.ok).toBe(false);
@@ -467,8 +473,9 @@ describe('failure injection', () => {
     let weekReads = 0;
     jest.spyOn(jsonStorage, 'readList').mockImplementation(async (key) => {
       if (key === RECOVERY_BLOCK_WEEKS_KEY) weekReads += 1;
-      // weeks reads: initial (1), lost-update guard (2), post-write verify (3): serve stale
-      if (key === RECOVERY_BLOCK_WEEKS_KEY && weekReads === 3) return [week('w1', 'b1', 'n1', 1)];
+      // weeks reads: initial (1), post-write verify (2): serve stale. (The
+      // compare-and-set read happens inside the atomic updateItem.)
+      if (key === RECOVERY_BLOCK_WEEKS_KEY && weekReads === 2) return [week('w1', 'b1', 'n1', 1)];
       return real(key);
     });
     const res = await journal.reconcileRecoveryOperations();
@@ -601,21 +608,21 @@ describe('repair safety: reserved slots and concurrent writers (#1368)', () => {
     expect(numbers).toEqual(['w1:1', 'w2:3', 'wb:2']);
   });
 
-  test('a write that lands while repair is planning is never overwritten (compare-and-set)', async () => {
+  test('a write admitted just before the repair write is never overwritten (atomic compare-and-set)', async () => {
     await seed(RECOVERY_BLOCKS_KEY, [block('b1', { deleted_at: T(9) })]);
     await seed(RECOVERY_BLOCK_WEEKS_KEY, [week('w1', 'b1', 'n1', 1)]);
-    const original = jsonStorage.readList;
-    let weekReads = 0;
-    jest.spyOn(jsonStorage, 'readList').mockImplementation(async (key) => {
-      if (key === RECOVERY_BLOCK_WEEKS_KEY) {
-        weekReads += 1;
-        // The compare-and-set read: another writer added w2 just before it.
-        if (weekReads === 2) {
-          const current = JSON.parse(await AsyncStorage.getItem(key));
-          await AsyncStorage.setItem(key, JSON.stringify([...current, week('w2', 'b2', 'n2', 1)]));
-        }
+    const { secureStorage } = require('../storage/secureStorage');
+    const original = secureStorage.updateItem.bind(secureStorage);
+    let raced = false;
+    jest.spyOn(secureStorage, 'updateItem').mockImplementation(async (key, transform) => {
+      // Another writer is admitted after planning, immediately before the
+      // repair's own locked read/transform/write.
+      if (key === RECOVERY_BLOCK_WEEKS_KEY && !raced) {
+        raced = true;
+        const current = await jsonStorage.readList(key);
+        await jsonStorage.writeList(key, [...current, week('w2', 'b2', 'n2', 1)]);
       }
-      return original(key);
+      return original(key, transform);
     });
     await journal.withExclusiveRecoveryAccess(({ reconcile }) => reconcile());
     const weeks = await load(RECOVERY_BLOCK_WEEKS_KEY);
@@ -631,5 +638,47 @@ describe('repair safety: reserved slots and concurrent writers (#1368)', () => {
     const res = resolveDuplicateWeekMemberships([w1, wo], 'c1', { blocks });
     expect(res.changed).toEqual([]);
     expect(res.list).toEqual([w1, wo]);
+  });
+});
+
+describe('codex round 3 regressions (#1368)', () => {
+  test('a week colliding with an unresolved row is itself unresolved, and mode-relevant for the active block', async () => {
+    const { partitionRecoveryRecords } = require('../lib/data/activeTrainingContext');
+    const part = partitionRecoveryRecords([block('b1')], [week('w1', 'b1', 'n1', 1), week('wo', 'ghost', 'n1', 1)]);
+    expect([...part.excludedWeekIds].sort()).toEqual(['w1', 'wo']);
+    expect(part.modeRelevant).toBe(true);
+  });
+
+  test('cloud cascade ignores a malformed parent tombstone marker', () => {
+    const { planDeletedBlockCascade } = require('../storage/cloud/syncRecoveryResolution');
+    const w1 = week('w1', 'b1', 'n1', 1);
+    const res = planDeletedBlockCascade([block('b1', { deleted_at: 'nope' })], [w1], 'c1');
+    expect(res.cascaded).toEqual([]);
+    expect(res.list).toEqual([w1]);
+  });
+
+  test('cloud membership resolution leaves a group with unsafe ordinals untouched, matching local', () => {
+    const { resolveDuplicateWeekMemberships } = require('../storage/cloud/syncRecoveryResolution');
+    const blocks = [block('b1')];
+    const weeks = [
+      week('w1', 'b1', 'n1', 1e20, { saved_at: T(2) }),
+      week('w2', 'b1', 'n1', 1e20, { saved_at: T(3) }),
+    ];
+    expect(resolveDuplicateWeekMemberships(weeks, 'c1', { blocks }).changed).toEqual([]);
+    expect(planRecoveryRepair(blocks, weeks, 'c1').changedWeeks).toEqual([]);
+  });
+
+  test('an independent edit is allowed while another record affects the mode', async () => {
+    await seed(RECOVERY_BLOCKS_KEY, [
+      block('good', { completed_at: T(3) }),
+      block('bad'),
+      block('bad', { completed_at: T(4) }),
+    ]);
+    await seed(RECOVERY_BLOCK_WEEKS_KEY, []);
+    expect(await ReadState.ensureVerifiedRecoveryState()).toEqual({ ok: true, unresolved: true });
+    const action = jest.fn(async () => ({ ok: true }));
+    expect((await journal.runGuardedRecoveryAction({ blockId: 'good' }, action)).ok).toBe(true);
+    expect((await journal.runGuardedRecoveryAction({ blockId: 'bad' }, action)).reason).toBe('RECOVERY_DATA_UNRESOLVED');
+    expect(action).toHaveBeenCalledTimes(1);
   });
 });

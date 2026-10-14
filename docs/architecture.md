@@ -508,25 +508,31 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   keeps the earliest membership, and colliding ordinals renumber in ascending
   collision order only while every output stays a positive safe integer. No
   record is ever removed from `recovery_blocks` / `recovery_block_weeks`: a
-  repair rewrites a row (completion, tombstone, ordinal), enqueues it dirty in
-  cloud mode, then compare-and-sets the raw write against the exact bytes it
-  planned from (a concurrent writer forces a re-plan, never an overwrite), and
-  re-reads to verify. A missing parent, malformed or unreadable payload,
+  repair rewrites a row (completion, tombstone, ordinal) with one atomic
+  compare-and-set through `secureStorage.updateItem` against the exact list it
+  planned from (a concurrent writer forces a re-plan, never an overwrite),
+  re-reads to verify every repaired row, then enqueues the rows dirty in cloud
+  mode (a crash before the enqueue loses nothing: sync's baseline diff picks up
+  the local change). A missing parent, malformed or unreadable payload,
   duplicate ids, baseline-note membership, or unsafe ordinal is left
   byte-for-byte in place. The safety guards live inside the shared helpers, so
   cloud resolution applies the same ones: ambiguous ids, unparseable winner
   timestamps, and missing or ambiguous parents never choose a winner or
-  cascade, and unresolved rows still reserve their note and ordinal slot.
+  cascade; a group with any malformed member (e.g. an unsafe ordinal) or a
+  malformed parent tombstone marker is left alone; unresolved rows still
+  reserve their note and ordinal slot.
   Winners compare parsed instants, never timestamp strings. Only the authoritative read / Retry and the sync
   boundary repair; guarded actions and operation starts reconcile without
   repairing. The result rides beside the journal `ok` (never inside it, so sync
   is not gated). For WELL-FORMED but unresolved records,
-  `partitionRecoveryRecords` names the ids to exclude and whether any could
+  `partitionRecoveryRecords` finds note/ordinal collisions over every live week
+  before excluding anything (a week colliding with an unresolved row is itself
+  unresolved), names the ids to exclude, and whether any could
   change the mode answer (`modeRelevant`: a duplicate block id, an unresolved
   block that is or could be active, or an unresolved week of the active block).
   Mode-relevant: the pass fails, so first load is ERROR/unknown and a refresh is
-  STALE keeping last-known-good; `ensureVerifiedRecoveryState` refuses with
-  `RECOVERY_DATA_UNRESOLVED`. Otherwise the read verifies the rest, publishes
+  STALE keeping last-known-good; `ensureVerifiedRecoveryState` reports
+  `{ ok: true, unresolved: true }` rather than refusing every edit. Otherwise the read verifies the rest, publishes
   `unresolvedCount`, and shows the stale-style notice with `Retry recovery`.
   Only DEPENDENT actions are refused: the journal entry points
   (`runGuardedRecoveryAction`, `startRecoveryOperation`) re-partition under the

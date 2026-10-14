@@ -88,6 +88,11 @@ const isWellTypedBlock = b => hasMarkers(b) && isId(b.baseline_note_id)
   && (b.include_in_normal_analytics === undefined || typeof b.include_in_normal_analytics === 'boolean');
 const isWellTypedWeek = w => !!w && isId(w.id) && hasMarkers(w) && isId(w.block_id) && isId(w.note_id)
   && Number.isSafeInteger(w.week_number) && w.week_number >= 1;
+// Shared with the cloud/local winner helpers (#1368) so both refuse the same
+// malformed evidence.
+export const isRecoveryLifecycleMarker = isMarker;
+export const hasValidRecoveryMarkers = r => !!r && hasMarkers(r);
+export const isWellFormedRecoveryWeek = isWellTypedWeek;
 
 // The storage readers drop any record whose `deleted_at` is truthy before the
 // selector sees it, so a malformed tombstone marker would vanish rather than
@@ -149,13 +154,18 @@ export function partitionRecoveryRecords(rawBlocks, rawWeeks) {
   const active = live.filter(isBlockActive);
   const blocks = active.length > 1 ? live.filter(b => !isBlockActive(b)) : live;
   const blockById = new Map(blocks.map(b => [b.id, b]));
-  let weeks = rawWeeks.filter(w => isLiveRecord(w) && !dupW.has(w.id)
-    && blockById.has(w.block_id) && w.note_id !== blockById.get(w.block_id).baseline_note_id);
+  // Collisions are found over EVERY live week before anything is excluded: a
+  // week sharing a note or slot with an unresolved row is itself unresolved,
+  // since that row could still win the collision once its evidence resolves.
+  const liveWeeks = rawWeeks.filter(isLiveRecord);
+  const badW = new Set(liveWeeks.filter(w => dupW.has(w.id) || !blockById.has(w.block_id)
+    || w.note_id === blockById.get(w.block_id).baseline_note_id).map(w => w.id));
   for (const keyOf of [w => w.note_id, w => `${w.block_id}|${w.week_number}`]) {
     const counts = new Map();
-    for (const w of weeks) counts.set(keyOf(w), (counts.get(keyOf(w)) || 0) + 1);
-    weeks = weeks.filter(w => counts.get(keyOf(w)) === 1);
+    for (const w of liveWeeks) counts.set(keyOf(w), (counts.get(keyOf(w)) || 0) + 1);
+    for (const w of liveWeeks) if (counts.get(keyOf(w)) > 1) badW.add(w.id);
   }
+  const weeks = liveWeeks.filter(w => !badW.has(w.id));
   const keptB = new Set(blocks.map(b => b.id));
   const keptW = new Set(weeks.map(w => w.id));
   const badBlocks = rawBlocks.filter(b => dupB.has(b.id) || (isLiveRecord(b) && !keptB.has(b.id)));
