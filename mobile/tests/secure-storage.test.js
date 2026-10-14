@@ -567,6 +567,28 @@ describe('constant-time device-key canary', () => {
     expect(device.backingStore.getAllKeys).not.toHaveBeenCalled();
   });
 
+  test('a migration pending on the canary cannot write after a concurrent read latches', async () => {
+    const device = await populatedDevice();
+    const raw = device.backingStore.values.get('kilo_workout_notes');
+    device.backingStore.values.set('kilo_bad', raw);
+    device.backingStore.values.set('kilo_plain', 'legacy plaintext');
+    const storage = relaunch(device);
+    const real = device.backingStore.getItem.getMockImplementation();
+    let releaseCanary;
+    const canaryGate = new Promise((resolve) => { releaseCanary = resolve; });
+    device.backingStore.getItem.mockImplementation(async (key) => {
+      if (key === CHECK) await canaryGate;
+      return real(key);
+    });
+    const migration = storage.getItem('kilo_plain');
+    await new Promise((resolve) => setImmediate(resolve));
+    await expect(storage.getItem('kilo_bad')).rejects.toBeInstanceOf(EncryptedStorageError);
+    expect(storage.isKeyUnavailable()).toBe(true);
+    releaseCanary();
+    await expect(migration).rejects.toBeInstanceOf(DeviceKeyUnavailableError);
+    expect(device.backingStore.values.get('kilo_plain')).toBe('legacy plaintext');
+  });
+
   test('wipe resets the canary under the new key; clearing the key removes it', async () => {
     const device = await populatedDevice();
     const storage = relaunch(device);

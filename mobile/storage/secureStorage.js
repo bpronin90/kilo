@@ -248,6 +248,8 @@ export function createDeviceStorage({
 
   async function seal(key, value) {
     const encryptionKey = await deviceKey();
+    // Re-checked after every await: a concurrent read may have latched meanwhile.
+    if (deviceKeyUnavailable) throw new DeviceKeyUnavailableError();
     const nonce = await crypto.getRandomBytesAsync(NONCE_BYTES);
     if (!(nonce instanceof Uint8Array) || nonce.length !== NONCE_BYTES) {
       throw new Error('Platform cryptographic randomness returned an invalid nonce.');
