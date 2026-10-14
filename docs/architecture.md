@@ -403,7 +403,19 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   start reads that one marker instead of re-scanning every `kilo_` key, since
   the per-key lazy migration path already covers anything written before the
   scan last completed and no write after it can ever reintroduce plaintext
-  (#809). `updateItem(key, transform)` rewrites one value as a single serialized
+  (#809). Device-key ownership is proven by a constant-time canary
+  (`kilo_device_key_check_v1`: a fixed plaintext sealed under the device key)
+  rather than by decrypting every stored envelope on every launch (#1364).
+  Legacy encrypted data without a canary gets the full #1177 envelope scan once,
+  and the canary is written only after every envelope authenticates. A missing
+  key with encrypted data never mints a replacement; a stale key or a malformed,
+  tampered, or wrong-plaintext canary latches `DeviceKeyUnavailable` and blocks
+  encrypting writes, and is never replaced or treated as absent. Transient read
+  failures stay retryable. #1186 recovery commits the canary with the restored
+  data under the same fresh key through the recovery journal; a confirmed wipe
+  re-creates it under the new key, and `clearDeviceKey()` removes it before the
+  key. A `kilo_` purge (account switch) also removes it, costing one rescan on
+  the next launch. `updateItem(key, transform)` rewrites one value as a single serialized
   read-transform-write, so no other storage operation can land between its
   read and its write (#813); a writer that read earlier and writes a whole
   value later is a separate matter, which is why every notebook and

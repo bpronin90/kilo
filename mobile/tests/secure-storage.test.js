@@ -4,7 +4,10 @@ import {
   DEVICE_DATA_KEY_NAME,
   EncryptedStorageError,
   DeviceKeyUnavailableError,
+  DEVICE_DATA_KEY_CHECK_NAME,
 } from '../storage/secureStorage';
+import { RECOVERY_JOURNAL_KEY, sealEnvelope } from '../storage/deviceKeyRecovery';
+import { hexToBytes } from '@noble/ciphers/utils';
 
 function makeBackingStore(seed = {}) {
   const values = new Map(Object.entries(seed));
@@ -408,3 +411,223 @@ describe('device key fails closed when encrypted local data exists', () => {
     expect(seen).toEqual([true]);
   });
 });
+
+// #1364: the device key is proven by one encrypted canary instead of a scan that
+// decrypts every stored envelope on every launch.
+describe('constant-time device-key canary', () => {
+  const CHECK = DEVICE_DATA_KEY_CHECK_NAME;
+
+  // A populated device whose first process already established the canary.
+  async function populatedDevice() {
+    const { storage, backingStore, secureStore, crypto, secureValues } = makeStorage();
+    await storage.setItem('kilo_weight_entries', '[{"id":"w"}]');
+    await storage.setItem('kilo_workout_notes', '[{"id":"n"}]');
+    await storage.setItem('kilo_sync_dirty', '{"queue":[1,2,3]}');
+    expect(backingStore.values.get(CHECK)).toMatch(/^kilo\.enc\.v1:/);
+    return { backingStore, secureStore, crypto, secureValues };
+  }
+
+  function relaunch({ backingStore, secureStore, crypto }) {
+    backingStore.getItem.mockClear();
+    backingStore.getAllKeys.mockClear();
+    backingStore.setItem.mockClear();
+    secureStore.setItemAsync.mockClear();
+    return createDeviceStorage({ backingStore, secureStore, crypto, platformOS: 'android', forceEncryption: true });
+  }
+
+  // Key-validation reads only: the recovery journal check is gate reconciliation.
+  const validationReads = (backingStore) => backingStore.getItem.mock.calls
+    .map(([key]) => key).filter((key) => key !== RECOVERY_JOURNAL_KEY);
+
+  async function expectLatchedAndPreserved(storage, backingStore, secureValues, keyBefore) {
+    const before = new Map(backingStore.values);
+    await storage.probeDeviceKey();
+    expect(storage.isKeyUnavailable()).toBe(true);
+    await expect(storage.setItem('kilo_weight_goal', '{}')).rejects.toBeInstanceOf(DeviceKeyUnavailableError);
+    expect(backingStore.values).toEqual(before);
+    expect(secureValues.get(DEVICE_DATA_KEY_NAME)).toBe(keyBefore);
+  }
+
+  test('a valid canary proves the key with one read and no enumeration', async () => {
+    const device = await populatedDevice();
+    const storage = relaunch(device);
+    await storage.probeDeviceKey();
+    expect(storage.isKeyUnavailable()).toBe(false);
+    expect(device.backingStore.getAllKeys).not.toHaveBeenCalled();
+    expect(validationReads(device.backingStore)).toEqual([CHECK]);
+    await storage.setItem('kilo_weight_goal', '{"t":1}');
+    expect(device.backingStore.getAllKeys).not.toHaveBeenCalled();
+    expect(await storage.getItem('kilo_weight_goal')).toBe('{"t":1}');
+  });
+
+  test('legacy encrypted data without a canary is scanned once, then never again', async () => {
+    const device = await populatedDevice();
+    device.backingStore.values.delete(CHECK);
+    const first = relaunch(device);
+    await first.probeDeviceKey();
+    expect(first.isKeyUnavailable()).toBe(false);
+    expect(device.backingStore.getAllKeys).toHaveBeenCalledTimes(1);
+    expect(validationReads(device.backingStore)).toEqual(expect.arrayContaining(
+      ['kilo_weight_entries', 'kilo_workout_notes', 'kilo_sync_dirty'],
+    ));
+    expect(device.backingStore.values.get(CHECK)).toMatch(/^kilo\.enc\.v1:/);
+
+    const second = relaunch(device);
+    await second.probeDeviceKey();
+    expect(second.isKeyUnavailable()).toBe(false);
+    expect(device.backingStore.getAllKeys).not.toHaveBeenCalled();
+    expect(validationReads(device.backingStore)).toEqual([CHECK]);
+  });
+
+  test('legacy data with one envelope the key cannot open never gets a canary', async () => {
+    const device = await populatedDevice();
+    device.backingStore.values.delete(CHECK);
+    const raw = device.backingStore.values.get('kilo_workout_notes');
+    device.backingStore.values.set('kilo_workout_notes', `${raw.slice(0, -2)}${raw.endsWith('00') ? '11' : '00'}`);
+    const storage = relaunch(device);
+    await storage.probeDeviceKey();
+    expect(storage.isKeyUnavailable()).toBe(true);
+    expect(device.backingStore.values.has(CHECK)).toBe(false);
+  });
+
+  test('a missing key with a canary never mints a replacement and keeps all data', async () => {
+    const device = await populatedDevice();
+    device.secureValues.delete(DEVICE_DATA_KEY_NAME);
+    const storage = relaunch(device);
+    await expectLatchedAndPreserved(storage, device.backingStore, device.secureValues, undefined);
+    expect(device.secureStore.setItemAsync).not.toHaveBeenCalledWith(DEVICE_DATA_KEY_NAME, expect.anything(), expect.anything());
+  });
+
+  test('a stale valid-length key fails closed on the canary', async () => {
+    const device = await populatedDevice();
+    device.secureValues.set(DEVICE_DATA_KEY_NAME, 'ab'.repeat(32));
+    const storage = relaunch(device);
+    await expectLatchedAndPreserved(storage, device.backingStore, device.secureValues, 'ab'.repeat(32));
+    expect(device.backingStore.getAllKeys).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ['malformed (not an envelope)', () => 'garbage'],
+    ['truncated envelope', () => 'kilo.enc.v1:abc'],
+    ['tampered ciphertext', (raw) => `${raw.slice(0, -2)}${raw.endsWith('00') ? '11' : '00'}`],
+    ['authentic but unexpected plaintext', (_raw, keyHex) => sealEnvelope(
+      DEVICE_DATA_ENVELOPE_PREFIX, hexToBytes(keyHex), new Uint8Array(12).fill(9), CHECK, 'something else',
+    )],
+  ])('a %s canary fails closed and is never replaced or treated as absent', async (_label, corrupt) => {
+    const device = await populatedDevice();
+    const keyHex = device.secureValues.get(DEVICE_DATA_KEY_NAME);
+    device.backingStore.values.set(CHECK, corrupt(device.backingStore.values.get(CHECK), keyHex));
+    const storage = relaunch(device);
+    await expectLatchedAndPreserved(storage, device.backingStore, device.secureValues, keyHex);
+    expect(device.backingStore.getAllKeys).not.toHaveBeenCalled();
+  });
+
+  test('a fresh empty install provisions a key and a matching canary', async () => {
+    const { storage, ...device } = makeStorage();
+    await storage.probeDeviceKey();
+    expect(device.secureValues.get(DEVICE_DATA_KEY_NAME)).toMatch(/^[0-9a-f]{64}$/);
+    expect(device.backingStore.values.get(CHECK)).toMatch(/^kilo\.enc\.v1:/);
+    const relaunched = relaunch(device);
+    await relaunched.probeDeviceKey();
+    expect(relaunched.isKeyUnavailable()).toBe(false);
+    expect(device.backingStore.getAllKeys).not.toHaveBeenCalled();
+  });
+
+  test('a canary persistence failure blocks the write, is not durable, and is retried', async () => {
+    const { storage, backingStore } = makeStorage({ kilo_weight_entries: '[]' });
+    const real = backingStore.setItem.getMockImplementation();
+    backingStore.setItem.mockImplementation(async (key, value) => {
+      if (key === CHECK) throw new Error('disk full');
+      return real(key, value);
+    });
+    await expect(storage.setItem('kilo_weight_goal', '{}')).rejects.toThrow('disk full');
+    expect(backingStore.values.has(CHECK)).toBe(false);
+    expect(backingStore.values.has('kilo_weight_goal')).toBe(false);
+    expect(storage.isKeyUnavailable()).toBe(false);
+
+    backingStore.setItem.mockImplementation(real);
+    await storage.setItem('kilo_weight_goal', '{}');
+    expect(backingStore.values.get(CHECK)).toMatch(/^kilo\.enc\.v1:/);
+  });
+
+  test('a transient canary read failure stays retryable and authorizes nothing', async () => {
+    const device = await populatedDevice();
+    const storage = relaunch(device);
+    const real = device.backingStore.getItem.getMockImplementation();
+    device.backingStore.getItem.mockImplementation(async (key) => {
+      if (key === CHECK) throw new Error('io');
+      return real(key);
+    });
+    await storage.probeDeviceKey();
+    expect(storage.isKeyUnavailable()).toBe(false);
+    await expect(storage.setItem('kilo_weight_goal', '{}')).rejects.toThrow('io');
+    expect(device.backingStore.values.has('kilo_weight_goal')).toBe(false);
+    device.backingStore.getItem.mockImplementation(real);
+    await storage.setItem('kilo_weight_goal', '{}');
+    expect(device.backingStore.getAllKeys).not.toHaveBeenCalled();
+  });
+
+  test('a migration pending on the canary cannot write after a concurrent read latches', async () => {
+    const device = await populatedDevice();
+    const raw = device.backingStore.values.get('kilo_workout_notes');
+    device.backingStore.values.set('kilo_bad', raw);
+    device.backingStore.values.set('kilo_plain', 'legacy plaintext');
+    const storage = relaunch(device);
+    const real = device.backingStore.getItem.getMockImplementation();
+    let releaseCanary;
+    const canaryGate = new Promise((resolve) => { releaseCanary = resolve; });
+    device.backingStore.getItem.mockImplementation(async (key) => {
+      if (key === CHECK) await canaryGate;
+      return real(key);
+    });
+    const migration = storage.getItem('kilo_plain');
+    await new Promise((resolve) => setImmediate(resolve));
+    await expect(storage.getItem('kilo_bad')).rejects.toBeInstanceOf(EncryptedStorageError);
+    expect(storage.isKeyUnavailable()).toBe(true);
+    releaseCanary();
+    await expect(migration).rejects.toBeInstanceOf(DeviceKeyUnavailableError);
+    expect(device.backingStore.values.get('kilo_plain')).toBe('legacy plaintext');
+  });
+
+  test('a migration paused on its nonce cannot write after a concurrent read latches', async () => {
+    const device = await populatedDevice();
+    device.backingStore.values.set('kilo_bad', device.backingStore.values.get('kilo_workout_notes'));
+    device.backingStore.values.set('kilo_plain', 'legacy plaintext');
+    const storage = relaunch(device);
+    await storage.probeDeviceKey();
+    const realRandom = device.crypto.getRandomBytesAsync.getMockImplementation();
+    let releaseNonce;
+    const nonceGate = new Promise((resolve) => { releaseNonce = resolve; });
+    let paused = false;
+    device.crypto.getRandomBytesAsync.mockImplementation(async (length) => {
+      paused = true;
+      await nonceGate;
+      return realRandom(length);
+    });
+    const migration = storage.getItem('kilo_plain');
+    while (!paused) await new Promise((resolve) => setImmediate(resolve)); // eslint-disable-line no-await-in-loop
+    await expect(storage.getItem('kilo_bad')).rejects.toBeInstanceOf(EncryptedStorageError);
+    expect(storage.isKeyUnavailable()).toBe(true);
+    releaseNonce();
+    await expect(migration).rejects.toBeInstanceOf(DeviceKeyUnavailableError);
+    expect(device.backingStore.values.get('kilo_plain')).toBe('legacy plaintext');
+  });
+
+  test('wipe resets the canary under the new key; clearing the key removes it', async () => {
+    const device = await populatedDevice();
+    const storage = relaunch(device);
+    const oldCheck = device.backingStore.values.get(CHECK);
+    await storage.wipeKiloData();
+    expect(device.backingStore.values.get(CHECK)).toMatch(/^kilo\.enc\.v1:/);
+    expect(device.backingStore.values.get(CHECK)).not.toBe(oldCheck);
+    const relaunched = relaunch(device);
+    await relaunched.probeDeviceKey();
+    expect(relaunched.isKeyUnavailable()).toBe(false);
+    expect(device.backingStore.getAllKeys).not.toHaveBeenCalled();
+
+    await relaunched.clearDeviceKey();
+    expect(device.backingStore.values.has(CHECK)).toBe(false);
+    expect(device.secureValues.has(DEVICE_DATA_KEY_NAME)).toBe(false);
+  });
+});
+

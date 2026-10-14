@@ -142,3 +142,69 @@ describe('encrypted-storage startup migration does not re-scan every launch (#80
     expect(backingStore.getAllKeys).not.toHaveBeenCalled();
   });
 });
+
+// #1364: an ordinary populated cold launch proves the device key with one canary
+// read. Every raw backing read is accounted for by the startup counters, so a
+// hidden full-store validation scan cannot creep back onto the launch path.
+describe('device-key validation on an ordinary cold launch (#1364)', () => {
+  it('reads only the canary for key validation and never enumerates storage', async () => {
+    const { createDeviceStorage } = require('../storage/secureStorage');
+    const timing = require('../storage/entries/startupTiming');
+    const values = new Map();
+    const backingStore = {
+      getItem: jest.fn(async (key) => (values.has(key) ? values.get(key) : null)),
+      setItem: jest.fn(async (key, value) => { values.set(key, value); }),
+      removeItem: jest.fn(async (key) => { values.delete(key); }),
+      getAllKeys: jest.fn(async () => [...values.keys()]),
+      multiSet: jest.fn(async (pairs) => pairs.forEach(([k, v]) => values.set(k, v))),
+      multiRemove: jest.fn(async (keys) => keys.forEach((k) => values.delete(k))),
+    };
+    const secureValues = new Map();
+    let seed = 0;
+    const primitives = {
+      secureStore: {
+        getItemAsync: jest.fn(async (key) => secureValues.get(key) ?? null),
+        setItemAsync: jest.fn(async (key, value) => { secureValues.set(key, value); }),
+        deleteItemAsync: jest.fn(async (key) => { secureValues.delete(key); }),
+      },
+      crypto: {
+        getRandomBytesAsync: jest.fn(async (length) => {
+          seed += 1;
+          return Uint8Array.from({ length }, (_, i) => (seed + i) % 256);
+        }),
+      },
+    };
+    const open = () => createDeviceStorage({ backingStore, ...primitives, platformOS: 'android', forceEncryption: true });
+
+    // A previous process populated the device, including Cloud Sync state.
+    const previous = open();
+    await previous.migrateKiloData();
+    for (const key of ['kilo_workout_notes', 'kilo_weight_entries', 'kilo_sync_dirty_notes', 'kilo_sync_cursor', 'kilo_sync_snapshot']) {
+      // eslint-disable-next-line no-await-in-loop
+      await previous.setItem(key, `{"k":"${key}"}`);
+    }
+    backingStore.getItem.mockClear();
+    backingStore.getAllKeys.mockClear();
+    timing.resetStartupTiming();
+
+    const storage = open();
+    await Promise.all([
+      storage.migrateKiloData(),
+      storage.probeDeviceKey(),
+      storage.getItem('kilo_workout_notes'),
+      storage.getItem('kilo_weight_entries'),
+    ]);
+
+    expect(backingStore.getAllKeys).not.toHaveBeenCalled();
+    expect(timing.getStartupKeyCheckCounts()).toEqual({ canary: 1, scan: 0 });
+    const { issued } = timing.getStartupStorageReadCounts();
+    const raw = backingStore.getItem.mock.calls.map(([key]) => key);
+    // Raw reads = counted domain reads + the canary + the two plain markers
+    // (recovery journal, migration completion). Nothing else may be read.
+    expect(raw.filter((key) => !['kilorecovery.journal', 'kilo_plaintext_migration_v1_complete', 'kilo_device_key_check_v1'].includes(key)))
+      .toHaveLength(issued);
+    expect(raw.filter((key) => key === 'kilo_device_key_check_v1')).toHaveLength(1);
+    expect(raw).not.toContain('kilo_sync_dirty_notes');
+    expect(raw).not.toContain('kilo_sync_snapshot');
+  });
+});
