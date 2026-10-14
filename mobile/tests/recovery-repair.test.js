@@ -7,6 +7,8 @@
 // collections, and anything not in the four approved repairs is left
 // byte-for-byte in place and reported as unresolved.
 
+import React from 'react';
+import TestRenderer from 'react-test-renderer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   RECOVERY_BLOCKS_KEY,
@@ -260,39 +262,80 @@ describe('unsafe or unresolved data stays byte-for-byte in place', () => {
 describe('authoritative read honesty', () => {
   const run = () => ReadState.refreshRecoveryState();
 
-  test('unresolved data is first-load ERROR, never verified Normal; mutations are denied', async () => {
+  // Capture the shared read-model the Home/Log/Analytics screens consume.
+  const readModel = () => {
+    let value;
+    const Probe = () => { value = ReadState.useRecoveryBlockState(); return null; };
+    let renderer;
+    TestRenderer.act(() => { renderer = TestRenderer.create(React.createElement(Probe)); });
+    return { get: () => value, unmount: () => TestRenderer.act(() => renderer.unmount()) };
+  };
+
+  test('a permanently missing parent: verified state excluding it, honest unresolved flag, Retry', async () => {
     await seed(RECOVERY_BLOCKS_KEY, [block('b1')]);
-    await seed(RECOVERY_BLOCK_WEEKS_KEY, [week('w1', 'ghost', 'n1', 1)]);
+    await seed(RECOVERY_BLOCK_WEEKS_KEY, [week('w1', 'b1', 'n1', 1), week('wo', 'ghost', 'n2', 1)]);
     const before = await weeksRaw();
 
     const outcome = await run();
+    const model = readModel();
+    await TestRenderer.act(async () => { await run(); });
+    const view = model.get();
 
     expect(outcome.ok).toBe(false);
+    expect(outcome.unresolvedCount).toBe(1);
+    // Unrelated Recovery data stays usable; the orphan is excluded.
+    expect(view.ready).toBe(true);
+    expect(view.activeBlock.id).toBe('b1');
+    expect(view.weeks.map((w) => w.id)).toEqual(['w1']);
+    // Never presented as a clean snapshot: notice (stale presentation) + Retry.
+    expect(view.unresolvedCount).toBe(1);
+    expect(view.stale).toBe(true);
+    expect(typeof view.retryRecovery).toBe('function');
+    // Recovery mutations stay closed; the confirm-time gate names why.
+    expect(view.mutationsAllowed).toBe(false);
+    expect((await ReadState.ensureVerifiedRecoveryState()).code).toBe('RECOVERY_DATA_UNRESOLVED');
+    // Raw bytes untouched, and a second unchanged pass writes nothing.
     expect(await weeksRaw()).toBe(before);
-    expect((await ReadState.ensureVerifiedRecoveryState()).ok).toBe(false);
-    // A second unchanged pass reports the same condition and writes nothing.
     const writes = countWrites();
-    expect((await run()).ok).toBe(false);
+    await run();
     expect(writes).not.toHaveBeenCalled();
+    model.unmount();
   });
 
-  test('Retry verifies once the legitimate parent arrives', async () => {
+  test('Retry clears the flag and reopens mutations once the legitimate parent arrives', async () => {
     await seed(RECOVERY_BLOCKS_KEY, [block('b0', { completed_at: T(2) })]);
     await seed(RECOVERY_BLOCK_WEEKS_KEY, [week('w1', 'b1', 'n1', 1)]);
-    expect((await run()).ok).toBe(false);
+    const model = readModel();
+    await TestRenderer.act(async () => { await run(); });
+    expect(model.get().unresolvedCount).toBe(1);
     await seed(RECOVERY_BLOCKS_KEY, [block('b0', { completed_at: T(2) }), block('b1')]);
-    expect((await run()).ok).toBe(true);
+    await TestRenderer.act(async () => { await model.get().retryRecovery(); });
+    expect(model.get().unresolvedCount).toBe(0);
+    expect(model.get().stale).toBe(false);
+    expect(model.get().mutationsAllowed).toBe(true);
     expect((await ReadState.ensureVerifiedRecoveryState()).ok).toBe(true);
+    model.unmount();
   });
 
-  test('a failed refresh over a verified snapshot rejects the exact failed pass', async () => {
+  test('malformed records stay fail-closed (#1366): unknown, not verified', async () => {
+    await seed(RECOVERY_BLOCKS_KEY, [block('b1', { deleted_at: 'not a date' })]);
+    await seed(RECOVERY_BLOCK_WEEKS_KEY, []);
+    const model = readModel();
+    await TestRenderer.act(async () => { await run(); });
+    expect(model.get().ready).toBe(false);
+    expect(model.get().error).toBeTruthy();
+    expect(model.get().mutationsAllowed).toBe(false);
+    model.unmount();
+  });
+
+  test('a later pass that finds unresolved records keeps the verified snapshot and denies the exact pass', async () => {
     await seed(RECOVERY_BLOCKS_KEY, [block('b1')]);
     await seed(RECOVERY_BLOCK_WEEKS_KEY, [week('w1', 'b1', 'n1', 1)]);
     expect((await run()).ok).toBe(true);
     await seed(RECOVERY_BLOCK_WEEKS_KEY, [week('w1', 'b1', 'n1', 1), week('w2', 'ghost', 'n2', 1)]);
     const denied = await ReadState.ensureVerifiedRecoveryState();
     expect(denied.ok).toBe(false);
-    expect(denied.code).toBe('RECOVERY_STATE_UNVERIFIED');
+    expect(denied.code).toBe('RECOVERY_DATA_UNRESOLVED');
   });
 
   test('repair makes a safely repairable dataset verify in one pass', async () => {
@@ -404,6 +447,24 @@ describe('failure injection', () => {
     // repair's cascade value (T(9)).
     expect(byId(await load(RECOVERY_BLOCK_WEEKS_KEY), 'w1').deleted_at).toBe(T(4));
     expect((await journal.readRecoveryJournal()).length).toBe(1);
+  });
+
+  test('guarded actions and operation starts reconcile WITHOUT repairing (zero writes)', async () => {
+    await seedCascade();
+    const [b, w] = [await blocksRaw(), await weeksRaw()];
+    const writes = countWrites();
+    const action = jest.fn(async () => ({ ok: true }));
+    await journal.runGuardedRecoveryAction({ blockId: 'b1' }, action);
+    await journal.startRecoveryOperation({
+      scope: { blockId: 'b1' },
+      validate: async () => ({ ok: false, error: 'rejected' }),
+    });
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(writes).not.toHaveBeenCalled();
+    expect([await blocksRaw(), await weeksRaw()]).toEqual([b, w]);
+    // The sync boundary's reconcile does repair.
+    await journal.withExclusiveRecoveryAccess(({ reconcile }) => reconcile());
+    expect(byId(await load(RECOVERY_BLOCK_WEEKS_KEY), 'w1').deleted_at).toBe(T(9));
   });
 
   test('unresolved domain data never turns the journal result into a sync gate', async () => {

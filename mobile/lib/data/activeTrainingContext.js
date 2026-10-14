@@ -117,14 +117,43 @@ function isSnapshotStructurallyConsistent(blocks, weeks) {
   return new Set(live.map(w => `${w.block_id}|${w.week_number}`)).size === live.length;
 }
 
-// Authoritative classifier over the RAW persisted lists (tombstones included):
-// true only when the shape is well formed and nothing is ambiguous or orphaned
-// (duplicate ids, several active blocks, a live week without a live parent, a
-// baseline-note membership, duplicate note or ordinal). False means unresolved
-// data that must stay in place and never read as verified Normal (#1368).
+// Authoritative classifier over WELL-FORMED raw lists (tombstones included)
+// (#1368). Names the ids to exclude from operational state: duplicate ids,
+// several active blocks, a live week without a live parent, a baseline-note
+// membership, duplicate note or ordinal. Records stay persisted untouched;
+// `unresolvedCount` is the honest size of what was set aside.
+export function partitionRecoveryRecords(rawBlocks, rawWeeks) {
+  const dupIds = (list) => {
+    const seen = new Set();
+    const dups = new Set();
+    for (const r of list) (seen.has(r.id) ? dups : seen).add(r.id);
+    return dups;
+  };
+  const dupB = dupIds(rawBlocks);
+  const dupW = dupIds(rawWeeks);
+  const live = rawBlocks.filter(b => isLiveRecord(b) && !dupB.has(b.id));
+  const active = live.filter(isBlockActive);
+  const blocks = active.length > 1 ? live.filter(b => !isBlockActive(b)) : live;
+  const blockById = new Map(blocks.map(b => [b.id, b]));
+  let weeks = rawWeeks.filter(w => isLiveRecord(w) && !dupW.has(w.id) && blockById.has(w.block_id)
+    && w.note_id !== blockById.get(w.block_id).baseline_note_id);
+  for (const keyOf of [w => w.note_id, w => `${w.block_id}|${w.week_number}`]) {
+    const counts = new Map();
+    for (const w of weeks) counts.set(keyOf(w), (counts.get(keyOf(w)) || 0) + 1);
+    weeks = weeks.filter(w => counts.get(keyOf(w)) === 1);
+  }
+  const keptB = new Set(blocks.map(b => b.id));
+  const keptW = new Set(weeks.map(w => w.id));
+  const excludedBlockIds = new Set(rawBlocks.filter(b => isLiveRecord(b) && !keptB.has(b.id)).map(b => b.id));
+  const excludedWeekIds = new Set(rawWeeks.filter(w => isLiveRecord(w) && !keptW.has(w.id)).map(w => w.id));
+  for (const id of dupB) excludedBlockIds.add(id);
+  for (const id of dupW) excludedWeekIds.add(id);
+  return { excludedBlockIds, excludedWeekIds, unresolvedCount: excludedBlockIds.size + excludedWeekIds.size };
+}
+
 export function isRecoveryDataResolved(rawBlocks, rawWeeks) {
   return arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks)
-    && isSnapshotStructurallyConsistent(rawBlocks, rawWeeks);
+    && partitionRecoveryRecords(rawBlocks, rawWeeks).unresolvedCount === 0;
 }
 
 function isProvisionalSnapshotConsistent(blocks, weeks) {

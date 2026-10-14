@@ -384,8 +384,10 @@ CI). They live beside the behavioral sync coverage:
   through the real reconcile boundary, dirty queue, and authoritative read: the
   four repairs, deterministic permuted-order convergence, idempotent second
   passes, byte-identical retention of missing-parent / malformed / duplicate-id /
-  unsafe-ordinal data, first-load ERROR and failed-refresh denial with Retry,
-  and read/write/enqueue/verification failure injection.
+  unsafe-ordinal data, a verified read that excludes unresolved records with an
+  `unresolvedCount` notice, Retry, closed mutations and exact-pass denial (and
+  malformed data still failing closed), guarded actions performing no repair
+  writes, and read/write/enqueue/verification failure injection.
 - `mobile/tests/sync-recovery.test.js` — with independent tables running
   concurrently, a note is still pushed before the recovery block whose baseline
   names it and a block before its memberships; a failure in one independent

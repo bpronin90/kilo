@@ -50,7 +50,7 @@ function corruptReconciliation(error) {
 
 // Replay every journaled operation once. Never called directly by a caller
 // outside this module — every entry point runs it under the shared lock.
-async function reconcileAllUnlocked() {
+async function reconcileAllUnlocked({ repairData = false } = {}) {
   let journal;
   try {
     journal = await readRecoveryJournal();
@@ -73,8 +73,10 @@ async function reconcileAllUnlocked() {
   // when no journaled operation is still pending (never beneath a pending
   // intent's postconditions). Reported beside, never inside, `ok`: an
   // unresolved or failed repair must not read as a pending/corrupt journal or
-  // stop the sync pass that calls this.
-  const repair = pending.length === 0
+  // stop the sync pass that calls this. Only the authoritative read / Retry and
+  // the sync boundary repair; guarded actions and operation starts reconcile
+  // WITHOUT repairing (they are already gated on a verified read).
+  const repair = repairData && pending.length === 0
     ? await repairRecoveryRecords()
     : { ok: true, changed: 0, skipped: true, error: null };
   return {
@@ -110,7 +112,7 @@ async function reconcileAllUnlocked() {
 // the guard this function is already holding. Competing UI actions simply queue
 // behind it and run once the pass is done.
 export function withExclusiveRecoveryAccess(run) {
-  return withRecoveryOperationLock(() => run({ reconcile: () => reconcileAllUnlocked() }));
+  return withRecoveryOperationLock(() => run({ reconcile: () => reconcileAllUnlocked({ repairData: true }) }));
 }
 
 // Public reconciler. Startup/remount, the `Retry recovery` action, pre-action
@@ -119,7 +121,7 @@ export function withExclusiveRecoveryAccess(run) {
 // in-flight pass instead of starting a competing replay.
 export function reconcileRecoveryOperations() {
   if (inFlightReconcile) return inFlightReconcile;
-  const pass = withRecoveryOperationLock(() => reconcileAllUnlocked());
+  const pass = withRecoveryOperationLock(() => reconcileAllUnlocked({ repairData: true }));
   inFlightReconcile = pass;
   const clear = () => {
     if (inFlightReconcile === pass) inFlightReconcile = null;

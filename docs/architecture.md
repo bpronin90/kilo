@@ -512,10 +512,17 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   cloud mode before the raw write, aborts if the list changed since it was read,
   and re-reads to verify. A missing parent, malformed or unreadable payload,
   duplicate ids, baseline-note membership, or unsafe ordinal is left
-  byte-for-byte in place. The result rides beside the journal `ok` (never
-  inside it, so sync is not gated), and `isRecoveryDataResolved` classifies the
-  raw lists: unresolved data is ERROR/STALE with `Retry recovery`, never verified
-  Normal. Retry re-reads and re-classifies; it does not promise a fix.
+  byte-for-byte in place. Only the authoritative read / Retry and the sync
+  boundary repair; guarded actions and operation starts reconcile without
+  repairing. The result rides beside the journal `ok` (never inside it, so sync
+  is not gated). For WELL-FORMED but unresolved records,
+  `partitionRecoveryRecords` names the ids to exclude: the authoritative read
+  still verifies the rest of the snapshot, publishes `unresolvedCount`, shows
+  the stale-style notice with `Retry recovery`, and closes Recovery mutations
+  (and `ensureVerifiedRecoveryState`, code `RECOVERY_DATA_UNRESOLVED`) while any
+  exist, since mutations rewrite whole collections. MALFORMED records keep
+  #1366's fail-closed ERROR/STALE. Retry re-reads and re-classifies; it does not
+  promise a fix.
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules, now exposes the note-derived analytics contract used by downstream
   native workout analytics work, and centralizes exercise alias resolution in

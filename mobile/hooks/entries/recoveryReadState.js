@@ -15,7 +15,7 @@ import {
 import { findActiveBlock } from '../../lib/data/recoveryBlocks';
 import {
   arePersistedRecoveryRecordsWellFormed,
-  isRecoveryDataResolved,
+  partitionRecoveryRecords,
 } from '../../lib/data/activeTrainingContext';
 import { safeNotify } from './shared';
 import {
@@ -61,11 +61,12 @@ export const RECOVERY_STATUS = Object.freeze({
 // describe one condition differently; `Retry recovery` is the exact accessible
 // name of the button beside them (ui-design-rules §12).
 export const RECOVERY_LOADING_MESSAGE = 'Loading recovery data…';
-// Unreadable AND unresolved data (#1368); Retry only re-reads, no promised fix.
 export const RECOVERY_UNVERIFIED_MESSAGE =
-  'Recovery data could not be read or is inconsistent, so recovery status is unknown. Tap Retry recovery.';
+  'Recovery data could not be read, so recovery status is unknown. Tap Retry recovery.';
+// Also the unresolved-data notice (#1368): some readable records are set aside
+// and shown data may be incomplete. Retry re-checks; it promises no fix.
 export const RECOVERY_STALE_MESSAGE =
-  'Showing the last recovery data that loaded successfully. The latest refresh failed. Tap Retry recovery.';
+  'Showing recovery data that may be out of date or incomplete: the latest refresh failed or some records could not be resolved. Tap Retry recovery.';
 
 const INITIAL_RECOVERY_LIFECYCLE = Object.freeze({
   status: RECOVERY_STATUS.IDLE,
@@ -74,6 +75,7 @@ const INITIAL_RECOVERY_LIFECYCLE = Object.freeze({
   journalCorrupt: false,
   pendingRecovery: [],
   recoveryPendingError: null,
+  unresolvedCount: 0,
 });
 
 let recoveryLifecycle = {
@@ -82,18 +84,16 @@ let recoveryLifecycle = {
   error: null,
   // Latest refresh failure over an already-verified snapshot.
   refreshError: null,
-  // True only while the most recent reconciliation pass found the operation
-  // journal itself unreadable/corrupt (#711 review finding 2). This is
-  // orthogonal to `status`: a previously-verified snapshot goes STALE rather
-  // than ERROR on any failed refresh, but a corrupt journal must block
-  // mutations even in that STALE state, because the journal contract itself
-  // says recovery actions are paused until it can be read again.
+  // True only while the latest pass found the operation journal unreadable or
+  // corrupt (#711). Orthogonal to `status`: it blocks mutations even over a
+  // STALE snapshot.
   journalCorrupt: false,
-  // Journaled operations that are not yet verified (#696). Recovery lifecycle
-  // state is not considered ready until reconciliation has run, so a resumed
-  // operation converges before the user can act on the records it touches.
+  // Unverified journaled operations (#696): a resumed operation converges
+  // before the user can act on the records it touches.
   pendingRecovery: [],
   recoveryPendingError: null,
+  // Well-formed records set aside as unresolved by the last pass (#1368).
+  unresolvedCount: 0,
 };
 
 let recoveryStateListeners = [];
@@ -103,16 +103,14 @@ function setRecoveryLifecycle(patch) {
   safeNotify(recoveryStateListeners);
 }
 
-// The single in-flight authoritative read, plus at most one queued follow-up
-// shared by every caller that arrives mid-read (it may predate their mutation).
+// The in-flight authoritative read, plus at most one shared queued follow-up.
 let recoveryReadInFlight = null;
 let recoveryReadQueued = null;
 
-// Resolves with the OUTCOME of this exact pass (`{ ok, pendingCount, corrupt,
-// error }`), which is what `ensureVerifiedRecoveryState` gates mutations on.
-// Display state (`recoveryLifecycle.status`, `lastAuthoritativeSnapshot`) is
-// separate and keeps degrading to STALE-with-last-known-good regardless, so a
-// recheck that FAILED or found pending work is never read as "safe to mutate".
+// Resolves with the OUTCOME of this exact pass, which is what
+// `ensureVerifiedRecoveryState` gates mutations on. Display state is separate
+// (STALE-with-last-known-good), so a failed or unclean recheck is never read as
+// "safe to mutate".
 function runAuthoritativeRecoveryRead() {
   const generation = recoveryReadGeneration;
   recordStartupReconcileStart();
@@ -121,6 +119,7 @@ function runAuthoritativeRecoveryRead() {
   });
   let pending = [];
   let pendingError = null;
+  let unresolvedCount = 0;
   // Reconciliation first, reads second: replay can change what the reads return.
   return reconcileRecoveryOperations()
     .then((reconciliation) => {
@@ -143,18 +142,21 @@ function runAuthoritativeRecoveryRead() {
       if (reconciliation.repair && !reconciliation.repair.ok) throw reconciliation.repair.error;
       return loadRecoveryLists();
     })
-    .then(([blocks, weeks, wellFormed, resolved]) => {
+    .then(([allBlocks, allWeeks, wellFormed, part]) => {
       // #1366: a malformed persisted record is a failed read (ERROR/STALE with
       // retry, mutations closed), never verified Normal.
       if (!wellFormed) throw new Error('Recovery records on this device are malformed.');
-      // #1368: records still unresolved after the bounded repair stay in place
-      // and are never published as verified Normal or a partial snapshot.
-      if (!resolved) throw new Error('Recovery records on this device are inconsistent.');
+      // #1368: well-formed but unresolved records stay persisted and are
+      // excluded from operational state; the pass still verifies the rest.
+      const blocks = allBlocks.filter(b => !part.excludedBlockIds.has(b.id));
+      const weeks = allWeeks.filter(w => !part.excludedWeekIds.has(w.id));
+      unresolvedCount = part.unresolvedCount;
       // Invalidated mid-read (#1366): a device wipe happened after this pass
       // started, so what it read belongs to the previous owner. Publish nothing.
       if (generation !== recoveryReadGeneration) return OBSOLETE_OUTCOME;
       publishRecoverySnapshot(blocks, weeks);
       setRecoveryLifecycle({
+        unresolvedCount,
         status: RECOVERY_STATUS.READY,
         error: null,
         refreshError: null,
@@ -163,11 +165,15 @@ function runAuthoritativeRecoveryRead() {
         recoveryPendingError: pendingError,
       });
       markStartupPhase('recovery:reload:done');
-      // READY display status does NOT by itself mean "safe to mutate": a
-      // non-zero `pending` count means this exact pass found conflicting
-      // operations still unresolved, so its own outcome is not clean even
-      // though nothing was corrupt and the read itself succeeded.
-      return { ok: pending.length === 0, pendingCount: pending.length, corrupt: false, error: null };
+      // READY does NOT by itself mean "safe to mutate": pending operations or
+      // set-aside unresolved records make this pass's own outcome not clean.
+      return {
+        ok: pending.length === 0 && unresolvedCount === 0,
+        pendingCount: pending.length,
+        unresolvedCount,
+        corrupt: false,
+        error: null,
+      };
     })
     .catch((e) => {
       if (generation !== recoveryReadGeneration) return OBSOLETE_OUTCOME;
@@ -209,15 +215,11 @@ export function refreshRecoveryState() {
   return recoveryReadQueued;
 }
 
-// Confirm-time authoritative precondition recheck. A confirmation dialog can
-// sit open while the snapshot behind its button goes stale, so every lifecycle
-// mutation re-establishes verified state when confirmed. It decides on the
-// OUTCOME of the exact pass it awaited, never on display state read back
-// afterward: STALE-with-last-known-good and READY-but-pending are display
-// outcomes, not a successful recheck (#711 round 4).
+// Confirm-time authoritative precondition recheck: every lifecycle mutation
+// re-establishes verified state when confirmed, deciding on the OUTCOME of the
+// exact pass it awaited, never on display state read back afterward (#711).
 export async function ensureVerifiedRecoveryState() {
-  // Always a fresh (coalesced) authoritative read: REFRESHING and STALE are
-  // "verified" for rendering but may predate the dialog (#711 finding 3).
+  // Always a fresh (coalesced) authoritative read (#711 finding 3).
   const generation = recoveryReadGeneration;
   const outcome = await refreshRecoveryState();
   // A wipe while this recheck ran voids it, whatever the pass reported.
@@ -238,6 +240,13 @@ export async function ensureVerifiedRecoveryState() {
       error: 'A recovery change is still finishing. Try again in a moment.',
     };
   }
+  if (outcome && outcome.unresolvedCount > 0) {
+    return {
+      ok: false,
+      code: 'RECOVERY_DATA_UNRESOLVED',
+      error: 'Some recovery records could not be resolved, so recovery changes are paused.',
+    };
+  }
   return {
     ok: false,
     code: 'RECOVERY_STATE_UNVERIFIED',
@@ -245,10 +254,8 @@ export async function ensureVerifiedRecoveryState() {
   };
 }
 
-// Read-model for the Log screen and Analytics: the active block (if any), every
-// live week membership, a note-id -> week-number lookup for the active block's
-// own weeks (badge display never reaches into a completed/other block), and the
-// explicit lifecycle status around all of it.
+// Read-model for Log and Analytics: the active block, live weeks, a note-id ->
+// week-number lookup for the active block, and the explicit lifecycle status.
 export function useRecoveryBlockState() {
   const [view, setView] = useState(() => ({
     snapshot: lastAuthoritativeSnapshot,
@@ -310,7 +317,9 @@ export function useRecoveryBlockState() {
 
   return useMemo(() => {
     const { blocks, weeks, verified } = view.snapshot;
-    const { status, error, refreshError, journalCorrupt, pendingRecovery, recoveryPendingError } = view.lifecycle;
+    const {
+      status, error, refreshError, journalCorrupt, pendingRecovery, recoveryPendingError, unresolvedCount,
+    } = view.lifecycle;
     const activeBlock = findActiveBlock(blocks);
     const recoveryWeekNumberByNoteId = {};
     if (activeBlock) {
@@ -331,23 +340,25 @@ export function useRecoveryBlockState() {
       // over verified data is `refreshing`.
       loading: !verified && status !== RECOVERY_STATUS.ERROR,
       refreshing: status === RECOVERY_STATUS.REFRESHING,
-      stale: status === RECOVERY_STATUS.STALE,
+      // Unresolved records (#1368) reuse the stale presentation: the verified
+      // snapshot excludes them, so it is shown with the notice and Retry.
+      stale: status === RECOVERY_STATUS.STALE || (!!verified && unresolvedCount > 0),
       staleError: refreshError,
+      unresolvedCount: unresolvedCount || 0,
       error,
-      // Closed until verified, and while the journal is corrupt even over a
-      // STALE snapshot (#711 finding 2).
-      mutationsAllowed: !!verified && status !== RECOVERY_STATUS.ERROR && !journalCorrupt,
+      // Closed until verified, while the journal is corrupt even over a STALE
+      // snapshot (#711), and while unresolved records exist (#1368: whole
+      // collections are rewritten, so no per-record scoping).
+      mutationsAllowed: !!verified && status !== RECOVERY_STATUS.ERROR && !journalCorrupt
+        && !(unresolvedCount > 0),
       refresh,
       pendingRecovery,
       recoveryPendingError,
       // `Retry recovery` is the same call every other read path makes.
       retryRecovery: refresh,
-      // Display-only persisted read (#1366): the plain, UNRECONCILED lists,
-      // offered while the first authoritative pass is pending so Home can paint
-      // the last-known mode. It never feeds `ready`, `mutationsAllowed`, or
-      // `ensureVerifiedRecoveryState`; null once anything verified exists or the
-      // authoritative read failed. A FAILED plain read is offered as unreadable
-      // (null arrays): unknown, never a skeleton or Normal.
+      // Display-only UNRECONCILED read (#1366), offered while the first pass is
+      // pending; never feeds `ready`/`mutationsAllowed`. A FAILED plain read is
+      // offered as unreadable (null arrays): unknown, never Normal.
       provisional: verified || status === RECOVERY_STATUS.ERROR ? null
         : view.filterRead && view.filter.wellFormed ? { blocks: view.filter.blocks, weeks: view.filter.weeks }
           : view.filterRead || view.filterFailed ? { blocks: null, weeks: null } : null,
@@ -373,15 +384,12 @@ const handleSharedSyncState = (syncState) => {
 
 // ── startup scheduling (#1366) ────────────────────────────────────────────────
 //
-// Every AUTOMATIC authoritative read — the first consumer's mount, a completed
-// cloud sync — goes through here, so no mounted subscriber (Home, or the hidden
-// Log/Analytics tabs) can start journal replay before Home's first usable paint
-// while the shell holds startup background work (startupTiming.js). Deferred
-// requests collapse into one pass, started only if a consumer is still mounted
-// and nothing authoritative has run meanwhile. Explicit callers — a mutation's
-// confirm-time `ensureVerifiedRecoveryState`, `Retry recovery`, a mutation
-// notification — still call `refreshRecoveryState` directly: an action needs a
-// verified answer now, so it is never parked behind paint.
+// Every AUTOMATIC authoritative read (first mount, completed cloud sync) goes
+// through here, so none starts journal replay before Home's first usable paint
+// while the shell holds startup work (startupTiming.js). Deferred requests
+// collapse into one pass. Explicit callers (confirm-time
+// `ensureVerifiedRecoveryState`, `Retry recovery`, mutation notifications) call
+// `refreshRecoveryState` directly and are never parked behind paint.
 let deferredRecoveryRead = null;
 function requestBackgroundRecoveryRead() {
   if (deferredRecoveryRead) return;
@@ -424,16 +432,13 @@ export function invalidateRecoveryReadState() {
 
 // ── normal-analytics membership filter store (#699) ───────────────────────────
 
-// TWO separate snapshots (#711 finding 1), so neither can evict what the other
-// renders:
-// - `lastAuthoritativeSnapshot` is written ONLY by the reconcile-then-read
-//   pass. `useRecoveryBlockState` renders it and every mutation gate checks it;
-//   a plain filter read can never touch it, so last-known-good data and the
-//   mutation-trust flag cannot drift apart.
-// - `lastFilterSnapshot` is written by either the authoritative pass or a plain
-//   (unreconciled) filter read. `useRecoveryAnalyticsFilter` renders it, and
-//   since #1366 `useRecoveryBlockState` offers it as display-only `provisional`
-//   data. Nothing downstream of it authorizes a mutation.
+// TWO separate snapshots (#711 finding 1), so neither can evict the other:
+// - `lastAuthoritativeSnapshot`: written ONLY by the reconcile-then-read pass;
+//   `useRecoveryBlockState` renders it and every mutation gate checks it.
+// - `lastFilterSnapshot`: written by the authoritative pass or a plain
+//   (unreconciled) filter read; the analytics filter renders it and, since
+//   #1366, it is offered as display-only `provisional` data. It never
+//   authorizes a mutation.
 let lastAuthoritativeSnapshot = { blocks: [], weeks: [], verified: false };
 let lastAuthoritativeSignature = '';
 let lastFilterSnapshot = { blocks: [], weeks: [] };
@@ -447,10 +452,8 @@ let recoveryFilterReadFailed = false;
 // Every mounted filter hook AND `useRecoveryBlockState`.
 let recoverySnapshotSubscribers = [];
 
-// Authoritative publish: called ONLY by the reconcile-then-read pass. Updates
-// both snapshots (reconciled data is better filter evidence too) and finalizes
-// all state BEFORE the single notify, so no subscriber sees new data under the
-// old, unverified boundary.
+// Authoritative publish: ONLY the reconcile-then-read pass. Updates both
+// snapshots and finalizes all state BEFORE the single notify.
 function publishRecoverySnapshot(blocks, weeks) {
   const signature = _recoverySignature(blocks, weeks);
   if (signature !== lastAuthoritativeSignature || !lastAuthoritativeSnapshot.verified) {
@@ -488,10 +491,8 @@ function publishRecoveryFilterSnapshot(blocks, weeks, wellFormed = false) {
 // hooks and piggybacking on an authoritative pass already in flight.
 let recoveryFilterReadInFlight = null;
 
-// The filtered lists plus whether the RAW persisted records behind them are
-// well-formed (#1366). Raw reads hit the same keys concurrently, so the storage
-// boundary serves them from the same decrypt; a raw-read failure only means
-// "not provably well-formed".
+// The filtered lists, whether the RAW records are well-formed (#1366), and their
+// unresolved partition (#1368). A raw-read failure means "not well-formed".
 function loadRecoveryLists() {
   return Promise.all([
     Storage.loadRecoveryBlocks(),
@@ -499,13 +500,13 @@ function loadRecoveryLists() {
     Promise.resolve()
       .then(() => Promise.all([Storage.loadRecoveryBlocksRaw(), Storage.loadRecoveryBlockWeeksRaw()]))
       .then(
-        ([rawBlocks, rawWeeks]) => [
-          arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks),
-          isRecoveryDataResolved(rawBlocks, rawWeeks),
-        ],
-        () => [false, false]
+        ([rawBlocks, rawWeeks]) => {
+          const ok = arePersistedRecoveryRecordsWellFormed(rawBlocks, rawWeeks);
+          return [ok, ok ? partitionRecoveryRecords(rawBlocks, rawWeeks) : null];
+        },
+        () => [false, null]
       ),
-  ]).then(([blocks, weeks, [wellFormed, resolved]]) => [blocks, weeks, wellFormed, resolved]);
+  ]).then(([blocks, weeks, [wellFormed, part]]) => [blocks, weeks, wellFormed, part]);
 }
 
 export function runRecoveryFilterRead() {

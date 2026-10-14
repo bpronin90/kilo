@@ -27,7 +27,6 @@
 
 import { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY } from './keys';
 import { readList } from './jsonStorage';
-import { getStorageMode, STORAGE_MODES } from './storageMode';
 import { getClientId, enqueueDirtyMany, SYNC_TABLES } from '../syncQueue';
 import {
   planDeletedBlockCascade,
@@ -80,6 +79,13 @@ export function planRecoveryRepair(blocks, weeks, clientId) {
   return { blocks: nextBlocks, weeks: nextWeeks, changedBlocks, changedWeeks: [...changedWeeks.values()] };
 }
 
+// Lazy: './storageMode' pulls in the adapters, which import storage/entries and
+// would create a load-order cycle with this module's importers.
+function isCloudMode() {
+  const { getStorageMode, STORAGE_MODES } = require('./storageMode');
+  return getStorageMode() === STORAGE_MODES.CLOUD;
+}
+
 async function persist(table, key, original, next, changed, replace) {
   if (changed.length === 0) return;
   // Lost-update guard: the lock covers journaled actions, not every writer.
@@ -87,7 +93,7 @@ async function persist(table, key, original, next, changed, replace) {
   if (JSON.stringify(current) !== JSON.stringify(original)) {
     throw new Error('Recovery records changed while repairing; retry.');
   }
-  if (getStorageMode() === STORAGE_MODES.CLOUD) await enqueueDirtyMany(table, changed);
+  if (isCloudMode()) await enqueueDirtyMany(table, changed);
   await replace(next);
   const verify = await readList(key);
   if (JSON.stringify(verify) !== JSON.stringify(next)) {

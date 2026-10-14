@@ -416,9 +416,8 @@ describe('partial write: each protocol boundary is recorded and replays idempote
   test('a verification-read failure retains the record at VERIFY_READ and stays pending', async () => {
     await setBlocks([block('b1')]);
     await setWeeks([week('w1', 'b1', 'n1', 1)]);
-    // Let the repair-pass read (#1368) and the initial domain read through; fail
-    // the post-write verification read.
-    failReadsFor([RECOVERY_BLOCKS_KEY], { skip: 2 });
+    // Let the initial domain read through; fail the post-write verification read.
+    failReadsFor([RECOVERY_BLOCKS_KEY], { skip: 1 });
 
     const res = await startOp({ blockId: 'b1' }, completeIntent('b1', 'w1'));
 
