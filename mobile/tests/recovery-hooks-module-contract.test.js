@@ -415,6 +415,24 @@ describe('invalidation goes through one coalesced read for reload, sync, and mut
     expect(Journal.reconcileRecoveryOperations).toHaveBeenCalledTimes(2);
   });
 
+  // #1366: a confirm-time recheck queued behind an in-flight pass must not be
+  // authorized by a pass that runs after a device wipe invalidated the store.
+  test('a wipe voids a confirmation queued behind an in-flight pass', async () => {
+    setReadSource(ownerASnapshot());
+    let releaseActive;
+    Journal.reconcileRecoveryOperations.mockImplementationOnce(
+      () => new Promise((resolve) => { releaseActive = () => resolve({ ok: true, pending: [] }); })
+    );
+    const active = barrel.refreshRecoveryState();
+    const confirmation = barrel.ensureVerifiedRecoveryState();
+    barrel.invalidateRecoveryReadState();
+    releaseActive();
+    expect((await active).ok).toBe(false);
+    expect((await confirmation).ok).toBe(false);
+    // The queued follow-up never ran a pass under the new generation.
+    expect(Journal.reconcileRecoveryOperations).toHaveBeenCalledTimes(1);
+  });
+
   test('two mounted read consumers share ONE sync subscription and one refresh per signal', async () => {
     setReadSource(ownerASnapshot());
     mountHook(barrel.useRecoveryBlockState);

@@ -191,9 +191,8 @@ function runAuthoritativeRecoveryRead() {
     });
 }
 
-// Resolves with the outcome (`{ ok, pendingCount, corrupt, error }`) of the
-// pass that answers THIS call. A caller arriving mid-read gets the QUEUED
-// follow-up's own outcome, never the in-flight one it arrived too late to trust.
+// Resolves with the outcome of the pass that answers THIS call; a caller
+// arriving mid-read gets the QUEUED follow-up's own outcome.
 export function refreshRecoveryState() {
   if (!recoveryReadInFlight) {
     const pass = runAuthoritativeRecoveryRead().finally(() => {
@@ -203,10 +202,14 @@ export function refreshRecoveryState() {
     return pass;
   }
   if (!recoveryReadQueued) {
-    recoveryReadQueued = recoveryReadInFlight.then(() => {
-      recoveryReadQueued = null;
-      return refreshRecoveryState();
+    // Bound to its generation (#1366): a follow-up queued before a wipe never
+    // runs a pass for — or reports success to — a caller from the old owner.
+    const generation = recoveryReadGeneration;
+    const queued = recoveryReadInFlight.then(() => {
+      if (recoveryReadQueued === queued) recoveryReadQueued = null;
+      return generation === recoveryReadGeneration ? refreshRecoveryState() : OBSOLETE_OUTCOME;
     });
+    recoveryReadQueued = queued;
   }
   return recoveryReadQueued;
 }
@@ -220,8 +223,10 @@ export function refreshRecoveryState() {
 export async function ensureVerifiedRecoveryState() {
   // Always a fresh (coalesced) authoritative read: REFRESHING and STALE are
   // "verified" for rendering but may predate the dialog (#711 finding 3).
+  const generation = recoveryReadGeneration;
   const outcome = await refreshRecoveryState();
-  if (outcome && outcome.ok) {
+  // A wipe while this recheck ran voids it, whatever the pass reported.
+  if (outcome && outcome.ok && generation === recoveryReadGeneration) {
     return { ok: true };
   }
   if (outcome && outcome.corrupt) {
@@ -358,9 +363,7 @@ export function useRecoveryBlockState() {
   }, [view, refresh]);
 }
 
-// Consumer refcount backing the single-shared-subscription behavior above.
-// Module scope (not a ref) because it must be shared across every
-// simultaneously mounted `useRecoveryBlockState` instance, not per-component.
+// Consumer refcount backing the single shared subscription above.
 let recoveryBlockStateConsumerCount = 0;
 
 // The ONE mutation/import listener and ONE sync-completion subscription for
@@ -541,11 +544,9 @@ function _recoverySignature(blocks, weeks) {
 
 // ── shared-store access for the analytics-filter hook (#1058) ──────────────────
 //
-// The filter hook (recoveryAnalyticsHooks.js) renders from this store's
-// `lastFilterSnapshot`/`recoveryFilterVerified` and registers on the SAME
-// registries the read-lifecycle hook uses. These accessors keep that state
-// owned solely here — the hook holds no copy — preserving the exact
-// push-then-filter bookkeeping and read-fresh-at-call-time semantics.
+// The filter hook (recoveryAnalyticsHooks.js) reads this store's filter state
+// and registers on the same registries; these accessors keep that state owned
+// solely here, read fresh at call time.
 export function getFilterSnapshot() {
   return lastFilterSnapshot;
 }
@@ -565,12 +566,9 @@ export function removeSnapshotSubscriber(subscriber) {
   recoverySnapshotSubscribers = recoverySnapshotSubscribers.filter(l => l !== subscriber);
 }
 
-// Module-level broadcast for recovery records that changed outside the hook
-// mutations above — today, a restored local backup, which replaces both
-// collections wholesale without going through any lifecycle action. Mirrors
-// `reloadWorkoutNotes` in workoutNoteHooks.js: every mounted subscriber re-reads
-// so a mounted Home/Analytics cannot keep serving the pre-import memberships and
-// preferences.
+// Broadcast for recovery records changed outside the mutation hooks — today a
+// restored local backup — so every mounted subscriber re-reads (mirrors
+// `reloadWorkoutNotes`).
 export function reloadRecoveryBlocks() {
   notifyRecoveryBlocks();
 }
