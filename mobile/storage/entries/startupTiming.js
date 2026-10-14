@@ -4,8 +4,8 @@
 // credentials, decrypted payloads, or user identifiers are ever captured.
 // Used to compare the initial weight/note reads, weight-goal hydration,
 // tracked-lift hydration, recovery-state hydration, and encrypted-storage
-// migration against each other when reproducing the Home cold-launch skeleton
-// on a device.
+// migration against each other when reproducing a slow cold launch on a
+// device.
 let startedAt = Date.now();
 let marks = [];
 
@@ -75,7 +75,7 @@ export function getStartupKeyCheckCounts() {
   return { ...keyChecks };
 }
 
-// One fixed-name line, emitted next to `home:first-paint`, so a device trace
+// One fixed-name line, emitted next to `app:local-ready`, so a device trace
 // shows how many device reads the launch actually paid for and how many were
 // avoided — the interval the phase marks alone could not isolate.
 export function markStartupStorageReads(now = Date.now()) {
@@ -86,15 +86,16 @@ export function markStartupStorageReads(now = Date.now()) {
   return { ...storageReads, keyChecks: { ...keyChecks }, reconcileStarts };
 }
 
-// ── first-usable-paint scheduling (#1366) ─────────────────────────────────────
+// ── local-ready scheduling (#1366, #1372) ─────────────────────────────────────
 //
 // NOT dev-only, unlike everything above: this is the one production contract
 // that keeps background startup work (Recovery journal replay, the automatic
-// cloud sync, reminder reconciliation) off the storage queues until Home has
-// painted from local data. The shell holds it during its first render — before
-// any child effect can start a read. Home claims it while rendering, which
-// cancels the fallback timer: from then on only Home's first paint (or Home
-// unmounting) releases it, however long local hydration takes. The fallback
+// cloud sync, reminder reconciliation) off the storage queues until the app is
+// local-ready: Home's bounded local reads have settled. The shell holds it
+// during its first render — before any child effect can start a read. Home
+// claims it while rendering, which cancels the fallback timer: from then on
+// only local-ready (or Home unmounting, an exceptional release that is not
+// readiness) releases it, however long local hydration takes. The fallback
 // only covers a shell whose Home never mounts.
 const STARTUP_HOLD_FALLBACK_MS = 2500;
 let backgroundHold = null;
@@ -115,7 +116,7 @@ export function isStartupBackgroundWorkHeld() {
 // Home's claim: cancels the fallback and returns the release for THIS hold
 // only, so a Home unmounting after a wipe remount re-held cannot release the
 // new shell's hold.
-export function claimStartupFirstPaint() {
+export function claimAppLocalReady() {
   const hold = backgroundHold;
   if (!hold) return () => {};
   clearTimeout(hold.timer);
@@ -123,8 +124,8 @@ export function claimStartupFirstPaint() {
 }
 
 // Runs `task` now when nothing is held; otherwise once the hold is released, in
-// a later macrotask so it lands after the paint that released it rather than
-// inside that commit. Returns a cancel function.
+// a later macrotask so it lands after the local-ready commit that released it
+// rather than inside that commit. Returns a cancel function.
 export function whenStartupBackgroundWorkReleased(task) {
   if (!backgroundHold) {
     task();
@@ -154,7 +155,7 @@ function releaseHold(hold) {
 }
 
 // Journal replay starts (#1366): a count, reported with the read counters so a
-// trace shows whether replay ran before `home:first-paint`.
+// trace shows whether replay ran before `app:local-ready`.
 export function recordStartupReconcileStart() {
   reconcileStarts += 1;
   if (typeof __DEV__ !== 'undefined' && __DEV__) markStartupPhase('recovery:reconcile:start');

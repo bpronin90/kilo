@@ -185,7 +185,7 @@ approved palette, so this is recorded rather than adjusted; dark mode is fine at
 
 | File | Reference | Value | Used For |
 |---|---|---|---|
-| `HomeScreen.js` | KiloWordmark SVG | `#FF5C00` | KiloWordmark SVG accents (brand mark, intentionally fixed in both modes) |
+| `components/KiloWordmark.js` | KiloWordmark SVG (Home title and startup overlay) | `#FF5C00` | KiloWordmark SVG accents (brand mark, intentionally fixed in both modes) |
 
 This is now the complete list: every other visual color in the migrated
 production surfaces resolves through a palette token.
