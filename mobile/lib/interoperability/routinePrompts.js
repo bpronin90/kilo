@@ -43,11 +43,35 @@ When I ask for the final version, return only the complete Kilo-importable routi
  */
 export function buildExerciseNameNormalizationPrompt({ authority, targets = [] } = {}) {
   const targetBlocks = targets.map((routine, index) => routineBlock(`Target routine ${index + 1}: ${text(routine?.title) || 'Untitled Routine'}`, routine)).join('');
-  return `Use the authoritative routine below as the source of truth for exercise names. Be conservative: change an exercise header only when you have a high-confidence match to one authoritative exercise name (the same movement written differently, such as a casing, spelling, or abbreviation difference). If a match is uncertain, or the exercises are merely related or similar, leave that header exactly as it is.
+  return `Use the authoritative routine below as the source of truth for exercise names. Apply these rules to every selected target routine:
 
-The only edit allowed is the name portion of a matching exercise header, replaced with the authoritative name exactly; do not keep header suffixes or other descriptor text in the header. When a target header has descriptor text beyond the authoritative name, move that text into a "-- " comment line (two dashes and a space) directly under that exercise's logged sets, so the descriptor is preserved but never becomes part of the exercise header. Change nothing else: keep every target's order, day headings, section markers (such as +WARMUP), and exercise declarations such as 3x6-8 exactly as written, along with weights, reps, dates, weekdays, comments/notes, marks, skipped sets, and Week A/B boundaries. Do not add, remove, reorder, or otherwise edit exercises or sets. A target with no high-confidence match must be returned completely unchanged.
+1. Match conservatively. Treat a target exercise as a match only when you are highly confident it is the same movement as one authoritative exercise, even if it is written with shorthand, a spelling or punctuation difference, a different prescription, or extra descriptor text. If the exercises are merely related or similar, or the match is uncertain, leave that header exactly as it is. Do not invent exercises, and do not use any routine other than the authoritative routine as the source of names. If an authoritative name itself looks ambiguous or untidy, use it as written or leave the target unchanged; never invent a cleaner name.
+2. Use the authoritative name exactly. For a confident match, replace the target header's name with the authoritative exercise name, character for character, keeping the target header's own structure (its leading dash or number and any marks such as *). Never copy the authoritative routine's prescription into the target.
+3. Preserve the target prescription exactly. Keep the target's own sets-by-reps prescription (such as 2x8 or 3x6-8) in the header with the same numbers, rep ranges, spelling, and spacing. The prescription is not descriptor text and must not move.
+4. Move all remaining descriptor text to one "-- " note. Any other text in the target header beyond the name and prescription (cues, qualifiers, intensity, side notes) goes into a single comment line that starts with "-- " (two dashes and a space). Do not decide that phrases such as "each leg", "light", or "step up" are redundant and drop them. Keep the descriptor's wording, capitalization, and internal punctuation exactly; you may remove only the separator before it (such as a comma or dash) and parentheses that enclose all of it. Do not paraphrase, summarize, or delete any of its words.
+5. Place that note directly after the exercise's logged sets, or directly after its header when it has no sets. Logged sets include rows with a leading "- " (for example "- 135 5,5,5"), bare rows without a dash (for example "135 5,5,5"), and skipped rows (for example "135 -"). Leave existing comments where they are, and never move the note past the next exercise, day heading, section marker, or Week A/B divider.
+6. Preserve everything else. Keep weights, reps, session and history columns, dates, existing comments, day headings, section markers (such as +WARMUP), Week A/B "---" dividers, structural marks, exercise order, and all unrelated whitespace and text exactly as written. Do not add, remove, reorder, or otherwise edit exercises or sets. A target with no confident match must be returned completely unchanged.
 
-Return each selected target as complete Kilo-importable routine text, one at a time. Label each result with its exact reference label, for example "Target routine 1: Upper", on its own line directly before that routine's text, so duplicate routine titles remain distinguishable. Return every target, even when nothing changed, and do not add a summary or change list. Do not use Markdown fences or return any reference markers. ${FORMAT_GUIDE}${routineBlock(`Authoritative routine: ${text(authority?.title) || 'Untitled Routine'}`, authority)}${targetBlocks}`;
+Examples (the authoritative names here only illustrate the transformation; always use the names in the authoritative routine below):
+- Authority "Single-Leg RDL": header "-Single-Leg RDL 2x8 each leg, light" becomes "-Single-Leg RDL 2x8", with the note "-- each leg, light".
+- Authority "DB Bench Press": header "-DB Bench Press 3x6-8, step up" becomes "-DB Bench Press 3x6-8", with the note "-- step up".
+- Authority "Lat Pulldown": header "-Lat Pulldown 2x10-12 (pack shoulder down on eccentric)" becomes "-Lat Pulldown 2x10-12", with the note "-- pack shoulder down on eccentric".
+- Authority "Deadlift": header "-Deadlift — trial sets, slow and controlled" becomes "-Deadlift", with the note "-- trial sets, slow and controlled".
+
+For example, this target exercise:
+-DB Bench Press 3x6-8, step up
+85 8,8,8
+90 -
+-- felt good
+
+is returned as:
+-DB Bench Press 3x6-8
+85 8,8,8
+90 -
+-- step up
+-- felt good
+
+Return each selected target as complete Kilo-importable routine text, one at a time. Label each result with its exact reference label, for example "Target routine 1: Upper", on its own line directly before that routine's text, so duplicate routine titles remain distinguishable. Return every target, even when nothing changed, and do not add explanations, a summary, or a change list. Do not use Markdown fences or return any reference markers. ${FORMAT_GUIDE}${routineBlock(`Authoritative routine: ${text(authority?.title) || 'Untitled Routine'}`, authority)}${targetBlocks}`;
 }
 
 /**
