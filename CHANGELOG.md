@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.15.1 - 2026-10-15
+
+- Issue #1375: Workout weights in your routine are plain note text again, so tapping inside a note no longer fights with double-tap-to-edit. The plate calculator now lives in Routine actions → Plate calculator, where you can type any target weight; Analytics still opens it for your big-three lifts.
+
 ## 1.15.0 - 2026-10-15
 
 - Issue #1372: Cold launch now shows a branded Kilo loading screen with an animated barbell instead of a skeleton Home, and reveals the app as soon as your on-device training data is ready.
