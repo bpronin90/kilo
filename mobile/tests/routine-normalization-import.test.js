@@ -410,8 +410,8 @@ describe('owner descriptor examples apply through the batch write (#1383)', () =
     expect(diffTargetNames('Monday\n-bike, 5 min easy', ['Monday', '-Bike', '-- 5 min easy'], auth).changes).toHaveLength(1);
   });
 
-  test.each([':', ';', ',', ' |', ' (', ' [', ' {', ' <', ' "', ' —', ' –', ' -', ' /', ' ~', ' #', ' !'])('an alias rename cannot drop a "%s"-separated cue', sep => {
-    const close = { ' (': ')', ' [': ']', ' {': '}', ' <': '>', ' "': '"' }[sep] || '';
+  test.each([':', ';', ',', ' |', ' (', ' [', ' {', ' <', ' "', ' —', ' –', ' -', ' /', ' ~', ' #', ' !', " '", ' ‘', ' .'])('an alias rename cannot drop a "%s"-separated cue', sep => {
+    const close = { ' (': ')', ' [': ']', ' {': '}', ' <': '>', ' "': '"', " '": "'", ' ‘': '’' }[sep] || '';
     const orig = `Monday\n-Dumbbell Bench Press${sep} paused${close} 3x5\n85 5,5,5`;
     const auth = new Set(['DB Bench Press']);
     expect(diffTargetNames(orig, ['Monday', '-DB Bench Press 3x5', '85 5,5,5'], auth).problems.length).toBeGreaterThan(0);
@@ -424,6 +424,7 @@ describe('owner descriptor examples apply through the batch write (#1383)', () =
     expect(diffTargetNames('Monday\n-Single-Leg Leg Press 3x8', ['Monday', '-Single Leg Press 3x8'], auth).changes).toHaveLength(1);
     // Spaced "&" and "+" join name words by owner decision; an unspaced slash stays in-word.
     const joined = new Set(['C&J', 'Push/Pull Row']);
+    expect(diffTargetNames("Monday\n-Dumbbell Bench Press 'paused' 3x5", ['Monday', '-DB Bench Press 3x5'], new Set(['DB Bench Press'])).problems.length).toBeGreaterThan(0);
     expect(diffTargetNames('Monday\n-Clean & Jerk 3x2', ['Monday', '-C&J 3x2'], joined).changes).toHaveLength(1);
     expect(diffTargetNames('Monday\n-push/pull row 3x5', ['Monday', '-Push/Pull Row 3x5'], joined).changes).toHaveLength(1);
   });
