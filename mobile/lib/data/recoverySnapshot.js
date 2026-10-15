@@ -287,7 +287,33 @@ export function recoveryInputFingerprint(block, weeks, notes) {
 let _derivations = 0;
 // Test seam: how many full derivations the store has run.
 export const _snapshotDerivationCount = () => _derivations;
-export function _resetRecoverySnapshotStore() { _store.clear(); _derivations = 0; }
+export function _resetRecoverySnapshotStore() { _store.clear(); _summaries.clear(); _derivations = 0; }
+
+// #1378: Recovery Blocks rows need only the latest-week compact summary, for
+// every completed block at once. They get their own bounded store of those small
+// summaries so a long history neither evicts the full snapshots other surfaces
+// share nor re-derives (or builds movement groups) on every row render. A miss
+// derives through the same `_build` as the full snapshot, so wording and numbers
+// cannot diverge.
+const _summaries = new Map();
+const MAX_SUMMARIES = 256;
+
+export function getRecoveryRowSummary({ block, weeks = EMPTY, notes = EMPTY, stale = false } = {}) {
+  if (!block) return null;
+  const base = recoveryInputFingerprint(block, weeks, notes);
+  const key = `${stale ? 1 : 0}|${base}`;
+  let summary = _summaries.get(key);
+  if (summary) { _summaries.delete(key); _summaries.set(key, summary); return summary; }
+  const comparison = _store.get(`c|${base}`) || deriveRecoveryComparison({ block, weeks, notes });
+  const results = comparison.weeks || EMPTY;
+  const latest = results.length > 0 ? results[results.length - 1] : null;
+  const core = _store.get(`s|${latest ? latest.week_id : ''}|${stale ? 1 : 0}|${base}`);
+  if (!core) _derivations += 1;
+  summary = compactRecoverySummary(core || _build(block, weeks, notes, comparison, latest, { stale }));
+  _summaries.set(key, summary);
+  while (_summaries.size > MAX_SUMMARIES) _summaries.delete(_summaries.keys().next().value);
+  return summary;
+}
 
 // `selectedWeekId` null (or unknown) resolves to the latest week; the resolved
 // id, not the request, is part of the key, so "latest" and an explicit latest id

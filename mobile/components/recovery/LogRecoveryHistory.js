@@ -17,7 +17,7 @@ import { useWeightUnit } from '../../lib/unitPreference';
 import { useTheme } from '../../theme/ThemeContext';
 import { LogRecoveryLifecycle } from './LogRecoveryLifecycle';
 import { createLogManageStyles } from './logRecoveryManageStyles';
-import { getRecoverySnapshot, compactRecoverySummary } from '../../lib/data/recoverySnapshot';
+import { getRecoveryRowSummary } from '../../lib/data/recoverySnapshot';
 
 // The write hooks are stable module bindings; tolerate a partially mocked hooks module.
 const optionalHook = (hook) => (typeof hook === 'function' ? hook() : null);
@@ -29,6 +29,11 @@ export function LogRecoveryHistory({
   const { colors, kuaPalette: kua } = useTheme();
   const st = useMemo(() => createLogManageStyles(colors, kua), [colors, kua]);
   const [open, setOpen] = useState(false);
+  // Read-only, per block id, and only while expanded: the latest-week summary the
+  // block's evidence shows, re-derived only when that block's inputs change.
+  const summaries = useMemo(() => (open
+    ? new Map(completedBlocks.map(block => [block.id, getRecoveryRowSummary({ block, weeks, notes, stale })]))
+    : null), [open, completedBlocks, weeks, notes, stale]);
   // With a vanished selection the selector must stay reachable, even if only the
   // active block remains to be picked.
   if (completedBlocks.length === 0 && !(alwaysShow && activeBlock)) return null;
@@ -55,8 +60,7 @@ export function LogRecoveryHistory({
       {open ? rows.map(({ block, active }) => {
         const selected = block.id === focusedBlockId;
         const dates = active ? `Started ${formatDate(block.started_at)}` : `${formatDate(block.started_at)} to ${formatDate(block.completed_at)}`;
-        // Read-only and content-cached: the same snapshot the block's evidence shows.
-        const summary = active ? null : compactRecoverySummary(getRecoverySnapshot({ block, weeks, notes, stale }));
+        const summary = active ? null : summaries.get(block.id);
         return (
           <Pressable
             key={block.id}

@@ -5,7 +5,7 @@ import React from 'react';
 import render, { act } from 'react-test-renderer';
 import { LogRecoveryHistory } from '../components/recovery/LogRecoveryHistory';
 import { captureRecoveryBaselineFromText } from '../lib/data/recoveryBlocks';
-import { getRecoverySnapshot, _resetRecoverySnapshotStore } from '../lib/data/recoverySnapshot';
+import { getRecoverySnapshot, _resetRecoverySnapshotStore, _snapshotDerivationCount } from '../lib/data/recoverySnapshot';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({ getItem: jest.fn(), setItem: jest.fn(), removeItem: jest.fn() }));
 jest.mock('@expo/vector-icons/MaterialIcons', () => ({ __esModule: true, default: () => null }));
@@ -132,5 +132,30 @@ describe('per-block isolation and invalidation (#1378)', () => {
     act(() => { c.root.findAll(n => typeof n.type !== 'string' && n.props.testID === 'recovery-history-row-a' && n.props.onPress)[0].props.onPress(); });
     expect(onSelect).toHaveBeenCalledWith('a');
     expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('long histories stay bounded (#1378 review)', () => {
+  test('30 completed blocks derive once each; selecting and rerendering re-derive nothing, and the shared snapshot survives', () => {
+    const ids = Array.from({ length: 30 }, (_, i) => `h${i}`);
+    const blocks = ids.map(id => blk(id));
+    const weeks = ids.map(id => wk(id, 1, `${id}-n`));
+    const notes = ids.flatMap(id => [note(`nb-${id}`, BASE), note(`${id}-n`, lifts(80, 80))]);
+    // A surface's full snapshot that must not be evicted by the rows.
+    const shared = getRecoverySnapshot({ block: blocks[0], weeks, notes });
+    const before = _snapshotDerivationCount();
+    let selected = null;
+    const el = (focused) => <LogRecoveryHistory focusedBlockId={focused} onSelect={(id) => { selected = id; }} activeBlock={null} completedBlocks={blocks} weeks={weeks} notes={notes} />;
+    const c = mount({ completedBlocks: blocks, weeks, notes, onSelect: (id) => { selected = id; } });
+    // h0 reuses the already-derived core; the other 29 derive once.
+    expect(_snapshotDerivationCount() - before).toBe(29);
+    expect(ids.every(id => rowText(c.root, id) === '80% total recovery · Week 1')).toBe(true);
+    const afterExpand = _snapshotDerivationCount();
+    act(() => { c.root.findAll(n => typeof n.type !== 'string' && n.props.testID === 'recovery-history-row-h7' && n.props.onPress)[0].props.onPress(); });
+    act(() => { c.update(el(selected)); });
+    act(() => { c.update(el('h12')); });
+    expect(selected).toBe('h7');
+    expect(_snapshotDerivationCount()).toBe(afterExpand);
+    expect(getRecoverySnapshot({ block: blocks[0], weeks, notes })).toBe(shared);
   });
 });
