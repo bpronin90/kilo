@@ -102,6 +102,11 @@ describe('canonical total per completed row (#1378)', () => {
     expect(rowTexts(c.root, 'a')).not.toContain('From last saved data');
     // Notes never read: no number from placeholder evidence.
     act(() => { c.update(el({ notesError: 'offline', notes: [] })); });
+    expect(rowText(c.root, 'a')).toBe('Week 1: Workout notes couldn’t be loaded, so there is no total to show.');
+    expect(rowLabel(c.root, 'a')).toMatch(/Week 1: Workout notes couldn’t be loaded/);
+    act(() => { c.update(el({ notesError: 'offline', notes: [], weeks: [wk('a', 1, 'w1'), wk('a', 3, 'w3')] })); });
+    expect(rowText(c.root, 'a')).toBe('Week 3: Workout notes couldn’t be loaded, so there is no total to show.');
+    act(() => { c.update(el({ notesError: 'offline', notes: [], weeks: [] })); });
     expect(rowText(c.root, 'a')).toBe('Workout notes couldn’t be loaded, so there is no total to show.');
   });
 

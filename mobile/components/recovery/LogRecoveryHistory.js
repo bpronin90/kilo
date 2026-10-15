@@ -10,6 +10,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { formatDate } from '../../lib/format';
+import { orderedLiveWeeks } from '../../lib/data/recoveryBlocks';
 import { useRecoveryBlockLifecycle, useRecoveryBaselineNames } from '../../hooks/entries/recoveryBlockHooks';
 import { useRecoveryTidyNames } from '../../hooks/entries/recoveryTidyMutations';
 import { useMovementGroupEditor } from '../../hooks/entries/movementGroupHooks';
@@ -22,7 +23,13 @@ import { getRecoverySnapshot, compactRecoverySummary, recoveryInputFingerprint }
 // The write hooks are stable module bindings; tolerate a partially mocked hooks module.
 const optionalHook = (hook) => (typeof hook === 'function' ? hook() : null);
 const _title = (b) => b.baseline_note_title || 'Untitled Routine';
-const NOTES_UNREAD = Object.freeze({ text: 'Workout notes couldn’t be loaded, so there is no total to show.', qualifiers: Object.freeze([]), a11y: 'Workout notes couldn’t be loaded, so there is no total to show.' });
+const NOTES_UNREAD = 'Workout notes couldn’t be loaded, so there is no total to show.';
+// Week identity is known from the live week links even when no note was read.
+const _notesUnread = (weeks, block) => {
+  const live = orderedLiveWeeks(weeks, block.id);
+  const text = live.length > 0 ? `Week ${live[live.length - 1].week_number}: ${NOTES_UNREAD}` : NOTES_UNREAD;
+  return Object.freeze({ text, qualifiers: Object.freeze([]), a11y: text });
+};
 
 export function LogRecoveryHistory({
   activeBlock, completedBlocks, focusedBlockId, onSelect, alwaysShow = false, weeks = [], notes = [], stale = false, notesError = null,
@@ -39,7 +46,7 @@ export function LogRecoveryHistory({
     if (!open) return null;
     // A failed notes refresh keeps the last notes: their evidence is last saved
     // data too. With no notes ever read there is nothing truthful to score.
-    if (notesError && notes.length === 0) return new Map(completedBlocks.map(b => [b.id, NOTES_UNREAD]));
+    if (notesError && notes.length === 0) return new Map(completedBlocks.map(b => [b.id, _notesUnread(weeks, b)]));
     const old = stale || !!notesError;
     const next = new Map();
     const byId = new Map();
