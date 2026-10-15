@@ -7,6 +7,7 @@ import { createStyles } from './logScreenStyles';
 import { countWorkoutSessionsFromSections, parseWorkoutNote, normalizeExerciseKey } from '../../lib/parser';
 import { deriveFirstUseState, pickAdoptableRoutine, FIRST_USE_S1 } from '../../lib/guidedEntry';
 import { normalizeLiftName, listTrackedLifts, deriveWorkoutNoteAnalytics } from '../../lib/data';
+import { deriveProgressionAnchorSource } from '../../lib/data/exerciseProgress';
 import { setProgressionSuggestionMuted } from '../../storage/entries/settings';
 import { isRenderableProgressionSuggestion, progressionSuggestionInstanceId } from '../../components/ProgressionSuggestionCard';
 import { DELOAD_NOTE_PREFIX } from '../../lib/LogScreenHelpers';
@@ -232,15 +233,16 @@ export function useLogScreenController(params) {
       name => namesInCurrent.has(normalizeExerciseKey(name))
     );
     if (visibleTrackedNames.length === 0) return [];
-    const allSections = notes.flatMap(n => {
-      if (n.title?.startsWith(DELOAD_NOTE_PREFIX)) return [];
-      // A completed Recovery block that opted out of ordinary analytics takes
-      // its linked week notes out of the suggestion history, exactly as
-      // Analytics' `deriveParsedSections` does. Membership is exact and
-      // independent of which routine is current, so an excluded note is dropped
-      // even when it is the current one (then there is simply no history to
-      // suggest from — the same outcome Analytics reaches).
-      if (progressionRecoveryFilter.isNoteExcluded?.(n.id)) return [];
+    // #1391: every note is parsed — the notebook Track anchors are minted in,
+    // with the live editor text standing in for the current note — and the
+    // suggestion history is its included subset, so the anchors are translated
+    // into that history rather than clamped. Deload notes are excluded, and so
+    // are the week notes of a Recovery block that opted out of ordinary
+    // analytics, exactly as Analytics' `deriveParsedSections` does. Membership is
+    // exact and independent of which routine is current, so an excluded note is
+    // dropped even when it is the current one (then there is simply no history
+    // to suggest from — the same outcome Analytics reaches).
+    const noteSectionsList = notes.map(n => {
       const text = n.id === currentId ? workoutNoteText : n.raw_text;
       if (!text) return [];
       try {
@@ -249,13 +251,17 @@ export function useLogScreenController(params) {
         return [];
       }
     });
+    const anchorSource = deriveProgressionAnchorSource(
+      notes, noteSectionsList, notes.filter(n => !progressionRecoveryFilter.isNoteExcluded?.(n.id)),
+    );
+    const allSections = noteSectionsList.filter((_, i) => anchorSource.included[i]).flat();
     try {
       const { progressionSuggestions, nameDisplayMap } = deriveWorkoutNoteAnalytics(
         allSections,
         visibleTrackedNames,
         undefined,
         trackedLiftActivations,
-        { deloadHistory, sourceNoteId: currentId, recoveryBlocks },
+        { deloadHistory, sourceNoteId: currentId, recoveryBlocks, anchorSource },
       );
       const records = Array.isArray(progressionSuggestions) ? progressionSuggestions : [];
       // The tracked-name list is normalized, so a record's `name` can be
@@ -329,10 +335,9 @@ export function useLogScreenController(params) {
     // a session typed seconds ago is not missed. It is deliberately the same
     // population the save-boundary reconcile uses, and a superset of every
     // ordinary-analytics population — so the anchor can never come out too
-    // small and admit an entry from the untracked gap. Where a render surface
-    // sees fewer sessions than that (Analytics excludes deloads; both surfaces
-    // exclude opted-out recovery weeks) it clamps in memory and reads
-    // `First session` until its own count catches up.
+    // small and admit an entry from the untracked gap. A surface that sees
+    // fewer sessions (deloads and opted-out recovery weeks are excluded from
+    // progression) translates the anchor into its own population (#1391).
     //
     // A brand-new routine has no `currentId` and no item in `notes`, yet the
     // active-routine card still offers Track. Its live text is appended
