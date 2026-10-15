@@ -566,6 +566,128 @@ describe('RoutinePromptToolsScreen', () => {
       expect(text(tree.root)).toContain('Line 1 isn’t');
     });
 
+    // Superseding events must hide the old error list (and its Copy button)
+    // at once, and late async completions must not publish over a newer reply.
+    const deferred = () => { let resolve; let reject; const promise = new Promise((y, n) => { resolve = y; reject = n; }); return { promise, resolve, reject }; };
+    const replyInput = tree => tree.root.findAll(node => node.props?.testID === 'normalization-reply-input' && node.props.onChangeText)[0];
+    // Returns the in-flight pick wrapped, so awaiting the helper never awaits the pick.
+    const pick = async (tree) => { let pending; await act(async () => { pending = button(tree.root, 'Choose normalized routines file').props.onPress(); }); return { pending }; };
+
+    test('a file review in flight hides the old problems, so they cannot be copied as the new reply’s', async () => {
+      let hold = null;
+      const loadNotes = () => (hold ? hold.promise : Promise.resolve([CURRENT, TARGET]));
+      const copy = jest.fn().mockResolvedValue();
+      const tree = await setup({ copy, loadNotes, canPickFile: true, pickFile: jest.fn().mockResolvedValue('second bad reply') });
+      await paste(tree, 'first bad reply');
+      expect(fixUp(tree)).toBeTruthy();
+      hold = deferred();
+      const { pending } = await pick(tree);
+      expect(fixUp(tree)).toBeUndefined();
+      expect(text(tree.root)).not.toContain('can’t be applied');
+      await act(async () => { hold.resolve([CURRENT, TARGET]); await pending; });
+      expect(fixUp(tree)).toBeTruthy();
+      expect(text(tree.root)).not.toContain('Fix-up message copied');
+      copy.mockClear();
+      await press(tree);
+      expect(copy).toHaveBeenCalledTimes(1);
+      expect(text(tree.root)).toContain('Fix-up message copied.');
+    });
+
+    test('a pending, cancelled or failed file pick never leaves the old problems on screen', async () => {
+      const picks = [deferred(), deferred()];
+      const pickFile = jest.fn().mockReturnValueOnce(picks[0].promise).mockReturnValueOnce(picks[1].promise);
+      const tree = await setup({ canPickFile: true, pickFile });
+      await paste(tree, 'nope');
+      let { pending } = await pick(tree);
+      expect(fixUp(tree)).toBeUndefined();
+      await act(async () => { picks[0].resolve(null); await pending; });
+      expect(fixUp(tree)).toBeUndefined();
+      expect(replyInput(tree).props.value).toBe('nope');
+      await paste(tree, 'nope');
+      ({ pending } = await pick(tree));
+      expect(fixUp(tree)).toBeUndefined();
+      await act(async () => { picks[1].reject(new Error('Couldn’t open that file.')); await pending; });
+      expect(fixUp(tree)).toBeUndefined();
+      expect(text(tree.root)).toContain('Couldn’t open that file.');
+    });
+
+    test('a file pick overtaken by an edit is dropped', async () => {
+      const held = deferred();
+      const tree = await setup({ canPickFile: true, pickFile: jest.fn().mockReturnValue(held.promise) });
+      const { pending } = await pick(tree);
+      await act(async () => { replyInput(tree).props.onChangeText('typed'); });
+      await act(async () => { held.resolve(REPLY); await pending; });
+      expect(replyInput(tree).props.value).toBe('typed');
+      expect(button(tree.root, 'Apply normalized names')).toBeUndefined();
+    });
+
+    test('Review hides the shown problems until it finishes; copies from before it give no feedback', async () => {
+      let hold = null;
+      const loadNotes = () => (hold ? hold.promise : Promise.resolve([CURRENT, TARGET]));
+      const clip = deferred();
+      const copy = jest.fn().mockResolvedValue();
+      const tree = await setup({ copy, loadNotes });
+      await paste(tree, 'nope');
+      copy.mockReturnValueOnce(clip.promise);
+      let copying;
+      await act(async () => { copying = fixUp(tree).props.onPress(); });
+      hold = deferred();
+      let reviewing;
+      await act(async () => { reviewing = button(tree.root, 'Review normalized routines').props.onPress(); });
+      expect(fixUp(tree)).toBeUndefined();
+      await act(async () => { clip.resolve(); await copying; });
+      await act(async () => { hold.resolve([CURRENT, TARGET]); await reviewing; });
+      expect(fixUp(tree)).toBeTruthy();
+      expect(text(tree.root)).not.toContain('Fix-up message copied');
+    });
+
+    test('only the newest fix-up copy reports its outcome', async () => {
+      const first = deferred();
+      const copy = jest.fn().mockResolvedValue();
+      const tree = await setup({ copy });
+      await paste(tree, 'nope');
+      copy.mockReturnValueOnce(first.promise);
+      let pending;
+      await act(async () => { pending = fixUp(tree).props.onPress(); });
+      await press(tree);
+      await act(async () => { first.reject(new Error('denied')); await pending; });
+      expect(text(tree.root)).toContain('Fix-up message copied.');
+      expect(text(tree.root)).not.toContain('Couldn’t copy the message.');
+    });
+
+    test('discarding the saved prompt drops the shown problems and any review in flight', async () => {
+      let hold = null;
+      const loadNotes = () => (hold ? hold.promise : Promise.resolve([CURRENT, TARGET]));
+      const remove = jest.spyOn(AsyncStorage, 'removeItem').mockRejectedValue(new Error('storage unavailable'));
+      try {
+        const tree = await setup({ loadNotes });
+        await paste(tree, 'nope');
+        hold = deferred();
+        let reviewing;
+        await act(async () => { reviewing = button(tree.root, 'Review normalized routines').props.onPress(); });
+        await act(async () => { button(tree.root, 'Discard saved normalization prompt').props.onPress(); });
+        await act(async () => { hold.resolve([CURRENT, TARGET]); await reviewing; });
+        expect(text(tree.root)).toContain('Couldn’t discard the saved prompt.');
+        expect(fixUp(tree)).toBeUndefined();
+      } finally {
+        remove.mockRestore();
+      }
+    });
+
+    test('an apply in flight freezes the reply so its outcome cannot land beside another reply', async () => {
+      const held = deferred();
+      const tree = await setup({ applyBatch: jest.fn().mockReturnValue(held.promise) });
+      await paste(tree, REPLY);
+      let applying;
+      await act(async () => { applying = button(tree.root, 'Apply normalized names').props.onPress(); });
+      expect(replyInput(tree).props.editable).toBe(false);
+      expect(button(tree.root, 'Review normalized routines').props.disabled).toBe(true);
+      await act(async () => { replyInput(tree).props.onChangeText('other'); });
+      expect(replyInput(tree).props.value).toBe(REPLY);
+      await act(async () => { held.resolve({ authority: 'unchanged', saved: [], skipped: [], failed: [] }); await applying; });
+      expect(replyInput(tree).props.editable).toBe(true);
+    });
+
     test('an invalid mapping is listed as not applied and never written; the Apply count ignores it', async () => {
       const saveText = jest.fn();
       const tree = await setup({ saveText });
