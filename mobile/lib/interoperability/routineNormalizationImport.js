@@ -108,8 +108,11 @@ const UNIT_START_RE = new RegExp(`^\\s*${TIME_UNIT}\\b`, 'i');
 // A scalar duration ("Bike 5 min") is prescription unless a descriptor
 // separator precedes it ("Bench | 2 sec pause"), where it is descriptor text.
 const SCALAR_TIME_RE = new RegExp(`\\d+(?:\\.\\d+)?\\s*${TIME_UNIT}\\b`, 'gi');
-// Separators that introduce a descriptor inside an alias's header name.
-const NAME_DESCRIPTOR_RE = /\s*[([|]|[,;:]|\s[—–-]\s/;
+// Separators that introduce a descriptor inside an alias's header name: any
+// punctuation that is not in-word name punctuation (Single-Leg, Farmer's,
+// 3/4, 45°, T.B.D., Clean & Jerk), plus a spaced dash. Marks (*) are
+// checked separately.
+const NAME_DESCRIPTOR_RE = /\s*[^\p{L}\p{N}\s'’\-./&+°*]|\s[—–-]\s/u;
 
 // Dashed ("- 135 5"), bare ("135 5,5"), and skip ("-", "135 -") set rows.
 function isSetRow(line) {
@@ -146,9 +149,9 @@ function originalHeaderText(core, change, start) {
 // Surrounding separators and one enclosing pair of brackets may go; wording,
 // capitalization, and internal punctuation must survive byte-for-byte.
 function cleanDescriptor(text) {
-  let out = String(text).trim().replace(/^[,;:|—–-]+\s*/, '').replace(/\s*[,;:|—–-]+$/, '').trim();
-  const pair = /^([(\[{])(.*)([)\]}])$/.exec(out);
-  if (pair && '([{'.indexOf(pair[1]) === ')]}'.indexOf(pair[3]) && !/[()[\]{}]/.test(pair[2])) out = pair[2].trim();
+  let out = String(text).trim().replace(/^[^\p{L}\p{N}([{<"“]+/u, '').replace(/[^\p{L}\p{N})\]}>"”]+$/u, '').trim();
+  const pair = /^([(\[{<"“])(.*)([)\]}>"”])$/.exec(out);
+  if (pair && '([{<"“'.indexOf(pair[1]) === ')]}>"”'.indexOf(pair[3]) && !/[()[\]{}<>"“”]/.test(pair[2])) out = pair[2].trim();
   return out;
 }
 

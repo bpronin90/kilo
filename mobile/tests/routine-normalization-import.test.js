@@ -410,12 +410,18 @@ describe('owner descriptor examples apply through the batch write (#1383)', () =
     expect(diffTargetNames('Monday\n-bike, 5 min easy', ['Monday', '-Bike', '-- 5 min easy'], auth).changes).toHaveLength(1);
   });
 
-  test.each([':', ';', ',', ' |', ' (', ' [', ' —'])('an alias rename cannot drop a "%s"-separated cue', sep => {
-    const close = { ' (': ')', ' [': ']' }[sep] || '';
+  test.each([':', ';', ',', ' |', ' (', ' [', ' {', ' <', ' "', ' —', ' –', ' -', ' ~', ' #', ' !'])('an alias rename cannot drop a "%s"-separated cue', sep => {
+    const close = { ' (': ')', ' [': ']', ' {': '}', ' <': '>', ' "': '"' }[sep] || '';
     const orig = `Monday\n-Dumbbell Bench Press${sep} paused${close} 3x5\n85 5,5,5`;
     const auth = new Set(['DB Bench Press']);
     expect(diffTargetNames(orig, ['Monday', '-DB Bench Press 3x5', '85 5,5,5'], auth).problems.length).toBeGreaterThan(0);
     expect(diffTargetNames(orig, ['Monday', '-DB Bench Press 3x5', '85 5,5,5', '-- paused'], auth).changes).toHaveLength(1);
+  });
+
+  test("in-word name punctuation stays part of an alias name", () => {
+    const auth = new Set(['Farmer Carry', 'Single Leg Press']);
+    expect(diffTargetNames("Monday\n-Farmer's Walk 3x40", ['Monday', '-Farmer Carry 3x40'], auth).changes).toHaveLength(1);
+    expect(diffTargetNames('Monday\n-Single-Leg Leg Press 3x8', ['Monday', '-Single Leg Press 3x8'], auth).changes).toHaveLength(1);
   });
 
   test('an uncertain movement left unchanged proposes nothing for it', () => {
