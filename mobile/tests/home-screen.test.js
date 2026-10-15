@@ -2913,3 +2913,58 @@ describe('Home daily-dashboard states (#1333)', () => {
     });
   });
 });
+
+// #1391: a tracked population where every exercise is on its first tracked
+// session replaces the 0 · 0 · 0 trio with an establishing-baseline line.
+describe('Home Exercise Progress — establishing a baseline (#1391)', () => {
+  const React = require('react');
+  const render = require('react-test-renderer');
+  const { ThemeProvider } = require('../theme/ThemeContext');
+  const { HomeHeader } = require('../screens/home/HomeHeader');
+
+  const texts = (c) => c.root.findAll(n => n.type === 'Text')
+    .map(n => [].concat(n.props.children).join(''));
+  const has = (c, testID) => c.root.findAll(n => n.props.testID === testID).length > 0;
+  const mount = async (weeklySummary) => {
+    let c;
+    await render.act(async () => {
+      c = render.create(
+        <ThemeProvider>
+          <HomeHeader
+            dashboardData={{ weeksIn: 3, weeklySummary: { hasInheritedTracking: false, ...weeklySummary } }}
+            onNavigate={jest.fn()}
+            workoutNote={{ id: 'n1', title: 'Routine A', raw_text: 'Monday\n-Squat\n225 5' }}
+            notes={[]}
+            handleLogWorkoutPress={jest.fn()}
+            heroPrimaryActionLabel="Log workout"
+            heroPrimaryActionHint="Opens Log"
+          />
+        </ThemeProvider>,
+      );
+    });
+    return c;
+  };
+
+  test.each([
+    [13, '13 exercises are establishing a baseline. Log another session to see trends.'],
+    [1, '1 exercise is establishing a baseline. Log another session to see its trend.'],
+  ])('%i first-session-only exercises read as a baseline, not 0 · 0 · 0', async (n, copy) => {
+    const c = await mount({ classifications: { progressing: 0, stalled: 0, regressing: 0 }, newlyTrackedCount: n });
+    expect(texts(c)).toContain(copy);
+    expect(texts(c)).not.toContain('Progressing');
+    // The Exercise Progress handoff stays.
+    expect(has(c, 'home-exercise-progress-link')).toBe(true);
+  });
+
+  test('a mixed population keeps its real counts', async () => {
+    const c = await mount({ classifications: { progressing: 1, stalled: 0, regressing: 0 }, newlyTrackedCount: 12 });
+    expect(has(c, 'home-progress-baseline')).toBe(false);
+    expect(texts(c)).toEqual(expect.arrayContaining(['1', 'Progressing', 'Steady', 'Regressing']));
+  });
+
+  test('no newly tracked exercises keeps the ordinary trio', async () => {
+    const c = await mount({ classifications: { progressing: 0, stalled: 0, regressing: 0 }, newlyTrackedCount: 0, hasInheritedTracking: true });
+    expect(has(c, 'home-progress-baseline')).toBe(false);
+    expect(texts(c)).toContain('Progressing');
+  });
+});

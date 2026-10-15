@@ -42,6 +42,8 @@ export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigu
 //                Home and Analytics cannot classify the same population against
 //                different time boundaries. Omitted (or empty) means no
 //                watermark anywhere: legacy full-history behavior, unchanged.
+// options.anchorSource: optional (#1391) unfiltered notebook the anchors are
+//                translated from when `sections` is a filtered population.
 //
 // Returns:
 //   weeksIn:         session depth (routine depth) — max session_entries.length
@@ -69,7 +71,7 @@ export function deriveWorkoutNoteAnalytics(sections, trackedNames, multiplier, a
   sections.forEach(s => s.exercises.forEach(e => {
     nameDisplayMap.set(normalizeExerciseKey(e.name), e.name);
   }));
-  const anchors = resolveTrackedLiftAnchors(sections, activations);
+  const anchors = resolveTrackedLiftAnchors(sections, activations, options.anchorSource ?? null);
   const reentry = deriveDeloadReentry(sections, options.deloadHistory, options.sourceNoteId);
   const byKey = new Map(deriveWorkoutAnalytics(sections).exercises.map(ex => [normalizeExerciseKey(ex.name), ex]));
   for (const key of Object.keys(reentry)) {

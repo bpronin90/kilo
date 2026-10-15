@@ -33,6 +33,31 @@ export function deriveProgressionSections(notes, noteSectionsList) {
   return out;
 }
 
+// #1391: the provenance a Track anchor needs to be applied to the progression
+// population. Anchors are minted over the WHOLE notebook (every note, in
+// notebook order); `notes`/`noteSectionsList` are that notebook and
+// `normalNotes` the recovery-filtered subset (the same note objects). A note
+// feeds progression when it is in `normalNotes` and is not a deload, exactly as
+// deriveProgressionSections decides, so the two cannot drift apart.
+export function deriveProgressionAnchorSource(notes, noteSectionsList, normalNotes) {
+  const normal = new Set(normalNotes || []);
+  return {
+    noteSectionsList: noteSectionsList || [],
+    included: (notes || []).map(n => normal.has(n) && !isDeloadNote(n)),
+  };
+}
+
+// #1391: the state where every tracked exercise is still on its first tracked
+// session. A bare 0 · 0 · 0 reads as "nothing is progressing", so both surfaces
+// replace the counts with this. Null whenever a real count exists.
+export function establishingBaselineMessage(summary) {
+  const newlyTracked = summary?.newlyTracked ?? 0;
+  if (!(newlyTracked > 0) || (summary?.classified ?? 0) !== 0) return null;
+  return newlyTracked === 1
+    ? '1 exercise is establishing a baseline. Log another session to see its trend.'
+    : `${newlyTracked} exercises are establishing a baseline. Log another session to see trends.`;
+}
+
 // Tracked exercises that appear in the current routine — the only rows either
 // surface reports progress for.
 export function deriveVisibleTrackedNames(currentSections, trackedLifts) {
@@ -95,12 +120,15 @@ export function summarizeExerciseProgress({ signals = [], nonWeightedMetrics = {
 
 // The one progression pass both surfaces consume. `progressionSections` must
 // come from deriveProgressionSections. `deloadContext` carries the #989
-// post-deload re-entry inputs.
+// post-deload re-entry inputs. `anchorSource` (#1391,
+// deriveProgressionAnchorSource) lets every consumer below translate the Track
+// anchors into this population from the same stored records.
 export function deriveExerciseProgress({
   progressionSections,
   currentSections,
   trackedLifts,
   activations = null,
+  anchorSource = null,
   multiplier,
   deloadContext = {},
 }) {
@@ -111,9 +139,10 @@ export function deriveExerciseProgress({
       deloadHistory: deloadContext.deloadHistory,
       sourceNoteId: deloadContext.sourceNoteId ?? null,
       recoveryBlocks: deloadContext.recoveryBlocks,
+      anchorSource,
     },
   );
-  const nonWeightedMetrics = deriveNonWeightedTrackedExerciseMetrics(progressionSections, visibleTrackedNames, activations);
+  const nonWeightedMetrics = deriveNonWeightedTrackedExerciseMetrics(progressionSections, visibleTrackedNames, activations, anchorSource);
   const summary = summarizeExerciseProgress({ signals, nonWeightedMetrics, visibleTrackedNames, activations });
   return { visibleTrackedNames, signals, nameDisplayMap, perDaySignals, reentry, progressionSuggestions, nonWeightedMetrics, summary };
 }

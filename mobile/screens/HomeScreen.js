@@ -286,8 +286,8 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   );
 
   const dashboardData = useMemo(
-    () => deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, normalNotes, trackedLifts, trackedLiftActivations, deloadHistory, sourceNoteId: currentId ?? null, recoveryBlocks }),
-    [weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, normalNotes, trackedLifts, trackedLiftActivations, deloadHistory, currentId, recoveryBlocks]
+    () => deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, normalNotes, notes, trackedLifts, trackedLiftActivations, deloadHistory, sourceNoteId: currentId ?? null, recoveryBlocks }),
+    [weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, normalNotes, notes, trackedLifts, trackedLiftActivations, deloadHistory, currentId, recoveryBlocks]
   );
 
   // 1K hero color, precomputed here (was inline in the 1K card JSX before the

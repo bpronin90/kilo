@@ -133,24 +133,82 @@ function _dedupeByCanonicalKey(activations) {
 // match here, and verifying would retire a perfectly good watermark over a
 // population difference rather than an identity change.
 //
-// What does apply here is the stale-anchor clamp, and only in memory. A
-// consumer whose population holds fewer sessions than the anchor sees an empty
-// tracked span and reads `First session` until its own count catches up; the
-// stored anchor is untouched, so nothing is lost when it does.
-export function resolveTrackedLiftAnchors(sections, activations) {
+// What does apply here is the stale-anchor clamp, and only in memory.
+//
+// #1391: an anchor is an ordinal in the WHOLE notebook (the population it was
+// minted in), so it cannot be applied directly to a narrower population — the
+// excluded notes before the toggle would push the cut past genuine
+// post-activation sessions. `anchorSource` (from exerciseProgress
+// deriveProgressionAnchorSource) is that unfiltered notebook, note by note, with
+// each note's membership in `sections`. The anchor is then TRANSLATED: the
+// boundary in `sections` is the number of included units inside the stored
+// prefix. Membership is provenance (which note a unit came from), never content
+// matching. Translation always starts from the stored record, so a translated
+// boundary can never be translated twice. Without `anchorSource`, or when it
+// does not describe `sections` for a key, the boundary is the plain clamp:
+// conservative, since it can only drop post-activation sessions, never admit a
+// pre-activation one.
+export function resolveTrackedLiftAnchors(sections, activations, anchorSource = null) {
   const winners = _dedupeByCanonicalKey(activations);
   if (winners.size === 0) return {};
   const { exercises } = deriveWorkoutAnalytics(sections || []);
   const byKey = new Map(exercises.map(ex => [normalizeExerciseKey(ex.name), ex]));
+  const source = anchorSource ? _sourceUnitCounts(anchorSource) : null;
   const anchors = {};
   for (const [key, { record }] of winners) {
     const ex = byKey.get(key);
     if (!ex) continue;
     const raw = Number.isInteger(record.anchor) && record.anchor > 0 ? record.anchor : 0;
     if (raw === 0) continue;
-    anchors[key] = Math.min(raw, loggedSessionUnits(ex.occurrences).length);
+    const have = loggedSessionUnits(ex.occurrences).length;
+    const translated = source ? _translateAnchor(source, key, raw, have) : null;
+    const anchor = translated ?? Math.min(raw, have);
+    if (anchor > 0) anchors[key] = anchor;
   }
   return anchors;
+}
+
+// Per-note logged-session counts for every key, in notebook order. The
+// normative list is a flatMap over occurrences in section order, so the
+// notebook's list is exactly these per-note lists concatenated.
+const _sourceCountCache = new WeakMap();
+function _sourceUnitCounts(anchorSource) {
+  const cached = _sourceCountCache.get(anchorSource);
+  if (cached) return cached;
+  const notes = (anchorSource.noteSectionsList || []).map((noteSections, i) => {
+    const counts = new Map();
+    for (const ex of deriveWorkoutAnalytics(noteSections || []).exercises) {
+      counts.set(normalizeExerciseKey(ex.name), loggedSessionUnits(ex.occurrences).length);
+    }
+    return { counts, included: !!anchorSource.included?.[i] };
+  });
+  _sourceCountCache.set(anchorSource, notes);
+  return notes;
+}
+
+// Returns the boundary in the included population, or null when the source does
+// not account for exactly the `have` units this population holds (the caller
+// then clamps). The stale-anchor clamp applies in the source population first:
+// that is where the anchor was minted and where deleted history shrinks it.
+function _translateAnchor(sourceNotes, key, raw, have) {
+  let total = 0;
+  let includedTotal = 0;
+  for (const note of sourceNotes) {
+    const n = note.counts.get(key) || 0;
+    total += n;
+    if (note.included) includedTotal += n;
+  }
+  if (includedTotal !== have) return null;
+  const prefix = Math.min(raw, total);
+  let seen = 0;
+  let translated = 0;
+  for (const note of sourceNotes) {
+    if (seen >= prefix) break;
+    const n = note.counts.get(key) || 0;
+    if (note.included) translated += Math.min(n, prefix - seen);
+    seen += n;
+  }
+  return translated;
 }
 
 // WRITE side, for the note-save boundary only. Retires records whose key stopped

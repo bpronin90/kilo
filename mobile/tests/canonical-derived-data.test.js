@@ -17,7 +17,8 @@ import {
   resolveOneKSelections,
 } from '../lib/data';
 import { buildRecoveryAnalyticsFilter } from '../lib/data/recoveryAnalyticsFilter';
-import { summarizeExerciseProgress, deriveProgressionSections } from '../lib/data/exerciseProgress';
+import { summarizeExerciseProgress, deriveProgressionSections, establishingBaselineMessage } from '../lib/data/exerciseProgress';
+import { buildTrackedLiftActivation } from '../lib/data/workoutAnalyticsActivations';
 
 const DELOAD = 'Deload · ';
 
@@ -31,6 +32,7 @@ function homePipeline({ notes, currentNote, trackedLifts = {}, activations = {},
     allSections: noteSectionsList.flat(),
     noteSectionsList,
     normalNotes,
+    notes,
     trackedLifts,
     trackedLiftActivations: activations,
     deloadHistory,
@@ -262,5 +264,66 @@ describe('Routine Health — deriveRoutineStatus is the only interpretation', ()
     const analytics = analyticsPipeline({ notes: [current], currentNote: current });
     expect(home.routineStatus).toEqual(analytics.routineStatus);
     expect(home.weeksIn).toBe(3);
+  });
+});
+
+// #1391: Track anchors are minted over the whole notebook and translated into
+// the filtered progression population on both screens.
+describe('Exercise Progress — activation anchors across filtered populations', () => {
+  const blockWeeks = (n) => Array.from({ length: n }, (_, i) => ({ id: `wk${i + 1}`, block_id: 'b1', note_id: `w${i + 1}`, week_number: i + 1 }));
+  const history = [
+    note('s', 'Monday\n-Squat\n225 5\n235 5\n245 5\n255 5\n-Lateral Raise\n20 12\n25 12'),
+    note('d', 'Monday\n-Squat\n135 5', { title: `${DELOAD}R-s` }),
+    note('b', 'Monday\n-Squat\n255 5\n265 5\n405 5\n-Lateral Raise\n25 12'),
+    ...[1, 2, 3, 4, 5, 6].map(w => note(`w${w}`, `Monday\n-Squat\n${100 + w * 10} 8\n-Lateral Raise\n10 15`)),
+  ];
+  const current = note('p', 'Monday\n-Squat\n275 5\n285 5\n-Lateral Raise\n25 12');
+  const mint = (name) => buildTrackedLiftActivation(history.flatMap(n => getNoteSections(n)), name, new Date('2026-08-26T12:00:00Z'));
+  const activations = { squat: mint('Squat'), 'lateral raise': mint('Lateral Raise') };
+  const trackedLifts = { squat: true, 'lateral raise': true };
+  const run = (status, include = false) => {
+    const filter = buildRecoveryAnalyticsFilter([{ id: 'b1', status, include_in_normal_analytics: include }], blockWeeks(6));
+    const input = { notes: [...history, current], currentNote: current, trackedLifts, activations, filter };
+    return { home: homePipeline(input), analytics: analyticsPipeline(input) };
+  };
+
+  test.each(['active', 'completed'])('Squat reads Progressing beside a one-session lift (%s block)', (status) => {
+    const { home, analytics } = run(status);
+    expectProgressAgrees(home, analytics);
+    expect(home.exerciseProgress).toMatchObject({ progressing: 1, stalled: 0, regressing: 0, classified: 1, newlyTracked: 1 });
+    expect(establishingBaselineMessage(home.exerciseProgress)).toBeNull();
+    const squat = analytics.analytics.signals.find(s => s.name.toLowerCase() === 'squat');
+    expect(squat.overload_trend).toBe('up');
+  });
+
+  test('an included block is part of the population, so its sessions stay pre-activation', () => {
+    const { home, analytics } = run('completed', true);
+    expectProgressAgrees(home, analytics);
+    // Still Progressing; the light recovery sessions never join the comparison.
+    expect(home.exerciseProgress).toMatchObject({ progressing: 1, classified: 1, newlyTracked: 1 });
+  });
+
+  test('first-session-only tracked population reads as establishing a baseline', () => {
+    const onlyOne = note('p', 'Monday\n-Squat\n275 5\n-Lateral Raise\n25 12');
+    const filter = buildRecoveryAnalyticsFilter([{ id: 'b1', status: 'completed', include_in_normal_analytics: false }], blockWeeks(6));
+    const input = { notes: [...history, onlyOne], currentNote: onlyOne, trackedLifts, activations, filter };
+    const home = homePipeline(input);
+    const analytics = analyticsPipeline(input);
+    expectProgressAgrees(home, analytics);
+    expect(home.exerciseProgress).toMatchObject({ classified: 0, newlyTracked: 2 });
+    expect(establishingBaselineMessage(home.exerciseProgress))
+      .toBe('2 exercises are establishing a baseline. Log another session to see trends.');
+  });
+});
+
+describe('establishingBaselineMessage', () => {
+  test('only for an all-first-session population, with singular/plural copy', () => {
+    expect(establishingBaselineMessage({ classified: 0, newlyTracked: 1 }))
+      .toBe('1 exercise is establishing a baseline. Log another session to see its trend.');
+    expect(establishingBaselineMessage({ classified: 0, newlyTracked: 13 }))
+      .toBe('13 exercises are establishing a baseline. Log another session to see trends.');
+    expect(establishingBaselineMessage({ classified: 1, newlyTracked: 12 })).toBeNull();
+    expect(establishingBaselineMessage({ classified: 0, newlyTracked: 0 })).toBeNull();
+    expect(establishingBaselineMessage(null)).toBeNull();
   });
 });

@@ -508,7 +508,8 @@ describe('AnalyticsScreen Progressive Overload — canonical Exercise Progress s
     expect(hasText(root, 'Steady')).toBe(true);
   });
 
-  test('every tracked exercise on its first session still shows the summary, as 0 / 0 / 0', () => {
+  // Legacy (no activation records): newlyTracked stays 0, so no baseline state.
+  test('every tracked exercise on its first session without a Track activation still shows 0 / 0 / 0', () => {
     const currentNote = { id: 'n1', raw_text: 'Monday\n+ lifting\n1. bench press\n2. squat' };
     const trackedLifts = { 'bench press': true, squat: true };
     jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
@@ -526,6 +527,22 @@ describe('AnalyticsScreen Progressive Overload — canonical Exercise Progress s
       const col = root.findAllByProps({ testID: `po-progress-${key}` })[0];
       expect([].concat(col.findAllByType('Text')[0].props.children).join('')).toBe('0');
     }
+  });
+
+  // #1391
+  test('first-session-only tracked exercises read as establishing a baseline', () => {
+    const currentNote = { id: 'n1', raw_text: 'Monday\n-Bench Press\n135 5\n-Squat\n225 5' };
+    const trackedLifts = { 'bench press': true, squat: true };
+    const fresh = { anchor: 0, at: '2026-08-26T12:00:00.000Z', witness: null };
+    const root = setup({ hookOverrides: {
+      notes: [currentNote], currentNote, trackedLifts,
+      trackedLiftActivations: { 'bench press': fresh, squat: fresh },
+    } }).root;
+    expect(root.findAllByProps({ testID: 'po-progress-summary' }).length).toBe(0);
+    expect(root.findAllByProps({ testID: 'po-progress-baseline' }).length).toBeGreaterThan(0);
+    expect(hasText(root, '2 exercises are establishing a baseline. Log another session to see trends.')).toBe(true);
+    // Rows and their First session states stay.
+    expect(hasText(root, 'Bench Press')).toBe(true);
   });
 
   test('no tracked exercises shows no summary, only the empty state', () => {
