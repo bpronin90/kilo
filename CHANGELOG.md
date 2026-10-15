@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.15.2 - 2026-10-15
+
+- Issue #1378: Completed blocks in Log → Recovery → Recovery Blocks now show their latest total recovery and week right in the row (for example, "82% total recovery · Week 3"), so you can compare finished blocks without opening each one. Blocks without a score say why instead of showing a number.
+
 ## 1.15.1 - 2026-10-15
 
 - Issue #1375: Workout weights in your routine are plain note text again, so tapping inside a note no longer fights with double-tap-to-edit. The plate calculator now lives in Routine actions → Plate calculator, where you can type any target weight; Analytics still opens it for your big-three lifts.
