@@ -404,6 +404,10 @@ describe('owner descriptor examples apply through the batch write (#1383)', () =
     expect(diffTargetNames('Monday\n-bike 5 min easy', ['Monday', '-Bike 5', '-- min easy'], auth).problems.length).toBeGreaterThan(0);
     expect(diffTargetNames('Monday\n-plank 3x30s, slow', ['Monday', '-Plank 3x30', '-- s, slow'], auth).problems.length).toBeGreaterThan(0);
     expect(diffTargetNames('Monday\n-plank 3x30s, slow', ['Monday', '-Plank 3x30s', '-- slow'], auth).changes).toHaveLength(1);
+    expect(diffTargetNames('Monday\n-bike 5 min easy', ['Monday', '-Bike', '-- 5 min easy'], auth).problems.length).toBeGreaterThan(0);
+    // The parser keeps a spaced duration in the name, so this stays unapplied.
+    expect(diffTargetNames('Monday\n-bike 5 min easy', ['Monday', '-Bike 5 min', '-- easy'], auth).problems.length).toBeGreaterThan(0);
+    expect(diffTargetNames('Monday\n-bike, 5 min easy', ['Monday', '-Bike', '-- 5 min easy'], auth).changes).toHaveLength(1);
   });
 
   test('an uncertain movement left unchanged proposes nothing for it', () => {

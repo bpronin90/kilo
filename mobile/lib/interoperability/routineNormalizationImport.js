@@ -105,6 +105,9 @@ const TIME_UNIT = '(?:sec|secs|seconds?|s|min|mins|minutes?|m)';
 // endpoint, unit, or load digit can leave it.
 const PRESCRIPTION_RE = new RegExp(`\\d+(?:\\.\\d+)?\\s*[xX×]\\s*\\d+(?:\\.\\d+)?(?:\\s*[-–/]\\s*\\d+(?:\\.\\d+)?)*(?:\\s*${TIME_UNIT}\\b)?|\\d+(?:\\.\\d+)?\\s*[-–]\\s*\\d+(?:\\.\\d+)?\\s*${TIME_UNIT}\\b|@\\s*\\d[\\d.]*\\S*`, 'gi');
 const UNIT_START_RE = new RegExp(`^\\s*${TIME_UNIT}\\b`, 'i');
+// A scalar duration ("Bike 5 min") is prescription unless a descriptor
+// separator precedes it ("Bench | 2 sec pause"), where it is descriptor text.
+const SCALAR_TIME_RE = new RegExp(`\\d+(?:\\.\\d+)?\\s*${TIME_UNIT}\\b`, 'gi');
 // Separators that introduce a descriptor inside an alias's header name.
 const NAME_DESCRIPTOR_RE = /\s*\(|\s*\||,|\s[—–-]\s/;
 
@@ -156,7 +159,7 @@ function cleanDescriptor(text) {
 function descriptorSplit(content, returned, tail, oldName, newName) {
   const stars = text => (text.match(/\*/g) || []).length;
   if (stars(returned) !== stars(content)) return null;
-  const prescriptions = [...content.matchAll(PRESCRIPTION_RE)];
+  const prescriptions = [...content.matchAll(PRESCRIPTION_RE), ...[...content.matchAll(SCALAR_TIME_RE)].filter(m => !NAME_DESCRIPTOR_RE.test(content.slice(0, m.index)))];
   const candidates = [];
   if (!tail) candidates.push(content.length);
   else for (let at = content.indexOf(tail, 1); at >= 1; at = content.indexOf(tail, at + 1)) candidates.push(at);
