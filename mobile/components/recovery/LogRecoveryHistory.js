@@ -24,11 +24,15 @@ import { getRecoverySnapshot, compactRecoverySummary, recoveryInputFingerprint }
 const optionalHook = (hook) => (typeof hook === 'function' ? hook() : null);
 const _title = (b) => b.baseline_note_title || 'Untitled Routine';
 const NOTES_UNREAD = 'Workout notes couldn’t be loaded, so there is no total to show.';
-// Week identity is known from the live week links even when no note was read.
-const _notesUnread = (weeks, block) => {
+const _notesUnread = Object.freeze({ text: NOTES_UNREAD, weekLabel: null, qualifiers: Object.freeze([]), a11y: NOTES_UNREAD });
+// Week identity comes from the live week links, which do not depend on notes or
+// the baseline: a non-numeric summary with no week of its own still names it.
+const _withLiveWeek = (summary, weeks, block) => {
+  if (summary.weekLabel) return summary;
   const live = orderedLiveWeeks(weeks, block.id);
-  const text = live.length > 0 ? `Week ${live[live.length - 1].week_number}: ${NOTES_UNREAD}` : NOTES_UNREAD;
-  return Object.freeze({ text, qualifiers: Object.freeze([]), a11y: text });
+  if (live.length === 0) return summary;
+  const weekLabel = `Week ${live[live.length - 1].week_number}`;
+  return Object.freeze({ ...summary, weekLabel, text: `${weekLabel}: ${summary.text}`, a11y: `${weekLabel}: ${summary.a11y}` });
 };
 
 export function LogRecoveryHistory({
@@ -46,13 +50,14 @@ export function LogRecoveryHistory({
     if (!open) return null;
     // A failed notes refresh keeps the last notes: their evidence is last saved
     // data too. With no notes ever read there is nothing truthful to score.
-    if (notesError && notes.length === 0) return new Map(completedBlocks.map(b => [b.id, _notesUnread(weeks, b)]));
+    if (notesError && notes.length === 0) return new Map(completedBlocks.map(b => [b.id, _withLiveWeek(_notesUnread, weeks, b)]));
     const old = stale || !!notesError;
     const next = new Map();
     const byId = new Map();
     for (const block of completedBlocks) {
       const key = `${old ? 1 : 0}|${recoveryInputFingerprint(block, weeks, notes)}`;
-      const summary = summaryCache.current.get(key) || compactRecoverySummary(getRecoverySnapshot({ block, weeks, notes, stale: old }));
+      const summary = summaryCache.current.get(key)
+        || _withLiveWeek(compactRecoverySummary(getRecoverySnapshot({ block, weeks, notes, stale: old })), weeks, block);
       next.set(key, summary);
       byId.set(block.id, summary);
     }

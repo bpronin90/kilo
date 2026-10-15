@@ -223,7 +223,7 @@ export function compactRecoverySummary(snapshot) {
   if (scored && !total.selectedReadable) qualifiers.push(`${display.weekLabel} note can’t be read; total is from earlier weeks`);
   if (snapshot.stale) qualifiers.push('From last saved data');
   return Object.freeze({
-    text, qualifiers: Object.freeze(qualifiers),
+    text, weekLabel: display.weekLabel, qualifiers: Object.freeze(qualifiers),
     a11y: [text.replace(/ · /g, ', '), ...qualifiers].map(_sentence).join(' '),
   });
 }

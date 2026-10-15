@@ -67,7 +67,10 @@ describe('canonical total per completed row (#1378)', () => {
     expect(rowText(noWeeks.root, 'a')).toBe('Baseline captured. No week logged yet.');
     expect(rowText(noWeeks.root, 'a')).not.toMatch(/Week \d/);
     const noBase = one(blk('a', { baseline: null }), [wk('a', 1, 'w1')], [note('nb-a', BASE), note('w1', BASE)]);
-    expect(rowText(noBase.root, 'a')).toBe('Baseline data for this block isn’t available.');
+    expect(rowText(noBase.root, 'a')).toBe('Week 1: Baseline data for this block isn’t available.');
+    expect(rowLabel(noBase.root, 'a')).toMatch(/Week 1: Baseline data for this block isn’t available\.$/);
+    const noBaseNoWeek = one(blk('a', { baseline: null }), [], [note('nb-a', BASE)]);
+    expect(rowText(noBaseNoWeek.root, 'a')).toBe('Baseline data for this block isn’t available.');
     const repsOnly = '-Pull-up\n- 8,8,8';
     const ns = one(blk('a', { baseline: captureRecoveryBaselineFromText(repsOnly) }), [wk('a', 1, 'w1')], [note('nb-a', repsOnly), note('w1', repsOnly)]);
     expect(rowText(ns.root, 'a')).toBe('Week 1: No baseline lift can be scored for strength yet.');
