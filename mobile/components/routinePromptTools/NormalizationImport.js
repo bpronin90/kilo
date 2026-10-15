@@ -8,16 +8,55 @@ import { TYPOGRAPHY } from '../../theme/typography';
 import { GEOMETRY } from '../../theme/spacing';
 import { FieldLabel } from '../FieldLabel';
 
-// #1172 return path: paste or pick the external reply, preview every rename
-// against the targets captured when the prompt was copied/shared, then apply
-// only the approved renames. Invalid or stale targets are listed, never written.
+// Discard of the saved prompt shared by the compact and legacy panels. A
+// failure keeps the snapshot and says so.
+const TOO_LARGE = 'That reply is too large to be header results. Nothing changed.';
+
+function useDiscard(onDiscard) {
+  const [message, setMessage] = useState('');
+  const discard = async () => {
+    setMessage('');
+    try {
+      await onDiscard();
+    } catch {
+      setMessage('Couldn’t discard the saved prompt. It is still available.');
+    }
+  };
+  return [message, discard];
+}
+
+// A prompt saved before the compact protocol (#1386) asked for whole routines.
+// Its replies are never read by the compact parser, so the only ways forward
+// are a fresh Copy/Share (which replaces it) or an explicit discard.
+export function LegacyNormalizationNotice({ onDiscard }) {
+  const styles = useThemedStyles(createStyles);
+  const [message, discard] = useDiscard(onDiscard);
+  return (
+    <View style={styles.section} testID="normalization-legacy-section">
+      <SectionTitle>Import normalized routines</SectionTitle>
+      <Card>
+        <Text style={styles.muted}>The saved prompt was made by an older version and can’t be imported. Copy or share a fresh prompt to import a new reply, or discard the saved prompt.</Text>
+      </Card>
+      {message ? <Text style={styles.error}>{message}</Text> : null}
+      <Button title="Discard saved prompt" onPress={discard} accessibilityLabel="Discard saved normalization prompt" />
+    </View>
+  );
+}
+
+// #1172 return path, compact protocol (#1386): paste or pick the external
+// reply (one "H<n> => …" line per header), preview every mapping against the
+// original notes captured when the prompt was copied/shared, then apply only
+// the approved ones. Invalid or stale items are listed, never written.
 export function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPickFile, onApplied, onPendingRetry, onComplete, onDiscard }) {
   const styles = useThemedStyles(createStyles);
   const inputStyle = useInputStyle();
   const [reply, setReply] = useState('');
   const [preview, setPreview] = useState(null);
-  const [offKeys, setOffKeys] = useState(() => new Set());
+  // Deselection is explicit at three levels: a mapping (its rename and its
+  // inserted note together), a whole target, or one header occurrence.
+  const [offRefs, setOffRefs] = useState(() => new Set());
   const [offTargets, setOffTargets] = useState(() => new Set());
+  const [offOccurrences, setOffOccurrences] = useState(() => new Set());
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -34,8 +73,9 @@ export function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile,
       if (seq !== reviewSeq.current) return;
       const next = buildNormalizationPreview(text, snapshot, loaded);
       setPreview(next);
-      setOffKeys(new Set());
+      setOffRefs(new Set());
       setOffTargets(new Set());
+      setOffOccurrences(new Set());
     } catch {
       if (seq !== reviewSeq.current) return;
       setPreview(null);
@@ -46,27 +86,22 @@ export function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile,
     try {
       const text = await pickFile();
       if (text == null) return;
+      // A file takes the same bound as a paste, before any state or parsing.
+      if (text.length > MAX_REPLY_LENGTH) { setMessage(TOO_LARGE); return; }
       setReply(text);
       await review(text);
     } catch (error) {
       setMessage(error?.message || 'Couldn’t read that file. Nothing changed.');
     }
   };
-  const discardSnapshot = async () => {
-    setMessage('');
-    try {
-      await onDiscard();
-    } catch {
-      setMessage('Couldn’t discard the saved prompt. It is still available to import.');
-    }
-  };
+  const [discardMessage, discardSnapshot] = useDiscard(onDiscard);
 
-  const valid = preview ? preview.entries.filter(entry => entry.changes) : [];
+  const valid = preview ? preview.entries.filter(entry => entry.occurrences) : [];
   const invalid = preview ? preview.entries.filter(entry => entry.problems) : [];
-  const selectedKeys = new Set((preview?.mappings || []).map(m => m.key).filter(key => !offKeys.has(key)));
+  const isSelected = occurrence => !offRefs.has(occurrence.ref) && !offOccurrences.has(occurrence.key);
   const planned = valid
     .filter(entry => !offTargets.has(entry.id))
-    .map(entry => ({ entry, next: applySelectedChanges(entry, selectedKeys) }))
+    .map(entry => ({ entry, next: applySelectedChanges(entry, isSelected) }))
     .filter(item => item.next != null);
 
   // Retry re-runs only the failed items; earlier outcomes stay reported.
@@ -128,7 +163,7 @@ export function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile,
     <View style={styles.section} testID="normalization-import-section">
       <SectionTitle>Import normalized routines</SectionTitle>
       <Card>
-        <Text style={styles.muted}>Paste the LLM’s complete reply{canPickFile ? ' or choose a text file' : ''}. Kilo checks that only exercise names changed before anything is written.</Text>
+        <Text style={styles.muted}>Paste the LLM’s reply, one line per header{canPickFile ? ', or choose a text file' : ''}. Kilo rebuilds each change from your saved routines and checks it before anything is written.</Text>
       </Card>
       <FieldLabel>Normalized routines reply</FieldLabel>
       <TextInput
@@ -139,9 +174,9 @@ export function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile,
         onChangeText={(text) => {
           if (retryPending) return;
           // Never hold an oversized paste in state or render it.
-          if (text.length > MAX_REPLY_LENGTH) { setMessage('That reply is too large to be routine results. Nothing changed.'); return; }
+          if (text.length > MAX_REPLY_LENGTH) { setMessage(TOO_LARGE); return; }
           reviewSeq.current += 1; setReply(text); setPreview(null); setResult(null); }}
-        placeholder="Paste the normalized routines here"
+        placeholder="Paste the reply here"
         accessibilityLabel="Normalized routines reply"
         testID="normalization-reply-input"
       />
@@ -151,19 +186,31 @@ export function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile,
         {!retryPending ? <Button title="Discard saved prompt" onPress={discardSnapshot} accessibilityLabel="Discard saved normalization prompt" /> : null}
       </View>
       {message ? <Text style={styles.error}>{message}</Text> : null}
-      {preview?.tooLarge ? <Text style={styles.error}>That reply is too large to be routine results. Nothing changed.</Text> : null}
+      {discardMessage ? <Text style={styles.error}>{discardMessage}</Text> : null}
+      {preview?.tooLarge ? <Text style={styles.error}>{TOO_LARGE}</Text> : null}
+      {preview?.unsupported || preview?.inconsistent ? (
+        <Text style={styles.error}>The saved prompt can’t be used to import this reply. Nothing can be applied. Generate a fresh prompt.</Text>
+      ) : null}
       {preview?.authorityStale ? (
         <Text style={styles.error}>The authoritative routine changed after the prompt was generated. Nothing can be applied. Generate a fresh prompt.</Text>
       ) : null}
-      {preview && !preview.authorityStale && !preview.tooLarge ? <>
+      {preview?.replyErrorCount ? (
+        <Card>
+          <Text style={styles.error}>This reply doesn’t follow the format, so nothing can be applied. Ask the LLM to follow the reply format exactly.</Text>
+          {preview.replyErrors.map(error => <Text key={error} style={styles.error}>{error}</Text>)}
+          {preview.replyErrorCount > preview.replyErrors.length ? <Text style={styles.error}>…and {preview.replyErrorCount - preview.replyErrors.length} more.</Text> : null}
+        </Card>
+      ) : null}
+      {preview && !preview.authorityStale && !preview.tooLarge && !preview.unsupported && !preview.inconsistent && !preview.replyErrorCount ? <>
         {preview.mappings.length ? <>
           <SectionTitle>Name changes</SectionTitle>
           <View style={styles.choiceList}>
             {preview.mappings.map(m => {
-              const checked = !offKeys.has(m.key);
-              return <Pressable key={m.key} style={styles.choice} onPress={() => toggle(setOffKeys, m.key)} accessibilityRole="checkbox" accessibilityState={{ checked }} accessibilityLabel={`Rename ${m.oldName} to ${m.newName}`}>
-                <Text style={styles.choiceTitle}>{checked ? <><MaterialIcons name="check" size={16} accessible={false} />{' '}</> : null}{m.oldName} → {m.newName}</Text>
-                <Text style={styles.muted}>{m.noteCount} {m.noteCount === 1 ? 'routine' : 'routines'}</Text>
+              const checked = !offRefs.has(m.ref);
+              return <Pressable key={m.ref} style={styles.choice} onPress={() => toggle(setOffRefs, m.ref)} accessibilityRole="checkbox" accessibilityState={{ checked }} accessibilityLabel={`Rename ${m.oldHeader} to ${m.newName}`}>
+                <Text style={styles.choiceTitle}>{checked ? <><MaterialIcons name="check" size={16} accessible={false} />{' '}</> : null}{m.oldHeader} → {m.newName}</Text>
+                {m.descriptor != null ? <Text style={styles.muted}>Moves to a note: {m.descriptor}</Text> : null}
+                <Text style={styles.muted}>{m.occurrenceCount} {m.occurrenceCount === 1 ? 'occurrence' : 'occurrences'} in {m.noteCount} {m.noteCount === 1 ? 'routine' : 'routines'}</Text>
               </Pressable>;
             })}
           </View>
@@ -173,19 +220,27 @@ export function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile,
           <View style={styles.choiceList}>
             {valid.map(entry => {
               const checked = !offTargets.has(entry.id);
-              const next = applySelectedChanges(entry, selectedKeys);
-              return <Pressable key={entry.id} style={styles.choice} onPress={() => toggle(setOffTargets, entry.id)} accessibilityRole="checkbox" accessibilityState={{ checked }} accessibilityLabel={`Update Target routine ${entry.number}: ${entry.title}`}>
-                <Text style={styles.choiceTitle}>{checked ? <><MaterialIcons name="check" size={16} accessible={false} />{' '}</> : null}Target routine {entry.number}: {entry.title}</Text>
-                <Text selectable style={styles.prompt} testID={`normalization-preview-${entry.number}`}>{entry.changes.length === 0 ? 'No proposed change. This routine is returned unchanged.' : (next ?? 'No selected changes.')}</Text>
-              </Pressable>;
+              const next = applySelectedChanges(entry, isSelected);
+              return <View key={entry.id} style={styles.choiceGroup}>
+                <Pressable style={styles.choice} onPress={() => toggle(setOffTargets, entry.id)} accessibilityRole="checkbox" accessibilityState={{ checked }} accessibilityLabel={`Update Target routine ${entry.number}: ${entry.title}`}>
+                  <Text style={styles.choiceTitle}>{checked ? <><MaterialIcons name="check" size={16} accessible={false} />{' '}</> : null}Target routine {entry.number}: {entry.title}</Text>
+                  <Text selectable style={styles.prompt} testID={`normalization-preview-${entry.number}`}>{entry.occurrences.length === 0 ? 'No proposed change. This routine is left unchanged.' : (next ?? 'No selected changes.')}</Text>
+                </Pressable>
+                {entry.occurrences.map(occurrence => {
+                  const on = !offOccurrences.has(occurrence.key);
+                  return <Pressable key={occurrence.key} style={styles.occurrence} onPress={() => toggle(setOffOccurrences, occurrence.key)} accessibilityRole="checkbox" accessibilityState={{ checked: on }} accessibilityLabel={`Update line ${occurrence.line + 1} of Target routine ${entry.number}: ${entry.title}`}>
+                    <Text style={styles.muted}>{on ? <><MaterialIcons name="check" size={14} accessible={false} />{' '}</> : null}Line {occurrence.line + 1} · {occurrence.newBody}</Text>
+                  </Pressable>;
+                })}
+              </View>;
             })}
           </View>
         </> : null}
-        {invalid.length || preview.unknown.length ? <>
+        {invalid.length || preview.rejected.length ? <>
           <SectionTitle>Not applied</SectionTitle>
           <Card>
+            {preview.rejected.map(item => <Text key={item.ref} style={styles.error}>{item.ref} “{item.header}” was left unchanged: {item.problem}</Text>)}
             {invalid.map(entry => <Text key={entry.id} style={styles.error}>Target routine {entry.number}: {entry.title} has a problem. {entry.problems.join(' ')}</Text>)}
-            {preview.unknown.map(number => <Text key={`u${number}`} style={styles.error}>Target routine {number} was not in the prompt and was ignored.</Text>)}
           </Card>
         </> : null}
         {!result ? (
@@ -209,6 +264,8 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   muted: { color: kua ? kua.onSurfaceVariant : colors.textMuted, fontSize: TYPOGRAPHY['body-md'].fontSize, lineHeight: 20 },
   section: { gap: 16 },
   choiceList: { gap: 8 },
+  choiceGroup: { gap: 4 },
+  occurrence: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 16 },
   choice: { backgroundColor: kua ? kua.surfaceCard : colors.card, borderColor: kua ? kua.surfaceBorder : colors.cardBorder, borderWidth: 1, borderRadius: GEOMETRY['radius-2xl'], minHeight: 48, justifyContent: 'center', paddingHorizontal: 16 },
   choiceTitle: { color: kua ? kua.onSurface : colors.text, fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '600' },
   prompt: { color: kua ? kua.onSurface : colors.text, fontSize: TYPOGRAPHY['body-md'].fontSize, lineHeight: 20 },

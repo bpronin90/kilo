@@ -21,6 +21,15 @@ jest.mock('../lib/reminderScheduler', () => ({ reconcileWorkoutReminder: () => P
 const CURRENT = { id: 'current', title: 'Upper', raw_text: 'Monday\n-Bench Press\n- 135 5 *PR\n-- keep tight\n---\nTuesday\n-Squat\n- 185 -' };
 const TARGET = { id: 'target', title: 'Upper', raw_text: 'Monday\n-Bench press\n- 135 5 *PR\n-- keep tight\n---\nTuesday\n-Squat\n- 185 -' };
 
+// Compact reply for [TARGET]: H1 is '-Bench press', H2 is '-Squat'.
+const GOOD = 'H1 => Bench Press\nH2 => no match';
+const FIXED = TARGET.raw_text.replace('-Bench press', '-Bench Press');
+// An authority that is also a target and holds both Squat names.
+const AUTHN = { id: 'current', title: 'Upper', raw_text: 'Monday\n-Bench Press\n- 135 5 *PR\n-Back Squat\n- 185 -\n-Squat\n- 100 5' };
+const AUTHN_FIXED = AUTHN.raw_text.replace('-Squat\n', '-Back Squat\n');
+// For targets [AUTHN, TARGET]: H1 Bench Press, H2 Back Squat, H3 Squat, H4 Bench press.
+const AUTHN_REPLY = 'H1 => no match\nH2 => no match\nH3 => Back Squat\nH4 => Bench Press';
+
 function button(root, label) {
   return root.findAll(node => node.props?.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
 }
@@ -57,44 +66,76 @@ describe('routine prompt builders', () => {
     expect(prompt).not.toContain('https://');
   });
 
-  test('normalization includes authoritative and selected routines while preserving everything except names', () => {
-    const prompt = buildExerciseNameNormalizationPrompt({ authority: CURRENT, targets: [TARGET] });
-    expect(prompt).toContain('Kilo routine text is plain text');
-    expect(prompt).toContain(CURRENT.raw_text);
-    expect(prompt).toContain(TARGET.raw_text);
-    expect(prompt).toContain('Authoritative routine: Upper');
-    expect(prompt).toContain('Label each result with its exact reference label');
-    expect(prompt).toContain('Target routine 1: Upper');
-    expect(prompt).toContain('Return every target, even when nothing changed');
-    expect(prompt).toContain('do not add explanations, a summary, or a change list');
-    expect(prompt).toContain('Do not use Markdown fences or return any reference markers');
-    expect(prompt).not.toContain('Target routine 1: Upper\n---');
+  // Unique history/set/date/comment data that must never reach a Normalize prompt.
+  const SENTINEL_AUTH = { id: 'sa', title: 'AuthTitle-SENTINEL', raw_text: 'Monday 2026-07-04\n+LIFTING (~30 min)\n-Bench Press 3x5\n- 9991 5,5,5 *PR9992\n-- authority-comment-9993\n-Squat\n135 5 -\nTuesday\n-Row 3x8' };
+  const SENTINEL_TARGET = { id: 'st', title: 'TargetTitle-SENTINEL', raw_text: 'Monday 2026-07-05\n-bench press 3x5, paused\n- 8881 5,5,5 *PR8882\n85 8,8\n-- target-comment-8883\n---\nTuesday\n-squat 3x5\n135 5\n' };
+  const SENTINELS = [/9991/, /9992/, /9993/, /8881/, /8882/, /8883/, /SENTINEL/, /2026-07/, /30 min/, /135 5/, /- 135/, /85 8,8/, /Keep shoulders pinned/, /Wednesday/, /logged sets/i, /Row 3x8/];
+
+  test('normalization sends only authority names and distinct target headers; no history, sets, dates, comments or titles', () => {
+    const prompt = buildExerciseNameNormalizationPrompt({ authority: SENTINEL_AUTH, targets: [SENTINEL_TARGET] });
+    for (const sentinel of SENTINELS) expect(prompt).not.toMatch(sentinel);
+    expect(prompt).not.toContain('Kilo routine text is plain text');
+    expect(prompt).not.toContain(ROUTINE_PROMPT_FORMAT_GUIDE);
+    expect(prompt).not.toContain('<<< BEGIN KILO ROUTINE REFERENCE');
+    expect(prompt).toContain('<<< BEGIN KILO AUTHORITATIVE EXERCISE NAMES >>>\nBench Press\nSquat\nRow\n<<< END KILO AUTHORITATIVE EXERCISE NAMES >>>');
+    expect(prompt).toContain('<<< BEGIN KILO EXERCISE HEADERS >>>\nH1\nheader: -bench press 3x5, paused\nwhere: Week A · Monday\n\nH2\nheader: -squat 3x5\nwhere: Week B · Tuesday\n<<< END KILO EXERCISE HEADERS >>>');
   });
 
-  test('normalization states the six cleanup rules (#1383)', () => {
+  test('distinct headers are listed once with stable refs and combined contexts; names escape the grammar', () => {
+    const twin = { id: 'tw', title: 'Twin', raw_text: 'Wednesday\n+WARMUP\n-bench press 3x5, paused\n-Bench Press 3x5\n' };
+    const auth = { id: 'a', title: 'A', raw_text: 'Monday\n-Bench Press 3x5\n-Farmer\\Carry 2x40' };
+    const prompt = buildExerciseNameNormalizationPrompt({ authority: auth, targets: [SENTINEL_TARGET, twin] });
+    expect(prompt).toContain('Bench Press\nFarmer\\\\Carry\n<<< END KILO AUTHORITATIVE EXERCISE NAMES >>>');
+    expect(prompt).toContain('H1\nheader: -bench press 3x5, paused\nwhere: Week A · Monday; Wednesday · WARMUP\n\nH2\nheader: -squat 3x5\nwhere: Week B · Tuesday\n\nH3\nheader: -Bench Press 3x5\nwhere: Wednesday · WARMUP\n<<< END');
+    expect(buildExerciseNameNormalizationPrompt({ authority: auth, targets: [SENTINEL_TARGET, twin] })).toBe(prompt);
+  });
+
+  test('normalization returns no prompt when nothing safe can be extracted, never a full-note fallback', () => {
+    const huge = { id: 'h', title: 'Huge', raw_text: `Monday\n-Bench\n${'x'.repeat(MAX_RAW_TEXT_LENGTH + 1)}` };
+    expect(buildExerciseNameNormalizationPrompt({ authority: huge, targets: [TARGET] })).toBe('');
+    expect(buildExerciseNameNormalizationPrompt({ authority: CURRENT, targets: [huge] })).toBe('');
+    expect(buildExerciseNameNormalizationPrompt({ authority: { raw_text: 'Monday' }, targets: [TARGET] })).toBe('');
+    expect(buildExerciseNameNormalizationPrompt({ authority: CURRENT, targets: [{ id: 'n', title: 'N', raw_text: 'Monday' }] })).toBe('');
+    expect(buildExerciseNameNormalizationPrompt()).toBe('');
+  });
+
+  test('normalization states the cleanup rules (#1383) for header mappings', () => {
     const prompt = buildExerciseNameNormalizationPrompt({ authority: CURRENT, targets: [TARGET] });
     for (const rule of [
-      '1. Match conservatively.', 'merely related or similar, or the match is uncertain, leave that header exactly as it is', 'Do not invent exercises', 'never invent a cleaner name',
-      '2. Use the authoritative name exactly.', 'character for character', 'Never copy the authoritative routine\'s prescription into the target',
-      '3. Preserve the target prescription exactly.', 'same numbers, rep ranges, spelling, and spacing', 'The prescription is not descriptor text',
-      '4. Move all remaining descriptor text to one "-- " note.', 'Do not decide that phrases such as "each leg", "light", or "step up" are redundant',
-      'Keep the descriptor\'s wording, capitalization, and internal punctuation exactly', 'you may remove only the separator before it', 'Do not paraphrase, summarize, or delete any of its words',
-      '5. Place that note directly after the exercise\'s logged sets, or directly after its header when it has no sets', 'bare rows without a dash', 'skipped rows', 'Leave existing comments where they are', 'never move the note past the next exercise, day heading, section marker, or Week A/B divider',
-      '6. Preserve everything else.', 'session and history columns', 'exercise order', 'must be returned completely unchanged',
+      '1. Match conservatively.', 'merely related or similar, or the match is uncertain, reply "no match" for that header', 'Do not invent exercises', 'never invent a cleaner name',
+      '2. Use the authoritative name exactly.', 'character for character', 'Never copy an authoritative prescription into a header',
+      '3. The prescription stays in the header.', '(such as 2x8, 3x6-8, or 3x30 sec), any @load, and any marks stay exactly as they are',
+      '4. Give all remaining descriptor text.', 'Do not decide that phrases such as "each leg", "light", or "step up" are redundant',
+      'keeping its wording, capitalization, and internal punctuation exactly', 'you may remove only the separator before it', 'Do not paraphrase, summarize, or delete any of its words',
+      'Kilo moves it into one "-- " note', 'reply "no match" for that header instead',
     ]) expect(prompt).toContain(rule);
     expect(prompt).not.toMatch(/byte|verbatim/i);
   });
 
-  test('normalization includes the four before/after examples without overriding the authority', () => {
+  test('normalization documents the strict reply grammar and escapes', () => {
+    const prompt = buildExerciseNameNormalizationPrompt({ authority: CURRENT, targets: [TARGET] });
+    for (const line of [
+      'Reply with exactly one line for every header, in any order, and nothing else.',
+      'H3 => no match\nH3 => Lat Pulldown\nH3 => Lat Pulldown | pack shoulder down on eccentric',
+      '" => " (a space, an equals sign, a greater-than sign, a space)',
+      '"no match" is literal lowercase text and leaves that header unchanged',
+      'optionally followed by " | " (a space, a vertical bar, a space)',
+      'never write " | " when there is no descriptor',
+      'write each backslash as \\\\ and each vertical bar as \\| ; no other escapes exist',
+      'Do not add Markdown fences, explanations, headings, blank lines, or leading or trailing spaces',
+      'never return routine text',
+    ]) expect(prompt).toContain(line);
+  });
+
+  test('normalization includes the four owner examples as header-to-reply lines without overriding the authority', () => {
     const prompt = buildExerciseNameNormalizationPrompt({ authority: CURRENT, targets: [TARGET] });
     for (const example of [
-      'Authority "Single-Leg RDL": header "-Single-Leg RDL 2x8 each leg, light" becomes "-Single-Leg RDL 2x8", with the note "-- each leg, light".',
-      'Authority "DB Bench Press": header "-DB Bench Press 3x6-8, step up" becomes "-DB Bench Press 3x6-8", with the note "-- step up".',
-      'Authority "Lat Pulldown": header "-Lat Pulldown 2x10-12 (pack shoulder down on eccentric)" becomes "-Lat Pulldown 2x10-12", with the note "-- pack shoulder down on eccentric".',
-      'Authority "Deadlift": header "-Deadlift — trial sets, slow and controlled" becomes "-Deadlift", with the note "-- trial sets, slow and controlled".',
-      '-DB Bench Press 3x6-8\n85 8,8,8\n90 -\n-- step up\n-- felt good',
+      'Authority "Single-Leg RDL": header "-Single-Leg RDL 2x8 each leg, light" is answered "H1 => Single-Leg RDL | each leg, light".',
+      'Authority "DB Bench Press": header "-DB Bench Press 3x6-8, step up" is answered "H2 => DB Bench Press | step up".',
+      'Authority "Lat Pulldown": header "-Lat Pulldown 2x10-12 (pack shoulder down on eccentric)" is answered "H3 => Lat Pulldown | pack shoulder down on eccentric".',
+      'Authority "Deadlift": header "-Deadlift — trial sets, slow and controlled" is answered "H4 => Deadlift | trial sets, slow and controlled".',
     ]) expect(prompt).toContain(example);
-    expect(prompt).toContain('always use the names in the authoritative routine below');
+    expect(prompt).toContain('always use the names in the authoritative list below');
   });
 
   test('planning and format prompts keep their existing text', () => {
@@ -118,78 +159,9 @@ When I ask for the final version, return only the complete Kilo-importable routi
 First ask about my training goals, schedule, experience, equipment, and preferences. When I ask for the final routine, return only Kilo-importable routine text.`);
   });
 
-  test('normalization prompt text is byte-identical to the #1383 protocol (#1385)', () => {
-    const expected = [
-      "Use the authoritative routine below as the source of truth for exercise names. Apply these rules to every selected target routine:",
-      "",
-      "1. Match conservatively. Treat a target exercise as a match only when you are highly confident it is the same movement as one authoritative exercise, even if it is written with shorthand, a spelling or punctuation difference, a different prescription, or extra descriptor text. If the exercises are merely related or similar, or the match is uncertain, leave that header exactly as it is. Do not invent exercises, and do not use any routine other than the authoritative routine as the source of names. If an authoritative name itself looks ambiguous or untidy, use it as written or leave the target unchanged; never invent a cleaner name.",
-      "2. Use the authoritative name exactly. For a confident match, replace the target header's name with the authoritative exercise name, character for character, keeping the target header's own structure (its leading dash or number and any marks such as *). Never copy the authoritative routine's prescription into the target.",
-      "3. Preserve the target prescription exactly. Keep the target's own sets-by-reps prescription (such as 2x8 or 3x6-8) in the header with the same numbers, rep ranges, spelling, and spacing. The prescription is not descriptor text and must not move.",
-      "4. Move all remaining descriptor text to one \"-- \" note. Any other text in the target header beyond the name and prescription (cues, qualifiers, intensity, side notes) goes into a single comment line that starts with \"-- \" (two dashes and a space). Do not decide that phrases such as \"each leg\", \"light\", or \"step up\" are redundant and drop them. Keep the descriptor's wording, capitalization, and internal punctuation exactly; you may remove only the separator before it (such as a comma or dash) and parentheses that enclose all of it. Do not paraphrase, summarize, or delete any of its words.",
-      "5. Place that note directly after the exercise's logged sets, or directly after its header when it has no sets. Logged sets include rows with a leading \"- \" (for example \"- 135 5,5,5\"), bare rows without a dash (for example \"135 5,5,5\"), and skipped rows (for example \"135 -\"). Leave existing comments where they are, and never move the note past the next exercise, day heading, section marker, or Week A/B divider.",
-      "6. Preserve everything else. Keep weights, reps, session and history columns, dates, existing comments, day headings, section markers (such as +WARMUP), Week A/B \"---\" dividers, structural marks, exercise order, and all unrelated whitespace and text exactly as written. Do not add, remove, reorder, or otherwise edit exercises or sets. A target with no confident match must be returned completely unchanged.",
-      "",
-      "Examples (the authoritative names here only illustrate the transformation; always use the names in the authoritative routine below):",
-      "- Authority \"Single-Leg RDL\": header \"-Single-Leg RDL 2x8 each leg, light\" becomes \"-Single-Leg RDL 2x8\", with the note \"-- each leg, light\".",
-      "- Authority \"DB Bench Press\": header \"-DB Bench Press 3x6-8, step up\" becomes \"-DB Bench Press 3x6-8\", with the note \"-- step up\".",
-      "- Authority \"Lat Pulldown\": header \"-Lat Pulldown 2x10-12 (pack shoulder down on eccentric)\" becomes \"-Lat Pulldown 2x10-12\", with the note \"-- pack shoulder down on eccentric\".",
-      "- Authority \"Deadlift\": header \"-Deadlift — trial sets, slow and controlled\" becomes \"-Deadlift\", with the note \"-- trial sets, slow and controlled\".",
-      "",
-      "For example, this target exercise:",
-      "-DB Bench Press 3x6-8, step up",
-      "85 8,8,8",
-      "90 -",
-      "-- felt good",
-      "",
-      "is returned as:",
-      "-DB Bench Press 3x6-8",
-      "85 8,8,8",
-      "90 -",
-      "-- step up",
-      "-- felt good",
-      "",
-      "Return each selected target as complete Kilo-importable routine text, one at a time. Label each result with its exact reference label, for example \"Target routine 1: Upper\", on its own line directly before that routine's text, so duplicate routine titles remain distinguishable. Return every target, even when nothing changed, and do not add explanations, a summary, or a change list. Do not use Markdown fences or return any reference markers. Kilo routine text is plain text. Use a day heading followed by exercise headers and optional logged sets:",
-      "",
-      "Monday",
-      "-Bench Press 3x5-8",
-      "- 135 5,5,5",
-      "-- Keep shoulders pinned",
-      "",
-      "Wednesday",
-      "-Squat 3x5",
-      "- 185 5,5,5",
-      "",
-      "Use a standalone --- line only to divide Week A from Week B. Keep comments on lines beginning with --. Exercise headers begin with one dash; logged sets begin with a dash and a space. Do not add Markdown fences, explanations, or metadata to final importable routine text.",
-      "",
-      "<<< BEGIN KILO ROUTINE REFERENCE: Authoritative routine: Upper >>>",
-      "Monday",
-      "-Bench Press",
-      "- 135 5 *PR",
-      "-- keep tight",
-      "---",
-      "Tuesday",
-      "-Squat",
-      "- 185 -",
-      "<<< END KILO ROUTINE REFERENCE >>>",
-      "",
-      "<<< BEGIN KILO ROUTINE REFERENCE: Target routine 1: Upper >>>",
-      "Monday",
-      "-Bench press",
-      "- 135 5 *PR",
-      "-- keep tight",
-      "---",
-      "Tuesday",
-      "-Squat",
-      "- 185 -",
-      "<<< END KILO ROUTINE REFERENCE >>>",
-    ].join('\n');
-    expect(buildExerciseNameNormalizationPrompt({ authority: CURRENT, targets: [TARGET] })).toBe(expected);
-  });
-
-  test('builders keep malformed and long local note text verbatim', () => {
+  test('Plan keeps long and malformed local note text verbatim', () => {
     const malformed = { id: 'odd', title: 'Odd', raw_text: `Monday\n-Not quite valid\n- ???\n${'x'.repeat(12_000)}` };
     expect(buildRoutinePlanningPrompt(malformed)).toContain(malformed.raw_text);
-    expect(buildExerciseNameNormalizationPrompt({ authority: malformed, targets: [CURRENT] })).toContain(malformed.raw_text);
   });
 
   test('the generic format template contains no routine data', () => {
@@ -260,8 +232,12 @@ describe('RoutinePromptToolsScreen', () => {
     await choose(tree, 'authority', ['target']);
     await choose(tree, 'targets', ['current']);
     const output = promptOutput(tree.root);
-    expect(output).toContain(TARGET.raw_text);
-    expect(output).toContain(CURRENT.raw_text);
+    // The picked authority contributes names only; the picked target its headers.
+    expect(output).toContain('<<< BEGIN KILO AUTHORITATIVE EXERCISE NAMES >>>\nBench press\nSquat\n<<< END');
+    expect(output).toContain('header: -Bench Press\n');
+    expect(output).not.toContain(TARGET.raw_text);
+    expect(output).not.toContain(CURRENT.raw_text);
+    expect(output).not.toContain('- 135 5 *PR');
   });
 
   test('handles an empty library and never generates a routine-specific prompt', async () => {
@@ -369,7 +345,7 @@ describe('RoutinePromptToolsScreen', () => {
       expect(button(tree.root, 'Copy prompt')).toBeUndefined();
       await choose(tree, 'targets', ['current']);
       expect(button(tree.root, 'Copy prompt')).toBeTruthy();
-      expect(texts(tree.root)).toContain('1 routine · 2 exercises');
+      expect(texts(tree.root)).toContain('1 routine · 2 distinct headers');
       expect(promptOutput(tree.root)).toBe(buildExerciseNameNormalizationPrompt({ authority: DATED[1], targets: [DATED[0]] }));
       await choose(tree, 'authority', ['current']);
       expect(texts(tree.root)).toContain('1 routine selected');
@@ -397,7 +373,7 @@ describe('RoutinePromptToolsScreen', () => {
       await choose(tree, 'targets', ['target']);
       await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
       const input = tree.root.findAll(node => node.props?.testID === 'normalization-reply-input' && node.props.onChangeText)[0];
-      await act(async () => { input.props.onChangeText('Target routine 1: Upper\n' + TARGET.raw_text.replace('-Bench press', '-Bench Press')); });
+      await act(async () => { input.props.onChangeText(GOOD); });
       await act(async () => { button(tree.root, 'Review normalized routines').props.onPress(); });
       await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
       await act(async () => { byTestId(tree.root, 'prompt-disclosure-toggle').props.onPress(); });
@@ -424,7 +400,7 @@ describe('RoutinePromptToolsScreen', () => {
   });
 
   describe('import normalized routines (#1172)', () => {
-    const REPLY = 'Here are the results.\n\nTarget routine 1: Upper\n' + TARGET.raw_text.replace('-Bench press', '-Bench Press');
+    const REPLY = GOOD;
     const text = root => root.findAllByType('Text').map(node => node.children.join('')).join('\n');
     const setup = async (props = {}) => {
       const tree = mount({ canPickFile: false, ...props });
@@ -449,18 +425,18 @@ describe('RoutinePromptToolsScreen', () => {
       expect(button(tree.root, 'Review normalized routines')).toBeUndefined();
       await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
       await paste(tree, REPLY);
-      expect(text(tree.root)).toContain('Bench press → Bench Press');
+      expect(text(tree.root)).toContain('-Bench press → Bench Press');
       expect(saveText).not.toHaveBeenCalled();
       await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
-      expect(saveText).toHaveBeenCalledWith('target', TARGET.raw_text, TARGET.raw_text.replace('-Bench press', '-Bench Press'));
+      expect(saveText).toHaveBeenCalledWith('target', TARGET.raw_text, FIXED);
       expect(text(tree.root)).toContain('Updated Target routine 1: Upper.');
     });
 
     test('a target returned unchanged is shown as having no proposed change', async () => {
       const saveText = jest.fn().mockResolvedValue('saved');
       const tree = await setup({ saveText });
-      await paste(tree, 'Target routine 1: Upper\n' + TARGET.raw_text);
-      expect(text(tree.root)).toContain('No proposed change. This routine is returned unchanged.');
+      await paste(tree, 'H1 => no match\nH2 => no match');
+      expect(text(tree.root)).toContain('No proposed change. This routine is left unchanged.');
       expect(button(tree.root, 'Apply normalized names').props.disabled).toBe(true);
       expect(saveText).not.toHaveBeenCalled();
     });
@@ -488,12 +464,47 @@ describe('RoutinePromptToolsScreen', () => {
       expect(text(tree.root)).toContain('Nothing was written');
     });
 
-    test('a structurally edited result is listed as not applied', async () => {
+    test('a malformed reply blocks Apply for the whole reply and is reported line by line', async () => {
       const saveText = jest.fn();
       const tree = await setup({ saveText });
-      await paste(tree, REPLY.replace('135', '145'));
+      await paste(tree, `Sure! Here you go:\n${REPLY}\n\nH9 => no match`);
+      expect(text(tree.root)).toContain('This reply doesn’t follow the format, so nothing can be applied.');
+      expect(text(tree.root)).toContain('Line 1 isn’t “H<number> => …”');
+      expect(text(tree.root)).toContain('Line 4 isn’t “H<number> => …”');
+      expect(text(tree.root)).toContain('H9 wasn’t in the prompt.');
+      expect(button(tree.root, 'Apply normalized names')).toBeUndefined();
+      expect(text(tree.root)).not.toContain('Name changes');
+      await paste(tree, 'H1 => Bench Press');
+      expect(text(tree.root)).toContain('H2 has no reply line.');
+      expect(saveText).not.toHaveBeenCalled();
+    });
+
+    test('an invalid mapping is listed as not applied and never written; the Apply count ignores it', async () => {
+      const saveText = jest.fn();
+      const tree = await setup({ saveText });
+      await paste(tree, 'H1 => Conventional Deadlift\nH2 => no match');
       expect(text(tree.root)).toContain('Not applied');
+      expect(text(tree.root)).toContain('H1 “-Bench press” was left unchanged: “Conventional Deadlift” isn’t an exercise name in the authoritative routine.');
       expect(button(tree.root, 'Apply normalized names').props.disabled).toBe(true);
+      expect(saveText).not.toHaveBeenCalled();
+    });
+
+    test('mapping, target and occurrence deselection all remove the rename together with its note', async () => {
+      const applyBatch = jest.fn(async ({ items }) => ({ authority: 'unchanged', saved: items.map(i => ({ id: i.id, pending_sync: false })), skipped: [], failed: [] }));
+      const tree = await setup({ applyBatch });
+      await paste(tree, REPLY);
+      const box = label => tree.root.findAll(node => node.props?.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
+      const checked = label => box(label).props.accessibilityState.checked;
+      expect(text(tree.root)).toContain('1 occurrence in 1 routine');
+      for (const label of ['Rename -Bench press to Bench Press', 'Update Target routine 1: Upper', 'Update line 2 of Target routine 1: Upper']) {
+        expect(checked(label)).toBe(true);
+        await act(async () => { box(label).props.onPress(); });
+        expect(checked(label)).toBe(false);
+        expect(button(tree.root, 'Apply normalized names').props.disabled).toBe(true);
+        await act(async () => { box(label).props.onPress(); });
+        expect(button(tree.root, 'Apply normalized names').props.disabled).toBe(false);
+      }
+      expect(applyBatch).not.toHaveBeenCalled();
     });
 
     test('a new snapshot discards an earlier preview, and applied text feeds the next prompt', async () => {
@@ -546,7 +557,7 @@ describe('RoutinePromptToolsScreen', () => {
     });
 
     test('retry still works when the authority is also a saved target', async () => {
-      const notes = [CURRENT, TARGET];
+      const notes = [AUTHN, TARGET];
       const saveText = jest.fn(async (id, _e, next) => {
         if (id === 'target') throw new Error('enqueue failed');
         notes[0] = { ...notes[0], raw_text: next };
@@ -557,8 +568,7 @@ describe('RoutinePromptToolsScreen', () => {
       await act(async () => { button(tree.root, 'Normalize exercise names').props.onPress(); });
       await choose(tree, 'targets', ['current', 'target']);
       await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
-      const reply = `Target routine 1\n${CURRENT.raw_text.replace('-Squat', '-Back Squat')}\nTarget routine 2\n${TARGET.raw_text.replace('-Bench press', '-Bench Press')}`;
-      await paste(tree, reply);
+      await paste(tree, AUTHN_REPLY);
       await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
       expect(text(tree.root)).toContain('Couldn’t save Target routine 2');
       saveText.mockImplementation(async () => 'saved');
@@ -567,7 +577,7 @@ describe('RoutinePromptToolsScreen', () => {
     });
 
     test('retry works when the authority landed locally but its enqueue failed', async () => {
-      const notes = [CURRENT, TARGET];
+      const notes = [AUTHN, TARGET];
       let first = true;
       const saveText = jest.fn(async (id, _e, next) => {
         if (id !== 'current') return 'saved';
@@ -580,9 +590,10 @@ describe('RoutinePromptToolsScreen', () => {
       await act(async () => { button(tree.root, 'Normalize exercise names').props.onPress(); });
       await choose(tree, 'targets', ['current']);
       await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
-      await paste(tree, `Target routine 1\n${CURRENT.raw_text.replace('-Squat', '-Back Squat')}`);
+      await paste(tree, 'H1 => no match\nH2 => no match\nH3 => Back Squat');
       await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
       await act(async () => { button(tree.root, 'Retry failed routines').props.onPress(); });
+      expect(saveText).toHaveBeenCalledWith('current', AUTHN.raw_text, AUTHN_FIXED);
       expect(text(tree.root)).toContain('Updated Target routine 1: Upper.');
     });
 
@@ -606,17 +617,20 @@ describe('RoutinePromptToolsScreen', () => {
 
     test('several targets are applied in one storage batch', async () => {
       const applyBatch = jest.fn(async ({ items }) => ({ authority: 'unchanged', saved: items.map(i => ({ id: i.id, pending_sync: false })), skipped: [], failed: [] }));
-      const tree = mount({ canPickFile: false, applyBatch });
+      const tree = mount({ canPickFile: false, applyBatch, loadNotes: async () => [AUTHN, TARGET] });
       await act(async () => {});
       await act(async () => { button(tree.root, 'Normalize exercise names').props.onPress(); });
       await choose(tree, 'targets', ['current', 'target']);
       await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
-      await paste(tree, `Target routine 1\n${CURRENT.raw_text.replace('-Squat', '-Back Squat')}\nTarget routine 2\n${TARGET.raw_text.replace('-Bench press', '-Bench Press')}`);
+      await paste(tree, AUTHN_REPLY);
       await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
       expect(applyBatch).toHaveBeenCalledTimes(1);
       expect(applyBatch.mock.calls[0][0]).toEqual(expect.objectContaining({
-        authority: expect.objectContaining({ id: 'current', expected_raw_text: CURRENT.raw_text }),
-        items: [expect.objectContaining({ id: 'current' }), expect.objectContaining({ id: 'target' })],
+        authority: expect.objectContaining({ id: 'current', expected_raw_text: AUTHN.raw_text }),
+        items: [
+          { id: 'current', expected_raw_text: AUTHN.raw_text, next_raw_text: AUTHN_FIXED },
+          { id: 'target', expected_raw_text: TARGET.raw_text, next_raw_text: FIXED.replace('-Squat', '-Back Squat') },
+        ],
       }));
       expect(text(tree.root)).toContain('Updated Target routine 1: Upper.');
       expect(text(tree.root)).toContain('Updated Target routine 2: Upper.');
@@ -659,6 +673,8 @@ describe('RoutinePromptToolsScreen', () => {
       const TGT = { id: 'target', title: 'Upper', raw_text: ORIG };
       const TWIN = { id: 'twin', title: 'Upper', raw_text: 'Monday\n-Deadlift — trial sets, slow and controlled\n135 5' };
       const TWIN_OUT = 'Monday\n-Deadlift\n135 5\n-- trial sets, slow and controlled';
+      // For targets [TGT, TWIN]: H1 is the bench header, H2 the (shared) Deadlift header.
+      const DESCRIPTOR_REPLY = 'H1 => DB Bench Press | step up\nH2 => Deadlift | trial sets, slow and controlled';
       const stored = async id => (await Storage.loadWorkoutNotes()).find(n => n.id === id).raw_text;
       const start = async extra => {
         await Storage.replaceWorkoutNotesRaw([]);
@@ -674,8 +690,10 @@ describe('RoutinePromptToolsScreen', () => {
       test('Copy → Import → Review → Apply persists the cleaned text', async () => {
         const applyBatch = jest.fn(request => applyWorkoutNoteTextBatchIfUnchanged(request));
         const tree = await start({ applyBatch });
-        await paste(tree, `Target routine 2: Upper\n${TWIN_OUT}\nTarget routine 1: Upper\n${OUT}`);
-        expect(text(tree.root)).toContain('DB Bench Press 3x6-8, step up → DB Bench Press');
+        await paste(tree, DESCRIPTOR_REPLY);
+        expect(text(tree.root)).toContain('-DB Bench Press 3x6-8, step up → DB Bench Press');
+        expect(text(tree.root)).toContain('Moves to a note: step up');
+        expect(text(tree.root)).toContain('2 occurrences in 2 routines');
         await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
         expect(applyBatch.mock.calls[0][0].items).toEqual([
           { id: 'target', expected_raw_text: ORIG, next_raw_text: `${OUT}\n` },
@@ -685,15 +703,43 @@ describe('RoutinePromptToolsScreen', () => {
         expect(await stored('twin')).toBe(TWIN_OUT);
       });
 
-      test('a reply that drops a descriptor is shown as not applied and writes nothing', async () => {
+      test('a reply that drops a descriptor is shown as not applied and writes nothing for it', async () => {
         const applyBatch = jest.fn(request => applyWorkoutNoteTextBatchIfUnchanged(request));
         const tree = await start({ applyBatch });
-        await paste(tree, `Target routine 1\n${OUT.replace('-- step up\n', '')}\nTarget routine 2\n${TWIN.raw_text}`);
+        await paste(tree, 'H1 => DB Bench Press\nH2 => no match');
         expect(text(tree.root)).toContain('Not applied');
-        expect(text(tree.root)).toContain('dropped header text');
+        expect(text(tree.root)).toContain('would be dropped without a descriptor');
         expect(button(tree.root, 'Apply normalized names').props.disabled).toBe(true);
         expect(applyBatch).not.toHaveBeenCalled();
         expect(await stored('target')).toBe(ORIG);
+        // The independent valid mapping still applies; the rejected one never does.
+        await paste(tree, 'H1 => DB Bench Press\nH2 => Deadlift | trial sets, slow and controlled');
+        await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+        expect(await stored('target')).toBe(ORIG.replace('-Deadlift — trial sets, slow and controlled\n', '-Deadlift\n-- trial sets, slow and controlled\n'));
+        expect(await stored('twin')).toBe(TWIN_OUT);
+      });
+
+      test('a target or the authority edited between review and Apply is not written', async () => {
+        const applyBatch = jest.fn(request => applyWorkoutNoteTextBatchIfUnchanged(request));
+        const tree = await start({ applyBatch });
+        await paste(tree, DESCRIPTOR_REPLY);
+        await Storage.saveWorkoutNoteItem({ ...TWIN, raw_text: 'Monday\n-edited meanwhile' });
+        await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+        expect(text(tree.root)).toContain('Updated Target routine 1: Upper.');
+        expect(text(tree.root)).toContain('Not updated Target routine 2: Upper: it was edited or removed after the prompt was generated.');
+        expect(await stored('target')).toBe(`${OUT}\n`);
+        expect(await stored('twin')).toBe('Monday\n-edited meanwhile');
+      });
+
+      test('an authority edited between review and Apply blocks every write', async () => {
+        const applyBatch = jest.fn(request => applyWorkoutNoteTextBatchIfUnchanged(request));
+        const tree = await start({ applyBatch });
+        await paste(tree, DESCRIPTOR_REPLY);
+        await Storage.saveWorkoutNoteItem({ ...AUTH, raw_text: `${AUTH.raw_text}\n-Row` });
+        await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+        expect(text(tree.root)).toContain('Nothing was written');
+        expect(await stored('target')).toBe(ORIG);
+        expect(await stored('twin')).toBe(TWIN.raw_text);
       });
 
       test('mixed outcome retries only the failed target, never duplicating its note', async () => {
@@ -703,7 +749,7 @@ describe('RoutinePromptToolsScreen', () => {
           return compareAndSetWorkoutNoteText(id, expected, next);
         });
         const tree = await start({ saveText: saveOne });
-        await paste(tree, `Target routine 1\n${OUT}\nTarget routine 2\n${TWIN_OUT}`);
+        await paste(tree, DESCRIPTOR_REPLY);
         await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
         expect(text(tree.root)).toContain('Couldn’t save Target routine 2');
         expect(await stored('twin')).toBe(TWIN.raw_text);
@@ -717,7 +763,144 @@ describe('RoutinePromptToolsScreen', () => {
     test('a picked text file uses the same review pipeline', async () => {
       const tree = await setup({ canPickFile: true, pickFile: jest.fn().mockResolvedValue(REPLY) });
       await act(async () => { button(tree.root, 'Choose normalized routines file').props.onPress(); });
-      expect(text(tree.root)).toContain('Bench press → Bench Press');
+      expect(text(tree.root)).toContain('-Bench press → Bench Press');
+    });
+
+    test('an oversized picked file is rejected before it is stored, parsed or rendered', async () => {
+      const tree = await setup({ canPickFile: true, pickFile: jest.fn().mockResolvedValue('x'.repeat(1024 * 1024 + 1)) });
+      await act(async () => { button(tree.root, 'Choose normalized routines file').props.onPress(); });
+      const input = tree.root.findAll(node => node.props?.testID === 'normalization-reply-input' && node.props.onChangeText)[0];
+      expect(input.props.value).toBe('');
+      expect(text(tree.root)).toContain('too large');
+      expect(button(tree.root, 'Apply normalized names')).toBeUndefined();
+    });
+  });
+
+  describe('compact snapshot lifecycle (#1386)', () => {
+    beforeEach(async () => { await AsyncStorage.clear(); });
+    afterEach(async () => { await AsyncStorage.clear(); });
+    const text = root => root.findAllByType('Text').map(node => node.children.join('')).join('\n');
+    const NOTES2 = [CURRENT, TARGET];
+    const openNormalize = async (tree) => {
+      await act(async () => {});
+      await act(async () => { button(tree.root, 'Normalize exercise names').props.onPress(); });
+    };
+    const copyFor = async (tree, ids) => {
+      await choose(tree, 'targets', ids);
+      await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
+    };
+    const paste = async (tree, value) => {
+      const input = tree.root.findAll(node => node.props?.testID === 'normalization-reply-input' && node.props.onChangeText)[0];
+      await act(async () => { input.props.onChangeText(value); });
+      await act(async () => { button(tree.root, 'Review normalized routines').props.onPress(); });
+    };
+    const stored = async () => JSON.parse(await AsyncStorage.getItem('kilo_normalization_import_snapshot_v1'));
+
+    test('capture happens only on explicit Copy and persists the protocol marker and catalog with the original texts', async () => {
+      const tree = mount({ canPickFile: false });
+      await openNormalize(tree);
+      await choose(tree, 'targets', ['target']);
+      expect(await stored()).toBeNull();
+      await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
+      const snapshot = await stored();
+      expect(snapshot).toEqual(expect.objectContaining({ protocol: 'compact-exercise-v1', version: 1 }));
+      expect(snapshot.authority.raw_text).toBe(CURRENT.raw_text);
+      expect(snapshot.targets).toEqual([{ id: 'target', title: 'Upper', raw_text: TARGET.raw_text }]);
+      expect(snapshot.catalog).toEqual({
+        names: ['Bench Press', 'Squat'],
+        headers: [
+          { ref: 'H1', raw: '-Bench press', occurrences: [{ noteId: 'target', line: 1 }] },
+          { ref: 'H2', raw: '-Squat', occurrences: [{ noteId: 'target', line: 6 }] },
+        ],
+      });
+    });
+
+    test('a remount restores the same refs and original text; later edits never reassign refs', async () => {
+      const saveText = jest.fn().mockResolvedValue('saved');
+      const first = mount({ canPickFile: false, saveText });
+      await openNormalize(first);
+      await copyFor(first, ['target']);
+      act(() => { first.unmount(); });
+      // The routine library changed after the prompt: another routine now sorts first.
+      const extra = { id: 'extra', title: 'Extra', raw_text: 'Monday\n-Curl 3x8\n-Row 3x8' };
+      const second = mount({ canPickFile: false, saveText, loadNotes: async () => [extra, CURRENT, TARGET] });
+      await openNormalize(second);
+      await paste(second, GOOD);
+      expect(text(second.root)).toContain('-Bench press → Bench Press');
+      await act(async () => { button(second.root, 'Apply normalized names').props.onPress(); });
+      expect(saveText).toHaveBeenCalledWith('target', TARGET.raw_text, FIXED);
+    });
+
+    test('a new successful capture gets a new identity and discards the previous preview', async () => {
+      const tree = mount({ canPickFile: false, saveText: jest.fn().mockResolvedValue('saved') });
+      await openNormalize(tree);
+      await copyFor(tree, ['target']);
+      await paste(tree, GOOD);
+      expect(button(tree.root, 'Apply normalized names')).toBeTruthy();
+      await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
+      expect((await stored()).version).toBe(2);
+      expect(button(tree.root, 'Apply normalized names')).toBeUndefined();
+    });
+
+    describe('a saved full-note prompt from before the compact protocol', () => {
+      const LEGACY = { version: 7, authority: { id: 'current', title: 'Upper', raw_text: CURRENT.raw_text }, targets: [{ id: 'target', title: 'Upper', raw_text: TARGET.raw_text }] };
+      beforeEach(async () => { await AsyncStorage.setItem('kilo_normalization_import_snapshot_v1', JSON.stringify(LEGACY)); });
+
+      test('asks for a fresh compact prompt, offers no reply import, and is not erased', async () => {
+        const tree = mount({ canPickFile: false });
+        await openNormalize(tree);
+        expect(tree.root.findAll(node => node.props?.testID === 'normalization-legacy-section')).not.toHaveLength(0);
+        expect(text(tree.root)).toContain('can’t be imported');
+        expect(tree.root.findAll(node => node.props?.testID === 'normalization-reply-input')).toHaveLength(0);
+        expect(button(tree.root, 'Review normalized routines')).toBeUndefined();
+        expect(await stored()).toEqual(LEGACY);
+      });
+
+      test('explicit Discard removes it durably; a failed discard keeps it and says so', async () => {
+        const remove = jest.spyOn(AsyncStorage, 'removeItem').mockRejectedValueOnce(new Error('storage unavailable'));
+        const tree = mount({ canPickFile: false });
+        await openNormalize(tree);
+        await act(async () => { button(tree.root, 'Discard saved normalization prompt').props.onPress(); });
+        expect(text(tree.root)).toContain('Couldn’t discard the saved prompt. It is still available.');
+        expect(button(tree.root, 'Discard saved normalization prompt')).toBeTruthy();
+        expect(await stored()).toEqual(LEGACY);
+        remove.mockRestore();
+        await AsyncStorage.setItem('kilo_normalization_import_snapshot_v1', JSON.stringify(LEGACY));
+        await act(async () => { button(tree.root, 'Discard saved normalization prompt').props.onPress(); });
+        expect(tree.root.findAll(node => node.props?.testID === 'normalization-legacy-section')).toHaveLength(0);
+        expect(text(tree.root)).toContain('No saved normalization prompt is available');
+      });
+
+      test('a fresh Copy replaces it with a compact snapshot and shows the compact import', async () => {
+        const tree = mount({ canPickFile: false });
+        await openNormalize(tree);
+        await copyFor(tree, ['target']);
+        expect(tree.root.findAll(node => node.props?.testID === 'normalization-legacy-section')).toHaveLength(0);
+        expect((await stored()).protocol).toBe('compact-exercise-v1');
+        expect((await stored()).version).toBe(8);
+        expect(button(tree.root, 'Review normalized routines')).toBeTruthy();
+      });
+    });
+
+    test('nothing safe to extract is a truthful blocked state with no prompt, no actions and no capture', async () => {
+      const empty = { id: 'empty', title: 'Empty', raw_text: 'Monday' };
+      const tree = mount({ canPickFile: false, loadNotes: async () => [CURRENT, TARGET, empty] });
+      await openNormalize(tree);
+      await choose(tree, 'targets', ['empty']);
+      expect(text(tree.root)).toContain('The selected routines have no exercise headers to share.');
+      expect(button(tree.root, 'Copy prompt')).toBeUndefined();
+      expect(tree.root.findAll(node => node.props?.testID === 'routine-prompt-output')).toHaveLength(0);
+      await choose(tree, 'authority', ['empty']);
+      await choose(tree, 'targets', ['target']);
+      expect(text(tree.root)).toContain('The authoritative routine has no exercise names to share.');
+      expect(await stored()).toBeNull();
+    });
+
+    test('the summary counts routines and distinct headers (deduplicated by exact header text)', async () => {
+      const tree = mount({ canPickFile: false, loadNotes: async () => [CURRENT, TARGET, { ...TARGET, id: 'twin' }] });
+      await openNormalize(tree);
+      await choose(tree, 'targets', ['target', 'twin']);
+      expect(text(tree.root)).toContain('2 routines · 2 distinct headers');
     });
   });
 });
