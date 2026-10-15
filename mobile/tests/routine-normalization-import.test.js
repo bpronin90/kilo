@@ -168,6 +168,120 @@ describe('parseNormalizationReply grammar (#1386)', () => {
   });
 });
 
+describe('reply grammar audit: exact accepted language, malformed input blocks Apply (#1386)', () => {
+  const authority = { id: 'ga', title: 'A', raw_text: 'Monday\n-Bench Press 3x5\n-Row 3x8' };
+  const target = { id: 'gt', title: 'T', raw_text: 'Monday\n-bench 3x5, slow\n- 135 5\n-row 3x8\n- 50 8' };
+  const snap = snapshotOf(authority, [target]);
+  const notes = [authority, target];
+  const OUT = 'Monday\n-Bench Press 3x5\n- 135 5\n-- slow\n-Row 3x8\n- 50 8';
+  const V1 = 'H1 => Bench Press | slow';
+  const V2 = 'H2 => Row';
+  const preview = reply => buildNormalizationPreview(reply, snap, notes);
+
+  test.each([
+    ['LF', `${V1}\n${V2}`],
+    ['LF + one final LF', `${V1}\n${V2}\n`],
+    ['CRLF', `${V1}\r\n${V2}`],
+    ['CRLF + one final CRLF', `${V1}\r\n${V2}\r\n`],
+    ['reordered', `${V2}\n${V1}`],
+  ])('accepts %s and writes the exact reconstruction', (_label, reply) => {
+    const p = preview(reply);
+    expect(p.replyErrorCount).toBe(0);
+    expect(p.rejected).toEqual([]);
+    expect(applySelectedChanges(p.entries[0])).toBe(OUT);
+  });
+
+  const malformed = {
+    emptyReply: '',
+    onlyLF: '\n',
+    onlyCRLF: '\r\n',
+    onlyCR: '\r',
+    loneFinalCR: `${V1}\n${V2}\r`,
+    loneInteriorCR: `${V1}\r${V2}`,
+    loneCRBeforeRef: `\r${V1}\n${V2}`,
+    crInName: `H1 => Bench\rPress | slow\n${V2}`,
+    crInDescriptor: `H1 => Bench Press | sl\row\n${V2}`,
+    crInCrlfReply: `H1 => Bench Press | sl\row\r\n${V2}`,
+    doubleCRBeforeLF: `${V1}\r\r\n${V2}`,
+    mixedCrlfThenLf: `${V1}\r\n${V2}\n`,
+    mixedLfThenCrlf: `${V1}\n${V2}\r\n`,
+    twoFinalLF: `${V1}\n${V2}\n\n`,
+    twoFinalCRLF: `${V1}\r\n${V2}\r\n\r\n`,
+    finalCrlfThenLf: `${V1}\r\n${V2}\r\n\n`,
+    leadingBlank: `\n${V1}\n${V2}`,
+    interiorBlank: `${V1}\n\n${V2}`,
+    interiorBlankCrlf: `${V1}\r\n\r\n${V2}`,
+    whitespaceOnlyLine: `${V1}\n \n${V2}`,
+    tabOnlyLine: `${V1}\n\t\n${V2}`,
+    bomStart: `\uFEFF${V1}\n${V2}`,
+    zeroWidthBeforeRef: `\u200B${V1}\n${V2}`,
+    zeroWidthInArrow: `H1 =\u200B> Bench Press | slow\n${V2}`,
+    nulInField: `H1 => Bench Press | sl\u0000ow\n${V2}`,
+    tabInField: `H1 => Bench Press | sl\tow\n${V2}`,
+    nelInField: `H1 => Bench Press | sl\u0085ow\n${V2}`,
+    trailingSpaceBeforeLF: `${V1} \n${V2}`,
+    trailingSpaceBeforeCRLF: `${V1} \r\n${V2}`,
+    trailingSpaceAfterNoMatch: `H1 => no match \n${V2}`,
+    trailingSpaceLastLine: `${V1}\n${V2} `,
+    arrowDoubleArrowChar: `H1 ⇒ Bench Press | slow\n${V2}`,
+    arrowFullwidth: `H1 ＝＞ Bench Press | slow\n${V2}`,
+    arrowNbsp: `H1\u00A0=> Bench Press | slow\n${V2}`,
+    arrowAngle: `H1 =〉 Bench Press | slow\n${V2}`,
+    leadingZeroRef: `H01 => Bench Press | slow\n${V2}`,
+    zeroRef: `H0 => Bench Press | slow\n${V1}\n${V2}`,
+    lowercaseRef: `h1 => Bench Press | slow\n${V2}`,
+    missingSpaces: `H1=>Bench Press | slow\n${V2}`,
+    leadingSpace: ` ${V1}\n${V2}`,
+    doubleSpaceAfterArrow: `H1 =>  Bench Press | slow\n${V2}`,
+    escapedPipeThenNoDelimiterSpace: `H1 => Bench Press\\|| slow\n${V2}`,
+    danglingBackslashLineEnd: `${V1}\\\n${V2}`,
+    danglingBackslashReplyEnd: `${V1}\n${V2}\\`,
+    emptyDescriptorSpaced: `H1 => Bench Press | \n${V2}`,
+    emptyDescriptorBare: `H1 => Bench Press |\n${V2}`,
+    lineSeparatorAsNewline: `${V1}\u2028${V2}`,
+    paragraphSeparatorAsNewline: `${V1}\u2029${V2}`,
+    lineSeparatorInField: `H1 => Bench Press | sl\u2028ow\n${V2}`,
+    nelAsNewline: `${V1}\u0085${V2}`,
+    // U+FEFF is JS whitespace, so at a field edge it is edge whitespace.
+    bomAtDescriptorStart: `H1 => Bench Press | \uFEFFslow\n${V2}`,
+  };
+  test.each(Object.entries(malformed))('%s is malformed: the whole reply is blocked and no edit text exists', (_name, reply) => {
+    const p = preview(reply);
+    expect(p.replyErrorCount).toBeGreaterThan(0);
+    expect(p.entries).toEqual([]);
+    expect(p.mappings).toEqual([]);
+    expect(parseNormalizationReply(reply, snap.catalog).ok).toBe(false);
+  });
+
+  test.each([
+    ['reserved text with a descriptor', `H1 => no match | slow\n${V2}`],
+    ['zero-width space in the name', `H1 => Bench\u200B Press | slow\n${V2}`],
+    ['zero-width space in the descriptor', `H1 => Bench Press | slow\u200B\n${V2}`],
+    ['BOM inside the descriptor', `H1 => Bench Press | sl\uFEFFow\n${V2}`],
+    ['escaped pipe at the name end', `H1 => Bench Press\\| | slow\n${V2}`],
+    ['escaped backslash at the descriptor end', `H1 => Bench Press | slow\\\\\n${V2}`],
+  ])('%s parses but is rejected for that header and never written', (_label, reply) => {
+    const p = preview(reply);
+    expect(p.replyErrorCount).toBe(0);
+    expect(p.rejected.map(r => r.ref)).toEqual(['H1']);
+    expect(p.mappings.map(m => m.ref)).toEqual(['H2']);
+    // Only the independent H2 rename lands; H1 keeps its exact original bytes.
+    expect(applySelectedChanges(p.entries[0])).toBe('Monday\n-bench 3x5, slow\n- 135 5\n-Row 3x8\n- 50 8');
+  });
+
+  test('an escaped pipe or backslash at a field end round-trips exactly when the original has it', () => {
+    const auth = { id: 'ea', title: 'A', raw_text: 'Monday\n-Bench Press 3x5' };
+    for (const [tail, escaped] of [['|', '\\|'], ['\\', '\\\\']]) {
+      const t = { id: 'et', title: 'T', raw_text: `Monday\n-bench 3x5, slow${tail}` };
+      const s = snapshotOf(auth, [t]);
+      const p = buildNormalizationPreview(`H1 => Bench Press | slow${escaped}`, s, [auth, t]);
+      expect(p.rejected).toEqual([]);
+      expect(applySelectedChanges(p.entries[0])).toBe(`Monday\n-Bench Press 3x5\n-- slow${tail}`);
+      expect(buildNormalizationPreview(`H1 => Bench Press | slow${escaped}\r`, s, [auth, t]).replyErrorCount).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe('buildNormalizationPreview (#1386)', () => {
   test('a reply of no match lines proposes nothing and writes nothing', () => {
     const preview = buildNormalizationPreview(replyFor(SNAP), SNAP, NOTES);

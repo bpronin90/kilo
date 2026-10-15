@@ -23,6 +23,21 @@ import { applyHeaderEdits, insertionIndex, planHeaderEdit } from './normalizatio
 // line per distinct header, so this is far above any legitimate reply.
 export const MAX_REPLY_LENGTH = 1024 * 1024;
 const MAX_REPORTED = 20;
+// Reply grammar (#1386 criterion 4), applied with no trimming or repair:
+//   reply  = line *(EOL line) [EOL]   EOL = "\n", or "\r\n" used for every line
+//   line   = "H" ref " => " ( "no match" | name [ " | " descriptor ] )
+//   ref    = [1-9][0-9]*              (no leading zero, no lowercase "h")
+//   field  = nonempty, no edge whitespace, no control (Cc incl. CR, TAB, NUL,
+//            NEL) or U+2028/U+2029; "\\" and "\|" are the only escapes and
+//            every literal "\" or "|" must be escaped
+// Any other byte sequence (bare CR, mixed endings, blank or whitespace-only
+// lines, BOM/lookalike arrows before or in " => ", an empty reply) is
+// malformed and blocks the whole reply. Format characters (e.g. U+200B) are
+// not control characters: inside a field they parse, then fail the exact
+// authority-name / original-descriptor comparison unless really present
+// (U+FEFF counts as whitespace, so at a field edge it is malformed).
+// "no match | x" is a match production whose name can never be an authority
+// name (the reserved text is excluded), so it is rejected and never applied.
 const LINE_RE = /^H([1-9][0-9]*) => /;
 
 function excerpt(text) {
@@ -68,11 +83,16 @@ export function parseNormalizationReply(replyText, catalog) {
   if (text.length > MAX_REPLY_LENGTH) return { ok: false, tooLarge: true, errors, errorCount, choices: new Map() };
   const refs = new Set(catalog.headers.map(h => h.ref));
   const choices = new Map();
-  const lines = text.split('\n');
-  if (lines[lines.length - 1] === '') lines.pop();
-  lines.forEach((raw, index) => {
-    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+  // Line terminators: "\r\n" throughout when the reply contains any CRLF, else
+  // "\n". The one empty piece after a final terminator is dropped; any other
+  // empty piece (empty reply, blank line, second final newline) is malformed.
+  const crlf = text.includes('\r\n');
+  const lines = text.split(crlf ? '\r\n' : '\n');
+  if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+  lines.forEach((line, index) => {
     const at = `Line ${index + 1}`;
+    if (line.includes('\r')) { report(`${at} has a carriage return that doesn’t end a CRLF line.`); return; }
+    if (line.includes('\n')) { report(`${at} mixes LF and CRLF line endings.`); return; }
     const head = LINE_RE.exec(line);
     if (!head) { report(`${at} isn’t “H<number> => …”: ${excerpt(JSON.stringify(line))}.`); return; }
     const ref = `H${head[1]}`;
