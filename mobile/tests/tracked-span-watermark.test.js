@@ -503,3 +503,169 @@ describe('post-deload re-entry wiring (#989)', () => {
     expect(withCtx.classifications).toEqual(without.classifications);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #1391 — anchors are translated across filtered populations, not clamped
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('#1391 population translation', () => {
+  // A notebook is minted over in full; render populations drop deload notes
+  // and opted-out recovery weeks. Each note is { id, text, excluded }.
+  const notebook = (notes) => {
+    const sectionsList = notes.map(n => parse(n.text));
+    const anchorSource = { noteSectionsList: sectionsList, included: notes.map(n => !n.excluded) };
+    return {
+      all: sectionsList.flat(),
+      filtered: sectionsList.filter((_, i) => !notes[i].excluded).flat(),
+      anchorSource,
+    };
+  };
+  // Squat-shaped history from the #1382 audit: normal history, a deload, a
+  // baseline whose LAST session is a tempting heavy single, a six-week
+  // excluded recovery block, activation during the block, then normal sessions.
+  const HISTORY = [
+    { id: 's', text: 'Monday\n-Squat\n225 5\n235 5\n245 5\n255 5' },
+    { id: 'd', text: 'Monday\n-Squat\n135 5', excluded: true },
+    { id: 'b', text: 'Monday\n-Squat\n255 5\n265 5\n405 5' },
+    ...[1, 2, 3, 4, 5, 6].map(w => ({ id: `w${w}`, text: `Monday\n-Squat\n${100 + w * 10} 8`, excluded: true })),
+  ];
+  const AFTER = { id: 'p', text: 'Monday\n-Squat\n275 5\n285 5' };
+
+  test('Squat regression: two eligible post-activation sessions read Progressing', () => {
+    const atToggle = notebook(HISTORY);
+    const record = activate(atToggle.all, 'Squat');
+    expect(record.anchor).toBe(14);
+    const { filtered, anchorSource } = notebook([...HISTORY, AFTER]);
+    const activations = { squat: record };
+
+    // Before #1391 (clamp only): 14 is past the 9 filtered units → First session.
+    const clamped = anchorsFor(filtered, activations);
+    expect(clamped.squat).toBe(9);
+    expect(deriveProgressionSignals(filtered, ['Squat'], clamped).exercises[0].overload_trend).toBe('first_session');
+
+    // Translated: the 7 included units inside the stored prefix (s:4 + b:3).
+    const anchors = resolveTrackedLiftAnchors(filtered, activations, anchorSource);
+    expect(anchors.squat).toBe(7);
+    const sig = deriveProgressionSignals(filtered, ['Squat'], anchors).exercises[0];
+    expect(sig.overload_trend).toBe('up');
+    // Both post-activation sessions are the comparison; the 405 single never is.
+    expect(sig.prior_pr).toBeCloseTo(epleyPR(275, 5));
+    expect(sig.latest_pr).toBeCloseTo(epleyPR(285, 5));
+    expect(classifyExerciseSessions(filtered, ['Squat'], anchors).squat).toBe('progressing');
+  });
+
+  test('zero and one post-activation sessions stay First session', () => {
+    const record = activate(notebook(HISTORY).all, 'Squat');
+    for (const after of [[], [{ id: 'p', text: 'Monday\n-Squat\n275 5' }]]) {
+      const { filtered, anchorSource } = notebook([...HISTORY, ...after]);
+      const anchors = resolveTrackedLiftAnchors(filtered, { squat: record }, anchorSource);
+      const sig = deriveProgressionSignals(filtered, ['Squat'], anchors).exercises[0];
+      expect(sig.overload_trend).toBe('first_session');
+    }
+  });
+
+  test('an included recovery block leaves the anchor exactly as stored', () => {
+    const included = HISTORY.map(n => (n.id.startsWith('w') ? { ...n, excluded: false } : n));
+    const record = activate(notebook(HISTORY).all, 'Squat');
+    const { filtered, anchorSource } = notebook([...included, AFTER]);
+    // Only the deload is outside the population now.
+    expect(resolveTrackedLiftAnchors(filtered, { squat: record }, anchorSource).squat).toBe(13);
+  });
+
+  test.each([
+    ['before the block', 8, 7],
+    ['during the block', 14, 7],
+    ['after the first post-block session', 15, 8],
+  ])('activation %s maps to the included prefix', (_label, anchor, expected) => {
+    const { filtered, anchorSource } = notebook([...HISTORY, AFTER]);
+    const record = { anchor, at: '2026-08-26T12:00:00.000Z', witness: { headings: ['Monday'], sessions: '' } };
+    expect(resolveTrackedLiftAnchors(filtered, { squat: record }, anchorSource).squat).toBe(expected);
+  });
+
+  test('an anchor ending inside an excluded note counts only the included units', () => {
+    // Activation part-way through the deload's notebook position.
+    const { filtered, anchorSource } = notebook([...HISTORY, AFTER]);
+    const record = { anchor: 5, at: '2026-08-26T12:00:00.000Z', witness: { headings: ['Monday'], sessions: '' } };
+    expect(resolveTrackedLiftAnchors(filtered, { squat: record }, anchorSource).squat).toBe(4);
+  });
+
+  test('identical sessions across notes: membership is provenance, not content', () => {
+    // Every excluded week repeats the post-activation sessions byte for byte.
+    const notes = [
+      { id: 'b', text: 'Monday\n-Squat\n405 5' },
+      ...[1, 2].map(w => ({ id: `w${w}`, text: 'Monday\n-Squat\n275 5\n285 5', excluded: true })),
+    ];
+    const record = activate(notebook(notes).all, 'Squat');
+    expect(record.anchor).toBe(5);
+    const { filtered, anchorSource } = notebook([...notes, AFTER]);
+    const anchors = resolveTrackedLiftAnchors(filtered, { squat: record }, anchorSource);
+    expect(anchors.squat).toBe(1);
+    expect(deriveProgressionSignals(filtered, ['Squat'], anchors).exercises[0].overload_trend).toBe('up');
+  });
+
+  test('deleted history: the stale clamp applies in the source population first', () => {
+    const { filtered, anchorSource } = notebook([...HISTORY, AFTER]);
+    const record = { anchor: 40, at: '2026-08-26T12:00:00.000Z', witness: { headings: ['Monday'], sessions: '' } };
+    // Every source unit is inside the prefix → every included unit is excluded.
+    expect(resolveTrackedLiftAnchors(filtered, { squat: record }, anchorSource).squat).toBe(9);
+  });
+
+  test('missing, retired, and zero anchors keep full history', () => {
+    const { filtered, anchorSource } = notebook([...HISTORY, AFTER]);
+    expect(resolveTrackedLiftAnchors(filtered, {}, anchorSource)).toEqual({});
+    expect(resolveTrackedLiftAnchors(filtered, null, anchorSource)).toEqual({});
+    expect(resolveTrackedLiftAnchors(filtered, { squat: { anchor: 0, at: 'x', witness: null } }, anchorSource)).toEqual({});
+  });
+
+  test('an anchor wholly inside excluded notes resolves to no cut', () => {
+    const notes = [{ id: 'w1', text: 'Monday\n-Squat\n100 8\n110 8', excluded: true }];
+    const record = activate(notebook(notes).all, 'Squat');
+    const { filtered, anchorSource } = notebook([...notes, AFTER]);
+    expect(resolveTrackedLiftAnchors(filtered, { squat: record }, anchorSource).squat).toBeUndefined();
+    expect(deriveProgressionSignals(filtered, ['Squat'], resolveTrackedLiftAnchors(filtered, { squat: record }, anchorSource)).exercises[0].overload_trend).toBe('up');
+  });
+
+  test('a source that does not describe the population falls back to the clamp', () => {
+    const record = activate(notebook(HISTORY).all, 'Squat');
+    const { filtered } = notebook([...HISTORY, AFTER]);
+    const stale = notebook(HISTORY).anchorSource; // missing note p
+    expect(resolveTrackedLiftAnchors(filtered, { squat: record }, stale).squat).toBe(9);
+  });
+
+  test('split keys stay distinct and resolution writes nothing', () => {
+    const notes = [
+      { id: 'b', text: 'Monday\n-Lat Pulldown\n100 10\n110 10' },
+      { id: 'w1', text: 'Monday\n-Lat Pulldown 2x10-12 (pack shoulder down on eccentric)\n90 10', excluded: true },
+      { id: 'p', text: 'Monday\n-Lat Pulldown 2x10-12 (pack shoulder down on eccentric)\n100 10\n105 10' },
+    ];
+    const split = normalizeExerciseKey('Lat Pulldown 2x10-12 (pack shoulder down on eccentric)');
+    expect(split).not.toBe(normalizeExerciseKey('Lat Pulldown'));
+    const record = { anchor: 1, at: '2026-08-26T12:00:00.000Z', witness: { headings: ['Monday'], sessions: '' } };
+    const activations = Object.freeze({ [split]: Object.freeze({ ...record }) });
+    const { filtered, anchorSource } = notebook(notes);
+    const anchors = resolveTrackedLiftAnchors(filtered, activations, anchorSource);
+    // The excluded W1 session was the whole prefix: no cut on the split key,
+    // and the plain key is untouched.
+    expect(anchors).toEqual({});
+    expect(activations[split].anchor).toBe(1);
+  });
+
+  test('per-day, non-weighted, and the canonical pass share the translated boundary', () => {
+    const notes = [
+      { id: 'b', text: 'Monday\n-Squat\n315 5\n-Band Pull-Apart\n20,20,20' },
+      { id: 'w1', text: 'Monday\n-Squat\n135 8\n-Band Pull-Apart\n5,5,5', excluded: true },
+    ];
+    const atToggle = notebook(notes).all;
+    const activations = { squat: activate(atToggle, 'Squat'), 'band pull-apart': activate(atToggle, 'Band Pull-Apart') };
+    const { filtered, anchorSource } = notebook([...notes, { id: 'p', text: 'Monday\n-Squat\n275 5\n285 5\n-Band Pull-Apart\n10,10,10\n12,12,12' }]);
+    const names = ['Squat', 'Band Pull-Apart'];
+    const result = deriveWorkoutNoteAnalytics(filtered, names, 1, activations, { anchorSource });
+    expect(result.anchors).toEqual({ squat: 1, 'band pull-apart': 1 });
+    expect(result.signals.find(s => s.name === 'Squat').overload_trend).toBe('up');
+    expect(result.perDaySignals).toEqual(derivePerDaySignals(filtered, names, result.anchors));
+    const nw = deriveNonWeightedTrackedExerciseMetrics(filtered, names, activations, anchorSource);
+    expect(nw['band pull-apart'].reps_arrow).toBe('up');
+    // Without translation the same data reads as no comparison yet.
+    expect(deriveNonWeightedTrackedExerciseMetrics(filtered, names, activations)['band pull-apart'].reps_arrow).toBe('dash');
+  });
+});

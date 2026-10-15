@@ -14086,6 +14086,43 @@ describe('LogScreen — progression-suggestion wiring for the current routine (#
     expect(cardOf(component).props.mutedProgressionRows).toEqual([]);
     render.act(() => component.unmount());
   });
+
+  // #1391: the Track anchor counts the whole notebook; Log's suggestion history
+  // excludes opted-out recovery weeks, so the anchor must be translated into
+  // that history, not clamped against it.
+  test('a Track anchor minted during an excluded recovery block keeps the post-activation sessions', async () => {
+    const old = { id: 'wn_old', title: 'Old', raw_text: ['-Bench Press: 3x8-10', '185 10,10,10'].join('\n') };
+    const recs = [1, 2].map(w => ({ id: `wn_rec${w}`, title: `Recovery W${w}`, raw_text: ['-Bench Press: 3x8-10', '95 8,8,8'].join('\n') }));
+    const note = { id: 'wn_cur', title: 'Routine', raw_text: NOTE };
+    await seed(true);
+    mockHooks(note);
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [old, ...recs, note], currentId: note.id, currentNote: note, deloadNotes: [],
+      loading: false, error: null, refresh: jest.fn(), selectCurrent: jest.fn(),
+      update: updateSpy, add: addSpy, remove: jest.fn(),
+    });
+    // Minted over old + both recovery weeks, before the current routine's sessions.
+    useEntries.useTrackedLifts.mockReturnValue({
+      trackedLifts: { 'bench press': true },
+      activations: { 'bench press': { anchor: 3, at: '2026-08-26T12:00:00.000Z', witness: null } },
+      toggle: jest.fn(), reconcileActivations: jest.fn(),
+    });
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      ready: true,
+      blocks: [{ id: 'rb1', status: 'completed', include_in_normal_analytics: false, deleted_at: null }],
+      weeks: recs.map((r, i) => ({ id: `rw${i + 1}`, block_id: 'rb1', note_id: r.id, deleted_at: null })),
+    });
+
+    const component = await renderScreen(note);
+    const list = cardOf(component).props.progressionSuggestions;
+    // Clamped (3 of 3 included units) this was empty; translated (1) it is the
+    // two current-routine sessions, and the heavier pre-activation one never joins.
+    expect(list).toHaveLength(1);
+    const pure = deriveProgressionSuggestion(parseWorkoutNote(NOTE).sections, 'Bench Press');
+    expect(list[0].record.explanation).toBe(pure.explanation);
+    expect(list[0].record.evidence).toEqual(pure.evidence);
+    render.act(() => component.unmount());
+  });
 });
 
 // ── #1010: Apply progression suggestion to note — Log production path ──

@@ -6,6 +6,7 @@ import { FieldLabel } from '../../components/FieldLabel';
 import { InfoButton, InfoNote, useInfoExplainer } from '../../components/InfoExplainer';
 import { ProgressionSuggestionCard, MutedProgressionRow } from '../../components/ProgressionSuggestionCard';
 import { renderOverloadListContent } from './AnalyticsStates';
+import { establishingBaselineMessage } from '../../lib/data/exerciseProgress';
 
 // Progressive Overload, its own top-level Analytics section: the canonical
 // Exercise Progress summary, progression suggestions (moved here from
@@ -54,6 +55,9 @@ export function AnalyticsProgressiveOverloadSection({
     || Object.keys(analytics?.nonWeightedMetrics || {}).length > 0
   );
   const showSummary = !isNotesLoading && !isTrackedLoading && hasTrackedExercises;
+  // #1391: all tracked exercises on their first tracked session read as a
+  // baseline being established, not as 0 / 0 / 0.
+  const baselineMessage = establishingBaselineMessage(progress);
   const suggestions = progressionSuggestionView?.visible || [];
   const muted = progressionSuggestionView?.muted || [];
 
@@ -101,18 +105,24 @@ export function AnalyticsProgressiveOverloadSection({
             <Text style={styles.poInfoText}>Tapping Track starts tracking from that session, so its trend builds from there. An exercise tracked without a Track tap uses its earlier history.</Text>
             <Text style={styles.poInfoText}>Deload sessions don't count toward progression.</Text>
           </InfoNote>
-          <View testID="po-progress-summary" style={styles.poSummaryRow}>
-            {[
-              { key: 'progressing', label: 'Progressing', count: progress.progressing, color: kua ? kua.success : colors.success },
-              { key: 'stalled', label: 'Steady', count: progress.stalled, color: kua ? kua.warning : colors.caution },
-              { key: 'regressing', label: 'Regressing', count: progress.regressing, color: kua ? kua.errorText : colors.error },
-            ].map(item => (
-              <View key={item.key} style={styles.poSummaryCol} testID={`po-progress-${item.key}`}>
-                <Text style={[styles.poSummaryCount, { color: item.color }]}>{item.count}</Text>
-                <Text style={styles.poSummaryLabel}>{item.label}</Text>
-              </View>
-            ))}
-          </View>
+          {baselineMessage ? (
+            <View testID="po-progress-baseline" style={styles.poSummaryRow}>
+              <Text style={styles.poInfoText}>{baselineMessage}</Text>
+            </View>
+          ) : (
+            <View testID="po-progress-summary" style={styles.poSummaryRow}>
+              {[
+                { key: 'progressing', label: 'Progressing', count: progress.progressing, color: kua ? kua.success : colors.success },
+                { key: 'stalled', label: 'Steady', count: progress.stalled, color: kua ? kua.warning : colors.caution },
+                { key: 'regressing', label: 'Regressing', count: progress.regressing, color: kua ? kua.errorText : colors.error },
+              ].map(item => (
+                <View key={item.key} style={styles.poSummaryCol} testID={`po-progress-${item.key}`}>
+                  <Text style={[styles.poSummaryCount, { color: item.color }]}>{item.count}</Text>
+                  <Text style={styles.poSummaryLabel}>{item.label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       )}
 

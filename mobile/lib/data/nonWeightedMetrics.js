@@ -40,12 +40,14 @@ function _detectExerciseClass(sets) {
 // is a progression signal, so only the arrow moves with the watermark — the
 // prior-session search starts at the anchor, and a span holding one session or
 // fewer reads as `dash`, the same "no comparison yet" the first session shows.
-export function deriveNonWeightedTrackedExerciseMetrics(sections, exerciseNames, activations = null) {
+// `anchorSource` (#1391) translates the anchors into this population; see
+// resolveTrackedLiftAnchors.
+export function deriveNonWeightedTrackedExerciseMetrics(sections, exerciseNames, activations = null, anchorSource = null) {
   if (!sections || !exerciseNames || exerciseNames.length === 0) return {};
 
   const { exercises } = deriveWorkoutAnalytics(sections);
   const byKey = new Map(exercises.map(ex => [normalizeExerciseKey(ex.name), ex]));
-  const anchors = resolveTrackedLiftAnchors(sections, activations);
+  const anchors = resolveTrackedLiftAnchors(sections, activations, anchorSource);
   const result = {};
 
   for (const name of exerciseNames) {

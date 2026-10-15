@@ -5,7 +5,7 @@ import {
   derive1kTotalFromSectionsList,
   derive1kTotalSeriesFromSectionsList,
 } from '../../lib/data';
-import { deriveProgressionSections, deriveExerciseProgress } from '../../lib/data/exerciseProgress';
+import { deriveProgressionSections, deriveProgressionAnchorSource, deriveExerciseProgress } from '../../lib/data/exerciseProgress';
 import { normalizeExerciseKey } from '../../lib/parser';
 import { filterNotesForNormalAnalytics } from '../../lib/data/recoveryAnalyticsFilter';
 
@@ -48,8 +48,11 @@ export function deriveParsedSections(notes, currentNote, excludedNoteIds = null)
   // The 1K series intentionally keeps deload as its own point (#396), so
   // noteSectionsList/allSections are left untouched.
   const signalSections = deriveProgressionSections(normalNotes, noteSectionsList);
+  // #1391: the unfiltered notebook the Track anchors were minted in, so they are
+  // translated into signalSections rather than clamped.
+  const anchorSource = deriveProgressionAnchorSource(notes || [], (notes || []).map(n => getNoteSections(n)), normalNotes);
   const currentSections = getNoteSections(currentNote);
-  return { allSections, signalSections, currentSections, noteSectionsList, normalNotes };
+  return { allSections, signalSections, currentSections, noteSectionsList, normalNotes, anchorSource };
 }
 
 export function deriveNoteExerciseNames(currentSections) {
@@ -77,6 +80,7 @@ export function deriveAnalytics(parsedSections, trackedLifts, oneKSelections, mu
     currentSections,
     trackedLifts,
     activations,
+    anchorSource: parsedSections.anchorSource ?? null,
     multiplier,
     deloadContext,
   });

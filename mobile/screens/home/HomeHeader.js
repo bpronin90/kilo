@@ -7,6 +7,7 @@ import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
 import { DELOAD_NOTE_PREFIX } from '../../lib/LogScreenHelpers';
 import { Chevron, HomeActionStrip } from './HomeActionStrip';
+import { establishingBaselineMessage } from '../../lib/data/exerciseProgress';
 
 // `Exercise Progress` is the same Analytics handoff in every hero state (#1333):
 // the trio below it is the summary, Progressive Overload is the detail.
@@ -80,6 +81,13 @@ export function HomeHeader({
   const mutedStroke = kua ? kua.onSurfaceVariant : colors.textMuted;
 
   const newlyTrackedCount = dashboardData.weeklySummary.newlyTrackedCount;
+  const counts = dashboardData.weeklySummary.classifications;
+  // #1391: every tracked exercise on its first tracked session replaces the
+  // 0 · 0 · 0 trio with what is actually happening.
+  const baselineMessage = establishingBaselineMessage({
+    newlyTracked: newlyTrackedCount,
+    classified: (counts?.progressing ?? 0) + (counts?.stalled ?? 0) + (counts?.regressing ?? 0),
+  });
   const captionText = newlyTrackedCount > 0
     ? (newlyTrackedCount === 1
         ? '1 exercise is in its first tracked session. Log it again to see a trend.'
@@ -116,18 +124,22 @@ export function HomeHeader({
               />
             ) : null}
           </View>
-          <View style={styles.classifRow}>
-            {[
-              { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: kua ? kua.success : colors.success },
-              { label: 'Steady', count: dashboardData.weeklySummary.classifications?.stalled ?? 0, color: kua ? kua.warning : colors.caution },
-              { label: 'Regressing', count: dashboardData.weeklySummary.classifications?.regressing ?? 0, color: kua ? kua.errorText : colors.error },
-            ].map((item, idx) => (
-              <View key={idx} style={styles.classifCol}>
-                <Text style={[styles.classifCount, kua ? { color: item.color } : null]}>{item.count}</Text>
-                <Text style={styles.classifLabel}>{item.label}</Text>
-              </View>
-            ))}
-          </View>
+          {baselineMessage ? (
+            <Text testID="home-progress-baseline" style={styles.heroRoutineMessage}>{baselineMessage}</Text>
+          ) : (
+            <View style={styles.classifRow}>
+              {[
+                { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: kua ? kua.success : colors.success },
+                { label: 'Steady', count: dashboardData.weeklySummary.classifications?.stalled ?? 0, color: kua ? kua.warning : colors.caution },
+                { label: 'Regressing', count: dashboardData.weeklySummary.classifications?.regressing ?? 0, color: kua ? kua.errorText : colors.error },
+              ].map((item, idx) => (
+                <View key={idx} style={styles.classifCol}>
+                  <Text style={[styles.classifCount, kua ? { color: item.color } : null]}>{item.count}</Text>
+                  <Text style={styles.classifLabel}>{item.label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
           {/* #894: the counts only cover a fully classified tracked span; the
               caption explains an unusual count (#1356: only that, never the
               Progressive Overload method). KUA reveals it from the info icon;

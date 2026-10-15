@@ -33,7 +33,7 @@ import {
   getDefaultTrackedNames,
   normalizeLiftName,
 } from '../../lib/data';
-import { deriveProgressionSections, deriveExerciseProgress } from '../../lib/data/exerciseProgress';
+import { deriveProgressionSections, deriveProgressionAnchorSource, deriveExerciseProgress } from '../../lib/data/exerciseProgress';
 
 // Home's ordinary-analytics population (#699). This module owns the decision end
 // to end — which notes count, and whether that is even knowable yet — so the
@@ -203,8 +203,10 @@ export const deriveHomeRecoveryBig3 = deriveRecoveryBig3;
 // filtered population.
 // `normalNotes` (aligned with `noteSectionsList`) lets the canonical
 // progression population drop deload notes exactly as Analytics does; legacy
-// callers that omit it get every supplied section.
-export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, normalNotes = null, trackedLifts, trackedLiftActivations, deloadHistory, sourceNoteId = null, recoveryBlocks }) {
+// callers that omit it get every supplied section. `notes` (#1391) is the
+// unfiltered notebook the Track anchors were minted in, so they can be
+// translated into that population; without it they are clamped as before.
+export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, normalNotes = null, notes = null, trackedLifts, trackedLiftActivations, deloadHistory, sourceNoteId = null, recoveryBlocks }) {
   let oneK = null;
   let sections = null;
 
@@ -233,12 +235,16 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
   const progressionSections = normalNotes && noteSectionsList
     ? deriveProgressionSections(normalNotes, noteSectionsList)
     : (allSections || []);
+  const anchorSource = normalNotes && noteSectionsList && notes
+    ? deriveProgressionAnchorSource(notes, notes.map(n => getNoteSections(n)), normalNotes)
+    : null;
   const deloadContext = { deloadHistory, sourceNoteId: sourceNoteId ?? null, recoveryBlocks };
   const progress = deriveExerciseProgress({
     progressionSections,
     currentSections: sections,
     trackedLifts,
     activations: trackedLiftActivations,
+    anchorSource,
     deloadContext,
   });
   const { reentry, summary: exerciseProgress } = progress;
