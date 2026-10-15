@@ -233,3 +233,130 @@ describe('PlateCalculatorModal — Save normalizes once, before both state and p
     act(() => { root.unmount(); });
   });
 });
+
+// #1375: Routine actions opens the calculator with an empty, user-typed target.
+describe('PlateCalculatorModal — editable target mode (#1375)', () => {
+  const input = (root) => root.root.find((n) => n.props.testID === 'plate-calculator-target-input' && typeof n.props.onChangeText === 'function');
+  const type = (root, text) => act(() => { input(root).props.onChangeText(text); });
+  const toggle = (root, u) => act(() => {
+    root.root.find((n) => n.props.accessibilityLabel === `Use ${u} bar and plates`).props.onPress();
+  });
+  const perSide = (root) => findByText(root.root, 'Per side').length > 0;
+  async function open(profile = defaultPlateCalculatorProfile(), props = {}) {
+    mockLoad.mockResolvedValue(profile);
+    let root;
+    await act(async () => {
+      root = renderer.create(
+        <ThemeProvider>
+          <PlateCalculatorModal visible editableTarget onClose={() => {}} {...props} />
+        </ThemeProvider>
+      );
+    });
+    await flush();
+    return root;
+  }
+
+  test('opens empty with the editable title, label, accessibility, and empty state', async () => {
+    const root = await open();
+    expect(findByText(root.root, 'Plate calculator').length).toBe(1);
+    expect(findByText(root.root, 'Plates for').length).toBe(0);
+    expect(findByText(root.root, 'Target weight (lb)').length).toBe(1);
+    const field = input(root);
+    expect(field.props.value).toBe('');
+    expect(field.props.accessibilityLabel).toBe('Target weight in pounds');
+    expect(field.props.keyboardType).toBe('decimal-pad');
+    expect(field.props.autoFocus).toBeFalsy();
+    expect(findByText(root.root, 'Enter a target weight to see plates.').length).toBe(1);
+    expect(perSide(root)).toBe(false);
+    act(() => { root.unmount(); });
+  });
+
+  test('a valid target shows plates; invalid input never leaves a stale result', async () => {
+    const root = await open();
+    type(root, '225');
+    expect(perSide(root)).toBe(true);
+    expect(findByText(root.root, '45 lb').length).toBeGreaterThan(0);
+    for (const bad of ['0', '-5', 'abc', '1e3', 'Infinity', '20001', '1.2.3']) {
+      type(root, bad);
+      expect(perSide(root)).toBe(false);
+      expect(findByText(root.root, 'Enter a valid positive weight.').length).toBe(1);
+    }
+    type(root, '   ');
+    expect(perSide(root)).toBe(false);
+    expect(findByText(root.root, 'Enter a target weight to see plates.').length).toBe(1);
+    type(root, '30');
+    expect(findByText(root.root, 'Below the 45 lb bar').length).toBe(1);
+    type(root, '45');
+    expect(findByText(root.root, 'Empty bar. No plates.').length).toBe(1);
+    type(root, '1000');
+    expect(findByText(root.root, "can't be loaded with this inventory").length).toBe(1);
+    act(() => { root.unmount(); });
+  });
+
+  test('switching units converts the load and returns the exact typed value without drift', async () => {
+    const root = await open();
+    type(root, '100');
+    toggle(root, 'kg');
+    await flush();
+    expect(input(root).props.value).toBe('45.36');
+    expect(input(root).props.accessibilityLabel).toBe('Target weight in kilograms');
+    expect(findByText(root.root, 'Target weight (kg)').length).toBe(1);
+    for (let i = 0; i < 5; i += 1) { toggle(root, 'lb'); toggle(root, 'kg'); }
+    toggle(root, 'lb');
+    await flush();
+    expect(input(root).props.value).toBe('100');
+    toggle(root, 'kg');
+    type(root, '60');
+    toggle(root, 'lb');
+    toggle(root, 'kg');
+    await flush();
+    expect(input(root).props.value).toBe('60');
+    act(() => { root.unmount(); });
+  });
+
+  test('an invalid draft is cleared on a unit change', async () => {
+    const root = await open();
+    type(root, 'abc');
+    toggle(root, 'kg');
+    await flush();
+    expect(input(root).props.value).toBe('');
+    expect(findByText(root.root, 'Enter a target weight to see plates.').length).toBe(1);
+    act(() => { root.unmount(); });
+  });
+
+  test('closing discards the target; reopening starts empty and the draft is never persisted', async () => {
+    mockSave.mockClear();
+    mockLoad.mockResolvedValue(defaultPlateCalculatorProfile());
+    const render = (visible) => (
+      <ThemeProvider>
+        <PlateCalculatorModal visible={visible} editableTarget onClose={() => {}} />
+      </ThemeProvider>
+    );
+    let root;
+    await act(async () => { root = renderer.create(render(true)); });
+    await flush();
+    type(root, '185');
+    await act(async () => { root.update(render(false)); });
+    await act(async () => { root.update(render(true)); });
+    await flush();
+    expect(input(root).props.value).toBe('');
+    expect(mockSave).not.toHaveBeenCalled();
+    act(() => { root.unmount(); });
+  });
+
+  test('fixed-target mode is unchanged and renders no target field', async () => {
+    mockLoad.mockResolvedValue(defaultPlateCalculatorProfile());
+    let root;
+    await act(async () => {
+      root = renderer.create(
+        <ThemeProvider>
+          <PlateCalculatorModal visible weightLb={225} onClose={() => {}} />
+        </ThemeProvider>
+      );
+    });
+    await flush();
+    expect(findByText(root.root, 'Plates for 225 lb').length).toBe(1);
+    expect(root.root.findAll((n) => n.props.testID === 'plate-calculator-target-input')).toHaveLength(0);
+    act(() => { root.unmount(); });
+  });
+});

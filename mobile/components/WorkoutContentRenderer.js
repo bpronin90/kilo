@@ -19,8 +19,8 @@ const SOURCE_JUMP_DOUBLE_TAP_MS = 300;
 // Compact set-line grouping (#843), mirroring UI.js's SetLine algorithm but
 // rendered at Recovery's compact type scale (13/muted/600) instead of
 // SetLine's own fixed SET_ROW_FONT_SIZE. Kept local to this file rather than
-// adding a size prop to SetLine — SetLine's own plate-calculator affordance
-// is not part of the compact Recovery reading surface.
+// adding a size prop to SetLine. Like SetLine (#1375), its weights are plain
+// text; no note surface hosts a plate-calculator control.
 function CompactSetLine({ sets, unit, styles, mark }) {
   if (!sets || sets.length === 0) return null;
   const groups = [];

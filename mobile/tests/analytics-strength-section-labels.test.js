@@ -73,6 +73,40 @@ describe('AnalyticsStrengthSection — plate-calculator tap announces the correc
   });
 });
 
+// #1375: Analytics keeps its prefilled, fixed-target entry point — tapping a
+// lift opens the calculator with that lift's canonical lb value, in either
+// display unit, and never shows the Log entry's editable target field.
+describe('AnalyticsStrengthSection — tapping a lift opens the fixed-target calculator', () => {
+  test.each(['lb', 'kg'])('passes the canonical lb weight when displaying in %s', async (u) => {
+    if (u === 'kg') setWeightUnitPreference('kg');
+    const display = u === 'kg' ? { total: 408, squat: 136, bench: 113, deadlift: 159 } : oneK;
+    let root;
+    await act(async () => {
+      root = renderer.create(
+        <ThemeProvider>
+          <AnalyticsStrengthSection
+            handleStrengthLayout={() => {}}
+            isNotesLoading={false}
+            oneK={display}
+            oneKCanonical={oneKCanonical}
+            oneKChartData={[]}
+          />
+        </ThemeProvider>
+      );
+    });
+    const { PlateCalculatorModal } = require('../components/PlateCalculatorModal');
+    const modal = () => root.root.findByType(PlateCalculatorModal);
+    expect(modal().props.visible).toBe(false);
+    const squat = root.root.find((n) => typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith('Show plate loading for Squats') && typeof n.props.onPress === 'function');
+    await act(async () => { squat.props.onPress(); });
+    expect(modal().props.visible).toBe(true);
+    expect(modal().props.weightLb).toBe(300);
+    expect(modal().props.editableTarget).toBeFalsy();
+    act(() => { root.unmount(); });
+  });
+});
+
 // #1245: the 1K explainer uses the shared info icon anchored beside its heading.
 describe('AnalyticsStrengthSection — 1K explainer uses the shared info icon', () => {
   const texts = (node) => node.findAll(n => n.type === 'Text').map(n => [].concat(n.props.children).join('')).filter(Boolean);

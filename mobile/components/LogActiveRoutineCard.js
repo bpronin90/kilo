@@ -49,6 +49,8 @@ import { ProgressionSuggestionCard, MutedProgressionRow } from './ProgressionSug
 import { TYPOGRAPHY } from '../theme/typography';
 import { GEOMETRY } from '../theme/spacing';
 import { useReducedMotion } from '../lib/useReducedMotion';
+import { PlateCalculatorModal } from './PlateCalculatorModal';
+import { useRoutinePlateCalculator } from './log/useRoutinePlateCalculator';
 
 export function LogActiveRoutineCard({
   workoutNoteTitle,
@@ -121,6 +123,8 @@ export function LogActiveRoutineCard({
   // any item is chosen, and on header collapse (the menu has nothing to
   // attach to once the body it lives in is hidden).
   const [menuOpen, setMenuOpen] = useState(false);
+  // #1375: the plate calculator's only Log entry — weights in the note are plain text.
+  const plateCalculator = useRoutinePlateCalculator(menuOpen);
   // A single result line for the most recent explicit Apply attempt. Only an
   // `applied: true` result is allowed to read as success; every no-op, failure,
   // or thrown error explains that nothing was added. Every press reaches the
@@ -200,6 +204,7 @@ export function LogActiveRoutineCard({
   return (
     <View style={styles.mirrorContainer}>
       {imageShare && <RoutineShareModal {...imageShare} onClose={() => setImageShare(null)} />}
+      <PlateCalculatorModal visible={plateCalculator.visible} editableTarget onClose={plateCalculator.close} />
       {/* #1244: a compact sheet over a dismissable scrim, so opening it never
           shifts card content and the card's overflow clip cannot cut it off. */}
       <Modal
@@ -208,6 +213,7 @@ export function LogActiveRoutineCard({
         supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS}
         animationType={reduceMotion ? 'none' : 'fade'}
         onRequestClose={() => setMenuOpen(false)}
+        onDismiss={plateCalculator.onMenuDismiss}
       >
         <View style={styles.menuScrim}>
           {/* Sibling scrim behind the sheet, not its parent, so TalkBack keeps
@@ -228,6 +234,12 @@ export function LogActiveRoutineCard({
               canUnskipWeek && handleUnskipWeek
                 ? { label: 'Remove skip', a11y: 'Remove skip', run: handleUnskipWeek, showsStatus: true }
                 : null,
+              {
+                label: 'Plate calculator',
+                a11y: 'Plate calculator',
+                hint: 'Enter a target weight to calculate plates',
+                run: plateCalculator.request,
+              },
               // #956: Copy and Share stay distinct actions, not merged.
               { label: 'Copy', a11y: `Copy routine ${workoutNoteTitle || 'Untitled Routine'}`, run: handleCopyRoutine, showsStatus: true },
               { label: 'Share', a11y: 'Share routine', run: handleShareRoutine },
@@ -250,6 +262,7 @@ export function LogActiveRoutineCard({
                 style={styles.actionMenuItem}
                 accessibilityRole="menuitem"
                 accessibilityLabel={item.a11y}
+                accessibilityHint={item.hint}
               >
                 <Text style={styles.actionMenuItemText}>{item.label}</Text>
               </Pressable>

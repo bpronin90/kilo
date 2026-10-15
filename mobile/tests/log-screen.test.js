@@ -3964,6 +3964,7 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     expect(menuItemLabels).toEqual([
       'Edit routine',
       'Skip week',
+      'Plate calculator',
       `Copy routine ${LONG_TITLE}`,
       'Share routine',
       'Share routine as image',
@@ -4017,7 +4018,7 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     expect(p.props.visible).toBe(true);
     const items = root.findAll(n => n.props && n.props.accessibilityRole === 'menuitem' && n.props.onPress);
     expect(items.map(i => i.props.accessibilityLabel)).toEqual([
-      'Edit routine', 'Skip week', `Copy routine ${LONG_TITLE}`, 'Share routine', 'Share routine as image',
+      'Edit routine', 'Skip week', 'Plate calculator', `Copy routine ${LONG_TITLE}`, 'Share routine', 'Share routine as image',
     ]);
     items.forEach(i => expect(flatStyle(i).minHeight).toBeGreaterThanOrEqual(44));
     render.act(() => { trigger().props.onPress({ stopPropagation: jest.fn() }); });
