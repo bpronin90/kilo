@@ -56,7 +56,11 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
 
   useEffect(() => {
     if (!visible) {
+      // A host that keeps this mounted (the Routine actions card) must reopen
+      // on the target view, never on an abandoned inventory edit.
       setTargetEntry(EMPTY_TARGET_ENTRY);
+      setEditing(false);
+      setDraft(null);
       return undefined;
     }
     let cancelled = false;

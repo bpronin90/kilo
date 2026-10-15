@@ -344,6 +344,30 @@ describe('PlateCalculatorModal — editable target mode (#1375)', () => {
     act(() => { root.unmount(); });
   });
 
+  test('closing mid inventory edit reopens on the empty target, not the stale editor', async () => {
+    mockSave.mockClear();
+    mockLoad.mockResolvedValue(defaultPlateCalculatorProfile());
+    const render = (visible) => (
+      <ThemeProvider>
+        <PlateCalculatorModal visible={visible} editableTarget onClose={() => {}} />
+      </ThemeProvider>
+    );
+    let root;
+    await act(async () => { root = renderer.create(render(true)); });
+    await flush();
+    let edit = findByText(root.root, 'Edit lb bar')[0];
+    while (typeof edit.props.onPress !== 'function') edit = edit.parent;
+    act(() => { edit.props.onPress(); });
+    expect(findByText(root.root, 'Save').length).toBeGreaterThan(0);
+    await act(async () => { root.update(render(false)); });
+    await act(async () => { root.update(render(true)); });
+    await flush();
+    expect(findByText(root.root, 'Save').length).toBe(0);
+    expect(input(root).props.value).toBe('');
+    expect(mockSave).not.toHaveBeenCalled();
+    act(() => { root.unmount(); });
+  });
+
   test('fixed-target mode is unchanged and renders no target field', async () => {
     mockLoad.mockResolvedValue(defaultPlateCalculatorProfile());
     let root;
