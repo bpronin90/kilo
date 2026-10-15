@@ -110,9 +110,10 @@ const UNIT_START_RE = new RegExp(`^\\s*${TIME_UNIT}\\b`, 'i');
 const SCALAR_TIME_RE = new RegExp(`\\d+(?:\\.\\d+)?\\s*${TIME_UNIT}\\b`, 'gi');
 // Separators that introduce a descriptor inside an alias's header name: any
 // punctuation that is not in-word name punctuation (Single-Leg, Farmer's,
-// 3/4, 45°, T.B.D., Clean & Jerk), plus a spaced dash. Marks (*) are
-// checked separately.
-const NAME_DESCRIPTOR_RE = /\s*[^\p{L}\p{N}\s'’\-./&+°*]|\s[—–-]\s/u;
+// 3/4, 45°, T.B.D.), plus a spaced dash or slash. Spaced "&" and "+" join
+// name words (Clean & Jerk) by owner decision (#1383). Marks (*) are checked
+// separately.
+const NAME_DESCRIPTOR_RE = /\s*[^\p{L}\p{N}\s'’\-./&+°*]|\s[—–\-/]\s/u;
 
 // Dashed ("- 135 5"), bare ("135 5,5"), and skip ("-", "135 -") set rows.
 function isSetRow(line) {
