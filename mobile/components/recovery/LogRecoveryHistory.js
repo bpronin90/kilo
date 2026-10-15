@@ -2,7 +2,9 @@
 // selector lists the active block (when present) and every live completed block
 // (newest completed first, the storage comparator) and only changes which block
 // is focused: selecting writes nothing. It is labelled `Recovery Blocks`, not
-// `Recovery History`, because it includes the active block (#1331). The stack renders ONE visible Manage card, for the focused block.
+// `Recovery History`, because it includes the active block (#1331). Each completed
+// row prints its canonical latest-week total from the shared snapshot (#1378). The
+// stack renders ONE visible Manage card, for the focused block.
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
@@ -15,12 +17,15 @@ import { useWeightUnit } from '../../lib/unitPreference';
 import { useTheme } from '../../theme/ThemeContext';
 import { LogRecoveryLifecycle } from './LogRecoveryLifecycle';
 import { createLogManageStyles } from './logRecoveryManageStyles';
+import { getRecoverySnapshot, compactRecoverySummary } from '../../lib/data/recoverySnapshot';
 
 // The write hooks are stable module bindings; tolerate a partially mocked hooks module.
 const optionalHook = (hook) => (typeof hook === 'function' ? hook() : null);
 const _title = (b) => b.baseline_note_title || 'Untitled Routine';
 
-export function LogRecoveryHistory({ activeBlock, completedBlocks, focusedBlockId, onSelect, alwaysShow = false }) {
+export function LogRecoveryHistory({
+  activeBlock, completedBlocks, focusedBlockId, onSelect, alwaysShow = false, weeks = [], notes = [], stale = false,
+}) {
   const { colors, kuaPalette: kua } = useTheme();
   const st = useMemo(() => createLogManageStyles(colors, kua), [colors, kua]);
   const [open, setOpen] = useState(false);
@@ -50,6 +55,8 @@ export function LogRecoveryHistory({ activeBlock, completedBlocks, focusedBlockI
       {open ? rows.map(({ block, active }) => {
         const selected = block.id === focusedBlockId;
         const dates = active ? `Started ${formatDate(block.started_at)}` : `${formatDate(block.started_at)} to ${formatDate(block.completed_at)}`;
+        // Read-only and content-cached: the same snapshot the block's evidence shows.
+        const summary = active ? null : compactRecoverySummary(getRecoverySnapshot({ block, weeks, notes, stale }));
         return (
           <Pressable
             key={block.id}
@@ -58,9 +65,11 @@ export function LogRecoveryHistory({ activeBlock, completedBlocks, focusedBlockI
             style={[st.historyRow, selected && st.historyRowSelected]}
             accessibilityRole="button"
             accessibilityState={{ selected }}
-            accessibilityLabel={`Manage ${active ? 'active' : 'completed'} recovery block ${_title(block)}, ${dates}${block.reason ? `. Reason: ${block.reason}` : ''}`}
+            accessibilityLabel={`Manage ${active ? 'active' : 'completed'} recovery block ${_title(block)}, ${dates}${block.reason ? `. Reason: ${block.reason}` : ''}${summary ? `. ${summary.a11y}` : ''}`}
           >
             <Text style={st.historyRowTitle}>{`${active ? 'Active: ' : ''}${_title(block)}`}</Text>
+            {summary ? <Text testID={`recovery-history-summary-${block.id}`} style={st.historyRowSummary}>{summary.text}</Text> : null}
+            {summary ? summary.qualifiers.map(q => <Text key={q} style={st.historyRowMeta}>{q}</Text>) : null}
             <Text style={st.historyRowMeta}>{dates}</Text>
             {block.reason ? <Text style={st.historyRowMeta} numberOfLines={1}>{block.reason}</Text> : null}
           </Pressable>
