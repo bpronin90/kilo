@@ -29,14 +29,22 @@ const NAME_DESCRIPTOR_RE = /\s*[^\p{L}\p{N}\s'’\-./&+°*]|\s[^\p{L}\p{N}\s&+*]
 const PAIRS = { '(': ')', '[': ']', '{': '}', '<': '>', '"': '"', '“': '”', "'": "'", '‘': '’' };
 const JOINS = [', ', '; ', ' '];
 
-// The moved text keeps its wording, case and internal punctuation: only ONE
-// separator token that introduced it, ONE separator left dangling before the
-// prescription, and ONE bracket/quote pair enclosing all of it may go. A
-// separator glued to a word or number ("-5 lb", "...slow") is content, and any
-// further punctuation after the introducing one ("-5 lb", "--heavy", "((a))",
-// "slow!!") is descriptor content that must survive exactly.
-export function cleanDescriptor(text) {
-  let out = String(text).trim().replace(/^(?:[,;:|]|[—–\-/~#!.](?=\s|$))?\s*/u, '').replace(/(?:\s[—–-]|[,;:|])$/u, '').trimEnd();
+// Descriptor rule ("only its introducing separator and enclosing brackets
+// around all of it may be dropped"). A header is framing + name + [part A] +
+// prescription + [part B]; a descriptor may span both parts, cleaned apart.
+// From each part only edge whitespace, ONE leading introducing separator
+// (",;:|" or a spaced dash/slash/~#!.) and ONE bracket/quote pair enclosing
+// ALL of what is left may go. Part A alone, and only when a prescription
+// follows it, also drops ONE trailing ",;:|" or spaced dash: that separator is
+// framing between descriptor and prescription ("Bench, paused, 3x5"), which
+// the rebuilt header (framing + name + original prescription bytes) never
+// carries. Everything else is descriptor content returned byte-for-byte:
+// part B's trailing punctuation ("slow;", "slow -"), part A's when nothing
+// follows it, runs ("--heavy", "slow,,"), glued symbols ("-5 lb", "...slow"),
+// inner punctuation and nested brackets.
+export function cleanDescriptor(text, beforePrescription = false) {
+  let out = String(text).trim().replace(/^(?:[,;:|]|[—–\-/~#!.](?=\s|$))?\s*/u, '');
+  if (beforePrescription) out = out.replace(/(?:\s[—–-]|[,;:|])$/u, '').trimEnd();
   const closer = PAIRS[out[0]];
   if (closer && out.length > 1 && out.endsWith(closer)) {
     const inner = out.slice(1, -1);
@@ -96,7 +104,7 @@ export function planHeaderEdit(header, choice) {
   // Numbers in the old name text being replaced would vanish unless the chosen
   // name carries the same ones ("Squat 5/3/1" must not become "Back Squat").
   if (numbers(named.slice(0, end)) !== numbers(choice.name) && named.slice(0, end).toLowerCase() !== choice.name.toLowerCase()) return fail('Numbers in the old name would be dropped, so it was left alone.');
-  const parts = [named.slice(end), after].map(cleanDescriptor).filter(Boolean);
+  const parts = [cleanDescriptor(named.slice(end), Boolean(span)), cleanDescriptor(after)].filter(Boolean);
   if (!parts.length && choice.descriptor != null) return fail('The header has no descriptor text, but one was given.');
   if (parts.length && choice.descriptor == null) return fail(`Header text “${parts.join(', ')}” would be dropped without a descriptor.`);
   if (parts.length && !JOINS.some(join => parts.join(join) === choice.descriptor)) return fail(`The descriptor doesn’t match the header’s own text “${parts.join(', ')}”.`);

@@ -421,15 +421,17 @@ describe('planHeaderEdit rebuilds headers from the original bytes (#1383 safety 
       ['-bench 3x5, ((light))', '((light))', 'light'],
       ['-bench 3x5, (light) (heavy)', '(light) (heavy)', 'light heavy'],
       ['-bench 3x5 slow!!', 'slow!!', 'slow'],
-      ['-bench 3x5 slow,,', 'slow,', 'slow'],
+      ['-bench 3x5 slow,,', 'slow,,', 'slow,'],
       ['-bench 3x5 slow --', 'slow --', 'slow'],
       ['-bench 3x5 "(a)"', '"(a)"', '(a)'],
-      ['-bench 3x5, -- -', '--', '-- -'],
+      ['-bench 3x5, -- -', '-- -', '--'],
     ]) {
       expect(ok(raw, { name, descriptor: kept }).comment).toBe(kept);
       rejected(raw, { name, descriptor: dropped });
     }
-    expect(ok('-bench 3x5 slow -', { name, descriptor: 'slow' }).comment).toBe('slow');
+    // Text after the prescription keeps its trailing punctuation.
+    expect(ok('-bench 3x5 slow -', { name, descriptor: 'slow -' }).comment).toBe('slow -');
+    rejected('-bench 3x5 slow -', { name, descriptor: 'slow' });
     // A single wrapped pair still unwraps, and a glued separator is not an introducing one.
     expect(ok('-bench 3x5, (light)', { name, descriptor: 'light' }).comment).toBe('light');
     expect(ok('-bench 3x5,paused', { name, descriptor: 'paused' }).comment).toBe('paused');
@@ -448,6 +450,73 @@ describe('planHeaderEdit rebuilds headers from the original bytes (#1383 safety 
     expect(ok('-Bench Press 3x5 step up!', { name, descriptor: 'step up!' }).comment).toBe('step up!');
     expect(ok("-Bench Press 3x5 'til failure", { name, descriptor: "'til failure" }).comment).toBe("'til failure");
     expect(ok('-Bench Press, paused, 3x5', { name, descriptor: 'paused' }).comment).toBe('paused');
+  });
+
+  // The rule: per part, only edge whitespace, one introducing separator and one
+  // pair enclosing ALL of it; part A (name..prescription) alone also loses one
+  // separator directly before the prescription. Nothing else is dropped.
+  test('trailing punctuation after the prescription is descriptor text and must be returned exactly', () => {
+    const name = 'Bench Press';
+    for (const tail of [';', ',', '.', '!', ':', ' -', '-', ' —', ' |', '|', ';;', '!?', ' ...']) {
+      const raw = `-bench 3x5, slow${tail}`;
+      expect(ok(raw, { name, descriptor: `slow${tail}` }).comment).toBe(`slow${tail}`);
+      rejected(raw, { name, descriptor: 'slow' });
+      if (tail.length > 1) rejected(raw, { name, descriptor: `slow${tail.slice(0, -1)}`.trimEnd() });
+    }
+    // Brackets unwrap only when one pair encloses ALL of the part.
+    expect(ok('-bench 3x5 (slow);', { name, descriptor: '(slow);' }).comment).toBe('(slow);');
+    rejected('-bench 3x5 (slow);', { name, descriptor: 'slow;' });
+    rejected('-bench 3x5 (slow);', { name, descriptor: 'slow' });
+    expect(ok('-bench 3x5 (a) b', { name, descriptor: '(a) b' }).comment).toBe('(a) b');
+    rejected('-bench 3x5 (a) b', { name, descriptor: 'a b' });
+    expect(ok('-bench 3x5, (slow!)', { name, descriptor: 'slow!' }).comment).toBe('slow!');
+    rejected('-bench 3x5, (slow!)', { name, descriptor: 'slow' });
+  });
+
+  test('ahead of the prescription only ONE separator before it is framing; with no prescription the tail is kept', () => {
+    const name = 'Bench Press';
+    for (const sep of [',', ';', ':', ' -', ' —', ' |']) {
+      const raw = `-bench, slow${sep} 3x5`;
+      expect(ok(raw, { name, descriptor: 'slow' }).newBody).toBe('-Bench Press 3x5');
+      rejected(raw, { name, descriptor: `slow${sep.trim()}` });
+    }
+    // A run or a non-separator mark before the prescription is content.
+    expect(ok('-bench, slow;; 3x5', { name, descriptor: 'slow;' }).comment).toBe('slow;');
+    rejected('-bench, slow;; 3x5', { name, descriptor: 'slow' });
+    for (const tail of ['!', '.', '?', '...']) {
+      expect(ok(`-bench, slow${tail} 3x5`, { name, descriptor: `slow${tail}` }).comment).toBe(`slow${tail}`);
+      rejected(`-bench, slow${tail} 3x5`, { name, descriptor: 'slow' });
+    }
+    expect(ok('-bench, (slow), 3x5', { name, descriptor: 'slow' }).newBody).toBe('-Bench Press 3x5');
+    // No prescription: the whole remainder is descriptor, trailing punctuation included.
+    for (const tail of [';', ',', ' -', ':', '|']) {
+      const raw = `-Deadlift — slow${tail}`;
+      expect(ok(raw, { name: 'Deadlift', descriptor: `slow${tail}` }).newBody).toBe('-Deadlift');
+      rejected(raw, { name: 'Deadlift', descriptor: 'slow' });
+    }
+  });
+
+  test('a descriptor spanning both parts keeps each part’s own punctuation', () => {
+    const name = 'Bench Press';
+    const raw = '-bench, slow; 3x5, fast;';
+    for (const descriptor of ['slow, fast;', 'slow; fast;', 'slow fast;']) expect(ok(raw, { name, descriptor }).comment).toBe(descriptor);
+    for (const descriptor of ['slow, fast', 'slow;, fast;', 'fast;, slow', 'slow', 'fast;']) rejected(raw, { name, descriptor });
+    expect(ok('-bench (paused) 3x5 (light);', { name, descriptor: 'paused, (light);' }).comment).toBe('paused, (light);');
+    rejected('-bench (paused) 3x5 (light);', { name, descriptor: 'paused, light' });
+  });
+
+  test('repro: a dropped trailing separator after the prescription is rejected end to end and writes nothing', async () => {
+    await Storage.replaceWorkoutNotesRaw([]);
+    const authority = { id: 'ra', title: 'A', raw_text: 'Monday\n-Bench Press 3x5' };
+    const target = { id: 'rt', title: 'T', raw_text: 'Monday\n-bench 3x5, slow;\n- 135 5,5,5' };
+    const snap = snapshotOf(authority, [target]);
+    const bad = buildNormalizationPreview('H1 => Bench Press | slow', snap, [authority, target]);
+    expect(bad.mappings).toEqual([]);
+    expect(bad.rejected).toEqual([{ ref: 'H1', header: '-bench 3x5, slow;', problem: expect.stringMatching(/doesn’t match the header’s own text “slow;”/) }]);
+    expect(applySelectedChanges(bad.entries[0])).toBeNull();
+    const good = buildNormalizationPreview('H1 => Bench Press | slow;', snap, [authority, target]);
+    expect(good.rejected).toEqual([]);
+    expect(applySelectedChanges(good.entries[0])).toBe('Monday\n-Bench Press 3x5\n- 135 5,5,5\n-- slow;');
   });
 });
 
