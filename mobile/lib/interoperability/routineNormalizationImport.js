@@ -40,6 +40,9 @@ export const MAX_REPLY_LENGTH = 1024 * 1024;
 const LINE_RE = /^H([1-9][0-9]*) => /;
 const ANSWER_RE = /H[1-9][0-9]* => /g;
 const LOST_LINE_BREAKS = 'The reply lost its line breaks — every answer is on one line. In the chat app, use the Copy button on the code block, then paste again.';
+// A valid reply has one line per header; this much extra still gets per-line
+// diagnostics, anything beyond is rejected as one error (bounds retained problems).
+const LINE_SLACK = 20;
 const FENCE = '```';
 const FENCE_OPEN_RE = /^```[^\r\n`]*\r?\n/;
 
@@ -127,6 +130,7 @@ export function parseNormalizationReply(replyText, catalog) {
   const lines = text.split(crlf ? '\r\n' : '\n');
   if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
   if (lines.some(line => (line.match(ANSWER_RE) || []).length > 1)) return fail(LOST_LINE_BREAKS);
+  if (lines.length > catalog.headers.length + LINE_SLACK) return fail(`The reply has ${lines.length} lines but there are only ${catalog.headers.length} headers. Reply with exactly one line per header.`);
   lines.forEach((line, index) => {
     const at = `Line ${index + 1}`;
     if (line.includes('\r')) { report(`${at} has a carriage return that doesn’t end a CRLF line.`); return; }

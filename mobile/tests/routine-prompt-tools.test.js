@@ -512,12 +512,12 @@ describe('RoutinePromptToolsScreen', () => {
       const copy = jest.fn().mockResolvedValue();
       const tree = await setup({ copy });
       copy.mockClear();
-      const bad = Array.from({ length: 30 }, (_, i) => `bad ${i}`).join('\n');
+      const bad = Array.from({ length: 22 }, (_, i) => `bad ${i}`).join('\n');
       await paste(tree, bad);
       const shown = text(tree.root);
       expect(shown).toContain('• Line 20 isn’t');
       expect(shown).not.toContain('Line 21 isn’t');
-      expect(shown).toContain('+11 more');
+      expect(shown).toContain('+3 more');
       const selectable = tree.root.findAllByType('Text').filter(node => node.props.selectable);
       expect(selectable.length).toBeGreaterThanOrEqual(21);
       const control = tree.root.findAll(node => node.props?.accessibilityLabel === 'Copy fix-up message' && node.props.accessibilityRole === 'button');
@@ -527,10 +527,10 @@ describe('RoutinePromptToolsScreen', () => {
       await press(tree);
       const message = copy.mock.calls[0][0];
       expect(message.startsWith('Kilo couldn’t apply your reply. Fix these problems and send the full corrected reply again, in one code block, one line per header:\n- Line 1 isn’t')).toBe(true);
-      expect(message).toContain('- Line 30 isn’t');
+      expect(message).toContain('- Line 22 isn’t');
       expect(message).toContain('- H1–H2 have no reply line.');
       expect(message).not.toContain('more');
-      expect(message.split('\n').length).toBe(1 + 31);
+      expect(message.split('\n').length).toBe(1 + 23);
       expect(text(tree.root)).toContain('Fix-up message copied.');
     });
 

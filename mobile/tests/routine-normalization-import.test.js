@@ -156,11 +156,21 @@ describe('parseNormalizationReply grammar (#1386)', () => {
     expect(parse('H1 => no match\nH3 => no match').errors).toEqual(['H2 has no reply line.']);
   });
 
-  test('every problem is retained (the screen limits only what it shows)', () => {
-    const flood = parse('nope\n'.repeat(5000));
-    expect(flood.ok).toBe(false);
-    expect(flood.errors.length).toBe(5001);
-    expect(flood.errorCount).toBe(flood.errors.length);
+  test('every problem within the line bound is retained (the screen limits only what it shows)', () => {
+    const many = parse('nope\n'.repeat(23));
+    expect(many.ok).toBe(false);
+    expect(many.errors.length).toBe(24);
+    expect(many.errorCount).toBe(many.errors.length);
+  });
+
+  test('far more lines than headers is one error; the slack still reports per line', () => {
+    const huge = parse('x\n'.repeat(524288));
+    expect(huge.errors).toEqual(['The reply has 524288 lines but there are only 3 headers. Reply with exactly one line per header.']);
+    const atSlack = parse('x\n'.repeat(23));
+    expect(atSlack.errors.filter(e => /^Line \d+ isn/.test(e)).length).toBe(23);
+    expect(parse('x\n'.repeat(24)).errors.length).toBe(1);
+    const worst = parse('x\n'.repeat(23)).errors.map(e => `- ${e}`).join('\n');
+    expect(worst.length).toBeLessThan(5000);
   });
 
   describe('code fence (#1389)', () => {
@@ -217,8 +227,8 @@ describe('parseNormalizationReply grammar (#1386)', () => {
       expect(parseNormalizationReply(answered, many(12)).errors).toEqual(['H2 has no reply line.', 'H10–H11 have no reply line.']);
     });
     test('the preview keeps every grouped problem', () => {
-      const p = buildNormalizationPreview(Array.from({ length: 60 }, (_, i) => `bad ${i}`).join('\n'), SNAP, NOTES);
-      expect(p.replyErrors.length).toBeGreaterThan(20);
+      const p = buildNormalizationPreview(Array.from({ length: 6 }, (_, i) => `bad ${i}`).join('\n'), SNAP, NOTES);
+      expect(p.replyErrors.length).toBeGreaterThan(0);
       expect(p.replyErrorCount).toBe(p.replyErrors.length);
     });
   });
