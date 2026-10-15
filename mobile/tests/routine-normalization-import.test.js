@@ -4,7 +4,7 @@ import {
   diffTargetNames,
   splitNormalizationReply,
 } from '../lib/interoperability/routineNormalizationImport';
-import { compareAndSetWorkoutNoteText as saveWorkoutNoteTextIfUnchanged } from '../storage/entries/workoutNotes';
+import { applyWorkoutNoteTextBatchIfUnchanged, compareAndSetWorkoutNoteText as saveWorkoutNoteTextIfUnchanged } from '../storage/entries/workoutNotes';
 import * as Storage from '../storage/entries';
 import { canPickTextFile, pickTextFile } from '../lib/platformFilePicker';
 
@@ -128,6 +128,7 @@ describe('descriptor comment moved out of a corrected header (#1201)', () => {
   const ORIG = 'Monday\n-Bench Press (paused) 3x5\n- 135 5,5,5\n- 140 5,5,5\n-Row 3x8\n- 100 8,8,8\n---\nTuesday\n-Squat (low bar) 3x5\n- 185 5,5,5\n-- felt heavy\n';
   const GOOD = 'Monday\n-Bench Press 3x5\n- 135 5,5,5\n- 140 5,5,5\n-- paused\n-Row 3x8\n- 100 8,8,8\n---\nTuesday\n-Squat 3x5\n- 185 5,5,5\n-- low bar\n-- felt heavy';
   const note = { id: 'd1', title: 'Upper', raw_text: ORIG };
+  const MAIN = { id: 'auth', title: 'Main', raw_text: 'Monday\n-Bench Press 3x5\n-Bench\n-Squat 3x5' };
   const lines = text => text.split('\n');
 
   test('header rename plus one following comment is accepted, for multiple exercises', () => {
@@ -140,7 +141,7 @@ describe('descriptor comment moved out of a corrected header (#1201)', () => {
   });
 
   test('preview and apply splice the comment into the original text', () => {
-    const preview = buildNormalizationPreview(`Target routine 1\n${GOOD}`, { authority: AUTH, targets: [note] }, [AUTH, note]);
+    const preview = buildNormalizationPreview(`Target routine 1\n${GOOD}`, { authority: MAIN, targets: [note] }, [MAIN, note]);
     const keys = new Set(preview.mappings.map(m => m.key));
     expect(applySelectedChanges(preview.entries[0], keys)).toBe(`${GOOD}\n`);
     const onlyBench = new Set([preview.mappings[0].key]);
@@ -149,7 +150,7 @@ describe('descriptor comment moved out of a corrected header (#1201)', () => {
 
   test('CRLF originals keep CRLF on the inserted line', () => {
     const crlf = { ...note, raw_text: 'Monday\r\n-Bench (x) 3x5\r\n- 135 5,5,5\r\n' };
-    const preview = buildNormalizationPreview('Target routine 1\nMonday\n-Bench 3x5\n- 135 5,5,5\n-- x', { authority: AUTH, targets: [crlf] }, [AUTH, crlf]);
+    const preview = buildNormalizationPreview('Target routine 1\nMonday\n-Bench 3x5\n- 135 5,5,5\n-- x', { authority: MAIN, targets: [crlf] }, [MAIN, crlf]);
     expect(applySelectedChanges(preview.entries[0], new Set(preview.mappings.map(m => m.key)))).toBe('Monday\r\n-Bench 3x5\r\n- 135 5,5,5\r\n-- x\r\n');
   });
 
@@ -199,8 +200,8 @@ describe('descriptor comment moved out of a corrected header (#1201)', () => {
     expect(diffTargetNames(ORIG, lines(GOOD.replace('-- low bar', '-- low bar heavy'))).problems.length).toBeGreaterThan(0);
   });
 
-  test('a header-only rename and an unchanged target stay valid', () => {
-    expect(diffTargetNames(ORIG, lines(GOOD.replace(/\n-- (paused|low bar)/g, ''))).changes).toHaveLength(2);
+  test('dropping a descriptor without its comment is rejected; an unchanged target stays valid (#1383)', () => {
+    expect(diffTargetNames(ORIG, lines(GOOD.replace(/\n-- (paused|low bar)/g, ''))).problems.length).toBeGreaterThan(0);
     expect(diffTargetNames(ORIG, lines(ORIG.trimEnd())).changes).toEqual([]);
   });
 });
@@ -285,5 +286,125 @@ describe('platformFilePicker (native)', () => {
   test('rejects oversized files', async () => {
     const documentPicker = { getDocumentAsync: jest.fn().mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///x', size: 5 * 1024 * 1024 }] }) };
     await expect(pickTextFile({ platform: 'android', documentPicker, File: fileReading('') })).rejects.toThrow(/too large/);
+  });
+});
+
+describe('owner descriptor examples apply through the batch write (#1383)', () => {
+  const AUTHORITY = { id: 'a1383', title: 'Lower', raw_text: 'MONDAY — Lower\n-Single-Leg RDL\n-DB Bench Press 3x6-8\n-Lat Pulldown\n-Deadlift' };
+  const ORIG = [
+    'MONDAY — Lower', '+WARMUP', '-Plank', '+LIFTING',
+    '-Single-Leg RDL 2x8 each leg, light', '25 8,8', '-- existing note', '- 30 8 *PR',
+    '-DB Bench Press 3x6-8, step up', '85 8,8,8', '90 -', '-- felt good',
+    '-Lat Pulldown 2x10-12 (pack shoulder down on eccentric)',
+    '-Deadlift — trial sets, slow and controlled', '135 5,5', '-',
+    '---', 'MONDAY — Lower', '-Single-Leg RDL 2x8 each leg', '- 20 8,8', '',
+  ].join('\n');
+  const RESULT = [
+    'MONDAY — Lower', '+WARMUP', '-Plank', '+LIFTING',
+    '-Single-Leg RDL 2x8', '25 8,8', '-- existing note', '- 30 8 *PR', '-- each leg, light',
+    '-DB Bench Press 3x6-8', '85 8,8,8', '90 -', '-- step up', '-- felt good',
+    '-Lat Pulldown 2x10-12', '-- pack shoulder down on eccentric',
+    '-Deadlift', '135 5,5', '-', '-- trial sets, slow and controlled',
+    '---', 'MONDAY — Lower', '-Single-Leg RDL 2x8', '- 20 8,8', '-- each leg', '',
+  ].join('\n');
+  const TARGET = { id: 'b1383', title: 'Lower', raw_text: ORIG };
+  const TWIN = { id: 'c1383', title: 'Lower', raw_text: 'MONDAY — Lower\n-DB Bench Press 3x6-8, step up\n85 8,8,8' };
+  const snap = { authority: AUTHORITY, targets: [TARGET, TWIN] };
+  const notes = [AUTHORITY, TARGET, TWIN];
+  const TWIN_OUT = 'MONDAY — Lower\n-DB Bench Press 3x6-8\n85 8,8,8\n-- step up';
+  const replyFor = (out, twin = TWIN.raw_text) => `Target routine 2: Lower\n${twin}\n\nTarget routine 1: Lower\n${out}`;
+  const keysOf = p => new Set(p.mappings.map(m => m.key));
+
+  beforeEach(async () => { await Storage.replaceWorkoutNotesRaw([]); });
+
+  test('all four examples (bare, dashed, skip rows; no-set; repeats) reach the store byte-exactly', async () => {
+    const p = buildNormalizationPreview(replyFor(RESULT.trimEnd(), TWIN_OUT), snap, notes);
+    expect(p.entries.map(e => e.problems)).toEqual([undefined, undefined]);
+    expect(p.mappings.map(m => `${m.oldName}>${m.newName}`)).toEqual([
+      'Single-Leg RDL 2x8 each leg, light>Single-Leg RDL',
+      'DB Bench Press 3x6-8, step up>DB Bench Press',
+      'Lat Pulldown 2x10-12 (pack shoulder down on eccentric)>Lat Pulldown',
+      'Deadlift — trial sets, slow and controlled>Deadlift',
+      'Single-Leg RDL 2x8 each leg>Single-Leg RDL',
+    ]);
+    const items = p.entries.map(entry => ({ id: entry.id, expected_raw_text: entry.snapshot, next_raw_text: applySelectedChanges(entry, keysOf(p)) }));
+    expect(items).toEqual([
+      { id: 'b1383', expected_raw_text: ORIG, next_raw_text: RESULT },
+      { id: 'c1383', expected_raw_text: TWIN.raw_text, next_raw_text: TWIN_OUT },
+    ]);
+    for (const note of notes) await Storage.saveWorkoutNoteItem(note);
+    const request = { authority: { id: AUTHORITY.id, expected_raw_text: AUTHORITY.raw_text, accepted_raw_texts: [] }, items };
+    const result = await applyWorkoutNoteTextBatchIfUnchanged(request);
+    expect(result.saved.map(r => r.id)).toEqual(['b1383', 'c1383']);
+    const stored = await Storage.loadWorkoutNotes();
+    expect(stored.find(n => n.id === 'b1383').raw_text).toBe(RESULT);
+    expect(stored.find(n => n.id === 'c1383').raw_text).toBe(TWIN_OUT);
+    // Retrying the same request lands the same text once: no duplicate comment.
+    await applyWorkoutNoteTextBatchIfUnchanged(request);
+    expect((await Storage.loadWorkoutNotes()).find(n => n.id === 'b1383').raw_text).toBe(RESULT);
+  });
+
+  test('a repeated header edits only its own occurrence when one mapping is deselected', () => {
+    const p = buildNormalizationPreview(replyFor(RESULT.trimEnd()), snap, notes);
+    const only = new Set([...keysOf(p)].filter(k => !k.endsWith('each leg\u0000Single-Leg RDL')));
+    const next = applySelectedChanges(p.entries[0], only);
+    expect(next).toBe(RESULT.replace('-Single-Leg RDL 2x8\n- 20 8,8\n-- each leg\n', '-Single-Leg RDL 2x8 each leg\n- 20 8,8\n'));
+    expect(applySelectedChanges(p.entries[1], keysOf(p))).toBeNull();
+  });
+
+  test('CRLF text keeps CRLF everywhere, including inserted comments', () => {
+    const crlf = { ...TARGET, raw_text: ORIG.replace(/\n/g, '\r\n') };
+    const p = buildNormalizationPreview(`Target routine 1\n${RESULT.trimEnd()}`, { authority: AUTHORITY, targets: [crlf] }, [AUTHORITY, crlf]);
+    expect(applySelectedChanges(p.entries[0], keysOf(p))).toBe(RESULT.replace(/\n/g, '\r\n'));
+  });
+
+  const bad = {
+    descriptorMissing: RESULT.replace('-- step up\n', ''),
+    paraphrased: RESULT.replace('-- trial sets, slow and controlled', '-- trial sets, go slow'),
+    partialDrop: RESULT.replace('-- each leg, light', '-- each leg'),
+    recased: RESULT.replace('-- step up', '-- Step Up'),
+    internalPunctuation: RESULT.replace('-- each leg, light', '-- each leg light'),
+    invented: RESULT.replace('-- pack shoulder down on eccentric', '-- pack shoulder down on eccentric, slow'),
+    prescriptionNumber: RESULT.replace('-DB Bench Press 3x6-8', '-DB Bench Press 3x8-10'),
+    prescriptionSpacing: RESULT.replace('-DB Bench Press 3x6-8', '-DB Bench Press 3 x 6-8'),
+    prescriptionMoved: RESULT.replace('-Lat Pulldown 2x10-12\n-- pack shoulder down on eccentric', '-Lat Pulldown\n-- 2x10-12 pack shoulder down on eccentric'),
+    notAuthorityName: RESULT.replace('-Deadlift\n', '-Conventional Deadlift\n'),
+    afterExistingComment: RESULT.replace('90 -\n-- step up\n-- felt good', '90 -\n-- felt good\n-- step up'),
+    beforeLastSet: RESULT.replace("- 30 8 *PR\n-- each leg, light", '-- each leg, light\n- 30 8 *PR'),
+    crossesBoundary: RESULT.replace('-\n-- trial sets, slow and controlled\n---', '-\n---\n-- trial sets, slow and controlled'),
+    setChanged: RESULT.replace('85 8,8,8', '85 8,8,7'),
+    skipFilled: RESULT.replace('90 -', '90 8'),
+    markDropped: RESULT.replace(' *PR', ''),
+    sectionChanged: RESULT.replace('+WARMUP', '+WARM UP'),
+    weekBoundaryDropped: RESULT.replace('---\n', ''),
+  };
+  test.each(Object.entries(bad))('rejects %s and writes nothing', async (_name, out) => {
+    for (const note of notes) await Storage.saveWorkoutNoteItem(note);
+    const p = buildNormalizationPreview(replyFor(out.trimEnd()), snap, notes);
+    expect(p.entries[0].problems.length).toBeGreaterThan(0);
+    expect(p.entries[0].changes).toBeUndefined();
+    expect((await Storage.loadWorkoutNotes()).find(n => n.id === 'b1383').raw_text).toBe(ORIG);
+  });
+
+  test('an uncertain movement left unchanged proposes nothing for it', () => {
+    const p = buildNormalizationPreview(replyFor(RESULT.trimEnd(), TWIN.raw_text), snap, notes);
+    expect(p.entries[1].changes).toEqual([]);
+    expect(applySelectedChanges(p.entries[1], keysOf(p))).toBeNull();
+  });
+
+  test('a stale or deleted target and a changed authority produce no write', async () => {
+    for (const note of notes) await Storage.saveWorkoutNoteItem(note);
+    const p = buildNormalizationPreview(replyFor(RESULT.trimEnd(), TWIN_OUT), snap, notes);
+    const items = p.entries.map(entry => ({ id: entry.id, expected_raw_text: entry.snapshot, next_raw_text: applySelectedChanges(entry, keysOf(p)) }));
+    const authority = { id: AUTHORITY.id, expected_raw_text: AUTHORITY.raw_text, accepted_raw_texts: [] };
+    await Storage.saveWorkoutNoteItem({ ...TWIN, raw_text: 'edited' });
+    const result = await applyWorkoutNoteTextBatchIfUnchanged({ authority, items });
+    expect(result.skipped).toEqual([expect.objectContaining({ id: 'c1383', status: 'stale' })]);
+    expect((await Storage.loadWorkoutNotes()).find(n => n.id === 'c1383').raw_text).toBe('edited');
+    await Storage.saveWorkoutNoteItem({ ...AUTHORITY, raw_text: `${AUTHORITY.raw_text}\n-Row` });
+    await Storage.saveWorkoutNoteItem(TARGET);
+    expect((await applyWorkoutNoteTextBatchIfUnchanged({ authority, items })).authority).toBe('stale');
+    expect((await Storage.loadWorkoutNotes()).find(n => n.id === 'b1383').raw_text).toBe(ORIG);
+    expect(buildNormalizationPreview(replyFor(RESULT.trimEnd()), snap, [AUTHORITY, TWIN]).entries[0].problems[0]).toMatch(/no longer exists/);
   });
 });
