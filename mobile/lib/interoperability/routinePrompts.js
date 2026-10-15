@@ -1,6 +1,7 @@
 // Local-only prompt templates for working with a Kilo routine in an external
 // LLM. These builders deliberately accept plain note data and return strings:
 // they do not read storage, call a network service, or mutate a routine.
+import { buildHeaderCatalog, escapeReplyField } from './normalizationHeaderCatalog.js';
 
 const FORMAT_GUIDE = `Kilo routine text is plain text. Use a day heading followed by exercise headers and optional logged sets:
 
@@ -38,40 +39,47 @@ When I ask for the final version, return only the complete Kilo-importable routi
 }
 
 /**
- * Build a prompt that makes one routine authoritative for exercise naming and
- * returns each selected target unchanged except for those names.
+ * Build the compact Normalize prompt (#1386): only the authority's exercise
+ * NAMES and each distinct raw target exercise header (with its H-ref and a
+ * day/section context) are sent. No note body, logged set, date or comment is
+ * included. The model answers one `H<n> => ...` line per header; Kilo keeps the
+ * original notes locally and rebuilds every edit itself. Returns '' when no
+ * safe catalog can be extracted, never a full-note fallback.
  */
-export function buildExerciseNameNormalizationPrompt({ authority, targets = [] } = {}) {
-  const targetBlocks = targets.map((routine, index) => routineBlock(`Target routine ${index + 1}: ${text(routine?.title) || 'Untitled Routine'}`, routine)).join('');
-  return `Use the authoritative routine below as the source of truth for exercise names. Apply these rules to every selected target routine:
+export function buildExerciseNameNormalizationPrompt({ authority, targets = [], catalog = null } = {}) {
+  const built = catalog || buildHeaderCatalog(authority, targets);
+  if (!built.ok) return '';
+  const names = built.names.map(escapeReplyField).join('\n');
+  const headers = built.headers.map(h => `${h.ref}\nheader: ${h.raw}${h.where ? `\nwhere: ${h.where}` : ''}`).join('\n\n');
+  return `Match each numbered exercise header below to the authoritative exercise names and reply with one line per header. Apply these rules to every header:
 
-1. Match conservatively. Treat a target exercise as a match only when you are highly confident it is the same movement as one authoritative exercise, even if it is written with shorthand, a spelling or punctuation difference, a different prescription, or extra descriptor text. If the exercises are merely related or similar, or the match is uncertain, leave that header exactly as it is. Do not invent exercises, and do not use any routine other than the authoritative routine as the source of names. If an authoritative name itself looks ambiguous or untidy, use it as written or leave the target unchanged; never invent a cleaner name.
-2. Use the authoritative name exactly. For a confident match, replace the target header's name with the authoritative exercise name, character for character, keeping the target header's own structure (its leading dash or number and any marks such as *). Never copy the authoritative routine's prescription into the target.
-3. Preserve the target prescription exactly. Keep the target's own sets-by-reps prescription (such as 2x8 or 3x6-8) in the header with the same numbers, rep ranges, spelling, and spacing. The prescription is not descriptor text and must not move.
-4. Move all remaining descriptor text to one "-- " note. Any other text in the target header beyond the name and prescription (cues, qualifiers, intensity, side notes) goes into a single comment line that starts with "-- " (two dashes and a space). Do not decide that phrases such as "each leg", "light", or "step up" are redundant and drop them. Keep the descriptor's wording, capitalization, and internal punctuation exactly; you may remove only the separator before it (such as a comma or dash) and parentheses that enclose all of it. Do not paraphrase, summarize, or delete any of its words.
-5. Place that note directly after the exercise's logged sets, or directly after its header when it has no sets. Logged sets include rows with a leading "- " (for example "- 135 5,5,5"), bare rows without a dash (for example "135 5,5,5"), and skipped rows (for example "135 -"). Leave existing comments where they are, and never move the note past the next exercise, day heading, section marker, or Week A/B divider.
-6. Preserve everything else. Keep weights, reps, session and history columns, dates, existing comments, day headings, section markers (such as +WARMUP), Week A/B "---" dividers, structural marks, exercise order, and all unrelated whitespace and text exactly as written. Do not add, remove, reorder, or otherwise edit exercises or sets. A target with no confident match must be returned completely unchanged.
+1. Match conservatively. Treat a header as a match only when you are highly confident it is the same movement as one authoritative exercise name, even if it is written with shorthand, a spelling or punctuation difference, a different prescription, or extra descriptor text. If the movements are merely related or similar, or the match is uncertain, reply "no match" for that header. Do not invent exercises, and use only the authoritative names listed below. If an authoritative name itself looks ambiguous or untidy, use it as written or reply "no match"; never invent a cleaner name.
+2. Use the authoritative name exactly. For a confident match, reply with the authoritative exercise name, character for character, copied from the list. Never copy an authoritative prescription into a header. Kilo keeps each header's own structure itself (its leading dash or number, prescription, and any marks such as *), so do not rewrite the header.
+3. The prescription stays in the header. The header's own sets-by-reps or time prescription (such as 2x8, 3x6-8, or 3x30 sec), any @load, and any marks stay exactly as they are and are never part of the descriptor.
+4. Give all remaining descriptor text. Any other text in the header beyond the name and prescription (cues, qualifiers, intensity, side notes) is the descriptor. Give it after the name, keeping its wording, capitalization, and internal punctuation exactly; you may remove only the separator before it (such as a comma or dash) and brackets that enclose all of it. Do not decide that phrases such as "each leg", "light", or "step up" are redundant and drop them. Do not paraphrase, summarize, or delete any of its words. Kilo moves it into one "-- " note. When a header has no descriptor, give none. If you cannot give the descriptor exactly as written, reply "no match" for that header instead.
 
-Examples (the authoritative names here only illustrate the transformation; always use the names in the authoritative routine below):
-- Authority "Single-Leg RDL": header "-Single-Leg RDL 2x8 each leg, light" becomes "-Single-Leg RDL 2x8", with the note "-- each leg, light".
-- Authority "DB Bench Press": header "-DB Bench Press 3x6-8, step up" becomes "-DB Bench Press 3x6-8", with the note "-- step up".
-- Authority "Lat Pulldown": header "-Lat Pulldown 2x10-12 (pack shoulder down on eccentric)" becomes "-Lat Pulldown 2x10-12", with the note "-- pack shoulder down on eccentric".
-- Authority "Deadlift": header "-Deadlift — trial sets, slow and controlled" becomes "-Deadlift", with the note "-- trial sets, slow and controlled".
+Reply with exactly one line for every header, in any order, and nothing else. Each line is exactly one of:
 
-For example, this target exercise:
--DB Bench Press 3x6-8, step up
-85 8,8,8
-90 -
--- felt good
+H3 => no match
+H3 => Lat Pulldown
+H3 => Lat Pulldown | pack shoulder down on eccentric
 
-is returned as:
--DB Bench Press 3x6-8
-85 8,8,8
-90 -
--- step up
--- felt good
+Write the header number exactly as shown, then " => " (a space, an equals sign, a greater-than sign, a space). "no match" is literal lowercase text and leaves that header unchanged. A match is the authoritative name, optionally followed by " | " (a space, a vertical bar, a space) and the descriptor; never write " | " when there is no descriptor. Inside a name or descriptor, write each backslash as \\\\ and each vertical bar as \\| ; no other escapes exist. Do not add Markdown fences, explanations, headings, blank lines, or leading or trailing spaces. Any other reply is rejected without being applied. Kilo makes the changes itself from the original notes, so never return routine text.
 
-Return each selected target as complete Kilo-importable routine text, one at a time. Label each result with its exact reference label, for example "Target routine 1: Upper", on its own line directly before that routine's text, so duplicate routine titles remain distinguishable. Return every target, even when nothing changed, and do not add explanations, a summary, or a change list. Do not use Markdown fences or return any reference markers. ${FORMAT_GUIDE}${routineBlock(`Authoritative routine: ${text(authority?.title) || 'Untitled Routine'}`, authority)}${targetBlocks}`;
+Examples (the authoritative names here only illustrate the reply format; always use the names in the authoritative list below):
+- Authority "Single-Leg RDL": header "-Single-Leg RDL 2x8 each leg, light" is answered "H1 => Single-Leg RDL | each leg, light".
+- Authority "DB Bench Press": header "-DB Bench Press 3x6-8, step up" is answered "H2 => DB Bench Press | step up".
+- Authority "Lat Pulldown": header "-Lat Pulldown 2x10-12 (pack shoulder down on eccentric)" is answered "H3 => Lat Pulldown | pack shoulder down on eccentric".
+- Authority "Deadlift": header "-Deadlift — trial sets, slow and controlled" is answered "H4 => Deadlift | trial sets, slow and controlled".
+- A header for a related but different movement is answered "H5 => no match".
+
+<<< BEGIN KILO AUTHORITATIVE EXERCISE NAMES >>>
+${names}
+<<< END KILO AUTHORITATIVE EXERCISE NAMES >>>
+
+<<< BEGIN KILO EXERCISE HEADERS >>>
+${headers}
+<<< END KILO EXERCISE HEADERS >>>`;
 }
 
 /**

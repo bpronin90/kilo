@@ -1,295 +1,455 @@
 import {
+  MAX_REPLY_LENGTH,
   applySelectedChanges,
   buildNormalizationPreview,
-  diffTargetNames,
-  splitNormalizationReply,
+  parseNormalizationReply,
 } from '../lib/interoperability/routineNormalizationImport';
+import {
+  NORMALIZATION_PROTOCOL,
+  buildHeaderCatalog,
+  extractNoteHeaders,
+  toStoredCatalog,
+} from '../lib/interoperability/normalizationHeaderCatalog';
+import { applyHeaderEdits, insertionIndex, planHeaderEdit } from '../lib/interoperability/normalizationHeaderEdits';
 import { applyWorkoutNoteTextBatchIfUnchanged, compareAndSetWorkoutNoteText as saveWorkoutNoteTextIfUnchanged } from '../storage/entries/workoutNotes';
 import * as Storage from '../storage/entries';
 import { canPickTextFile, pickTextFile } from '../lib/platformFilePicker';
 
 jest.mock('../lib/reminderScheduler', () => ({ reconcileWorkoutReminder: () => Promise.resolve() }));
 
+const snapshotOf = (authority, targets) => ({
+  version: 1,
+  protocol: NORMALIZATION_PROTOCOL,
+  authority,
+  targets,
+  catalog: toStoredCatalog(buildHeaderCatalog(authority, targets)),
+});
+// A complete valid reply: every ref answered, `choices` keyed by raw header.
+const replyFor = (snapshot, choices = {}) => snapshot.catalog.headers.map(h => `${h.ref} => ${choices[h.raw] ?? 'no match'}`).join('\n');
+const keysOf = preview => preview.mappings.map(m => m.ref);
+
+// Extract one header from a one-line note and plan an edit against it.
+const planFor = (raw, choice) => planHeaderEdit(extractNoteHeaders(`Monday\n${raw}`).headers[0], { descriptor: null, ...choice });
+
 const AUTH = { id: 'auth', title: 'Upper', raw_text: 'Monday\n-Bench Press 3x5\n- 135 5,5,5' };
 const T1 = { id: 't1', title: 'Upper', raw_text: 'Monday\n-bench press 3x5\n- 135 5,5,5 *\n-- elbows in\n---\nTuesday\n-Squat*\n- 185 -\n' };
 const T2 = { id: 't2', title: 'Upper', raw_text: 'Friday\n-BB Bench 3x5\n- 140 5,5,5' };
-const SNAP = { authority: AUTH, targets: [T1, T2] };
+const SNAP = snapshotOf(AUTH, [T1, T2]);
 const NOTES = [AUTH, T1, T2];
 
-const T1_OUT = 'Monday\n-Bench Press 3x5\n- 135 5,5,5 *\n-- elbows in\n---\nTuesday\n-Squat*\n- 185 -';
-const T2_OUT = 'Friday\n-Bench Press 3x5\n- 140 5,5,5';
-const reply = (...parts) => parts.join('\n\n');
+describe('header catalog (#1386)', () => {
+  const A = { id: 'a', title: 'Secret Authority Title', raw_text: 'Monday 2026-10-14\n+LIFTING (~30 min)\n-Bench Press 3x5\n- 999 5,5,5 *PR sentinel\n-- authority comment sentinel\n-Farmer\\Carry 2x40\n-Row' };
+  const W1 = { id: 'w1', title: 'Week one sentinel title', raw_text: 'Monday 2026-10-14\n+WARMUP\n-bench press 3x5\n- 111 5,5,5\n-- target comment sentinel\n+LIFTING (~30 min)\n-Row 3x8, slow\n222 8,8\n---\nTuesday\n-bench press 3x5\n- 333 5' };
+  const W2 = { id: 'w2', title: 'Week one sentinel title', raw_text: 'Wednesday\n+LIFTING\n-bench press 3x5\n-Bench Press 3x5\n3. Row 3x8, slow\nCore: Plank 3x30 sec' };
 
-describe('splitNormalizationReply', () => {
-  test('ignores explanations and Markdown fences and accepts decorated labels', () => {
-    const sections = splitNormalizationReply(`Sure! Here you go.\n\n**Target routine 2: Upper**\n\`\`\`\n${T2_OUT}\n\`\`\`\n### Target routine 1\n${T1_OUT}\n`);
-    expect(sections.map(s => s.number)).toEqual([2, 1]);
-    expect(sections[0].lines.join('\n')).toBe(T2_OUT);
+  test('sends authority names and each distinct raw header once, deduplicated by exact header text', () => {
+    const catalog = buildHeaderCatalog(A, [W1, W2]);
+    expect(catalog.ok).toBe(true);
+    expect(catalog.names).toEqual(['Bench Press', 'Farmer\\Carry', 'Row']);
+    expect(catalog.headers.map(h => [h.ref, h.raw])).toEqual([
+      ['H1', '-bench press 3x5'],
+      ['H2', '-Row 3x8, slow'],
+      ['H3', '-Bench Press 3x5'],
+      ['H4', '3. Row 3x8, slow'],
+      ['H5', 'Core: Plank 3x30 sec'],
+    ]);
+    expect(catalog.headers[0].occurrences).toEqual([{ noteId: 'w1', line: 2 }, { noteId: 'w1', line: 10 }, { noteId: 'w2', line: 2 }]);
+    expect(catalog.routineCount).toBe(2);
+    expect(catalog.headerCount).toBe(5);
+  });
+
+  test('context is only a day/section label; refs are stable for the same input and never depend on names or titles', () => {
+    const catalog = buildHeaderCatalog(A, [W1, W2]);
+    expect(catalog.headers[0].where).toBe('Week A · Monday · WARMUP; Week B · Tuesday; Wednesday · LIFTING');
+    expect(catalog.headers[1].where).toBe('Week A · Monday · lifting');
+    expect(JSON.stringify(buildHeaderCatalog(A, [W1, W2]).headers)).toBe(JSON.stringify(catalog.headers));
+    expect(JSON.stringify(catalog.headers)).not.toMatch(/2026|sentinel|999|111|222|333/);
+  });
+
+  test('an unreadable authority, empty names, or no headers is a blocked state, never a guess', () => {
+    expect(buildHeaderCatalog({ raw_text: 'x'.repeat(200001) }, [W1])).toEqual({ ok: false, reason: expect.stringMatching(/authoritative routine couldn’t be read/) });
+    expect(buildHeaderCatalog({ raw_text: 'Monday' }, [W1]).ok).toBe(false);
+    expect(buildHeaderCatalog(A, [{ id: 'bad', title: 'Bad', raw_text: 'x'.repeat(200001) }])).toEqual({ ok: false, reason: expect.stringMatching(/“Bad” couldn’t be read/) });
+    expect(buildHeaderCatalog(A, [{ id: 'e', title: 'E', raw_text: 'Monday' }]).reason).toMatch(/no exercise headers/);
+  });
+
+  test('names that the reply grammar cannot express (or the reserved no match) are never offered', () => {
+    const odd = { id: 'o', title: 'O', raw_text: 'Monday\n-no match\n-Row\n-@import-exercise "Tab\\tName"' };
+    expect(buildHeaderCatalog(odd, [W1]).names).toEqual(['Row']);
   });
 });
 
-test('a fence-like line inside a routine is kept and validated', () => {
-  const fenced = { ...T2, raw_text: 'Friday\n-BB Bench 3x5\n```\n- 140 5,5,5' };
-  const out = '```\nTarget routine 1\n```\nFriday\n-Bench Press 3x5\n```\n- 140 5,5,5\n```';
-  const preview = buildNormalizationPreview(out, { authority: AUTH, targets: [fenced] }, [AUTH, fenced]);
-  expect(preview.entries[0].changes).toHaveLength(1);
-});
+describe('parseNormalizationReply grammar (#1386)', () => {
+  const catalog = { headers: ['H1', 'H2', 'H3'].map(ref => ({ ref })) };
+  const parse = text => parseNormalizationReply(text, catalog);
+  const ALL = 'H1 => no match\nH2 => Lat Pulldown\nH3 => Lat Pulldown | pack shoulder down on eccentric';
 
-describe('buildNormalizationPreview', () => {
-  test('matches by reference label regardless of order and duplicate titles', () => {
-    const preview = buildNormalizationPreview(reply('Target routine 2: Upper', T2_OUT, 'Target routine 1: Upper', T1_OUT), SNAP, NOTES);
-    expect(preview.entries.map(e => [e.id, e.changes.map(c => `${c.oldName}>${c.newName}`)])).toEqual([
-      ['t1', ['bench press>Bench Press']],
-      ['t2', ['BB Bench>Bench Press']],
+  test('accepts match, descriptor, no match, any order, LF/CRLF and exactly one final newline', () => {
+    const ok = parse(ALL);
+    expect(ok.ok).toBe(true);
+    expect([...ok.choices]).toEqual([
+      ['H1', { kind: 'none' }],
+      ['H2', { kind: 'match', name: 'Lat Pulldown', descriptor: null }],
+      ['H3', { kind: 'match', name: 'Lat Pulldown', descriptor: 'pack shoulder down on eccentric' }],
     ]);
-    expect(preview.mappings).toEqual([
-      expect.objectContaining({ oldName: 'bench press', newName: 'Bench Press', noteCount: 1 }),
-      expect.objectContaining({ oldName: 'BB Bench', newName: 'Bench Press', noteCount: 1 }),
-    ]);
+    expect(parse(`${ALL}\n`).ok).toBe(true);
+    expect(parse(ALL.replace(/\n/g, '\r\n')).ok).toBe(true);
+    expect(parse(`${ALL.replace(/\n/g, '\r\n')}\r\n`).ok).toBe(true);
+    expect(parse('H3 => no match\nH1 => no match\nH2 => no match').ok).toBe(true);
   });
 
-  test('valid names apply byte-identically outside headers, preserving CRLF and trailing newline', () => {
+  test('escapes: \\\\ is a backslash and \\| is a pipe in names and descriptors', () => {
+    const ok = parse('H1 => A\\\\B\\|C | cue \\| with pipe \\\\ and slash\nH2 => no match\nH3 => no match');
+    expect(ok.choices.get('H1')).toEqual({ kind: 'match', name: 'A\\B|C', descriptor: 'cue | with pipe \\ and slash' });
+  });
+
+  const malformed = {
+    emptyReply: '',
+    onlyNewline: '\n',
+    blankInterior: 'H1 => no match\n\nH2 => no match\nH3 => no match',
+    twoFinalNewlines: `${ALL}\n\n`,
+    leadingBlank: `\n${ALL}`,
+    fenced: `\`\`\`\n${ALL}\n\`\`\``,
+    prose: `Sure! Here you go:\n${ALL}`,
+    proseAfter: `${ALL}\nHope that helps`,
+    leadingSpace: ` ${ALL}`,
+    trailingSpace: ALL.replace('H1 => no match', 'H1 => no match '),
+    lowercaseRef: ALL.replace('H1', 'h1'),
+    leadingZero: ALL.replace('H1', 'H01'),
+    zeroRef: ALL.replace('H1', 'H0'),
+    noSpaces: ALL.replace('H1 => no match', 'H1=>no match'),
+    doubleSpace: ALL.replace('H1 => no match', 'H1  => no match'),
+    wrongArrow: ALL.replace('H1 => no match', 'H1 -> no match'),
+    emptyName: ALL.replace('H2 => Lat Pulldown', 'H2 => '),
+    emptyDescriptor: ALL.replace('| pack shoulder down on eccentric', '| '),
+    noSpaceAfterPipe: ALL.replace('| pack', '|pack'),
+    noSpaceBeforePipe: ALL.replace('Pulldown | pack', 'Pulldown| pack'),
+    doubleSpaceBeforePipe: ALL.replace('Pulldown | pack', 'Pulldown  | pack'),
+    doubleSpaceAfterPipe: ALL.replace('Pulldown | pack', 'Pulldown |  pack'),
+    secondDelimiter: ALL.replace('eccentric', 'eccentric | more'),
+    unescapedPipeInField: ALL.replace('pack shoulder', 'pack|shoulder'),
+    unknownEscape: ALL.replace('pack', 'pa\\nck'),
+    danglingEscape: 'H1 => Lat Pulldown\\\nH2 => no match\nH3 => no match',
+    danglingEscapeEnd: ALL.replace('eccentric', 'eccentric\\'),
+    control: ALL.replace('pack', 'pa\tck'),
+    loneCarriageReturn: ALL.replace('pack', 'pa\rck'),
+    doubleCarriageReturn: ALL.replace('H1 => no match', 'H1 => no match\r\r'),
+    lineSeparator: ALL.replace('pack', 'pa ck'),
+    unknownRef: `${ALL}\nH4 => no match`,
+    duplicateRef: `${ALL}\nH1 => no match`,
+    missingRef: 'H1 => no match\nH2 => no match',
+    hugeRef: `${ALL}\nH99999999999999999999 => no match`,
+  };
+  test.each(Object.entries(malformed))('%s is rejected for the whole reply', (_name, text) => {
+    const result = parse(text);
+    expect(result.ok).toBe(false);
+    expect(result.errorCount).toBeGreaterThan(0);
+  });
+
+  test('unknown, duplicate and missing refs are named and nothing is inferred from order', () => {
+    expect(parse(`${ALL}\nH4 => no match`).errors).toEqual([expect.stringMatching(/H4 wasn’t in the prompt/)]);
+    expect(parse(`${ALL}\nH1 => no match`).errors).toEqual(['H1 appears more than once.']);
+    expect(parse('H1 => no match\nH3 => no match').errors).toEqual(['H2 has no reply line.']);
+  });
+
+  test('a flood of bad lines is bounded in what it reports', () => {
+    const flood = parse('nope\n'.repeat(5000));
+    expect(flood.ok).toBe(false);
+    expect(flood.errors.length).toBeLessThanOrEqual(20);
+    expect(flood.errorCount).toBeGreaterThan(5000);
+  });
+
+  test('an oversized reply is rejected before it is split', () => {
+    const spy = jest.spyOn(String.prototype, 'split');
+    const result = parse(`H1 => ${'x'.repeat(MAX_REPLY_LENGTH)}`);
+    expect(result).toEqual(expect.objectContaining({ ok: false, tooLarge: true }));
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});
+
+describe('buildNormalizationPreview (#1386)', () => {
+  test('a reply of no match lines proposes nothing and writes nothing', () => {
+    const preview = buildNormalizationPreview(replyFor(SNAP), SNAP, NOTES);
+    expect(preview.replyErrorCount).toBe(0);
+    expect(preview.mappings).toEqual([]);
+    expect(preview.noMatchCount).toBe(SNAP.catalog.headers.length);
+    expect(preview.entries.map(e => applySelectedChanges(e))).toEqual([null, null]);
+  });
+
+  test('matches by ref regardless of order, applies bytes outside headers untouched incl. CRLF and trailing newline', () => {
     const crlf = { ...T2, raw_text: 'Friday\r\n-BB Bench 3x5\r\n- 140 5,5,5\r\n' };
-    const preview = buildNormalizationPreview(reply('Target routine 1', T1_OUT, 'Target routine 2', T2_OUT), { authority: AUTH, targets: [T1, crlf] }, [AUTH, T1, crlf]);
-    const keys = new Set(preview.mappings.map(m => m.key));
-    expect(applySelectedChanges(preview.entries[0], keys)).toBe(T1.raw_text.replace('-bench press', '-Bench Press'));
-    expect(applySelectedChanges(preview.entries[1], keys)).toBe('Friday\r\n-Bench Press 3x5\r\n- 140 5,5,5\r\n');
+    const snap = snapshotOf(AUTH, [T1, crlf]);
+    const lines = replyFor(snap, { '-bench press 3x5': 'Bench Press', '-BB Bench 3x5': 'Bench Press' }).split('\n').reverse().join('\n');
+    const preview = buildNormalizationPreview(lines, snap, [AUTH, T1, crlf]);
+    expect(preview.mappings.map(m => `${m.oldHeader}>${m.newName}`)).toEqual(['-bench press 3x5>Bench Press', '-BB Bench 3x5>Bench Press']);
+    expect(applySelectedChanges(preview.entries[0])).toBe(T1.raw_text.replace('-bench press', '-Bench Press'));
+    expect(applySelectedChanges(preview.entries[1])).toBe('Friday\r\n-Bench Press 3x5\r\n- 140 5,5,5\r\n');
   });
 
-  test('deselected mappings are not applied', () => {
-    const preview = buildNormalizationPreview(reply('Target routine 1', T1_OUT, 'Target routine 2', T2_OUT), SNAP, NOTES);
-    const only = new Set([preview.mappings[1].key]);
+  test('deselected mappings, targets and occurrences are not applied', () => {
+    const preview = buildNormalizationPreview(replyFor(SNAP, { '-bench press 3x5': 'Bench Press', '-BB Bench 3x5': 'Bench Press' }), SNAP, NOTES);
+    const only = occurrence => occurrence.ref === preview.mappings[1].ref;
     expect(applySelectedChanges(preview.entries[0], only)).toBeNull();
-    expect(applySelectedChanges(preview.entries[1], only)).toBe(T2_OUT);
+    expect(applySelectedChanges(preview.entries[1], only)).toBe('Friday\n-Bench Press 3x5\n- 140 5,5,5');
+    const noOccurrence = occurrence => occurrence.key !== 't2:1';
+    expect(applySelectedChanges(preview.entries[1], noOccurrence)).toBeNull();
   });
 
-  test('missing, duplicate, and unknown labels are reported per target; valid targets still proceed', () => {
-    const missing = buildNormalizationPreview(reply('Target routine 2', T2_OUT, 'Target routine 7', T2_OUT), SNAP, NOTES);
-    expect(missing.entries[0].problems[0]).toMatch(/No result labelled/);
-    expect(missing.entries[1].changes).toHaveLength(1);
-    expect(missing.unknown).toEqual([7]);
-    const dup = buildNormalizationPreview(reply('Target routine 1', T1_OUT, 'Target routine 1', T1_OUT, 'Target routine 2', T2_OUT), SNAP, NOTES);
-    expect(dup.entries[0].problems[0]).toMatch(/appears 2 times/);
-  });
-
-  test('an oversized reply is rejected before splitting', () => {
-    const preview = buildNormalizationPreview(`Target routine 1\n${'x'.repeat(1024 * 1024)}`, SNAP, NOTES);
-    expect(preview.tooLarge).toBe(true);
-    expect(preview.entries).toEqual([]);
-  });
-
-  test('malformed output with no labels yields no applicable changes', () => {
-    const preview = buildNormalizationPreview('I could not do this.', SNAP, NOTES);
-    expect(preview.entries.every(e => e.problems)).toBe(true);
-  });
-
-  test('stale authority blocks the batch; stale target blocks only that target', () => {
-    expect(buildNormalizationPreview(reply('Target routine 1', T1_OUT), SNAP, [{ ...AUTH, raw_text: 'x' }, T1, T2]).authorityStale).toBe(true);
-    const preview = buildNormalizationPreview(reply('Target routine 1', T1_OUT, 'Target routine 2', T2_OUT), SNAP, [AUTH, { ...T1, raw_text: 'edited' }, T2]);
-    expect(preview.entries[0].problems[0]).toMatch(/edited after/);
-    expect(preview.entries[1].changes).toHaveLength(1);
-  });
-});
-
-describe('diffTargetNames rejects structural edits disguised as renames', () => {
-  const cases = {
-    weight: T1_OUT.replace('135', '145'),
-    reps: T1_OUT.replace('5,5,5 *', '5,5,4 *'),
-    mark: T1_OUT.replace('5,5,5 *', '5,5,5'),
-    headerMark: T1_OUT.replace('-Squat*', '-Back Squat'),
-    comment: T1_OUT.replace('elbows in', 'elbows out'),
-    weekday: T1_OUT.replace('Tuesday', 'Wednesday'),
-    weekBoundary: T1_OUT.replace('---\n', ''),
-    skipped: T1_OUT.replace('185 -', '185 5'),
-    declaration: T1_OUT.replace('Bench Press 3x5', 'Bench Press 4x5'),
-    reorder: 'Monday\n-Squat*\n- 185 -\n-- elbows in\n---\nTuesday\n-Bench Press 3x5\n- 135 5,5,5 *',
-    headerToRow: T1_OUT.replace('-Squat*', '- Squat*'),
-  };
-  test.each(Object.entries(cases))('%s', (_name, returned) => {
-    expect(diffTargetNames(T1.raw_text, returned.split('\n')).problems.length).toBeGreaterThan(0);
-  });
-
-  test('a spaced prescription folded into the name cannot change', () => {
-    expect(diffTargetNames('Monday\n-Bench 3 x 5', ['Monday', '-Bench 4 x 5']).problems).toHaveLength(1);
-    expect(diffTargetNames('Monday\n-Bench 3 x 5', ['Monday', '-Bench 3x 5']).problems).toHaveLength(1);
-    expect(diffTargetNames('Monday\n-Bench3x5', ['Monday', '-Bench3-5']).problems).toHaveLength(1);
-    expect(diffTargetNames('Monday\n-Bench 3x5', ['Monday', '-Bench3x5']).problems).toHaveLength(1);
-    expect(diffTargetNames('Monday\n-bench3x5', ['Monday', '-Bench Press3x5']).changes).toHaveLength(1);
-    expect(diffTargetNames('Monday\n-bench 3 x 5', ['Monday', '-Bench Press 3 x 5']).changes).toHaveLength(1);
-  });
-
-  test('casing and punctuation-only renames are allowed name changes', () => {
-    const out = diffTargetNames('Monday\n-db row 3x8', ['Monday', '-DB Row, one-arm 3x8']);
-    expect(out.changes).toEqual([expect.objectContaining({ oldName: 'db row', newName: 'DB Row, one-arm' })]);
-  });
-});
-
-describe('descriptor comment moved out of a corrected header (#1201)', () => {
-  const ORIG = 'Monday\n-Bench Press (paused) 3x5\n- 135 5,5,5\n- 140 5,5,5\n-Row 3x8\n- 100 8,8,8\n---\nTuesday\n-Squat (low bar) 3x5\n- 185 5,5,5\n-- felt heavy\n';
-  const GOOD = 'Monday\n-Bench Press 3x5\n- 135 5,5,5\n- 140 5,5,5\n-- paused\n-Row 3x8\n- 100 8,8,8\n---\nTuesday\n-Squat 3x5\n- 185 5,5,5\n-- low bar\n-- felt heavy';
-  const note = { id: 'd1', title: 'Upper', raw_text: ORIG };
-  const MAIN = { id: 'auth', title: 'Main', raw_text: 'Monday\n-Bench Press 3x5\n-Bench\n-Squat 3x5' };
-  const lines = text => text.split('\n');
-
-  test('header rename plus one following comment is accepted, for multiple exercises', () => {
-    const out = diffTargetNames(ORIG, lines(GOOD));
-    expect(out.problems).toBeUndefined();
-    expect(out.changes.map(c => `${c.oldName}>${c.newName}:${c.insert ? c.insert.line : ''}`)).toEqual([
-      'Bench Press (paused)>Bench Press:-- paused',
-      'Squat (low bar)>Squat:-- low bar',
-    ]);
-  });
-
-  test('preview and apply splice the comment into the original text', () => {
-    const preview = buildNormalizationPreview(`Target routine 1\n${GOOD}`, { authority: MAIN, targets: [note] }, [MAIN, note]);
-    const keys = new Set(preview.mappings.map(m => m.key));
-    expect(applySelectedChanges(preview.entries[0], keys)).toBe(`${GOOD}\n`);
-    const onlyBench = new Set([preview.mappings[0].key]);
-    expect(applySelectedChanges(preview.entries[0], onlyBench)).toBe(ORIG.replace('(paused) ', '').replace('140 5,5,5\n', '140 5,5,5\n-- paused\n'));
-  });
-
-  test('CRLF originals keep CRLF on the inserted line', () => {
-    const crlf = { ...note, raw_text: 'Monday\r\n-Bench (x) 3x5\r\n- 135 5,5,5\r\n' };
-    const preview = buildNormalizationPreview('Target routine 1\nMonday\n-Bench 3x5\n- 135 5,5,5\n-- x', { authority: MAIN, targets: [crlf] }, [MAIN, crlf]);
-    expect(applySelectedChanges(preview.entries[0], new Set(preview.mappings.map(m => m.key)))).toBe('Monday\r\n-Bench 3x5\r\n- 135 5,5,5\r\n-- x\r\n');
-  });
-
-  const bad = {
-    reorder: GOOD.replace('-Row 3x8\n- 100 8,8,8\n', '').replace('-Bench Press 3x5', '-Row 3x8\n- 100 8,8,8\n-Bench Press 3x5'),
-    exerciseRemoved: GOOD.replace('-Row 3x8\n- 100 8,8,8\n', ''),
-    exerciseAdded: GOOD.replace('---', '-Curl 3x8\n- 30 8,8,8\n---'),
-    setRemoved: GOOD.replace('- 140 5,5,5\n', ''),
-    setAdded: GOOD.replace('- 100 8,8,8', '- 100 8,8,8\n- 100 8,8,8'),
-    weight: GOOD.replace('135', '145'),
-    reps: GOOD.replace('100 8,8,8', '100 8,8,7'),
-    unrelatedComment: GOOD.replace('---\nTuesday', '-- new note\n---\nTuesday'),
-    misplacedComment: GOOD.replace('- 135 5,5,5\n- 140 5,5,5\n-- paused', '- 135 5,5,5\n-- paused\n- 140 5,5,5'),
-    beforeHeader: GOOD.replace('-Bench Press 3x5', '-- paused\n-Bench Press 3x5').replace('\n-- paused\n-Row', '\n-Row'),
-    duplicateComment: GOOD.replace('-- paused', '-- paused\n-- paused'),
-    multipleComments: GOOD.replace('-- paused', '-- paused\n-- more'),
-    uncorrectedHeader: ORIG.replace('- 185 5,5,5', '- 185 5,5,5\n-- extra'),
-    dividerInserted: GOOD.replace('-- paused', '---'),
-    emptyComment: GOOD.replace('-- paused', '-- '),
-    extraLine: `${GOOD}\n- 1 1`,
-  };
-  test.each(Object.entries(bad))('rejects %s', (_name, returned) => {
-    expect(diffTargetNames(ORIG, lines(returned)).problems.length).toBeGreaterThan(0);
-  });
-
-  test('a parser-excluded "| descriptor" suffix can move into the comment', () => {
-    const orig = 'Monday\n-Bench | paused 3x5\n- 135 5,5,5';
-    const out = diffTargetNames(orig, ['Monday', '-Bench Press 3x5', '- 135 5,5,5', '-- paused']);
-    expect(out.problems).toBeUndefined();
-    expect(out.changes).toEqual([expect.objectContaining({ oldName: 'Bench', newName: 'Bench Press', insert: expect.objectContaining({ line: '-- paused' }) })]);
-    // Dropping that descriptor without preserving it is data loss, so it is rejected.
-    expect(diffTargetNames(orig, ['Monday', '-Bench Press 3x5', '- 135 5,5,5']).problems).toHaveLength(1);
-    // Digits inside the shed descriptor are preserved under the same rule.
-    const digits = diffTargetNames('Monday\n-Bench | 2 sec pause 3x5\n- 135 5,5,5', ['Monday', '-Bench Press 3x5', '- 135 5,5,5', '-- 2 sec pause']);
-    expect(digits.problems).toBeUndefined();
-    expect(digits.changes[0].insert.line).toBe('-- 2 sec pause');
-    expect(diffTargetNames('Monday\n-Bench | 2 sec pause 3x5\n- 135 5,5,5', ['Monday', '-Bench Press 3x5', '- 135 5,5,5']).problems).toHaveLength(1);
-    expect(diffTargetNames('Monday\n-Bench | 2 sec pause 3x5\n- 135 5,5,5', ['Monday', '-Bench Press 4x5', '- 135 5,5,5', '-- 2 sec pause']).problems.length).toBeGreaterThan(0);
-    expect(diffTargetNames('Monday\n-Bench | 2 sec pause 3x5\n- 135 5,5,5', ['Monday', '-Bench Press 3x5', '- 135 5,5,5', '-- 3 sec pause']).problems.length).toBeGreaterThan(0);
-  });
-
-  test('an invented or unrelated comment is rejected', () => {
-    const alias = 'Monday\n-BB Bench 3x5\n- 135 5,5,5';
-    expect(diffTargetNames(alias, ['Monday', '-Bench Press 3x5', '- 135 5,5,5', '-- increase weight']).problems.length).toBeGreaterThan(0);
-    expect(diffTargetNames(alias, ['Monday', '-Bench Press 3x5', '- 135 5,5,5', '-- BB Bench']).problems.length).toBeGreaterThan(0);
-    expect(diffTargetNames(ORIG, lines(GOOD.replace('-- paused', '-- increase weight'))).problems.length).toBeGreaterThan(0);
-    expect(diffTargetNames(ORIG, lines(GOOD.replace('-- low bar', '-- low bar heavy'))).problems.length).toBeGreaterThan(0);
-  });
-
-  test('dropping a descriptor without its comment is rejected; an unchanged target stays valid (#1383)', () => {
-    expect(diffTargetNames(ORIG, lines(GOOD.replace(/\n-- (paused|low bar)/g, ''))).problems.length).toBeGreaterThan(0);
-    expect(diffTargetNames(ORIG, lines(ORIG.trimEnd())).changes).toEqual([]);
-  });
-});
-
-describe('owner regression fixture: one intended header correction (#1210)', () => {
-  const AUTHORITY = { id: 'auth', title: 'Summer 2026 Routine', raw_text: 'MONDAY — Push\n+LIFTING (~30 min)\n-DB Bench Press 3x6-8\n100 8,8,7\n-Lateral Raise 2x12\n25 12,12' };
-  const TARGET = { id: 'rehab', title: 'Rehab 3', raw_text: 'MONDAY — Push\n+LIFTING\n-DB Bench press 3x6-8\n85 8,8 90 8\n-Lateral Raise 2x12\n20 12,12\n-Squat 3x8\n95 10, 165 8,8,8\n-- keep it slow\n---\nTUESDAY — Pull\n-Dead bugs 2x10\n' };
-  const snap = { authority: AUTHORITY, targets: [TARGET] };
-  const notes = [AUTHORITY, TARGET];
-  const FIXED = TARGET.raw_text.replace('DB Bench press', 'DB Bench Press');
-  const GOOD = FIXED.trimEnd();
-  const preview = out => buildNormalizationPreview(`Target routine 1: Rehab 3\n${out}`, snap, notes);
-
-  test('exactly one mapping is proposed and everything else stays byte-identical', () => {
-    const p = preview(GOOD);
-    expect(p.mappings).toEqual([expect.objectContaining({ oldName: 'DB Bench press', newName: 'DB Bench Press' })]);
-    expect(applySelectedChanges(p.entries[0], new Set(p.mappings.map(m => m.key)))).toBe(FIXED);
-  });
-
-  test('an unchanged reply proposes no change and writes nothing', () => {
-    const p = preview(TARGET.raw_text);
-    expect(p.entries[0].changes).toEqual([]);
-    expect(p.mappings).toEqual([]);
-    expect(applySelectedChanges(p.entries[0], new Set())).toBeNull();
-  });
-
-  test('an incorrect rename of an ambiguous header is listed and stays unapplied when deselected', () => {
-    const p = preview(GOOD.replace('-Squat 3x8', '-Single-Leg Press 3x8'));
-    expect(p.mappings.map(m => `${m.oldName}>${m.newName}`)).toEqual(['DB Bench press>DB Bench Press', 'Squat>Single-Leg Press']);
-    expect(applySelectedChanges(p.entries[0], new Set([p.mappings[0].key]))).toBe(FIXED);
-  });
-
-  test('a rename that also edits a prescription, set, comment, or boundary is rejected', () => {
-    for (const bad of [GOOD.replace('3x6-8', '3x8'), GOOD.replace('85 8,8', '95 8,8'), GOOD.replace('keep it slow', 'go fast'), GOOD.replace('---\n', ''), GOOD.replace('+LIFTING', '+LIFT')]) {
-      expect(preview(bad).entries[0].problems.length).toBeGreaterThan(0);
+  test('a structural reply error blocks everything even when other lines are valid', () => {
+    const good = replyFor(SNAP, { '-bench press 3x5': 'Bench Press' });
+    for (const bad of [`${good}\nextra`, good.replace('H2 => no match', 'H2 => no match |'), `Here:\n${good}`]) {
+      const preview = buildNormalizationPreview(bad, SNAP, NOTES);
+      expect(preview.entries).toEqual([]);
+      expect(preview.mappings).toEqual([]);
+      expect(preview.replyErrorCount).toBeGreaterThan(0);
     }
   });
+
+  test('a semantically invalid mapping is reported and never applied; independent mappings still proceed', () => {
+    const preview = buildNormalizationPreview(replyFor(SNAP, { '-bench press 3x5': 'Bench Press', '-BB Bench 3x5': 'Conventional Deadlift' }), SNAP, NOTES);
+    expect(keysOf(preview)).toEqual(['H1']);
+    expect(preview.rejected).toEqual([{ ref: 'H3', header: '-BB Bench 3x5', problem: expect.stringMatching(/isn’t an exercise name in the authoritative routine/) }]);
+    expect(applySelectedChanges(preview.entries[1])).toBeNull();
+  });
+
+  test.each([
+    ['not in authority, no descriptor', 'Bench'],
+    ['wrong case', 'bench press'],
+    ['reserved text with a descriptor', 'no match | cue'],
+    ['extra descriptor', 'Bench Press | invented'],
+  ])('a name that is not exactly an authority name is rejected: %s', (_label, choice) => {
+    const preview = buildNormalizationPreview(replyFor(SNAP, { '-BB Bench 3x5': choice }), SNAP, NOTES);
+    expect(preview.mappings).toEqual([]);
+    expect(preview.rejected).toHaveLength(1);
+  });
+
+  test('a mapping to the header’s own current name is a no-op, not an edit', () => {
+    const same = { id: 'same', title: 'Same', raw_text: 'Monday\n-Bench Press 3x5' };
+    const snap = snapshotOf(AUTH, [same]);
+    const preview = buildNormalizationPreview(replyFor(snap, { '-Bench Press 3x5': 'Bench Press' }), snap, [AUTH, same]);
+    expect(preview.mappings).toEqual([]);
+    expect(preview.rejected).toEqual([]);
+    expect(preview.unchangedCount).toBe(1);
+    // "No match" in another case is only an (unknown) name, never the no-op.
+    expect(buildNormalizationPreview(replyFor(snap, { '-Bench Press 3x5': 'No match' }), snap, [AUTH, same]).rejected).toHaveLength(1);
+  });
+
+  test('an oversized reply is rejected before parsing and unsupported or tampered snapshots are not routed', () => {
+    expect(buildNormalizationPreview('x'.repeat(MAX_REPLY_LENGTH + 1), SNAP, NOTES).tooLarge).toBe(true);
+    const { protocol, ...legacy } = SNAP;
+    expect(buildNormalizationPreview(replyFor(SNAP), legacy, NOTES).unsupported).toBe(true);
+    expect(buildNormalizationPreview(replyFor(SNAP), { ...SNAP, catalog: { ...SNAP.catalog, names: ['Other'] } }, NOTES).inconsistent).toBe(true);
+    const moved = { ...SNAP, catalog: { ...SNAP.catalog, headers: SNAP.catalog.headers.map((h, i) => (i ? h : { ...h, occurrences: [{ noteId: 't1', line: 3 }] })) } };
+    expect(buildNormalizationPreview(replyFor(SNAP), moved, NOTES).inconsistent).toBe(true);
+  });
+
+  test('stale authority blocks the batch; stale or deleted target blocks only that target', () => {
+    const reply = replyFor(SNAP, { '-bench press 3x5': 'Bench Press', '-BB Bench 3x5': 'Bench Press' });
+    expect(buildNormalizationPreview(reply, SNAP, [{ ...AUTH, raw_text: 'x' }, T1, T2]).authorityStale).toBe(true);
+    expect(buildNormalizationPreview(reply, SNAP, [T1, T2]).authorityStale).toBe(true);
+    const preview = buildNormalizationPreview(reply, SNAP, [AUTH, { ...T1, raw_text: 'edited' }, T2]);
+    expect(preview.entries[0].problems[0]).toMatch(/edited after/);
+    expect(preview.entries[1].occurrences).toHaveLength(1);
+    expect(preview.mappings.map(m => [m.ref, m.occurrenceCount])).toEqual([['H3', 1]]);
+    expect(buildNormalizationPreview(reply, SNAP, [AUTH, T2]).entries[0].problems[0]).toMatch(/no longer exists/);
+  });
 });
 
-describe('saveWorkoutNoteTextIfUnchanged', () => {
-  beforeEach(async () => { await Storage.replaceWorkoutNotesRaw([]); });
+describe('planHeaderEdit rebuilds headers from the original bytes (#1383 safety carried over)', () => {
+  const ok = (raw, choice) => {
+    const plan = planFor(raw, choice);
+    expect(plan.problem).toBeUndefined();
+    return plan;
+  };
+  const rejected = (raw, choice) => expect(planFor(raw, choice).ok).toBe(false);
 
-  test('writes only while the note still holds the prompt snapshot', async () => {
-    await Storage.saveWorkoutNoteItem({ ...T2, recovery_block_id: 'blk' });
-    expect(await saveWorkoutNoteTextIfUnchanged('t2', T2.raw_text, T2_OUT)).toBe('saved');
-    const saved = (await Storage.loadWorkoutNotes()).find(n => n.id === 't2');
-    expect(saved.raw_text).toBe(T2_OUT);
-    expect(saved.recovery_block_id).toBe('blk');
-    // Retry after an interrupted write/enqueue: already-landed text is rewritten, not rejected.
-    expect(await saveWorkoutNoteTextIfUnchanged('t2', T2.raw_text, T2_OUT)).toBe('saved');
+  test.each([
+    ['-Single-Leg RDL 2x8 each leg, light', 'Single-Leg RDL', 'each leg, light', '-Single-Leg RDL 2x8'],
+    ['-DB Bench Press 3x6-8, step up', 'DB Bench Press', 'step up', '-DB Bench Press 3x6-8'],
+    ['-Lat Pulldown 2x10-12 (pack shoulder down on eccentric)', 'Lat Pulldown', 'pack shoulder down on eccentric', '-Lat Pulldown 2x10-12'],
+    ['-Deadlift — trial sets, slow and controlled', 'Deadlift', 'trial sets, slow and controlled', '-Deadlift'],
+  ])('owner example %s', (raw, name, descriptor, body) => {
+    expect(ok(raw, { name, descriptor })).toEqual({ ok: true, newBody: body, comment: descriptor });
+    // The descriptor is required, exact, and the only thing that moves.
+    rejected(raw, { name, descriptor: null });
+    rejected(raw, { name, descriptor: `${descriptor}, extra` });
+    rejected(raw, { name, descriptor: descriptor.replace(/^./, c => c.toUpperCase()) });
+    rejected(raw, { name, descriptor: descriptor.slice(0, -1) });
+    rejected(raw, { name, descriptor: descriptor.replace(/ /, '  ') });
   });
 
-  test('never overwrites newer text or resurrects a missing note', async () => {
-    await Storage.saveWorkoutNoteItem({ ...T2, raw_text: 'newer' });
-    expect(await saveWorkoutNoteTextIfUnchanged('t2', T2.raw_text, T2_OUT)).toBe('stale');
-    expect((await Storage.loadWorkoutNotes()).find(n => n.id === 't2').raw_text).toBe('newer');
-    expect(await saveWorkoutNoteTextIfUnchanged('gone', 'a', 'b')).toBe('missing');
+  test('descriptor must match: omission, paraphrase, recasing, internal punctuation, invention, partial drops', () => {
+    const raw = '-Single-Leg RDL 2x8 each leg, light';
+    const name = 'Single-Leg RDL';
+    for (const descriptor of ['each leg', 'light', 'each leg light', 'each leg; light!', 'Each leg, light', 'each leg, light, slow', 'one leg, light', 'light, each leg']) {
+      rejected(raw, { name, descriptor });
+    }
+    expect(ok(raw, { name, descriptor: 'each leg, light' }).newBody).toBe('-Single-Leg RDL 2x8');
+    // Text on both sides of the prescription joins in one note.
+    const both = '-Bench Press (paused) 3x5 light';
+    for (const descriptor of ['paused, light', 'paused; light', 'paused light']) expect(ok(both, { name: 'Bench Press', descriptor }).newBody).toBe('-Bench Press 3x5');
+    rejected(both, { name: 'Bench Press', descriptor: 'paused' });
+    rejected(both, { name: 'Bench Press', descriptor: 'light, paused' });
+  });
+
+  test('a descriptor is rejected where the header has none, and missing where it has one', () => {
+    rejected('-bench 3x5', { name: 'Bench Press', descriptor: 'cue' });
+    expect(ok('-bench 3x5', { name: 'Bench Press' }).comment).toBeNull();
+    expect(ok('-BB Bench 3x5', { name: 'Bench Press' }).newBody).toBe('-Bench Press 3x5');
+  });
+
+  test('prescription, spacing, loads, ranges, marks and numbering survive byte-for-byte', () => {
+    expect(ok('-bench   3x6-8 *PR', { name: 'Bench Press' }).newBody).toBe('-Bench Press   3x6-8 *PR');
+    expect(ok('-bench 4×6–8, tempo', { name: 'Bench Press', descriptor: 'tempo' }).newBody).toBe('-Bench Press 4×6–8');
+    expect(ok('-bench @135 3x5, paused', { name: 'Bench Press', descriptor: 'paused' }).newBody).toBe('-Bench Press @135 3x5');
+    expect(ok('2b. bench 3x5, tempo', { name: 'Bench Press', descriptor: 'tempo' }).newBody).toBe('2b. Bench Press 3x5');
+    expect(ok('Core: plank 3x30s', { name: 'Core: Plank' }).newBody).toBe('Core: Plank 3x30s');
+    expect(ok('-Squat *', { name: 'Back Squat' }).newBody).toBe('-Back Squat *');
+    // A mark glued to the name stays glued to the (exact) chosen name.
+    expect(ok('-Squat*', { name: 'Back Squat' }).newBody).toBe('-Back Squat*');
+    // Text after the prescription and a mark stays in the header, never moved.
+    rejected('-Bench 3x5 paused *PR', { name: 'Bench Press', descriptor: 'paused' });
+    expect(ok('-Bench 3x5 *PR paused', { name: 'Bench Press' }).newBody).toBe('-Bench Press 3x5 *PR paused');
+  });
+
+  test('a load or rep-range endpoint can never leave the header', () => {
+    const name = 'Bench Press';
+    for (const descriptor of ['35 3x5, paused', '135 3x5, paused', '3x5, paused', '@135 paused']) rejected('-bench @135 3x5, paused', { name, descriptor });
+    for (const descriptor of ['-8 paused', '8 paused', '5-8 paused']) rejected('-bench 3x5-8 paused', { name, descriptor });
+    for (const descriptor of ['/8 paused', '8 paused']) rejected('-bench 3x5/8 paused', { name, descriptor });
+    expect(ok('-bench 3x5-8 paused', { name, descriptor: 'paused' }).newBody).toBe('-Bench Press 3x5-8');
+    expect(ok('-bench 3x5/8 paused', { name, descriptor: 'paused' }).newBody).toBe('-Bench Press 3x5/8');
+    // A unit or word glued to the prescription is an ambiguous boundary.
+    rejected('-bench 3x5kg heavy', { name, descriptor: 'kg heavy' });
+    rejected('-bench 3x5kg heavy', { name, descriptor: 'heavy' });
+  });
+
+  test('a timed declaration keeps its unit and meaning', () => {
+    const name = 'Plank';
+    for (const descriptor of ['sec, slow', 'sec slow', 's, slow', '3x30 sec, slow', null]) rejected('-plank 3x30 sec, slow', { name, descriptor });
+    rejected('-plank 3x30sec slow', { name, descriptor: 'sec slow' });
+    rejected('-plank 30-45 s, slow', { name, descriptor: 's, slow' });
+    rejected('-plank 3x30s, slow', { name, descriptor: 's, slow' });
+    expect(ok('-plank 3x30sec slow', { name, descriptor: 'slow' }).newBody).toBe('-Plank 3x30sec');
+    expect(ok('-plank 3x30s, slow', { name, descriptor: 'slow' }).newBody).toBe('-Plank 3x30s');
+    // The parser folds a spaced unit into the name ("Plank 3x30 sec"), so the
+    // rebuilt header could not read as the exact chosen name: left unapplied.
+    rejected('-plank 3x30 sec, slow', { name, descriptor: 'slow' });
+    rejected('-plank 30-45 s, slow', { name, descriptor: 'slow' });
+  });
+
+  test('scalar durations stay in the header; a separated duration is descriptor text', () => {
+    for (const descriptor of ['min easy', '5 min easy', '5', 'easy 5 min', null]) rejected('-bike 5 min easy', { name: 'Bike', descriptor });
+    // The parser keeps a spaced duration in the name, so this stays unapplied.
+    rejected('-bike 5 min easy', { name: 'Bike 5 min', descriptor: 'easy' });
+    expect(ok('-bike, 5 min easy', { name: 'Bike', descriptor: '5 min easy' }).newBody).toBe('-Bike');
+    expect(ok('-Bench | 2 sec pause 3x5', { name: 'Bench Press', descriptor: '2 sec pause' }).newBody).toBe('-Bench Press 3x5');
+    rejected('-Bench | 2 sec pause 3x5', { name: 'Bench Press', descriptor: 'sec pause' });
+    rejected('-Bench | 2 sec pause 3x5', { name: 'Bench Press', descriptor: '3 sec pause' });
+    rejected('-Bench | 2 sec pause 3x5', { name: 'Bench Press', descriptor: null });
+  });
+
+  test('declaration and name-read changes are rejected', () => {
+    // A chosen name that itself carries a prescription would change what the row means.
+    rejected('-Hold 3x5', { name: 'Hold 3x30 sec' });
+    // A spaced prescription is folded into the name by the parser, so it cannot be normalized.
+    rejected('-bench 3 x 5', { name: 'Bench Press' });
+    rejected('-Bench3x5', { name: 'Bench Press' });
+    // A header with no name ahead of its prescription.
+    rejected('-3x5', { name: 'Bench Press' });
+  });
+
+  test.each([':', ';', ',', ' |', ' (', ' [', ' {', ' <', ' "', ' —', ' –', ' -', ' /', ' ~', ' #', ' !', " '", ' ‘', ' .'])('an alias rename cannot drop a "%s"-separated cue', sep => {
+    const close = { ' (': ')', ' [': ']', ' {': '}', ' <': '>', ' "': '"', " '": "'", ' ‘': '’' }[sep] || '';
+    const raw = `-Dumbbell Bench Press${sep} paused${close} 3x5`;
+    rejected(raw, { name: 'DB Bench Press', descriptor: null });
+    expect(ok(raw, { name: 'DB Bench Press', descriptor: 'paused' }).newBody).toBe('-DB Bench Press 3x5');
+    rejected(raw, { name: 'DB Bench Press', descriptor: 'paused)' });
+  });
+
+  test('in-word name punctuation stays part of an alias name; spaced "&"/"+" join name words', () => {
+    expect(ok("-Farmer's Walk 3x40", { name: 'Farmer Carry' }).newBody).toBe('-Farmer Carry 3x40');
+    expect(ok('-Single-Leg Leg Press 3x8', { name: 'Single Leg Press' }).newBody).toBe('-Single Leg Press 3x8');
+    expect(ok('-Clean & Jerk 3x2', { name: 'C&J' }).newBody).toBe('-C&J 3x2');
+    expect(ok('-Clean + Jerk 3x2', { name: 'C+J' }).newBody).toBe('-C+J 3x2');
+    expect(ok('-push/pull row 3x5', { name: 'Push/Pull Row' }).newBody).toBe('-Push/Pull Row 3x5');
+    rejected("-Dumbbell Bench Press 'paused' 3x5", { name: 'DB Bench Press', descriptor: null });
+    // The spaced slash separates a cue and the unseparated alias cue stays an accepted limitation.
+    expect(ok('-Bench Press / paused 3x5', { name: 'Bench Press', descriptor: 'paused' }).newBody).toBe('-Bench Press 3x5');
+    expect(ok('-Bench Pressing 3x5', { name: 'Bench Press' }).newBody).toBe('-Bench Press 3x5');
+  });
+
+  test('numbers in the replaced name cannot vanish; a leading symbol that is not a separator is kept', () => {
+    rejected('-Squat 5/3/1', { name: 'Back Squat' });
+    rejected('-21s Curl', { name: 'Curl' });
+    expect(ok('-45° Incline Press', { name: 'Incline Press 45°' }).newBody).toBe('-Incline Press 45°');
+    const name = 'Bench Press';
+    expect(ok('-Bench Press 3x5, +5 lb', { name, descriptor: '+5 lb' }).comment).toBe('+5 lb');
+    rejected('-Bench Press 3x5, +5 lb', { name, descriptor: '5 lb' });
+    expect(ok('-Bench Press 3x5 @ RPE 8', { name, descriptor: '@ RPE 8' }).comment).toBe('@ RPE 8');
+  });
+
+  test('a pipe or backslash inside the original text is escaped in the reply and compared unescaped', () => {
+    const header = { id: 'p', title: 'P', raw_text: 'Monday\n-bench 3x5 a | b \\ c' };
+    const authority = { id: 'a', title: 'A', raw_text: 'Monday\n-Farmer\\Carry 2x40\n-Bench Press 3x5' };
+    const snap = snapshotOf(authority, [header]);
+    const good = buildNormalizationPreview('H1 => Bench Press | a \\| b \\\\ c', snap, [authority, header]);
+    expect(good.rejected).toEqual([]);
+    expect(applySelectedChanges(good.entries[0])).toBe('Monday\n-Bench Press 3x5\n-- a | b \\ c');
+    // The unescaped forms are malformed, not repaired.
+    expect(buildNormalizationPreview('H1 => Bench Press | a | b \\ c', snap, [authority, header]).replyErrorCount).toBeGreaterThan(0);
+    expect(buildNormalizationPreview('H1 => Bench Press | a \\| b \\ c', snap, [authority, header]).replyErrorCount).toBeGreaterThan(0);
+    // An authority name with a backslash is chosen through its escape.
+    const named = { id: 'n', title: 'N', raw_text: 'Monday\n-farmer carry 2x40' };
+    const snap2 = snapshotOf(authority, [named]);
+    const ok2 = buildNormalizationPreview('H1 => Farmer\\\\Carry', snap2, [authority, named]);
+    expect(applySelectedChanges(ok2.entries[0])).toBe('Monday\n-Farmer\\Carry 2x40');
+  });
+
+  test('only a separator and one enclosing bracket pair are dropped from the moved text', () => {
+    const name = 'Bench Press';
+    expect(ok('-Bench Press 3x5 (a (b) c)', { name, descriptor: '(a (b) c)' }).newBody).toBe('-Bench Press 3x5');
+    rejected('-Bench Press 3x5 (a (b) c)', { name, descriptor: 'a (b) c' });
+    expect(ok('-Bench Press 3x5 (a) (b)', { name, descriptor: '(a) (b)' }).comment).toBe('(a) (b)');
+    expect(ok('-Bench Press 3x5 step up!', { name, descriptor: 'step up!' }).comment).toBe('step up!');
+    expect(ok("-Bench Press 3x5 'til failure", { name, descriptor: "'til failure" }).comment).toBe("'til failure");
+    expect(ok('-Bench Press, paused, 3x5', { name, descriptor: 'paused' }).comment).toBe('paused');
   });
 });
 
-describe('platformFilePicker (native)', () => {
-  const fileReading = body => jest.fn().mockImplementation(function File(asset) { this.asset = asset; this.text = async () => body; });
+describe('insertionIndex and applyHeaderEdits', () => {
+  const text = 'Mon\n-A 3x5\n- 1 5\n-- c\n-B 3x5\n\n+X\n-C 3x5\n-- n\n---\n-D 3x5\n- 9 5';
+  const { lines, boundaries } = extractNoteHeaders(text);
+  const at = header => insertionIndex(lines, header, boundaries);
 
-  test('android and ios offer file picking', () => {
-    expect(canPickTextFile({ platform: 'android' })).toBe(true);
-    expect(canPickTextFile({ platform: 'ios' })).toBe(true);
+  test('lands after the last set, before trailing comments, never past the next exercise, section or divider', () => {
+    expect(at(1)).toBe(2);
+    expect(at(4)).toBe(4);
+    expect(at(7)).toBe(7);
+    expect(at(10)).toBe(11);
   });
 
-  test('reads the cached copy locally and returns null on cancel', async () => {
-    const documentPicker = { getDocumentAsync: jest.fn().mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///cache/r.txt', size: 10 }] }) };
-    const File = fileReading('Target routine 1');
-    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(() => { throw new Error('fetch must not be used'); });
-    await expect(pickTextFile({ platform: 'android', documentPicker, File })).resolves.toBe('Target routine 1');
-    expect(documentPicker.getDocumentAsync).toHaveBeenCalledWith(expect.objectContaining({ copyToCacheDirectory: true }));
-    expect(File).toHaveBeenCalledWith('file:///cache/r.txt');
-    expect(fetchSpy).not.toHaveBeenCalled();
-    fetchSpy.mockRestore();
-    documentPicker.getDocumentAsync.mockResolvedValue({ canceled: true, assets: null });
-    await expect(pickTextFile({ platform: 'ios', documentPicker, File })).resolves.toBeNull();
+  test('bare, dashed, skip and recovered rows count as sets', () => {
+    const rows = 'Mon\n-A 3x5\n- 1 5\n2 5,5\n-\n3 -\n-230 5\n-- c\n-B 3x5';
+    const note = extractNoteHeaders(rows);
+    expect(insertionIndex(note.lines, 1, note.boundaries)).toBe(6);
   });
 
-  test('rejects oversized files', async () => {
-    const documentPicker = { getDocumentAsync: jest.fn().mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///x', size: 5 * 1024 * 1024 }] }) };
-    await expect(pickTextFile({ platform: 'android', documentPicker, File: fileReading('') })).rejects.toThrow(/too large/);
+  test('edits apply bottom-up to the original bytes, CRLF and the final newline included', () => {
+    const original = 'Mon\r\n-a (x) 3x5\r\n- 1 5\r\n-b (y)\r\n';
+    const note = extractNoteHeaders(original);
+    const out = applyHeaderEdits(original, [
+      { line: 1, newBody: '-A 3x5', comment: 'x', insertAfter: insertionIndex(note.lines, 1, note.boundaries) },
+      { line: 3, newBody: '-B', comment: 'y', insertAfter: insertionIndex(note.lines, 3, note.boundaries) },
+    ]);
+    expect(out).toBe('Mon\r\n-A 3x5\r\n- 1 5\r\n-- x\r\n-B\r\n-- y\r\n');
+    expect(applyHeaderEdits('Mon\r\n-a (x)', [{ line: 1, newBody: '-A', comment: 'x', insertAfter: 1 }])).toBe('Mon\r\n-A\r\n-- x');
+    expect(applyHeaderEdits('Mon\n  -a 3x5  \n', [{ line: 1, newBody: '-A 3x5', comment: null, insertAfter: 1 }])).toBe('Mon\n  -A 3x5  \n');
   });
 });
 
-describe('owner descriptor examples apply through the batch write (#1383)', () => {
+describe('owner descriptor examples apply through the batch write (#1383, compact #1386)', () => {
   const AUTHORITY = { id: 'a1383', title: 'Lower', raw_text: 'MONDAY — Lower\n-Single-Leg RDL\n-DB Bench Press 3x6-8\n-Lat Pulldown\n-Deadlift' };
   const ORIG = [
     'MONDAY — Lower', '+WARMUP', '-Plank', '+LIFTING',
@@ -309,25 +469,31 @@ describe('owner descriptor examples apply through the batch write (#1383)', () =
   ].join('\n');
   const TARGET = { id: 'b1383', title: 'Lower', raw_text: ORIG };
   const TWIN = { id: 'c1383', title: 'Lower', raw_text: 'MONDAY — Lower\n-DB Bench Press 3x6-8, step up\n85 8,8,8' };
-  const snap = { authority: AUTHORITY, targets: [TARGET, TWIN] };
-  const notes = [AUTHORITY, TARGET, TWIN];
   const TWIN_OUT = 'MONDAY — Lower\n-DB Bench Press 3x6-8\n85 8,8,8\n-- step up';
-  const replyFor = (out, twin = TWIN.raw_text) => `Target routine 2: Lower\n${twin}\n\nTarget routine 1: Lower\n${out}`;
-  const keysOf = p => new Set(p.mappings.map(m => m.key));
+  const snap = snapshotOf(AUTHORITY, [TARGET, TWIN]);
+  const notes = [AUTHORITY, TARGET, TWIN];
+  const CHOICES = {
+    '-Single-Leg RDL 2x8 each leg, light': 'Single-Leg RDL | each leg, light',
+    '-DB Bench Press 3x6-8, step up': 'DB Bench Press | step up',
+    '-Lat Pulldown 2x10-12 (pack shoulder down on eccentric)': 'Lat Pulldown | pack shoulder down on eccentric',
+    '-Deadlift — trial sets, slow and controlled': 'Deadlift | trial sets, slow and controlled',
+    '-Single-Leg RDL 2x8 each leg': 'Single-Leg RDL | each leg',
+  };
+  const full = (extra = {}) => buildNormalizationPreview(replyFor(snap, { ...CHOICES, ...extra }), snap, notes);
 
   beforeEach(async () => { await Storage.replaceWorkoutNotesRaw([]); });
 
-  test('all four examples (bare, dashed, skip rows; no-set; repeats) reach the store byte-exactly', async () => {
-    const p = buildNormalizationPreview(replyFor(RESULT.trimEnd(), TWIN_OUT), snap, notes);
-    expect(p.entries.map(e => e.problems)).toEqual([undefined, undefined]);
-    expect(p.mappings.map(m => `${m.oldName}>${m.newName}`)).toEqual([
-      'Single-Leg RDL 2x8 each leg, light>Single-Leg RDL',
-      'DB Bench Press 3x6-8, step up>DB Bench Press',
-      'Lat Pulldown 2x10-12 (pack shoulder down on eccentric)>Lat Pulldown',
-      'Deadlift — trial sets, slow and controlled>Deadlift',
-      'Single-Leg RDL 2x8 each leg>Single-Leg RDL',
+  test('all four examples (bare, dashed, skip rows; no-set; repeats across notes and weeks) reach the store byte-exactly', async () => {
+    const p = full();
+    expect(p.rejected).toEqual([]);
+    expect(p.mappings.map(m => [m.ref, m.newName, m.descriptor, m.occurrenceCount, m.noteCount])).toEqual([
+      ['H2', 'Single-Leg RDL', 'each leg, light', 1, 1],
+      ['H3', 'DB Bench Press', 'step up', 2, 2],
+      ['H4', 'Lat Pulldown', 'pack shoulder down on eccentric', 1, 1],
+      ['H5', 'Deadlift', 'trial sets, slow and controlled', 1, 1],
+      ['H6', 'Single-Leg RDL', 'each leg', 1, 1],
     ]);
-    const items = p.entries.map(entry => ({ id: entry.id, expected_raw_text: entry.snapshot, next_raw_text: applySelectedChanges(entry, keysOf(p)) }));
+    const items = p.entries.map(entry => ({ id: entry.id, expected_raw_text: entry.snapshot, next_raw_text: applySelectedChanges(entry) }));
     expect(items).toEqual([
       { id: 'b1383', expected_raw_text: ORIG, next_raw_text: RESULT },
       { id: 'c1383', expected_raw_text: TWIN.raw_text, next_raw_text: TWIN_OUT },
@@ -344,101 +510,76 @@ describe('owner descriptor examples apply through the batch write (#1383)', () =
     expect((await Storage.loadWorkoutNotes()).find(n => n.id === 'b1383').raw_text).toBe(RESULT);
   });
 
-  test('a repeated header edits only its own occurrence when one mapping is deselected', () => {
-    const p = buildNormalizationPreview(replyFor(RESULT.trimEnd()), snap, notes);
-    const only = new Set([...keysOf(p)].filter(k => !k.endsWith('each leg\u0000Single-Leg RDL')));
-    const next = applySelectedChanges(p.entries[0], only);
-    expect(next).toBe(RESULT.replace('-Single-Leg RDL 2x8\n- 20 8,8\n-- each leg\n', '-Single-Leg RDL 2x8 each leg\n- 20 8,8\n'));
-    expect(applySelectedChanges(p.entries[1], keysOf(p))).toBeNull();
+  test('repeated headers keep separate write locations; one mapping or one occurrence can be deselected', () => {
+    const p = full();
+    const sameHeader = p.entries.flatMap(e => e.occurrences).filter(o => o.ref === 'H3');
+    expect(sameHeader.map(o => o.key)).toEqual(['b1383:8', 'c1383:1']);
+    // Deselecting the week-B mapping removes both its rename and its inserted note.
+    const noWeekB = applySelectedChanges(p.entries[0], o => o.ref !== 'H6');
+    expect(noWeekB).toBe(RESULT.replace('-Single-Leg RDL 2x8\n- 20 8,8\n-- each leg\n', '-Single-Leg RDL 2x8 each leg\n- 20 8,8\n'));
+    // One occurrence of a repeated header: the twin note is untouched, the target is not.
+    expect(applySelectedChanges(p.entries[1], o => o.key !== 'c1383:1')).toBeNull();
+    expect(applySelectedChanges(p.entries[0], o => o.key !== 'b1383:8')).toBe(RESULT.replace('-DB Bench Press 3x6-8\n85 8,8,8\n90 -\n-- step up\n', '-DB Bench Press 3x6-8, step up\n85 8,8,8\n90 -\n'));
+  });
+
+  test('duplicate-title notes are told apart by id, and the same header twice in one note is two locations', () => {
+    const twice = { id: 'tw', title: 'Lower', raw_text: 'Monday\n-bench 3x5\n- 1 5\n---\nMonday\n-bench 3x5\n- 2 5' };
+    const s = snapshotOf(AUTHORITY, [twice, { ...twice, id: 'tw2' }]);
+    const p = buildNormalizationPreview(replyFor(s, { '-bench 3x5': 'DB Bench Press' }), s, [AUTHORITY, twice, { ...twice, id: 'tw2' }]);
+    expect(p.mappings[0]).toEqual(expect.objectContaining({ occurrenceCount: 4, noteCount: 2 }));
+    expect(p.entries.map(e => e.occurrences.map(o => o.key))).toEqual([['tw:1', 'tw:5'], ['tw2:1', 'tw2:5']]);
+    expect(applySelectedChanges(p.entries[1])).toBe('Monday\n-DB Bench Press 3x5\n- 1 5\n---\nMonday\n-DB Bench Press 3x5\n- 2 5');
   });
 
   test('CRLF text keeps CRLF everywhere, including inserted comments', () => {
     const crlf = { ...TARGET, raw_text: ORIG.replace(/\n/g, '\r\n') };
-    const p = buildNormalizationPreview(`Target routine 1\n${RESULT.trimEnd()}`, { authority: AUTHORITY, targets: [crlf] }, [AUTHORITY, crlf]);
-    expect(applySelectedChanges(p.entries[0], keysOf(p))).toBe(RESULT.replace(/\n/g, '\r\n'));
+    const s = snapshotOf(AUTHORITY, [crlf]);
+    const p = buildNormalizationPreview(replyFor(s, CHOICES), s, [AUTHORITY, crlf]);
+    expect(applySelectedChanges(p.entries[0])).toBe(RESULT.replace(/\n/g, '\r\n'));
+  });
+
+  test('every non-header line is reconstructed byte-for-byte from the original, whatever the reply says', () => {
+    const p = full();
+    const out = applySelectedChanges(p.entries[0]).split('\n');
+    const kept = ORIG.split('\n').filter(line => !Object.keys(CHOICES).includes(line) && !/^-(Lat Pulldown|Deadlift —)/.test(line));
+    expect(out.filter(line => kept.includes(line))).toEqual(kept);
+    expect(out).toHaveLength(ORIG.split('\n').length + 5);
   });
 
   const bad = {
-    descriptorMissing: RESULT.replace('-- step up\n', ''),
-    paraphrased: RESULT.replace('-- trial sets, slow and controlled', '-- trial sets, go slow'),
-    partialDrop: RESULT.replace('-- each leg, light', '-- each leg'),
-    recased: RESULT.replace('-- step up', '-- Step Up'),
-    internalPunctuation: RESULT.replace('-- each leg, light', '-- each leg light'),
-    invented: RESULT.replace('-- pack shoulder down on eccentric', '-- pack shoulder down on eccentric, slow'),
-    prescriptionNumber: RESULT.replace('-DB Bench Press 3x6-8', '-DB Bench Press 3x8-10'),
-    prescriptionSpacing: RESULT.replace('-DB Bench Press 3x6-8', '-DB Bench Press 3 x 6-8'),
-    rangeEndpointMoved: RESULT.replace('-DB Bench Press 3x6-8', '-DB Bench Press 3x6').replace('-- step up', '-- 8, step up'),
-    rangeEndpointSpaced: RESULT.replace('-Lat Pulldown 2x10-12\n-- pack', '-Lat Pulldown 2x10\n-- -12 pack'),
-    prescriptionMoved: RESULT.replace('-Lat Pulldown 2x10-12\n-- pack shoulder down on eccentric', '-Lat Pulldown\n-- 2x10-12 pack shoulder down on eccentric'),
-    notAuthorityName: RESULT.replace('-Deadlift\n', '-Conventional Deadlift\n'),
-    afterExistingComment: RESULT.replace('90 -\n-- step up\n-- felt good', '90 -\n-- felt good\n-- step up'),
-    beforeLastSet: RESULT.replace("- 30 8 *PR\n-- each leg, light", '-- each leg, light\n- 30 8 *PR'),
-    crossesBoundary: RESULT.replace('-\n-- trial sets, slow and controlled\n---', '-\n---\n-- trial sets, slow and controlled'),
-    setChanged: RESULT.replace('85 8,8,8', '85 8,8,7'),
-    skipFilled: RESULT.replace('90 -', '90 8'),
-    markDropped: RESULT.replace(' *PR', ''),
-    sectionChanged: RESULT.replace('+WARMUP', '+WARM UP'),
-    weekBoundaryDropped: RESULT.replace('---\n', ''),
+    descriptorMissing: { '-DB Bench Press 3x6-8, step up': 'DB Bench Press' },
+    descriptorOnClean: { '-Single-Leg RDL 2x8 each leg': 'Single-Leg RDL' },
+    paraphrased: { '-Deadlift — trial sets, slow and controlled': 'Deadlift | trial sets, go slow' },
+    partialDrop: { '-Single-Leg RDL 2x8 each leg, light': 'Single-Leg RDL | each leg' },
+    recased: { '-DB Bench Press 3x6-8, step up': 'DB Bench Press | Step Up' },
+    internalPunctuation: { '-Single-Leg RDL 2x8 each leg, light': 'Single-Leg RDL | each leg light' },
+    invented: { '-Lat Pulldown 2x10-12 (pack shoulder down on eccentric)': 'Lat Pulldown | pack shoulder down on eccentric, slow' },
+    prescriptionInDescriptor: { '-Lat Pulldown 2x10-12 (pack shoulder down on eccentric)': 'Lat Pulldown | 2x10-12 pack shoulder down on eccentric' },
+    rangeEndpointMoved: { '-DB Bench Press 3x6-8, step up': 'DB Bench Press | 8, step up' },
+    notAuthorityName: { '-Deadlift — trial sets, slow and controlled': 'Conventional Deadlift | trial sets, slow and controlled' },
   };
-  test.each(Object.entries(bad))('rejects %s and writes nothing', async (_name, out) => {
+  test.each(Object.entries(bad))('rejects %s and writes nothing for it', async (_name, choices) => {
     for (const note of notes) await Storage.saveWorkoutNoteItem(note);
-    const p = buildNormalizationPreview(replyFor(out.trimEnd()), snap, notes);
-    expect(p.entries[0].problems.length).toBeGreaterThan(0);
-    expect(p.entries[0].changes).toBeUndefined();
+    const [raw] = Object.keys(choices);
+    const header = snap.catalog.headers.find(h => h.raw === raw);
+    const p = buildNormalizationPreview(replyFor(snap, choices), snap, notes);
+    expect(p.rejected.map(r => r.ref)).toEqual([header.ref]);
+    expect(p.mappings).toEqual([]);
+    expect(p.entries.map(e => applySelectedChanges(e))).toEqual([null, null]);
     expect((await Storage.loadWorkoutNotes()).find(n => n.id === 'b1383').raw_text).toBe(ORIG);
   });
 
-  test('a load or rep-range endpoint can never leave the header', () => {
-    const auth = new Set(['Bench Press']);
-    expect(diffTargetNames('Monday\n-bench @135 3x5, paused', ['Monday', '-Bench Press @1', '-- 35 3x5, paused'], auth).problems.length).toBeGreaterThan(0);
-    expect(diffTargetNames('Monday\n-bench 3x5-8 paused', ['Monday', '-Bench Press 3x5', '-- -8 paused'], auth).problems.length).toBeGreaterThan(0);
-    expect(diffTargetNames('Monday\n-bench 3x5/8 paused', ['Monday', '-Bench Press 3x5', '-- /8 paused'], auth).problems.length).toBeGreaterThan(0);
-    expect(diffTargetNames('Monday\n-bench 3x5-8 paused', ['Monday', '-Bench Press 3x5-8', '-- paused'], auth).changes).toHaveLength(1);
-  });
-
-  test('a timed declaration keeps its unit and meaning', () => {
-    const auth = new Set(['Plank', 'Bike']);
-    expect(diffTargetNames('Monday\n-plank 3x30 sec, slow', ['Monday', '-Plank 3x30', '-- sec, slow'], auth).problems.length).toBeGreaterThan(0);
-    expect(diffTargetNames('Monday\n-plank 3x30sec slow', ['Monday', '-Plank 3x30', '-- sec slow'], auth).problems.length).toBeGreaterThan(0);
-    expect(diffTargetNames('Monday\n-plank 30-45 s, slow', ['Monday', '-Plank 30-45', '-- s, slow'], auth).problems.length).toBeGreaterThan(0);
-    expect(diffTargetNames('Monday\n-bike 5 min easy', ['Monday', '-Bike 5', '-- min easy'], auth).problems.length).toBeGreaterThan(0);
-    expect(diffTargetNames('Monday\n-plank 3x30s, slow', ['Monday', '-Plank 3x30', '-- s, slow'], auth).problems.length).toBeGreaterThan(0);
-    expect(diffTargetNames('Monday\n-plank 3x30s, slow', ['Monday', '-Plank 3x30s', '-- slow'], auth).changes).toHaveLength(1);
-    expect(diffTargetNames('Monday\n-bike 5 min easy', ['Monday', '-Bike', '-- 5 min easy'], auth).problems.length).toBeGreaterThan(0);
-    // The parser keeps a spaced duration in the name, so this stays unapplied.
-    expect(diffTargetNames('Monday\n-bike 5 min easy', ['Monday', '-Bike 5 min', '-- easy'], auth).problems.length).toBeGreaterThan(0);
-    expect(diffTargetNames('Monday\n-bike, 5 min easy', ['Monday', '-Bike', '-- 5 min easy'], auth).changes).toHaveLength(1);
-  });
-
-  test.each([':', ';', ',', ' |', ' (', ' [', ' {', ' <', ' "', ' —', ' –', ' -', ' /', ' ~', ' #', ' !', " '", ' ‘', ' .'])('an alias rename cannot drop a "%s"-separated cue', sep => {
-    const close = { ' (': ')', ' [': ']', ' {': '}', ' <': '>', ' "': '"', " '": "'", ' ‘': '’' }[sep] || '';
-    const orig = `Monday\n-Dumbbell Bench Press${sep} paused${close} 3x5\n85 5,5,5`;
-    const auth = new Set(['DB Bench Press']);
-    expect(diffTargetNames(orig, ['Monday', '-DB Bench Press 3x5', '85 5,5,5'], auth).problems.length).toBeGreaterThan(0);
-    expect(diffTargetNames(orig, ['Monday', '-DB Bench Press 3x5', '85 5,5,5', '-- paused'], auth).changes).toHaveLength(1);
-  });
-
-  test("in-word name punctuation stays part of an alias name", () => {
-    const auth = new Set(['Farmer Carry', 'Single Leg Press']);
-    expect(diffTargetNames("Monday\n-Farmer's Walk 3x40", ['Monday', '-Farmer Carry 3x40'], auth).changes).toHaveLength(1);
-    expect(diffTargetNames('Monday\n-Single-Leg Leg Press 3x8', ['Monday', '-Single Leg Press 3x8'], auth).changes).toHaveLength(1);
-    // Spaced "&" and "+" join name words by owner decision; an unspaced slash stays in-word.
-    const joined = new Set(['C&J', 'Push/Pull Row']);
-    expect(diffTargetNames("Monday\n-Dumbbell Bench Press 'paused' 3x5", ['Monday', '-DB Bench Press 3x5'], new Set(['DB Bench Press'])).problems.length).toBeGreaterThan(0);
-    expect(diffTargetNames('Monday\n-Clean & Jerk 3x2', ['Monday', '-C&J 3x2'], joined).changes).toHaveLength(1);
-    expect(diffTargetNames('Monday\n-push/pull row 3x5', ['Monday', '-Push/Pull Row 3x5'], joined).changes).toHaveLength(1);
-  });
-
-  test('an uncertain movement left unchanged proposes nothing for it', () => {
-    const p = buildNormalizationPreview(replyFor(RESULT.trimEnd(), TWIN.raw_text), snap, notes);
-    expect(p.entries[1].changes).toEqual([]);
-    expect(applySelectedChanges(p.entries[1], keysOf(p))).toBeNull();
+  test('an uncertain movement answered no match proposes nothing for it', () => {
+    const p = full({ '-DB Bench Press 3x6-8, step up': 'no match' });
+    expect(p.entries[1].occurrences).toEqual([]);
+    expect(applySelectedChanges(p.entries[1])).toBeNull();
+    expect(p.noMatchCount).toBe(2);
   });
 
   test('a stale or deleted target and a changed authority produce no write', async () => {
     for (const note of notes) await Storage.saveWorkoutNoteItem(note);
-    const p = buildNormalizationPreview(replyFor(RESULT.trimEnd(), TWIN_OUT), snap, notes);
-    const items = p.entries.map(entry => ({ id: entry.id, expected_raw_text: entry.snapshot, next_raw_text: applySelectedChanges(entry, keysOf(p)) }));
+    const p = full();
+    const items = p.entries.map(entry => ({ id: entry.id, expected_raw_text: entry.snapshot, next_raw_text: applySelectedChanges(entry) }));
     const authority = { id: AUTHORITY.id, expected_raw_text: AUTHORITY.raw_text, accepted_raw_texts: [] };
     await Storage.saveWorkoutNoteItem({ ...TWIN, raw_text: 'edited' });
     const result = await applyWorkoutNoteTextBatchIfUnchanged({ authority, items });
@@ -448,6 +589,55 @@ describe('owner descriptor examples apply through the batch write (#1383)', () =
     await Storage.saveWorkoutNoteItem(TARGET);
     expect((await applyWorkoutNoteTextBatchIfUnchanged({ authority, items })).authority).toBe('stale');
     expect((await Storage.loadWorkoutNotes()).find(n => n.id === 'b1383').raw_text).toBe(ORIG);
-    expect(buildNormalizationPreview(replyFor(RESULT.trimEnd()), snap, [AUTHORITY, TWIN]).entries[0].problems[0]).toMatch(/no longer exists/);
+    expect(buildNormalizationPreview(replyFor(snap, CHOICES), snap, [AUTHORITY, TWIN]).entries[0].problems[0]).toMatch(/no longer exists/);
+  });
+});
+
+describe('saveWorkoutNoteTextIfUnchanged', () => {
+  beforeEach(async () => { await Storage.replaceWorkoutNotesRaw([]); });
+  const OUT = 'Friday\n-Bench Press 3x5\n- 140 5,5,5';
+
+  test('writes only while the note still holds the prompt snapshot', async () => {
+    await Storage.saveWorkoutNoteItem({ ...T2, recovery_block_id: 'blk' });
+    expect(await saveWorkoutNoteTextIfUnchanged('t2', T2.raw_text, OUT)).toBe('saved');
+    const saved = (await Storage.loadWorkoutNotes()).find(n => n.id === 't2');
+    expect(saved.raw_text).toBe(OUT);
+    expect(saved.recovery_block_id).toBe('blk');
+    // Retry after an interrupted write/enqueue: already-landed text is rewritten, not rejected.
+    expect(await saveWorkoutNoteTextIfUnchanged('t2', T2.raw_text, OUT)).toBe('saved');
+  });
+
+  test('never overwrites newer text or resurrects a missing note', async () => {
+    await Storage.saveWorkoutNoteItem({ ...T2, raw_text: 'newer' });
+    expect(await saveWorkoutNoteTextIfUnchanged('t2', T2.raw_text, OUT)).toBe('stale');
+    expect((await Storage.loadWorkoutNotes()).find(n => n.id === 't2').raw_text).toBe('newer');
+    expect(await saveWorkoutNoteTextIfUnchanged('gone', 'a', 'b')).toBe('missing');
+  });
+});
+
+describe('platformFilePicker (native)', () => {
+  const fileReading = body => jest.fn().mockImplementation(function File(asset) { this.asset = asset; this.text = async () => body; });
+
+  test('android and ios offer file picking', () => {
+    expect(canPickTextFile({ platform: 'android' })).toBe(true);
+    expect(canPickTextFile({ platform: 'ios' })).toBe(true);
+  });
+
+  test('reads the cached copy locally and returns null on cancel', async () => {
+    const documentPicker = { getDocumentAsync: jest.fn().mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///cache/r.txt', size: 10 }] }) };
+    const File = fileReading('H1 => no match');
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(() => { throw new Error('fetch must not be used'); });
+    await expect(pickTextFile({ platform: 'android', documentPicker, File })).resolves.toBe('H1 => no match');
+    expect(documentPicker.getDocumentAsync).toHaveBeenCalledWith(expect.objectContaining({ copyToCacheDirectory: true }));
+    expect(File).toHaveBeenCalledWith('file:///cache/r.txt');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+    documentPicker.getDocumentAsync.mockResolvedValue({ canceled: true, assets: null });
+    await expect(pickTextFile({ platform: 'ios', documentPicker, File })).resolves.toBeNull();
+  });
+
+  test('rejects oversized files', async () => {
+    const documentPicker = { getDocumentAsync: jest.fn().mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///x', size: 5 * 1024 * 1024 }] }) };
+    await expect(pickTextFile({ platform: 'android', documentPicker, File: fileReading('') })).rejects.toThrow(/too large/);
   });
 });

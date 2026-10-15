@@ -1385,6 +1385,14 @@ Consequences to preserve:
   single or multi select and a `Done` button; Targets also offers Select all,
   All except authority and Clear. `NormalizationImport.js` holds the
   normalization return path and renders before the expanded prompt text.
+  Normalize is the compact exercise-only protocol (#1386): its summary reads
+  `N routines · M distinct headers`, a selection with nothing safe to share
+  shows a blocked message instead of a prompt, and the return path previews each
+  header mapping (`old header → authority name`, the descriptor that moves to a
+  note, affected occurrences) with checkbox rows to deselect a mapping, a whole
+  routine, or one occurrence. A malformed reply lists its line errors and blocks
+  Apply; a snapshot saved by an older version shows a `Discard saved prompt`
+  notice instead of the reply field.
 - **An expanded non-current routine shows three controls (#1329):** the filled
   `Set as current routine`, then one row with an outlined `Edit routine` beside a
   44dp `More actions for {title}` trigger. Its bottom sheet lists `Copy`, `Share`,

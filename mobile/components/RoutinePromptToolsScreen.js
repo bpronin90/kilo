@@ -20,8 +20,9 @@ import {
 import { TYPOGRAPHY } from '../theme/typography';
 import { GEOMETRY } from '../theme/spacing';
 import { PromptFlow } from './routinePromptTools/PromptFlow';
-import { NormalizationImport } from './routinePromptTools/NormalizationImport';
-import { countExercises, routineTitle } from './routinePromptTools/RoutinePicker';
+import { LegacyNormalizationNotice, NormalizationImport } from './routinePromptTools/NormalizationImport';
+import { routineTitle } from './routinePromptTools/RoutinePicker';
+import { NORMALIZATION_PROTOCOL, buildHeaderCatalog, toStoredCatalog } from '../lib/interoperability/normalizationHeaderCatalog';
 
 // Each tool is configuration for the one shared PromptFlow (#1385): which
 // pickers it needs, how its existing builder is called and its summary line.
@@ -34,13 +35,13 @@ const TOOLS = {
   },
   normalize: {
     pickers: [AUTHORITY_PICKER, { key: 'targets', mode: 'multi', label: 'Targets', sheetTitle: 'Choose target routines' }],
-    build: ({ authority, targets }) => (authority && targets.length ? buildExerciseNameNormalizationPrompt({ authority, targets }) : ''),
-    summary: ({ targets }) => {
-      const counts = targets.map(countExercises);
+    // Normalize shares only exercise names and distinct headers (#1386); the
+    // catalog is built once per selection and drives the prompt, the summary
+    // and the snapshot captured on Copy/Share.
+    build: ({ authority, targets, catalog }) => (authority && targets.length && catalog?.ok ? buildExerciseNameNormalizationPrompt({ authority, targets, catalog }) : ''),
+    summary: ({ targets, catalog }) => {
       const routines = `${targets.length} ${targets.length === 1 ? 'routine' : 'routines'}`;
-      if (counts.some(count => count == null)) return routines;
-      const total = counts.reduce((sum, count) => sum + count, 0);
-      return `${routines} · ${total} ${total === 1 ? 'exercise' : 'exercises'}`;
+      return `${routines} · ${catalog.headerCount} distinct ${catalog.headerCount === 1 ? 'header' : 'headers'}`;
     },
     hasImport: true,
   },
@@ -128,10 +129,11 @@ export function RoutinePromptToolsScreen({
   const authority = useMemo(() => notes.find(note => note.id === picks.authority) || null, [notes, picks.authority]);
   const targets = useMemo(() => notes.filter(note => picks.targets.includes(note.id)), [notes, picks.targets]);
   const config = tool ? TOOLS[tool] : null;
+  const catalog = useMemo(() => (config?.hasImport && authority && targets.length ? buildHeaderCatalog(authority, targets) : null), [config, authority, targets]);
   // Withheld while routines are unreadable or refreshing so a stale
   // routine-specific prompt can never be copied or shared.
   const gated = config && config.pickers.length > 0 && (loadFailed || refreshing);
-  const prompt = useMemo(() => (config && !gated ? config.build({ authority, targets }) : ''), [config, gated, authority, targets]);
+  const prompt = useMemo(() => (config && !gated ? config.build({ authority, targets, catalog }) : ''), [config, gated, authority, targets, catalog]);
   const status = loading ? 'loading' : loadFailed ? 'failed' : notes.length === 0 ? 'empty' : 'ready';
 
   const openTool = (nextTool) => {
@@ -141,18 +143,23 @@ export function RoutinePromptToolsScreen({
   // Freeze the exact authority/targets the prompt was built from, in prompt
   // order, so the return path validates against what the LLM actually saw.
   const captureSnapshot = async () => {
-    if (!config?.hasImport || !authority || !targets.length) return;
+    if (!config?.hasImport || !authority || !targets.length || !catalog?.ok) return;
     const pick = note => ({ id: note.id, title: note.title, raw_text: note.raw_text });
     // Every capture gets a fresh identity so the import panel remounts and
-    // never applies a preview built from an earlier snapshot.
-    const next = { version: (snapshot?.version || 0) + 1, authority: pick(authority), targets: targets.map(pick) };
+    // never applies a preview built from an earlier snapshot. The protocol
+    // discriminator and the ref/occurrence catalog persist with the original
+    // texts so a remount restores the same refs.
+    const next = { version: (snapshot?.version || 0) + 1, protocol: NORMALIZATION_PROTOCOL, authority: pick(authority), targets: targets.map(pick), catalog: toStoredCatalog(catalog) };
     await saveNormalizationImportSnapshot(next);
     setSnapshot(next);
   };
 
   if (tool) {
-    const importSlot = !config.hasImport ? null : snapshot ? (
-      <NormalizationImport key={snapshot.version} snapshot={snapshot} loadNotes={loadNotes} applyBatch={applyBatch} pickFile={pickFile} canPickFile={canPickFile} onApplied={refreshNotes} onPendingRetry={setPendingRetry} onComplete={clearNormalizationImportSnapshot} onDiscard={async () => { await clearNormalizationImportSnapshot(); setSnapshot(null); }} />
+    const discard = async () => { await clearNormalizationImportSnapshot(); setSnapshot(null); };
+    const importSlot = !config.hasImport ? null : snapshot?.legacy ? (
+      <LegacyNormalizationNotice key={snapshot.version} onDiscard={discard} />
+    ) : snapshot ? (
+      <NormalizationImport key={snapshot.version} snapshot={snapshot} loadNotes={loadNotes} applyBatch={applyBatch} pickFile={pickFile} canPickFile={canPickFile} onApplied={refreshNotes} onPendingRetry={setPendingRetry} onComplete={clearNormalizationImportSnapshot} onDiscard={discard} />
     ) : <Card><Text style={styles.muted}>No saved normalization prompt is available. Choose an authoritative routine and targets, then copy the prompt to begin.</Text></Card>;
     return (
       <ScreenShell title="Prompt tools" subtitle="Copy a local template into the LLM you choose." onBack={() => {
@@ -170,7 +177,8 @@ export function RoutinePromptToolsScreen({
           picks={picks}
           onPick={(key, value) => setPicks(previous => ({ ...previous, [key]: value }))}
           prompt={prompt}
-          summary={prompt ? config.summary({ authority, targets }) : ''}
+          summary={prompt ? config.summary({ authority, targets, catalog }) : ''}
+          blockedMessage={!gated && catalog && !catalog.ok ? catalog.reason : null}
           notice={notice}
           setNotice={setNotice}
           copy={copy}

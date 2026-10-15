@@ -12,10 +12,11 @@ import { TYPOGRAPHY } from '../../theme/typography';
 // its `summary` line and an optional `importSlot`; layout, gating and the
 // Copy/Share implementation are shared. `onCaptured` runs after a successful
 // Copy/Share (normalization snapshot capture) and `blockedNotice` refuses a
-// new capture while a pending Retry must stay reachable.
+// new capture while a pending Retry must stay reachable. `blockedMessage`
+// explains a selection that has nothing safe to share (no prompt is built).
 export function PromptFlow({
   config, status, notes, currentId, picks, onPick, prompt, summary, notice, setNotice,
-  copy, share, onCaptured, blockedNotice = null, importSlot = null,
+  copy, share, onCaptured, blockedNotice = null, blockedMessage = null, importSlot = null,
 }) {
   const styles = useThemedStyles(createStyles);
   const [expanded, setExpanded] = useState(false);
@@ -97,6 +98,7 @@ export function PromptFlow({
       ) : status === 'empty' ? (
         <Card><Text style={styles.muted}>Create a routine first, then return here to make a routine-specific prompt.</Text></Card>
       ) : config.pickers.map(renderPicker)}
+      {!prompt && blockedMessage ? <Card><Text style={styles.error}>{blockedMessage}</Text></Card> : null}
       {prompt ? <>
         <Card><Text style={styles.summary} testID="prompt-summary">{summary}</Text></Card>
         {notice ? <Text style={styles.muted}>{notice}</Text> : null}
