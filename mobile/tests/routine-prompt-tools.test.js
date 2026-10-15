@@ -6,7 +6,13 @@ import {
   buildRoutinePlanningPrompt,
   ROUTINE_PROMPT_FORMAT_GUIDE,
 } from '../lib/interoperability/routinePrompts';
+import { Modal } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { MAX_RAW_TEXT_LENGTH } from '../lib/parser';
 import { RoutinePromptToolsScreen } from '../components/RoutinePromptToolsScreen';
+import { PromptFlow } from '../components/routinePromptTools/PromptFlow';
+import { RoutinePicker } from '../components/routinePromptTools/RoutinePicker';
+import { PromptDisclosureToggle } from '../components/routinePromptTools/PromptDisclosure';
 import * as Storage from '../storage/entries';
 import { applyWorkoutNoteTextBatchIfUnchanged, compareAndSetWorkoutNoteText } from '../storage/entries/workoutNotes';
 
@@ -19,7 +25,23 @@ function button(root, label) {
   return root.findAll(node => node.props?.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
 }
 
+function byTestId(root, testID) {
+  return root.findAll(node => node.props?.testID === testID && typeof node.props.onPress === 'function')[0];
+}
+
+// Open a picker's bottom sheet, tap the given routine ids, then Done.
+async function choose(tree, key, ids) {
+  await act(async () => { byTestId(tree.root, `routine-picker-${key}`).props.onPress(); });
+  for (const id of ids) await act(async () => { byTestId(tree.root, `routine-picker-${key}-option-${id}`).props.onPress(); });
+  const done = tree.root.findAll(node => /^Done choosing/.test(node.props?.accessibilityLabel || '') && typeof node.props.onPress === 'function')[0];
+  await act(async () => { done.props.onPress(); });
+}
+
+// The prompt text is collapsed reference content; expand it before reading.
 function promptOutput(root) {
+  if (!root.findAll(node => node.props?.testID === 'routine-prompt-output').length) {
+    act(() => { byTestId(root, 'prompt-disclosure-toggle').props.onPress(); });
+  }
   return root.findAll(node => typeof node.type === 'string' && node.props?.testID === 'routine-prompt-output')[0].children.join('');
 }
 
@@ -96,6 +118,74 @@ When I ask for the final version, return only the complete Kilo-importable routi
 First ask about my training goals, schedule, experience, equipment, and preferences. When I ask for the final routine, return only Kilo-importable routine text.`);
   });
 
+  test('normalization prompt text is byte-identical to the #1383 protocol (#1385)', () => {
+    const expected = [
+      "Use the authoritative routine below as the source of truth for exercise names. Apply these rules to every selected target routine:",
+      "",
+      "1. Match conservatively. Treat a target exercise as a match only when you are highly confident it is the same movement as one authoritative exercise, even if it is written with shorthand, a spelling or punctuation difference, a different prescription, or extra descriptor text. If the exercises are merely related or similar, or the match is uncertain, leave that header exactly as it is. Do not invent exercises, and do not use any routine other than the authoritative routine as the source of names. If an authoritative name itself looks ambiguous or untidy, use it as written or leave the target unchanged; never invent a cleaner name.",
+      "2. Use the authoritative name exactly. For a confident match, replace the target header's name with the authoritative exercise name, character for character, keeping the target header's own structure (its leading dash or number and any marks such as *). Never copy the authoritative routine's prescription into the target.",
+      "3. Preserve the target prescription exactly. Keep the target's own sets-by-reps prescription (such as 2x8 or 3x6-8) in the header with the same numbers, rep ranges, spelling, and spacing. The prescription is not descriptor text and must not move.",
+      "4. Move all remaining descriptor text to one \"-- \" note. Any other text in the target header beyond the name and prescription (cues, qualifiers, intensity, side notes) goes into a single comment line that starts with \"-- \" (two dashes and a space). Do not decide that phrases such as \"each leg\", \"light\", or \"step up\" are redundant and drop them. Keep the descriptor's wording, capitalization, and internal punctuation exactly; you may remove only the separator before it (such as a comma or dash) and parentheses that enclose all of it. Do not paraphrase, summarize, or delete any of its words.",
+      "5. Place that note directly after the exercise's logged sets, or directly after its header when it has no sets. Logged sets include rows with a leading \"- \" (for example \"- 135 5,5,5\"), bare rows without a dash (for example \"135 5,5,5\"), and skipped rows (for example \"135 -\"). Leave existing comments where they are, and never move the note past the next exercise, day heading, section marker, or Week A/B divider.",
+      "6. Preserve everything else. Keep weights, reps, session and history columns, dates, existing comments, day headings, section markers (such as +WARMUP), Week A/B \"---\" dividers, structural marks, exercise order, and all unrelated whitespace and text exactly as written. Do not add, remove, reorder, or otherwise edit exercises or sets. A target with no confident match must be returned completely unchanged.",
+      "",
+      "Examples (the authoritative names here only illustrate the transformation; always use the names in the authoritative routine below):",
+      "- Authority \"Single-Leg RDL\": header \"-Single-Leg RDL 2x8 each leg, light\" becomes \"-Single-Leg RDL 2x8\", with the note \"-- each leg, light\".",
+      "- Authority \"DB Bench Press\": header \"-DB Bench Press 3x6-8, step up\" becomes \"-DB Bench Press 3x6-8\", with the note \"-- step up\".",
+      "- Authority \"Lat Pulldown\": header \"-Lat Pulldown 2x10-12 (pack shoulder down on eccentric)\" becomes \"-Lat Pulldown 2x10-12\", with the note \"-- pack shoulder down on eccentric\".",
+      "- Authority \"Deadlift\": header \"-Deadlift — trial sets, slow and controlled\" becomes \"-Deadlift\", with the note \"-- trial sets, slow and controlled\".",
+      "",
+      "For example, this target exercise:",
+      "-DB Bench Press 3x6-8, step up",
+      "85 8,8,8",
+      "90 -",
+      "-- felt good",
+      "",
+      "is returned as:",
+      "-DB Bench Press 3x6-8",
+      "85 8,8,8",
+      "90 -",
+      "-- step up",
+      "-- felt good",
+      "",
+      "Return each selected target as complete Kilo-importable routine text, one at a time. Label each result with its exact reference label, for example \"Target routine 1: Upper\", on its own line directly before that routine's text, so duplicate routine titles remain distinguishable. Return every target, even when nothing changed, and do not add explanations, a summary, or a change list. Do not use Markdown fences or return any reference markers. Kilo routine text is plain text. Use a day heading followed by exercise headers and optional logged sets:",
+      "",
+      "Monday",
+      "-Bench Press 3x5-8",
+      "- 135 5,5,5",
+      "-- Keep shoulders pinned",
+      "",
+      "Wednesday",
+      "-Squat 3x5",
+      "- 185 5,5,5",
+      "",
+      "Use a standalone --- line only to divide Week A from Week B. Keep comments on lines beginning with --. Exercise headers begin with one dash; logged sets begin with a dash and a space. Do not add Markdown fences, explanations, or metadata to final importable routine text.",
+      "",
+      "<<< BEGIN KILO ROUTINE REFERENCE: Authoritative routine: Upper >>>",
+      "Monday",
+      "-Bench Press",
+      "- 135 5 *PR",
+      "-- keep tight",
+      "---",
+      "Tuesday",
+      "-Squat",
+      "- 185 -",
+      "<<< END KILO ROUTINE REFERENCE >>>",
+      "",
+      "<<< BEGIN KILO ROUTINE REFERENCE: Target routine 1: Upper >>>",
+      "Monday",
+      "-Bench press",
+      "- 135 5 *PR",
+      "-- keep tight",
+      "---",
+      "Tuesday",
+      "-Squat",
+      "- 185 -",
+      "<<< END KILO ROUTINE REFERENCE >>>",
+    ].join('\n');
+    expect(buildExerciseNameNormalizationPrompt({ authority: CURRENT, targets: [TARGET] })).toBe(expected);
+  });
+
   test('builders keep malformed and long local note text verbatim', () => {
     const malformed = { id: 'odd', title: 'Odd', raw_text: `Monday\n-Not quite valid\n- ???\n${'x'.repeat(12_000)}` };
     expect(buildRoutinePlanningPrompt(malformed)).toContain(malformed.raw_text);
@@ -167,10 +257,8 @@ describe('RoutinePromptToolsScreen', () => {
     const tree = mount();
     await act(async () => {});
     await act(async () => { button(tree.root, 'Normalize exercise names').props.onPress(); });
-    const authority = button(tree.root, 'Use Upper (2) as the authoritative routine');
-    expect(authority).toBeTruthy();
-    await act(async () => { authority.props.onPress(); });
-    await act(async () => { button(tree.root, 'Normalize Upper (1)').props.onPress(); });
+    await choose(tree, 'authority', ['target']);
+    await choose(tree, 'targets', ['current']);
     const output = promptOutput(tree.root);
     expect(output).toContain(TARGET.raw_text);
     expect(output).toContain(CURRENT.raw_text);
@@ -184,6 +272,157 @@ describe('RoutinePromptToolsScreen', () => {
     expect(tree.root.findAllByType('Text').some(node => node.children.join('').includes('Create a routine first'))).toBe(true);
   });
 
+  describe('shared compact flow (#1385)', () => {
+    const DATED = [
+      { ...CURRENT, updated_at: '2026-10-15T08:00:00.000Z' },
+      { ...TARGET, updated_at: '2026-09-01T08:00:00.000Z' },
+    ];
+    // A captured snapshot persists; keep it from leaking into later tests.
+    afterEach(async () => { await AsyncStorage.clear(); });
+    const open = async (tree, label) => {
+      await act(async () => {});
+      await act(async () => { button(tree.root, label).props.onPress(); });
+    };
+    const texts = root => root.findAllByType('Text').map(node => node.children.join('')).join('\n');
+    const visibleSheets = root => root.findAllByType(Modal).filter(node => node.props.visible);
+    const doneButton = root => root.findAll(node => /^Done choosing/.test(node.props?.accessibilityLabel || '') && typeof node.props.onPress === 'function')[0];
+
+    test('every tool mounts the same flow, actions and disclosure; pickers only where needed', async () => {
+      const expected = { 'Plan or update routine': 1, 'Normalize exercise names': 2, 'Kilo routine format': 0 };
+      for (const [label, pickers] of Object.entries(expected)) {
+        const tree = mount();
+        await open(tree, label);
+        expect(tree.root.findAllByType(PromptFlow)).toHaveLength(1);
+        expect(tree.root.findAllByType(RoutinePicker)).toHaveLength(pickers);
+        if (pickers < 2) {
+          expect(tree.root.findAllByType(PromptDisclosureToggle)).toHaveLength(1);
+          expect(button(tree.root, 'Copy prompt')).toBeTruthy();
+          expect(button(tree.root, 'Share prompt')).toBeTruthy();
+        }
+        expect(button(tree.root, 'Generate prompt')).toBeUndefined();
+      }
+    });
+
+    test('Format works with no routine data and shows its summary', async () => {
+      const tree = mount({ loadNotes: async () => { throw new Error('read failed'); } });
+      await open(tree, 'Kilo routine format');
+      expect(texts(tree.root)).toContain('No routine data');
+      expect(promptOutput(tree.root)).toBe(buildKiloRoutineFormatPrompt());
+    });
+
+    test('Plan sends the full routine with logged history, byte-identical to the builder', async () => {
+      const tree = mount({ loadNotes: async () => DATED });
+      await open(tree, 'Plan or update routine');
+      expect(promptOutput(tree.root)).toBe(buildRoutinePlanningPrompt(DATED[0]));
+      expect(promptOutput(tree.root)).toContain('- 135 5 *PR');
+      expect(texts(tree.root)).toContain('Plan: Upper');
+      expect(button(tree.root, 'Review normalized routines')).toBeUndefined();
+    });
+
+    test('the routine sheet opens, selects by id and Done closes back to the summary', async () => {
+      const tree = mount({ loadNotes: async () => DATED });
+      await open(tree, 'Plan or update routine');
+      expect(visibleSheets(tree.root)).toHaveLength(0);
+      await act(async () => { byTestId(tree.root, 'routine-picker-authority').props.onPress(); });
+      expect(visibleSheets(tree.root)).toHaveLength(1);
+      await act(async () => { byTestId(tree.root, 'routine-picker-authority-option-target').props.onPress(); });
+      await act(async () => { doneButton(tree.root).props.onPress(); });
+      expect(visibleSheets(tree.root)).toHaveLength(0);
+      expect(promptOutput(tree.root)).toBe(buildRoutinePlanningPrompt(DATED[1]));
+    });
+
+    test('duplicate titles are told apart by detail lines, with truthful fallbacks', async () => {
+      const odd = { id: 'odd', title: 'Upper', raw_text: 'x'.repeat(MAX_RAW_TEXT_LENGTH + 1) };
+      const tree = mount({ loadNotes: async () => [DATED[0], DATED[1], odd, { id: 'blank', title: '', raw_text: '' }] });
+      await open(tree, 'Plan or update routine');
+      await act(async () => { byTestId(tree.root, 'routine-picker-authority').props.onPress(); });
+      const label = id => byTestId(tree.root, `routine-picker-authority-option-${id}`).props.accessibilityLabel;
+      expect(label('current')).toBe('Upper, Current · edited 10-15-2026 · 2 exercises');
+      expect(label('target')).toBe('Upper, edited 09-01-2026 · 2 exercises');
+      expect(label('odd')).toBe('Upper, edit date unknown · exercises unavailable');
+      expect(label('blank')).toBe('Untitled Routine, edit date unknown · no exercises');
+      expect(texts(tree.root)).not.toContain('Upper (2)');
+    });
+
+    test('Targets start empty; Select all, All except authority and Clear act on ids', async () => {
+      const tree = mount({ loadNotes: async () => DATED });
+      await open(tree, 'Normalize exercise names');
+      expect(texts(tree.root)).toContain('Choose routines');
+      expect(button(tree.root, 'Copy prompt')).toBeUndefined();
+      const press = async id => { await act(async () => { byTestId(tree.root, `routine-picker-targets-${id}`).props.onPress(); }); };
+      await act(async () => { byTestId(tree.root, 'routine-picker-targets').props.onPress(); });
+      await press('all');
+      expect(texts(tree.root)).toContain('2 routines selected');
+      await press('clear');
+      expect(texts(tree.root)).toContain('Choose routines');
+      await press('except');
+      expect(texts(tree.root)).toContain('1 routine selected');
+      expect(byTestId(tree.root, 'routine-picker-targets-option-target').props.accessibilityState).toEqual({ checked: true });
+      expect(byTestId(tree.root, 'routine-picker-targets-option-current').props.accessibilityState).toEqual({ checked: false });
+    });
+
+    test('changing the authority never selects or clears targets, and builds automatically', async () => {
+      const tree = mount({ loadNotes: async () => DATED });
+      await open(tree, 'Normalize exercise names');
+      await choose(tree, 'authority', ['target']);
+      expect(texts(tree.root)).toContain('Choose routines');
+      expect(button(tree.root, 'Copy prompt')).toBeUndefined();
+      await choose(tree, 'targets', ['current']);
+      expect(button(tree.root, 'Copy prompt')).toBeTruthy();
+      expect(texts(tree.root)).toContain('1 routine · 2 exercises');
+      expect(promptOutput(tree.root)).toBe(buildExerciseNameNormalizationPrompt({ authority: DATED[1], targets: [DATED[0]] }));
+      await choose(tree, 'authority', ['current']);
+      expect(texts(tree.root)).toContain('1 routine selected');
+    });
+
+    test('the prompt is collapsed by default and toggles; expanding never captures a snapshot', async () => {
+      const tree = mount({ canPickFile: false });
+      await open(tree, 'Normalize exercise names');
+      await choose(tree, 'targets', ['target']);
+      const present = () => tree.root.findAll(node => node.props?.testID === 'routine-prompt-output').length > 0;
+      expect(present()).toBe(false);
+      expect(byTestId(tree.root, 'prompt-disclosure-toggle').props.accessibilityState).toEqual({ expanded: false });
+      await act(async () => { byTestId(tree.root, 'prompt-disclosure-toggle').props.onPress(); });
+      expect(present()).toBe(true);
+      expect(byTestId(tree.root, 'prompt-disclosure-toggle').props.accessibilityState).toEqual({ expanded: true });
+      expect(button(tree.root, 'Review normalized routines')).toBeUndefined();
+      await act(async () => { byTestId(tree.root, 'prompt-disclosure-toggle').props.onPress(); });
+      expect(present()).toBe(false);
+    });
+
+    test('Copy/Share and import actions precede the expanded prompt, and toggling keeps Retry state', async () => {
+      const saveText = jest.fn().mockRejectedValueOnce(new Error('enqueue failed')).mockResolvedValue('saved');
+      const tree = mount({ saveText, canPickFile: false });
+      await open(tree, 'Normalize exercise names');
+      await choose(tree, 'targets', ['target']);
+      await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
+      const input = tree.root.findAll(node => node.props?.testID === 'normalization-reply-input' && node.props.onChangeText)[0];
+      await act(async () => { input.props.onChangeText('Target routine 1: Upper\n' + TARGET.raw_text.replace('-Bench press', '-Bench Press')); });
+      await act(async () => { button(tree.root, 'Review normalized routines').props.onPress(); });
+      await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+      await act(async () => { byTestId(tree.root, 'prompt-disclosure-toggle').props.onPress(); });
+      const order = [];
+      const visit = (node) => {
+        if (typeof node.type === 'string') order.push(node.props?.accessibilityLabel || node.props?.testID);
+        (node.children || []).forEach(child => typeof child !== 'string' && visit(child));
+      };
+      visit(tree.root);
+      const at = label => order.indexOf(label);
+      const body = at('routine-prompt-output');
+      expect(body).toBeGreaterThan(-1);
+      for (const label of ['Copy prompt', 'Share prompt', 'Normalized routines reply', 'Review normalized routines', 'Retry failed routines']) {
+        expect(at(label)).toBeGreaterThan(-1);
+        expect(at(label)).toBeLessThan(body);
+      }
+      // Nothing operational follows the expanded prompt text.
+      expect(order.slice(body + 1).filter(Boolean)).toEqual([]);
+      await act(async () => { byTestId(tree.root, 'prompt-disclosure-toggle').props.onPress(); });
+      await act(async () => { byTestId(tree.root, 'prompt-disclosure-toggle').props.onPress(); });
+      expect(button(tree.root, 'Retry failed routines')).toBeTruthy();
+      expect(texts(tree.root)).toContain('Couldn’t save Target routine 1: Upper.');
+    });
+  });
+
   describe('import normalized routines (#1172)', () => {
     const REPLY = 'Here are the results.\n\nTarget routine 1: Upper\n' + TARGET.raw_text.replace('-Bench press', '-Bench Press');
     const text = root => root.findAllByType('Text').map(node => node.children.join('')).join('\n');
@@ -191,7 +430,7 @@ describe('RoutinePromptToolsScreen', () => {
       const tree = mount({ canPickFile: false, ...props });
       await act(async () => {});
       await act(async () => { button(tree.root, 'Normalize exercise names').props.onPress(); });
-      await act(async () => { button(tree.root, 'Normalize Upper (2)').props.onPress(); });
+      await choose(tree, 'targets', ['target']);
       await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
       return tree;
     };
@@ -206,7 +445,7 @@ describe('RoutinePromptToolsScreen', () => {
       const tree = mount({ saveText, canPickFile: false });
       await act(async () => {});
       await act(async () => { button(tree.root, 'Normalize exercise names').props.onPress(); });
-      await act(async () => { button(tree.root, 'Normalize Upper (2)').props.onPress(); });
+      await choose(tree, 'targets', ['target']);
       expect(button(tree.root, 'Review normalized routines')).toBeUndefined();
       await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
       await paste(tree, REPLY);
@@ -316,8 +555,7 @@ describe('RoutinePromptToolsScreen', () => {
       const tree = mount({ canPickFile: false, saveText, loadNotes: async () => notes });
       await act(async () => {});
       await act(async () => { button(tree.root, 'Normalize exercise names').props.onPress(); });
-      await act(async () => { button(tree.root, 'Normalize Upper (1)').props.onPress(); });
-      await act(async () => { button(tree.root, 'Normalize Upper (2)').props.onPress(); });
+      await choose(tree, 'targets', ['current', 'target']);
       await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
       const reply = `Target routine 1\n${CURRENT.raw_text.replace('-Squat', '-Back Squat')}\nTarget routine 2\n${TARGET.raw_text.replace('-Bench press', '-Bench Press')}`;
       await paste(tree, reply);
@@ -340,7 +578,7 @@ describe('RoutinePromptToolsScreen', () => {
       const tree = mount({ canPickFile: false, saveText, loadNotes: async () => notes });
       await act(async () => {});
       await act(async () => { button(tree.root, 'Normalize exercise names').props.onPress(); });
-      await act(async () => { button(tree.root, 'Normalize Upper (1)').props.onPress(); });
+      await choose(tree, 'targets', ['current']);
       await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
       await paste(tree, `Target routine 1\n${CURRENT.raw_text.replace('-Squat', '-Back Squat')}`);
       await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
@@ -371,8 +609,7 @@ describe('RoutinePromptToolsScreen', () => {
       const tree = mount({ canPickFile: false, applyBatch });
       await act(async () => {});
       await act(async () => { button(tree.root, 'Normalize exercise names').props.onPress(); });
-      await act(async () => { button(tree.root, 'Normalize Upper (1)').props.onPress(); });
-      await act(async () => { button(tree.root, 'Normalize Upper (2)').props.onPress(); });
+      await choose(tree, 'targets', ['current', 'target']);
       await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
       await paste(tree, `Target routine 1\n${CURRENT.raw_text.replace('-Squat', '-Back Squat')}\nTarget routine 2\n${TARGET.raw_text.replace('-Bench press', '-Bench Press')}`);
       await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
@@ -429,8 +666,7 @@ describe('RoutinePromptToolsScreen', () => {
         const tree = mount({ canPickFile: false, loadNotes: Storage.loadWorkoutNotes, ...extra });
         await act(async () => {});
         await act(async () => { button(tree.root, 'Normalize exercise names').props.onPress(); });
-        await act(async () => { button(tree.root, 'Normalize Upper (2)').props.onPress(); });
-        await act(async () => { button(tree.root, 'Normalize Upper (3)').props.onPress(); });
+        await choose(tree, 'targets', ['target', 'twin']);
         await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
         return tree;
       };
