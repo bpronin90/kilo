@@ -364,6 +364,12 @@ owner states the ownership pause is lifted.
   card). Its trigger is a 44dp control. On those two cards it sits in the
   expanded body beside the card's one visible secondary action. A card's
   primary action never moves into a sheet.
+- **Tools stay out of the note body.** Rendered note text is a reading
+  surface: no per-weight or per-set buttons inside it (#1375 removed the
+  inline plate-calculator weights). The plate calculator's Log entry is one
+  `Plate calculator` item in the existing Routine actions sheet; this uses the
+  #1021/#1244 exception as-is and authorizes no new header pill, action-strip
+  control, or card chrome.
 
 Anti-pattern this replaces: a header row where a `flex: 1` title column competes
 with an unbounded action container, so the title collapses or truncates to make

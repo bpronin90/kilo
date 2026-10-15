@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
@@ -18,7 +18,6 @@ export function WorkoutKuaProvider({ kua, children }) {
   );
 }
 import { Card } from './containers';
-import { PlateCalculatorModal } from '../PlateCalculatorModal';
 import { useWeightUnit } from '../../lib/unitPreference';
 import { formatLiftWeightValue } from '../../lib/units';
 import { TYPOGRAPHY, useKuaTypography } from '../../theme/typography';
@@ -203,7 +202,6 @@ export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabl
 export function SetLine({ sets, selectable, mark }) {
   const styles = useThemedStyles(createStyles);
   const typography = useKuaTypography();
-  const [plateTarget, setPlateTarget] = useState(null);
   const unit = useWeightUnit();
   if (!sets || sets.length === 0) return null;
 
@@ -241,43 +239,15 @@ export function SetLine({ sets, selectable, mark }) {
       {groups.map((group, i) => (
         <View key={i} style={styles.setGroup}>
           {group.weight ? (
-            <Pressable
-              onPress={() => setPlateTarget({
-                weightLb: group.weight,
-                authoredKg: group.convertedFromKg ? group.kgValue : null,
-              })}
-              hitSlop={6}
-              accessibilityRole="button"
-              accessibilityLabel={
-                group.convertedFromKg
-                  // Describes provenance in the units actually typed/parsed
-                  // (canonical lb, converted from an explicit kg marker) —
-                  // independent of the display-unit preference, matching
-                  // the visible "(40kg)" parenthetical.
-                  ? `Show plate loading for ${group.weight} pounds, converted from ${group.kgValue} kilograms`
-                  // #577 review: this used to hardcode "pounds" even when
-                  // displaying in kg — a kg value would be visually shown
-                  // ("88 kg") but announced as "88 pounds". Must match the
-                  // same display unit/value shown on screen.
-                  : `Show plate loading for ${formatLiftWeightValue(group.weight, unit)} ${unit === 'kg' ? 'kilograms' : 'pounds'}`
-              }
-            >
-              {/* #852: a converted group's "(40kg)" suffix is part of the
-                  SAME plain string as the weight, not a separately styled
-                  nested Text — `children` then stays a plain string in
-                  every case, exactly as before #852 (several tests match on
-                  `typeof children === 'string'`), and the parenthetical
-                  already reads as an annotation without needing its own
-                  font treatment. #577: a dotted underline is the visible
-                  "this is tappable" cue — plain color/weight alone read as
-                  inert text (review finding), and the underline degrades
-                  fine as a border in every theme without relying on color. */}
-              <Text selectable={selectable} style={[styles.setWeight, typography['label-lg'], styles.setWeightTappable]}>
-                {group.convertedFromKg
-                  ? `${formatLiftWeightValue(group.weight, unit)} ${unit} (${group.kgValue}kg)`
-                  : `${formatLiftWeightValue(group.weight, unit)} ${unit}`}
-              </Text>
-            </Pressable>
+            // #1375: weights are plain note text. The plate calculator lives in
+            // Routine actions, so nothing here competes with the note body's
+            // double-tap-to-edit or text selection. #852: a converted group's
+            // "(40kg)" suffix stays part of the same plain string.
+            <Text selectable={selectable} style={[styles.setWeight, typography['label-lg']]}>
+              {group.convertedFromKg
+                ? `${formatLiftWeightValue(group.weight, unit)} ${unit} (${group.kgValue}kg)`
+                : `${formatLiftWeightValue(group.weight, unit)} ${unit}`}
+            </Text>
           ) : (
             <Text selectable={selectable} style={[styles.setWeight, typography['label-lg']]}>BW</Text>
           )}
@@ -293,12 +263,6 @@ export function SetLine({ sets, selectable, mark }) {
           {`★ ${mark}`}
         </Text>
       ) : null}
-      <PlateCalculatorModal
-        visible={plateTarget != null}
-        weightLb={plateTarget?.weightLb ?? null}
-        authoredKg={plateTarget?.authoredKg ?? null}
-        onClose={() => setPlateTarget(null)}
-      />
     </View>
   );
 }
@@ -516,12 +480,6 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   setWeight: {
     color: colors.textMuted,
-  },
-  // #577: visible tappable cue for the plate-calculator affordance.
-  setWeightTappable: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.textMuted,
-    borderStyle: 'dashed',
   },
   setReps: {
     color: colors.text,

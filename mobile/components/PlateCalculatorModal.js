@@ -24,6 +24,12 @@ import { MODAL_SUPPORTED_ORIENTATIONS } from './adaptiveLayout';
 import { TYPOGRAPHY } from '../theme/typography';
 import { GEOMETRY } from '../theme/spacing';
 import { useReducedMotion } from '../lib/useReducedMotion';
+import {
+  EMPTY_TARGET_ENTRY,
+  PlateCalculatorTargetInput,
+  resolveTargetEntry,
+  targetEntryForUnitChange,
+} from './PlateCalculatorTargetInput';
 
 // Lightweight sheet showing the per-side plate loading for a tapped weight,
 // against a persisted, editable lb/kg equipment profile (#577). Follows the
@@ -36,15 +42,27 @@ import { useReducedMotion } from '../lib/useReducedMotion';
 // (`converted_from_kg: true`); it is used only as the kg-mode target so an
 // authored-in-kg set doesn't round-trip through a canonical-lb conversion,
 // and is otherwise ignored.
-export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onClose }) {
+//
+// `editableTarget` (#1375, Routine actions entry) ignores both and opens with
+// an empty, user-typed target instead. The draft is transient: every close
+// discards it and every reopening starts empty.
+export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onClose, editableTarget = false }) {
   const reduceMotion = useReducedMotion();
   const styles = useThemedStyles(createStyles);
   const [profile, setProfile] = useState(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(null);
+  const [targetEntry, setTargetEntry] = useState(EMPTY_TARGET_ENTRY);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      // A host that keeps this mounted (the Routine actions card) must reopen
+      // on the target view, never on an abandoned inventory edit.
+      setTargetEntry(EMPTY_TARGET_ENTRY);
+      setEditing(false);
+      setDraft(null);
+      return undefined;
+    }
     let cancelled = false;
     loadPlateCalculatorProfile().then((p) => {
       if (!cancelled) setProfile(p);
@@ -59,11 +77,16 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
 
   const unit = profile.activeUnit;
   const unitProfile = profile.profiles[unit];
-  const target = unit === 'kg'
-    ? (Number.isFinite(authoredKg) && authoredKg > 0 ? authoredKg : lbToKg(weightLb))
-    : weightLb;
+  const typedTarget = editableTarget ? resolveTargetEntry(targetEntry, unit) : null;
+  const target = editableTarget
+    ? (typedTarget.value ?? null)
+    : (unit === 'kg'
+      ? (Number.isFinite(authoredKg) && authoredKg > 0 ? authoredKg : lbToKg(weightLb))
+      : weightLb);
 
-  const load = computePlateLoad({
+  // An empty or invalid typed target computes nothing, so no earlier result
+  // can stay on screen.
+  const load = target == null ? null : computePlateLoad({
     totalWeight: target,
     barWeight: unitProfile.barWeight,
     platesPerSide: unitProfile.platesPerSide,
@@ -83,6 +106,7 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
     // saved/default profile" — it never mixes the two.
     setEditing(false);
     setDraft(null);
+    setTargetEntry((entry) => targetEntryForUnitChange(entry, nextUnit));
     // Functional update avoids the closure-captured `profile` from this
     // render going stale relative to any edit that just committed via
     // setProfile in the same interaction.
@@ -156,7 +180,7 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
         <View style={styles.sheet} onStartShouldSetResponder={() => true}>
           <View style={styles.header}>
             <Text style={styles.title}>
-              Plates for {formatPlateWeight(target)} {unit}
+              {editableTarget ? 'Plate calculator' : `Plates for ${formatPlateWeight(target)} ${unit}`}
             </Text>
             <Pressable
               onPress={onClose}
@@ -187,18 +211,28 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
           </View>
 
           {!editing && (
-            <ScrollView style={styles.viewScroll} contentContainerStyle={styles.body}>
-              {!load.valid && (
+            <ScrollView style={styles.viewScroll} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+              {editableTarget && (
+                <PlateCalculatorTargetInput entry={targetEntry} unit={unit} onChange={setTargetEntry} />
+              )}
+              {typedTarget?.state === 'empty' && (
+                <Text style={styles.message}>Enter a target weight to see plates.</Text>
+              )}
+              {typedTarget?.state === 'invalid' && (
+                <Text style={styles.message}>Enter a valid positive weight.</Text>
+              )}
+
+              {load && !load.valid && (
                 <Text style={styles.message}>No plate math for this weight.</Text>
               )}
 
-              {load.valid && load.belowBar && (
+              {load?.valid && load.belowBar && (
                 <Text style={styles.message}>
                   Below the {formatPlateWeight(load.barWeight)} {unit} bar. No plates needed.
                 </Text>
               )}
 
-              {load.valid && !load.belowBar && (
+              {load?.valid && !load.belowBar && (
                 <>
                   <View style={styles.row}>
                     <Text style={styles.rowLabel}>Bar</Text>
