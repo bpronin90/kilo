@@ -87,6 +87,24 @@ describe('canonical total per completed row (#1378)', () => {
     expect(rowLabel(c.root, 'a')).toMatch(/From last saved data\.$/);
   });
 
+  test('a failed notes refresh qualifies retained evidence and invalidates an expanded row', () => {
+    const b = blk('a');
+    const weeks = [wk('a', 1, 'w1')];
+    const notes = [note('nb-a', BASE), note('w1', lifts(80, 80))];
+    const c = one(b, weeks, notes);
+    expect(rowTexts(c.root, 'a')).not.toContain('From last saved data');
+    const el = (p) => <LogRecoveryHistory focusedBlockId={null} onSelect={() => {}} activeBlock={null} completedBlocks={[b]} weeks={weeks} notes={notes} {...p} />;
+    act(() => { c.update(el({ notesError: 'offline' })); });
+    expect(rowText(c.root, 'a')).toBe('80% total recovery · Week 1');
+    expect(rowTexts(c.root, 'a')).toContain('From last saved data');
+    expect(rowLabel(c.root, 'a')).toMatch(/From last saved data\.$/);
+    act(() => { c.update(el({ notesError: null })); });
+    expect(rowTexts(c.root, 'a')).not.toContain('From last saved data');
+    // Notes never read: no number from placeholder evidence.
+    act(() => { c.update(el({ notesError: 'offline', notes: [] })); });
+    expect(rowText(c.root, 'a')).toBe('Workout notes couldn’t be loaded, so there is no total to show.');
+  });
+
   test('the label keeps title, dates and reason, then adds the summary', () => {
     const c = one(blk('a', { reason: 'sprain' }), [wk('a', 2, 'w1')], [note('nb-a', BASE), note('w1', lifts(80, 80))]);
     const label = rowLabel(c.root, 'a');

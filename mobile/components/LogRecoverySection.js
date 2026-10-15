@@ -394,7 +394,7 @@ export function LogRecoverySection({
           <LogRecoveryHistory
             activeBlock={activeBlock} completedBlocks={completedBlocks}
             focusedBlockId={m.focusedBlockId} onSelect={m.onSelectBlock}
-            alwaysShow={!!m.unavailable} weeks={weeks} notes={notes} stale={stateStale}
+            alwaysShow={!!m.unavailable} weeks={weeks} notes={notes} stale={stateStale} notesError={m.notesError || null}
           />
           <LogRecoveryManageStack
             styles={styles} colors={colors} kua={kua}

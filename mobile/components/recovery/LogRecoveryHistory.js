@@ -22,9 +22,10 @@ import { getRecoverySnapshot, compactRecoverySummary, recoveryInputFingerprint }
 // The write hooks are stable module bindings; tolerate a partially mocked hooks module.
 const optionalHook = (hook) => (typeof hook === 'function' ? hook() : null);
 const _title = (b) => b.baseline_note_title || 'Untitled Routine';
+const NOTES_UNREAD = Object.freeze({ text: 'Workout notes couldn’t be loaded, so there is no total to show.', qualifiers: Object.freeze([]), a11y: 'Workout notes couldn’t be loaded, so there is no total to show.' });
 
 export function LogRecoveryHistory({
-  activeBlock, completedBlocks, focusedBlockId, onSelect, alwaysShow = false, weeks = [], notes = [], stale = false,
+  activeBlock, completedBlocks, focusedBlockId, onSelect, alwaysShow = false, weeks = [], notes = [], stale = false, notesError = null,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const st = useMemo(() => createLogManageStyles(colors, kua), [colors, kua]);
@@ -36,17 +37,21 @@ export function LogRecoveryHistory({
   const summaryCache = useRef(new Map());
   const summaries = useMemo(() => {
     if (!open) return null;
+    // A failed notes refresh keeps the last notes: their evidence is last saved
+    // data too. With no notes ever read there is nothing truthful to score.
+    if (notesError && notes.length === 0) return new Map(completedBlocks.map(b => [b.id, NOTES_UNREAD]));
+    const old = stale || !!notesError;
     const next = new Map();
     const byId = new Map();
     for (const block of completedBlocks) {
-      const key = `${stale ? 1 : 0}|${recoveryInputFingerprint(block, weeks, notes)}`;
-      const summary = summaryCache.current.get(key) || compactRecoverySummary(getRecoverySnapshot({ block, weeks, notes, stale }));
+      const key = `${old ? 1 : 0}|${recoveryInputFingerprint(block, weeks, notes)}`;
+      const summary = summaryCache.current.get(key) || compactRecoverySummary(getRecoverySnapshot({ block, weeks, notes, stale: old }));
       next.set(key, summary);
       byId.set(block.id, summary);
     }
     summaryCache.current = next;
     return byId;
-  }, [open, completedBlocks, weeks, notes, stale]);
+  }, [open, completedBlocks, weeks, notes, stale, notesError]);
   // With a vanished selection the selector must stay reachable, even if only the
   // active block remains to be picked.
   if (completedBlocks.length === 0 && !(alwaysShow && activeBlock)) return null;
