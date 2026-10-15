@@ -90,6 +90,11 @@ the changelog and archived roadmaps.
 - Long or secondary panels must be collapsible. Default state is **expanded**,
   except setup/configuration nested inside an analysis section (Analytics' Big 3
   Mapping), which starts collapsed with its summary so the evidence leads.
+- **Owner-authorized exception (#1385):** the Prompt tools generated prompt is
+  reference/debug content, so its `View prompt` disclosure starts **collapsed**.
+  It uses the standard `expand-more`/`expand-less` chevron and
+  `accessibilityState.expanded`; Copy/Share and the import section never sit
+  below the expanded text.
 - The collapse control is a `MaterialIcons` chevron — `expand-less` when
   expanded, `expand-more` when collapsed — size 16–18, `textMuted`, living in a
   trailing control cell. This is the standardized convention (#389, #410); do
@@ -364,6 +369,16 @@ owner states the ownership pause is lifted.
   card). Its trigger is a 44dp control. On those two cards it sits in the
   expanded body beside the card's one visible secondary action. A card's
   primary action never moves into a sheet.
+- **Routine picker sheet (#1385, owner-authorized):** the Prompt tools routine
+  choices (Routine, Authoritative routine, Targets) are summary rows
+  (`RoutinePicker`, `Current Routine >` / `N routines selected >`) that open a
+  bottom sheet list with a scrollable body and a reachable `Done` button below
+  it. It is a selection list, not a secondary-action menu, so it is a separate
+  case from the `•••` rule above: it never holds a card's actions. Rows are
+  >=44dp with title plus a detail line (`Current · edited <date> · N exercises`)
+  and report `radio`/`checkbox` state; the sheet clears the bottom safe area,
+  caps width with `dialogWidthStyle`, passes `MODAL_SUPPORTED_ORIENTATIONS`
+  and respects reduced motion.
 - **Tools stay out of the note body.** Rendered note text is a reading
   surface: no per-weight or per-set buttons inside it (#1375 removed the
   inline plate-calculator weights). The plate calculator's Log entry is one

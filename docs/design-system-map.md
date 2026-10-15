@@ -1378,6 +1378,13 @@ Consequences to preserve:
   `More deload actions` trigger, whose bottom sheet (`log/ActionSheetMenu.js`)
   lists `Regenerate deload` (disabled, reading `Generating…`, while a generation
   runs) and `Delete active deload` (danger ink, same confirmation).
+- **Prompt tools share one flow (#1385):** `RoutinePromptToolsScreen.js` is
+  configuration for `routinePromptTools/PromptFlow.js` (Choose, summary,
+  Copy/Share, optional import slot, collapsed `PromptDisclosure`). Routine
+  choices use `RoutinePicker.js`, a summary row that opens a bottom sheet with
+  single or multi select and a `Done` button; Targets also offers Select all,
+  All except authority and Clear. `NormalizationImport.js` holds the
+  normalization return path and renders before the expanded prompt text.
 - **An expanded non-current routine shows three controls (#1329):** the filled
   `Set as current routine`, then one row with an outlined `Edit routine` beside a
   44dp `More actions for {title}` trigger. Its bottom sheet lists `Copy`, `Share`,
