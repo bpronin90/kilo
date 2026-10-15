@@ -367,6 +367,8 @@ describe('owner descriptor examples apply through the batch write (#1383)', () =
     invented: RESULT.replace('-- pack shoulder down on eccentric', '-- pack shoulder down on eccentric, slow'),
     prescriptionNumber: RESULT.replace('-DB Bench Press 3x6-8', '-DB Bench Press 3x8-10'),
     prescriptionSpacing: RESULT.replace('-DB Bench Press 3x6-8', '-DB Bench Press 3 x 6-8'),
+    rangeEndpointMoved: RESULT.replace('-DB Bench Press 3x6-8', '-DB Bench Press 3x6').replace('-- step up', '-- 8, step up'),
+    rangeEndpointSpaced: RESULT.replace('-Lat Pulldown 2x10-12\n-- pack', '-Lat Pulldown 2x10\n-- -12 pack'),
     prescriptionMoved: RESULT.replace('-Lat Pulldown 2x10-12\n-- pack shoulder down on eccentric', '-Lat Pulldown\n-- 2x10-12 pack shoulder down on eccentric'),
     notAuthorityName: RESULT.replace('-Deadlift\n', '-Conventional Deadlift\n'),
     afterExistingComment: RESULT.replace('90 -\n-- step up\n-- felt good', '90 -\n-- felt good\n-- step up'),
@@ -384,6 +386,14 @@ describe('owner descriptor examples apply through the batch write (#1383)', () =
     expect(p.entries[0].problems.length).toBeGreaterThan(0);
     expect(p.entries[0].changes).toBeUndefined();
     expect((await Storage.loadWorkoutNotes()).find(n => n.id === 'b1383').raw_text).toBe(ORIG);
+  });
+
+  test('a load or rep-range endpoint can never leave the header', () => {
+    const auth = new Set(['Bench Press']);
+    expect(diffTargetNames('Monday\n-bench @135 3x5, paused', ['Monday', '-Bench Press @1', '-- 35 3x5, paused'], auth).problems.length).toBeGreaterThan(0);
+    expect(diffTargetNames('Monday\n-bench 3x5-8 paused', ['Monday', '-Bench Press 3x5', '-- -8 paused'], auth).problems.length).toBeGreaterThan(0);
+    expect(diffTargetNames('Monday\n-bench 3x5/8 paused', ['Monday', '-Bench Press 3x5', '-- /8 paused'], auth).problems.length).toBeGreaterThan(0);
+    expect(diffTargetNames('Monday\n-bench 3x5-8 paused', ['Monday', '-Bench Press 3x5-8', '-- paused'], auth).changes).toHaveLength(1);
   });
 
   test('an uncertain movement left unchanged proposes nothing for it', () => {

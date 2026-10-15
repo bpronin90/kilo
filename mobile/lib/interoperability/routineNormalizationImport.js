@@ -98,8 +98,9 @@ function markTail(name) {
 // A parser-supported note line; a bare "---" (week divider) never qualifies.
 const INSERTED_COMMENT_RE = /^--\s+\S/;
 const COMMENT_RE = /^--(\s|$)/;
-// Sets x reps and @-loads: prescription that must stay in the header.
-const PRESCRIPTION_RE = /\d+(?:\.\d+)?\s*[xX×]\s*\d+|@\s*\d/g;
+// Sets x reps (with any rep range) and @-loads: prescription tokens that must
+// stay whole in the header, so no range endpoint or load digit can leave it.
+const PRESCRIPTION_RE = /\d+(?:\.\d+)?\s*[xX×]\s*\d+(?:\s*[-–/]\s*\d+)*|@\s*\d[\d.]*\S*/g;
 // Separators that introduce a descriptor inside an alias's header name.
 const NAME_DESCRIPTOR_RE = /\s*\(|\s*\||,|\s[—–-]\s/;
 
@@ -158,7 +159,7 @@ function descriptorSplit(content, returned, tail, oldName, newName) {
   for (const at of candidates) {
     const named = content.slice(0, at);
     const after = content.slice(at + tail.length);
-    if (/^[\p{L}\p{N}]/u.test(after)) continue;
+    if (/^[\p{L}\p{N}]|^[-–/.]\d/u.test(after)) continue;
     if (prescriptions.some(m => m.index < at || m.index + m[0].length > at + tail.length)) continue;
     let nameEnd = named.length;
     if (named.toLowerCase().startsWith(newName.toLowerCase()) && !/^[\p{L}\p{N}]/u.test(named.slice(newName.length))) {
