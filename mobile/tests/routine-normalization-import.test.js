@@ -396,6 +396,16 @@ describe('owner descriptor examples apply through the batch write (#1383)', () =
     expect(diffTargetNames('Monday\n-bench 3x5-8 paused', ['Monday', '-Bench Press 3x5-8', '-- paused'], auth).changes).toHaveLength(1);
   });
 
+  test('a timed declaration keeps its unit and meaning', () => {
+    const auth = new Set(['Plank', 'Bike']);
+    expect(diffTargetNames('Monday\n-plank 3x30 sec, slow', ['Monday', '-Plank 3x30', '-- sec, slow'], auth).problems.length).toBeGreaterThan(0);
+    expect(diffTargetNames('Monday\n-plank 3x30sec slow', ['Monday', '-Plank 3x30', '-- sec slow'], auth).problems.length).toBeGreaterThan(0);
+    expect(diffTargetNames('Monday\n-plank 30-45 s, slow', ['Monday', '-Plank 30-45', '-- s, slow'], auth).problems.length).toBeGreaterThan(0);
+    expect(diffTargetNames('Monday\n-bike 5 min easy', ['Monday', '-Bike 5', '-- min easy'], auth).problems.length).toBeGreaterThan(0);
+    expect(diffTargetNames('Monday\n-plank 3x30s, slow', ['Monday', '-Plank 3x30', '-- s, slow'], auth).problems.length).toBeGreaterThan(0);
+    expect(diffTargetNames('Monday\n-plank 3x30s, slow', ['Monday', '-Plank 3x30s', '-- slow'], auth).changes).toHaveLength(1);
+  });
+
   test('an uncertain movement left unchanged proposes nothing for it', () => {
     const p = buildNormalizationPreview(replyFor(RESULT.trimEnd(), TWIN.raw_text), snap, notes);
     expect(p.entries[1].changes).toEqual([]);

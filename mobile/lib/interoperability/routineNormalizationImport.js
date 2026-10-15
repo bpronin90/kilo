@@ -8,7 +8,7 @@
 // wrong note. Every edit is re-spliced into the ORIGINAL text, so everything
 // outside an approved header name stays byte-identical by construction.
 import { parseWorkoutNote } from '../parser.js';
-import { parseWorkoutRow } from '../parser/workoutRow.js';
+import { parseHeaderDeclaration, parseWorkoutRow } from '../parser/workoutRow.js';
 
 // Untrusted input bound, checked before any split: generous for many full
 // routines, far below anything that could stall the per-line walk.
@@ -98,9 +98,13 @@ function markTail(name) {
 // A parser-supported note line; a bare "---" (week divider) never qualifies.
 const INSERTED_COMMENT_RE = /^--\s+\S/;
 const COMMENT_RE = /^--(\s|$)/;
-// Sets x reps (with any rep range) and @-loads: prescription tokens that must
-// stay whole in the header, so no range endpoint or load digit can leave it.
-const PRESCRIPTION_RE = /\d+(?:\.\d+)?\s*[xX×]\s*\d+(?:\s*[-–/]\s*\d+)*|@\s*\d[\d.]*\S*/g;
+// Mirrors the parser's header time units (workoutRow.js _TIME_UNIT).
+const TIME_UNIT = '(?:sec|secs|seconds?|s|min|mins|minutes?|m)';
+// Sets x reps/holds (with any range and time unit), timed ranges, and
+// @-loads: prescription tokens that must stay whole in the header, so no range
+// endpoint, unit, or load digit can leave it.
+const PRESCRIPTION_RE = new RegExp(`\\d+(?:\\.\\d+)?\\s*[xX×]\\s*\\d+(?:\\.\\d+)?(?:\\s*[-–/]\\s*\\d+(?:\\.\\d+)?)*(?:\\s*${TIME_UNIT}\\b)?|\\d+(?:\\.\\d+)?\\s*[-–]\\s*\\d+(?:\\.\\d+)?\\s*${TIME_UNIT}\\b|@\\s*\\d[\\d.]*\\S*`, 'gi');
+const UNIT_START_RE = new RegExp(`^\\s*${TIME_UNIT}\\b`, 'i');
 // Separators that introduce a descriptor inside an alias's header name.
 const NAME_DESCRIPTOR_RE = /\s*\(|\s*\||,|\s[—–-]\s/;
 
@@ -159,7 +163,7 @@ function descriptorSplit(content, returned, tail, oldName, newName) {
   for (const at of candidates) {
     const named = content.slice(0, at);
     const after = content.slice(at + tail.length);
-    if (/^[\p{L}\p{N}]|^[-–/.]\d/u.test(after)) continue;
+    if (/^[\p{L}\p{N}]|^[-–/.]\d/u.test(after) || (/\d$/.test(tail) && UNIT_START_RE.test(after))) continue;
     if (prescriptions.some(m => m.index < at || m.index + m[0].length > at + tail.length)) continue;
     let nameEnd = named.length;
     if (named.toLowerCase().startsWith(newName.toLowerCase()) && !/^[\p{L}\p{N}]/u.test(named.slice(newName.length))) {
@@ -217,7 +221,9 @@ export function diffTargetNames(originalText, returnedLines, authorityNames = nu
       // Descriptor text leaving the header (before or after an unchanged
       // prescription) must reappear in that exercise's one moved comment.
       const split = framed ? descriptorSplit(before.slice(a.prefix.length), after.slice(b.prefix.length), b.suffix, oldName, newName) : null;
-      const descriptor = split ? split.parts : [];
+      // The header's declared row meaning (reps, duration, timed) must survive.
+      const sameDeclaration = JSON.stringify(parseHeaderDeclaration(before)) === JSON.stringify(parseHeaderDeclaration(after));
+      const descriptor = split && sameDeclaration ? split.parts : [];
       const plain = framed && a.suffix === b.suffix && markTail(oldName) === markTail(newName) && numbers(before) === numbers(after) && prescriptionTail(before) === prescriptionTail(after);
       if (descriptor.length && authorityNames && !authorityNames.has(newName)) {
         problems.push(`Line ${lineNumber}: “${newName}” is not an exercise name in the authoritative routine.`);
