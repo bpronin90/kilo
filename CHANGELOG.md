@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.15.0 - 2026-10-15
+
+- Issue #1372: Cold launch now shows a branded Kilo loading screen with an animated barbell instead of a skeleton Home, and reveals the app as soon as your on-device training data is ready.
+
 ## 1.14.21 - 2026-10-14
 
 - Issue #1368: Recovery now quietly fixes a few kinds of leftover inconsistency on your device, such as weeks still active under a deleted block, two blocks active at once, or the same workout note linked twice, without deleting any history. Anything it cannot fix safely, such as a week whose block is missing, stays exactly as it is: Recovery keeps showing the rest of your data with a notice and Retry recovery (which re-checks but may not change the result), only Recovery changes that involve the unresolved data are paused, and the rest of the app keeps working.
