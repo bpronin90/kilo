@@ -552,6 +552,20 @@ describe('RoutinePromptToolsScreen', () => {
       expect(text(tree.root)).not.toContain('Fix-up message copied');
     });
 
+    test('a fix-up copy that resolves after the reply changed shows no stale feedback', async () => {
+      let release;
+      const copy = jest.fn().mockResolvedValue();
+      const tree = await setup({ copy });
+      await paste(tree, 'nope');
+      copy.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+      let pending;
+      await act(async () => { pending = fixUp(tree).props.onPress(); });
+      await paste(tree, 'still bad');
+      await act(async () => { release(); await pending; });
+      expect(text(tree.root)).not.toContain('Fix-up message copied');
+      expect(text(tree.root)).toContain('Line 1 isn’t');
+    });
+
     test('an invalid mapping is listed as not applied and never written; the Apply count ignores it', async () => {
       const saveText = jest.fn();
       const tree = await setup({ saveText });

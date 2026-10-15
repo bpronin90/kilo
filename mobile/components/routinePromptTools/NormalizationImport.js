@@ -100,12 +100,14 @@ export function NormalizationImport({ snapshot, copy, loadNotes, applyBatch, pic
   };
   const [discardMessage, discardSnapshot] = useDiscard(onDiscard);
   // The fix-up message carries EVERY problem; only the on-screen list is capped.
+  // Feedback applies only if no edit or review happened since the copy began.
   const copyFixUp = async () => {
+    const seq = reviewSeq.current;
     try {
       await copy([FIXUP_INTRO, ...preview.replyErrors.map(problem => `- ${problem}`)].join('\n'));
-      setCopyNotice('Fix-up message copied. Paste it to the LLM.');
+      if (seq === reviewSeq.current) setCopyNotice('Fix-up message copied. Paste it to the LLM.');
     } catch {
-      setCopyNotice('Couldn’t copy the message. Select the problems above and copy them instead.');
+      if (seq === reviewSeq.current) setCopyNotice('Couldn’t copy the message. Select the problems above and copy them instead.');
     }
   };
 
