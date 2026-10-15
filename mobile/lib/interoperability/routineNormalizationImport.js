@@ -109,7 +109,7 @@ const UNIT_START_RE = new RegExp(`^\\s*${TIME_UNIT}\\b`, 'i');
 // separator precedes it ("Bench | 2 sec pause"), where it is descriptor text.
 const SCALAR_TIME_RE = new RegExp(`\\d+(?:\\.\\d+)?\\s*${TIME_UNIT}\\b`, 'gi');
 // Separators that introduce a descriptor inside an alias's header name.
-const NAME_DESCRIPTOR_RE = /\s*\(|\s*\||,|\s[—–-]\s/;
+const NAME_DESCRIPTOR_RE = /\s*[([|]|[,;:]|\s[—–-]\s/;
 
 // Dashed ("- 135 5"), bare ("135 5,5"), and skip ("-", "135 -") set rows.
 function isSetRow(line) {

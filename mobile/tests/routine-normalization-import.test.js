@@ -410,6 +410,14 @@ describe('owner descriptor examples apply through the batch write (#1383)', () =
     expect(diffTargetNames('Monday\n-bike, 5 min easy', ['Monday', '-Bike', '-- 5 min easy'], auth).changes).toHaveLength(1);
   });
 
+  test.each([':', ';', ',', ' |', ' (', ' [', ' —'])('an alias rename cannot drop a "%s"-separated cue', sep => {
+    const close = { ' (': ')', ' [': ']' }[sep] || '';
+    const orig = `Monday\n-Dumbbell Bench Press${sep} paused${close} 3x5\n85 5,5,5`;
+    const auth = new Set(['DB Bench Press']);
+    expect(diffTargetNames(orig, ['Monday', '-DB Bench Press 3x5', '85 5,5,5'], auth).problems.length).toBeGreaterThan(0);
+    expect(diffTargetNames(orig, ['Monday', '-DB Bench Press 3x5', '85 5,5,5', '-- paused'], auth).changes).toHaveLength(1);
+  });
+
   test('an uncertain movement left unchanged proposes nothing for it', () => {
     const p = buildNormalizationPreview(replyFor(RESULT.trimEnd(), TWIN.raw_text), snap, notes);
     expect(p.entries[1].changes).toEqual([]);
