@@ -6,7 +6,7 @@
 // row prints its canonical latest-week total from the shared snapshot (#1378). The
 // stack renders ONE visible Manage card, for the focused block.
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { formatDate } from '../../lib/format';
@@ -17,7 +17,7 @@ import { useWeightUnit } from '../../lib/unitPreference';
 import { useTheme } from '../../theme/ThemeContext';
 import { LogRecoveryLifecycle } from './LogRecoveryLifecycle';
 import { createLogManageStyles } from './logRecoveryManageStyles';
-import { getRecoveryRowSummary } from '../../lib/data/recoverySnapshot';
+import { getRecoverySnapshot, compactRecoverySummary, recoveryInputFingerprint } from '../../lib/data/recoverySnapshot';
 
 // The write hooks are stable module bindings; tolerate a partially mocked hooks module.
 const optionalHook = (hook) => (typeof hook === 'function' ? hook() : null);
@@ -29,11 +29,24 @@ export function LogRecoveryHistory({
   const { colors, kuaPalette: kua } = useTheme();
   const st = useMemo(() => createLogManageStyles(colors, kua), [colors, kua]);
   const [open, setOpen] = useState(false);
-  // Read-only, per block id, and only while expanded: the latest-week summary the
-  // block's evidence shows, re-derived only when that block's inputs change.
-  const summaries = useMemo(() => (open
-    ? new Map(completedBlocks.map(block => [block.id, getRecoveryRowSummary({ block, weeks, notes, stale })]))
-    : null), [open, completedBlocks, weeks, notes, stale]);
+  // Read-only and only while expanded: each row's latest-week summary from the
+  // shared snapshot. Summaries are kept here by input fingerprint, so a long
+  // history derives each block once and a selection or an unrelated change never
+  // re-derives (the shared store alone is too small to hold every row).
+  const summaryCache = useRef(new Map());
+  const summaries = useMemo(() => {
+    if (!open) return null;
+    const next = new Map();
+    const byId = new Map();
+    for (const block of completedBlocks) {
+      const key = `${stale ? 1 : 0}|${recoveryInputFingerprint(block, weeks, notes)}`;
+      const summary = summaryCache.current.get(key) || compactRecoverySummary(getRecoverySnapshot({ block, weeks, notes, stale }));
+      next.set(key, summary);
+      byId.set(block.id, summary);
+    }
+    summaryCache.current = next;
+    return byId;
+  }, [open, completedBlocks, weeks, notes, stale]);
   // With a vanished selection the selector must stay reachable, even if only the
   // active block remains to be picked.
   if (completedBlocks.length === 0 && !(alwaysShow && activeBlock)) return null;

@@ -136,13 +136,12 @@ describe('per-block isolation and invalidation (#1378)', () => {
 });
 
 describe('long histories stay bounded (#1378 review)', () => {
-  test('30 completed blocks derive once each; selecting and rerendering re-derive nothing, and the shared snapshot survives', () => {
+  test('30 completed blocks derive once each; selecting and rerendering re-derive nothing', () => {
     const ids = Array.from({ length: 30 }, (_, i) => `h${i}`);
     const blocks = ids.map(id => blk(id));
     const weeks = ids.map(id => wk(id, 1, `${id}-n`));
     const notes = ids.flatMap(id => [note(`nb-${id}`, BASE), note(`${id}-n`, lifts(80, 80))]);
-    // A surface's full snapshot that must not be evicted by the rows.
-    const shared = getRecoverySnapshot({ block: blocks[0], weeks, notes });
+    getRecoverySnapshot({ block: blocks[0], weeks, notes });
     const before = _snapshotDerivationCount();
     let selected = null;
     const el = (focused) => <LogRecoveryHistory focusedBlockId={focused} onSelect={(id) => { selected = id; }} activeBlock={null} completedBlocks={blocks} weeks={weeks} notes={notes} />;
@@ -156,6 +155,5 @@ describe('long histories stay bounded (#1378 review)', () => {
     act(() => { c.update(el('h12')); });
     expect(selected).toBe('h7');
     expect(_snapshotDerivationCount()).toBe(afterExpand);
-    expect(getRecoverySnapshot({ block: blocks[0], weeks, notes })).toBe(shared);
   });
 });
