@@ -58,20 +58,37 @@ export function buildExerciseNameNormalizationPrompt({ authority, targets = [], 
 3. The prescription stays in the header. The header's own sets-by-reps or time prescription (such as 2x8, 3x6-8, or 3x30 sec), any @load, and any marks stay exactly as they are and are never part of the descriptor.
 4. Give all remaining descriptor text. Any other text in the header beyond the name and prescription (cues, qualifiers, intensity, side notes) is the descriptor. Give it after the name, keeping its wording, capitalization, and internal punctuation exactly; you may remove only the separator before it (such as a comma or dash) and brackets that enclose all of it. Do not decide that phrases such as "each leg", "light", or "step up" are redundant and drop them. Do not paraphrase, summarize, or delete any of its words. Kilo moves it into one "-- " note. When a header has no descriptor, give none. If you cannot give the descriptor exactly as written, reply "no match" for that header instead.
 
-Reply with exactly one line for every header, in any order, and nothing else. Each line is exactly one of:
+Reply with exactly one Markdown code block (three backticks before and after) and nothing outside it: no text before or after the block. Inside the block put exactly one line for every header, in any order, and nothing else. Each line is exactly one of:
 
+\`\`\`text
 H3 => no match
 H3 => Lat Pulldown
 H3 => Lat Pulldown | pack shoulder down on eccentric
+\`\`\`
 
-Write the header number exactly as shown, then " => " (a space, an equals sign, a greater-than sign, a space). "no match" is literal lowercase text and leaves that header unchanged. A match is the authoritative name, optionally followed by " | " (a space, a vertical bar, a space) and the descriptor; never write " | " when there is no descriptor. Inside a name or descriptor, write each backslash as \\\\ and each vertical bar as \\| ; no other escapes exist. Do not add Markdown fences, explanations, headings, blank lines, or leading or trailing spaces. Any other reply is rejected without being applied. Kilo makes the changes itself from the original notes, so never return routine text.
+Write the header number exactly as shown, then " => " (a space, an equals sign, a greater-than sign, a space). "no match" is literal lowercase text and leaves that header unchanged. A match is the authoritative name, optionally followed by " | " (a space, a vertical bar, a space) and the descriptor; never write " | " when there is no descriptor. Inside a name or descriptor, write each backslash as \\\\ and each vertical bar as \\| ; no other escapes exist. Inside the block, do not add explanations, headings, blank lines, or leading or trailing spaces. Any other reply is rejected without being applied. Kilo makes the changes itself from the original notes, so never return routine text.
 
 Examples (the authoritative names here only illustrate the reply format; always use the names in the authoritative list below):
-- Authority "Single-Leg RDL": header "-Single-Leg RDL 2x8 each leg, light" is answered "H1 => Single-Leg RDL | each leg, light".
-- Authority "DB Bench Press": header "-DB Bench Press 3x6-8, step up" is answered "H2 => DB Bench Press | step up".
-- Authority "Lat Pulldown": header "-Lat Pulldown 2x10-12 (pack shoulder down on eccentric)" is answered "H3 => Lat Pulldown | pack shoulder down on eccentric".
-- Authority "Deadlift": header "-Deadlift — trial sets, slow and controlled" is answered "H4 => Deadlift | trial sets, slow and controlled".
-- A header for a related but different movement is answered "H5 => no match".
+- Authority "Single-Leg RDL": header "-Single-Leg RDL 2x8 each leg, light" is answered:
+\`\`\`text
+H1 => Single-Leg RDL | each leg, light
+\`\`\`
+- Authority "DB Bench Press": header "-DB Bench Press 3x6-8, step up" is answered:
+\`\`\`text
+H2 => DB Bench Press | step up
+\`\`\`
+- Authority "Lat Pulldown": header "-Lat Pulldown 2x10-12 (pack shoulder down on eccentric)" is answered:
+\`\`\`text
+H3 => Lat Pulldown | pack shoulder down on eccentric
+\`\`\`
+- Authority "Deadlift": header "-Deadlift — trial sets, slow and controlled" is answered:
+\`\`\`text
+H4 => Deadlift | trial sets, slow and controlled
+\`\`\`
+- A header for a related but different movement is answered:
+\`\`\`text
+H5 => no match
+\`\`\`
 
 <<< BEGIN KILO AUTHORITATIVE EXERCISE NAMES >>>
 ${names}

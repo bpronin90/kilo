@@ -159,7 +159,7 @@ export function RoutinePromptToolsScreen({
     const importSlot = !config.hasImport ? null : snapshot?.legacy ? (
       <LegacyNormalizationNotice key={snapshot.version} onDiscard={discard} />
     ) : snapshot ? (
-      <NormalizationImport key={snapshot.version} snapshot={snapshot} loadNotes={loadNotes} applyBatch={applyBatch} pickFile={pickFile} canPickFile={canPickFile} onApplied={refreshNotes} onPendingRetry={setPendingRetry} onComplete={clearNormalizationImportSnapshot} onDiscard={discard} />
+      <NormalizationImport key={snapshot.version} snapshot={snapshot} copy={copy} loadNotes={loadNotes} applyBatch={applyBatch} pickFile={pickFile} canPickFile={canPickFile} onApplied={refreshNotes} onPendingRetry={setPendingRetry} onComplete={clearNormalizationImportSnapshot} onDiscard={discard} />
     ) : <Card><Text style={styles.muted}>No saved normalization prompt is available. Choose an authoritative routine and targets, then copy the prompt to begin.</Text></Card>;
     return (
       <ScreenShell title="Prompt tools" subtitle="Copy a local template into the LLM you choose." onBack={() => {

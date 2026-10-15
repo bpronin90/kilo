@@ -109,7 +109,11 @@ describe('parseNormalizationReply grammar (#1386)', () => {
     blankInterior: 'H1 => no match\n\nH2 => no match\nH3 => no match',
     twoFinalNewlines: `${ALL}\n\n`,
     leadingBlank: `\n${ALL}`,
-    fenced: `\`\`\`\n${ALL}\n\`\`\``,
+    fencedWithBlankInside: `\`\`\`\n${ALL}\n\n\`\`\``,
+    fencedLeadingBlankInside: `\`\`\`\n\n${ALL}\n\`\`\``,
+    fencedPaddedPayload: `\`\`\`\n ${ALL}\n\`\`\``,
+    fencedBareCR: `\`\`\`\n${ALL.replace('H1 =>', 'H1\r=>')}\n\`\`\``,
+    fencedMixedEndings: `\`\`\`\n${ALL.replace('\n', '\r\n')}\n\`\`\``,
     prose: `Sure! Here you go:\n${ALL}`,
     proseAfter: `${ALL}\nHope that helps`,
     leadingSpace: ` ${ALL}`,
@@ -152,11 +156,81 @@ describe('parseNormalizationReply grammar (#1386)', () => {
     expect(parse('H1 => no match\nH3 => no match').errors).toEqual(['H2 has no reply line.']);
   });
 
-  test('a flood of bad lines is bounded in what it reports', () => {
-    const flood = parse('nope\n'.repeat(5000));
-    expect(flood.ok).toBe(false);
-    expect(flood.errors.length).toBeLessThanOrEqual(20);
-    expect(flood.errorCount).toBeGreaterThan(5000);
+  test('every problem within the line bound is retained (the screen limits only what it shows)', () => {
+    const many = parse('nope\n'.repeat(23));
+    expect(many.ok).toBe(false);
+    expect(many.errors.length).toBe(24);
+    expect(many.errorCount).toBe(many.errors.length);
+  });
+
+  test('far more lines than headers is one error; the slack still reports per line', () => {
+    const huge = parse('x\n'.repeat(524288));
+    expect(huge.errors).toEqual(['The reply has 524288 lines but there are only 3 headers. Reply with exactly one line per header.']);
+    const atSlack = parse('x\n'.repeat(23));
+    expect(atSlack.errors.filter(e => /^Line \d+ isn/.test(e)).length).toBe(23);
+    expect(parse('x\n'.repeat(24)).errors.length).toBe(1);
+    const worst = parse('x\n'.repeat(23)).errors.map(e => `- ${e}`).join('\n');
+    expect(worst.length).toBeLessThan(5000);
+  });
+
+  describe('code fence (#1389)', () => {
+    const wrap = (body, tag = '') => `\`\`\`${tag}\n${body}\n\`\`\``;
+    test.each([
+      ['plain fence', wrap(ALL)],
+      ['text tag', wrap(ALL, 'text')],
+      ['final payload newline', `\`\`\`\n${ALL}\n\n`.slice(0, -1) + '```'],
+      ['CRLF', wrap(ALL).replace(/\n/g, '\r\n')],
+      ['CRLF with final newline', `\`\`\`text\r\n${ALL.replace(/\n/g, '\r\n')}\r\n\`\`\``],
+      ['outside whitespace', `\n \n${wrap(ALL, 'text')}\n\n  `],
+    ])('%s parses exactly like the unfenced reply', (_label, text) => {
+      const result = parse(text);
+      expect(result.errors).toEqual([]);
+      expect([...result.choices]).toEqual([...parse(ALL).choices]);
+    });
+
+    test.each([
+      ['two blocks', `${wrap('H1 => no match')}\n${wrap('H2 => no match\nH3 => no match')}`, /more than one code block/],
+      ['text before', `Here you go:\n${wrap(ALL)}`, /text before the code block/],
+      ['text after', `${wrap(ALL)}\nHope that helps`, /text after the code block/],
+      ['unclosed', `\`\`\`text\n${ALL}`, /never closed/],
+      ['one-line fence', `\`\`\`${ALL.split('\n')[0]}\`\`\``, /on its own line/],
+    ])('%s gives one specific fence message and no choices', (_label, text, message) => {
+      const result = parse(text);
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([expect.stringMatching(message)]);
+      expect(result.choices.size).toBe(0);
+    });
+  });
+
+  describe('lost line breaks (#1389)', () => {
+    const joined = 'H1 => no match H2 => Lat Pulldown | pack shoulder down H3 => no match';
+    test.each([['unfenced', joined], ['fenced', `\`\`\`text\n${joined}\n\`\`\``], ['crlf', `${joined}\r\n`]])('%s gives exactly one actionable error', (_label, text) => {
+      const result = parse(text);
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual(['The reply lost its line breaks — every answer is on one line. In the chat app, use the Copy button on the code block, then paste again.']);
+      expect(result.errorCount).toBe(1);
+      expect(result.choices.size).toBe(0);
+    });
+  });
+
+  describe('missing refs are grouped into ranges (#1389)', () => {
+    const many = n => ({ headers: Array.from({ length: n }, (_, i) => ({ ref: `H${i + 1}` })) });
+    test('a long run, singletons and disjoint ranges stay accurate', () => {
+      expect(parseNormalizationReply('', many(72)).errors.slice(-1)).toEqual(['H1–H72 have no reply line.']);
+      const answered = [3, 4, 8, 10].map(n => `H${n} => no match`).join('\n');
+      expect(parseNormalizationReply(answered, many(12)).errors).toEqual([
+        'H1–H2 have no reply line.', 'H5–H7 have no reply line.', 'H9 has no reply line.', 'H11–H12 have no reply line.',
+      ]);
+    });
+    test('refs are grouped numerically, not as text', () => {
+      const answered = Array.from({ length: 12 }, (_, i) => i + 1).filter(n => n !== 2 && n !== 10 && n !== 11).map(n => `H${n} => no match`).join('\n');
+      expect(parseNormalizationReply(answered, many(12)).errors).toEqual(['H2 has no reply line.', 'H10–H11 have no reply line.']);
+    });
+    test('the preview keeps every grouped problem', () => {
+      const p = buildNormalizationPreview(Array.from({ length: 6 }, (_, i) => `bad ${i}`).join('\n'), SNAP, NOTES);
+      expect(p.replyErrors.length).toBeGreaterThan(0);
+      expect(p.replyErrorCount).toBe(p.replyErrors.length);
+    });
   });
 
   test('an oversized reply is rejected before it is split', () => {

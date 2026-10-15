@@ -22,7 +22,6 @@ import { applyHeaderEdits, insertionIndex, planHeaderEdit } from './normalizatio
 // Untrusted input bound, checked before any split. A valid reply is one short
 // line per distinct header, so this is far above any legitimate reply.
 export const MAX_REPLY_LENGTH = 1024 * 1024;
-const MAX_REPORTED = 20;
 // Reply grammar (#1386 criterion 4), applied with no trimming or repair:
 //   reply  = line *(EOL line) [EOL]   EOL = "\n", or "\r\n" used for every line
 //   line   = "H" ref " => " ( "no match" | name [ " | " descriptor ] )
@@ -39,6 +38,43 @@ const MAX_REPORTED = 20;
 // "no match | x" is a match production whose name can never be an authority
 // name (the reserved text is excluded), so it is rejected and never applied.
 const LINE_RE = /^H([1-9][0-9]*) => /;
+const ANSWER_RE = /H[1-9][0-9]* => /g;
+const LOST_LINE_BREAKS = 'The reply lost its line breaks — every answer is on one line. In the chat app, use the Copy button on the code block, then paste again.';
+// A valid reply has one line per header; this much extra still gets per-line
+// diagnostics, anything beyond is rejected as one error (bounds retained problems).
+const LINE_SLACK = 20;
+const FENCE = '```';
+const FENCE_OPEN_RE = /^```[^\r\n`]*\r?\n/;
+
+// #1389: a reply may arrive as ONE Markdown code block. Exactly one enclosing
+// pair is removed (opening fence with an optional language tag, closing fence)
+// and whitespace OUTSIDE it is ignored; the payload is never trimmed or
+// repaired. Unfenced text passes through untouched. Returns { text } or { error }.
+function stripFence(text) {
+  if (!text.includes(FENCE)) return { text };
+  const t = text.trim();
+  if (!t.startsWith(FENCE)) return { error: 'There is text before the code block. Reply with only one code block and nothing outside it.' };
+  const count = t.split(FENCE).length - 1;
+  if (count === 1) return { error: 'The code block is never closed. Reply with one complete code block that ends with ```.' };
+  if (count > 2) return { error: 'The reply has more than one code block. Put every answer line in a single code block.' };
+  if (!t.endsWith(FENCE)) return { error: 'There is text after the code block. Reply with only one code block and nothing outside it.' };
+  const open = FENCE_OPEN_RE.exec(t);
+  if (!open) return { error: 'The code block must start with ``` on its own line, with the answers on the following lines.' };
+  return { text: t.slice(open[0].length, t.length - FENCE.length) };
+}
+
+// Consecutive missing refs collapse into ranges (H1–H72), numerically.
+function missingRefProblems(missing) {
+  const nums = missing.map(ref => Number(ref.slice(1))).sort((a, b) => a - b);
+  const problems = [];
+  for (let i = 0; i < nums.length;) {
+    let j = i;
+    while (j + 1 < nums.length && nums[j + 1] === nums[j] + 1) j += 1;
+    problems.push(j === i ? `H${nums[i]} has no reply line.` : `H${nums[i]}–H${nums[j]} have no reply line.`);
+    i = j + 1;
+  }
+  return problems;
+}
 
 function excerpt(text) {
   return text.length > 60 ? `${text.slice(0, 60)}…` : text;
@@ -71,16 +107,20 @@ function parseFields(rest) {
 /**
  * Parse a reply against the stored catalog. One line per H-ref, any order.
  * Structural problems (malformed, unknown, duplicate or missing refs) are
- * reported and make the whole reply unusable. No trimming or repair is done.
- * Returns `{ ok, errors, errorCount, choices }`; `choices` maps ref to
+ * reported and make the whole reply unusable. No trimming or repair is done
+ * beyond removing one enclosing code fence. Every problem is kept (the screen
+ * limits only what it shows). Returns `{ ok, errors, errorCount, choices }`; `choices` maps ref to
  * `{ kind: 'none' }` or `{ kind: 'match', name, descriptor }`.
  */
 export function parseNormalizationReply(replyText, catalog) {
-  const text = String(replyText ?? '');
+  const raw = String(replyText ?? '');
   const errors = [];
-  let errorCount = 0;
-  const report = message => { errorCount += 1; if (errors.length < MAX_REPORTED) errors.push(message); };
-  if (text.length > MAX_REPLY_LENGTH) return { ok: false, tooLarge: true, errors, errorCount, choices: new Map() };
+  const report = message => { errors.push(message); };
+  const fail = message => ({ ok: false, errors: [message], errorCount: 1, choices: new Map() });
+  if (raw.length > MAX_REPLY_LENGTH) return { ok: false, tooLarge: true, errors, errorCount: 0, choices: new Map() };
+  const fenced = stripFence(raw);
+  if (fenced.error) return fail(fenced.error);
+  const text = fenced.text;
   const refs = new Set(catalog.headers.map(h => h.ref));
   const choices = new Map();
   // Line terminators: "\r\n" throughout when the reply contains any CRLF, else
@@ -89,6 +129,8 @@ export function parseNormalizationReply(replyText, catalog) {
   const crlf = text.includes('\r\n');
   const lines = text.split(crlf ? '\r\n' : '\n');
   if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+  if (lines.some(line => (line.match(ANSWER_RE) || []).length > 1)) return fail(LOST_LINE_BREAKS);
+  if (lines.length > catalog.headers.length + LINE_SLACK) return fail(`The reply has ${lines.length} lines but there are only ${catalog.headers.length} headers. Reply with exactly one line per header.`);
   lines.forEach((line, index) => {
     const at = `Line ${index + 1}`;
     if (line.includes('\r')) { report(`${at} has a carriage return that doesn’t end a CRLF line.`); return; }
@@ -103,8 +145,8 @@ export function parseNormalizationReply(replyText, catalog) {
     if (choices.has(ref)) { report(`${ref} appears more than once.`); return; }
     choices.set(ref, parsed.kind ? parsed : { kind: 'match', ...parsed });
   });
-  for (const ref of refs) if (!choices.has(ref)) report(`${ref} has no reply line.`);
-  return { ok: errorCount === 0, errors, errorCount, choices };
+  missingRefProblems([...refs].filter(ref => !choices.has(ref))).forEach(report);
+  return { ok: errors.length === 0, errors, errorCount: errors.length, choices };
 }
 
 const NO_PREVIEW = {

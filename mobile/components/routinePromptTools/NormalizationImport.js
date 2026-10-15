@@ -10,6 +10,8 @@ import { FieldLabel } from '../FieldLabel';
 
 // Discard of the saved prompt shared by the compact and legacy panels. A
 // failure keeps the snapshot and says so.
+const MAX_SHOWN_PROBLEMS = 20;
+const FIXUP_INTRO = 'Kilo couldn’t apply your reply. Fix these problems and send the full corrected reply again, in one code block, one line per header:';
 const TOO_LARGE = 'That reply is too large to be header results. Nothing changed.';
 
 function useDiscard(onDiscard) {
@@ -47,7 +49,7 @@ export function LegacyNormalizationNotice({ onDiscard }) {
 // reply (one "H<n> => …" line per header), preview every mapping against the
 // original notes captured when the prompt was copied/shared, then apply only
 // the approved ones. Invalid or stale items are listed, never written.
-export function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPickFile, onApplied, onPendingRetry, onComplete, onDiscard }) {
+export function NormalizationImport({ snapshot, copy, loadNotes, applyBatch, pickFile, canPickFile, onApplied, onPendingRetry, onComplete, onDiscard }) {
   const styles = useThemedStyles(createStyles);
   const inputStyle = useInputStyle();
   const [reply, setReply] = useState('');
@@ -60,14 +62,25 @@ export function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile,
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  // Only the newest review may publish; an edit or a later review makes any
-  // in-flight one obsolete.
+  const [copyNotice, setCopyNotice] = useState('');
+  // Generation of the reply under review. Every superseding event (edit,
+  // file pick, Review, discard) bumps it and drops the preview and copy
+  // feedback at once, so an error list and its Copy button are only ever on
+  // screen for the reply they were built from; async completions publish only
+  // if their generation is still current.
   const reviewSeq = useRef(0);
-
-  const review = async (text) => {
-    const seq = ++reviewSeq.current;
+  const copySeq = useRef(0);
+  const supersede = () => {
+    reviewSeq.current += 1;
+    setPreview(null);
     setResult(null);
     setMessage('');
+    setCopyNotice('');
+    return reviewSeq.current;
+  };
+
+  const review = async (text) => {
+    const seq = supersede();
     try {
       const loaded = await loadNotes();
       if (seq !== reviewSeq.current) return;
@@ -82,19 +95,39 @@ export function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile,
       setMessage('Couldn’t read routines from this device. Nothing changed.');
     }
   };
+  // Choosing a file supersedes the shown review even if the pick is later
+  // cancelled or fails; a pick overtaken by another event is dropped.
   const handlePick = async () => {
+    const seq = supersede();
+    let text;
     try {
-      const text = await pickFile();
-      if (text == null) return;
-      // A file takes the same bound as a paste, before any state or parsing.
-      if (text.length > MAX_REPLY_LENGTH) { setMessage(TOO_LARGE); return; }
-      setReply(text);
-      await review(text);
+      text = await pickFile();
     } catch (error) {
-      setMessage(error?.message || 'Couldn’t read that file. Nothing changed.');
+      if (seq === reviewSeq.current) setMessage(error?.message || 'Couldn’t read that file. Nothing changed.');
+      return;
     }
+    if (text == null || seq !== reviewSeq.current) return;
+    // A file takes the same bound as a paste, before any state or parsing.
+    if (text.length > MAX_REPLY_LENGTH) { setMessage(TOO_LARGE); return; }
+    setReply(text);
+    await review(text);
   };
   const [discardMessage, discardSnapshot] = useDiscard(onDiscard);
+  // The fix-up message carries EVERY problem of the preview on screen; only
+  // the visible list is capped. Feedback applies only to the newest copy, and
+  // only while that preview is still the current one.
+  const copyFixUp = async () => {
+    const seq = reviewSeq.current;
+    const token = ++copySeq.current;
+    const current = () => seq === reviewSeq.current && token === copySeq.current;
+    setCopyNotice('');
+    try {
+      await copy([FIXUP_INTRO, ...preview.replyErrors.map(problem => `- ${problem}`)].join('\n'));
+      if (current()) setCopyNotice('Fix-up message copied. Paste it to the LLM.');
+    } catch {
+      if (current()) setCopyNotice('Couldn’t copy the message. Select the problems above and copy them instead.');
+    }
+  };
 
   const valid = preview ? preview.entries.filter(entry => entry.occurrences) : [];
   const invalid = preview ? preview.entries.filter(entry => entry.problems) : [];
@@ -154,9 +187,11 @@ export function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile,
     if (next.has(key)) next.delete(key); else next.add(key);
     return next;
   });
-  // While failed saves await Retry the reply is frozen, so editing or
-  // re-reviewing can never discard the only Retry action.
+  // While failed saves await Retry, or an apply/retry is in flight, the reply
+  // is frozen, so editing or re-reviewing can never discard the only Retry
+  // action or let an outcome land beside a different reply.
   const retryPending = Boolean(result?.failed.length);
+  const locked = retryPending || busy;
   const label = item => `Target routine ${item.entry.number}: ${item.entry.title}`;
 
   return (
@@ -170,20 +205,21 @@ export function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile,
         style={[inputStyle, styles.replyInput]}
         multiline
         value={reply}
-        editable={!retryPending}
+        editable={!locked}
         onChangeText={(text) => {
-          if (retryPending) return;
+          if (locked) return;
           // Never hold an oversized paste in state or render it.
           if (text.length > MAX_REPLY_LENGTH) { setMessage(TOO_LARGE); return; }
-          reviewSeq.current += 1; setReply(text); setPreview(null); setResult(null); }}
+          supersede(); setReply(text); }}
         placeholder="Paste the reply here"
         accessibilityLabel="Normalized routines reply"
         testID="normalization-reply-input"
       />
+      <Text style={styles.muted} testID="normalization-copy-tip">Tip: in ChatGPT or Claude, tap Copy on the code block, then paste here.</Text>
       <View style={styles.actions}>
-        <Button title="Review changes" onPress={() => review(reply)} disabled={!reply.trim() || retryPending} accessibilityLabel="Review normalized routines" />
-        {canPickFile ? <Button title="Choose text file" onPress={handlePick} disabled={retryPending} accessibilityLabel="Choose normalized routines file" /> : null}
-        {!retryPending ? <Button title="Discard saved prompt" onPress={discardSnapshot} accessibilityLabel="Discard saved normalization prompt" /> : null}
+        <Button title="Review changes" onPress={() => review(reply)} disabled={!reply.trim() || locked} accessibilityLabel="Review normalized routines" />
+        {canPickFile ? <Button title="Choose text file" onPress={handlePick} disabled={locked} accessibilityLabel="Choose normalized routines file" /> : null}
+        {!locked ? <Button title="Discard saved prompt" onPress={() => { supersede(); return discardSnapshot(); }} accessibilityLabel="Discard saved normalization prompt" /> : null}
       </View>
       {message ? <Text style={styles.error}>{message}</Text> : null}
       {discardMessage ? <Text style={styles.error}>{discardMessage}</Text> : null}
@@ -196,9 +232,11 @@ export function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile,
       ) : null}
       {preview?.replyErrorCount ? (
         <Card>
-          <Text style={styles.error}>This reply doesn’t follow the format, so nothing can be applied. Ask the LLM to follow the reply format exactly.</Text>
-          {preview.replyErrors.map(error => <Text key={error} style={styles.error}>{error}</Text>)}
-          {preview.replyErrorCount > preview.replyErrors.length ? <Text style={styles.error}>…and {preview.replyErrorCount - preview.replyErrors.length} more.</Text> : null}
+          <Text selectable style={styles.error}>This reply can’t be applied, so nothing changed. Fix these problems:</Text>
+          {preview.replyErrors.slice(0, MAX_SHOWN_PROBLEMS).map((error, index) => <Text selectable key={`${index}:${error}`} style={styles.error}>• {error}</Text>)}
+          {preview.replyErrors.length > MAX_SHOWN_PROBLEMS ? <Text style={styles.error}>+{preview.replyErrors.length - MAX_SHOWN_PROBLEMS} more</Text> : null}
+          <Button title="Copy fix-up message" onPress={copyFixUp} accessibilityLabel="Copy fix-up message" />
+          {copyNotice ? <Text style={styles.notice} testID="normalization-copy-notice">{copyNotice}</Text> : null}
         </Card>
       ) : null}
       {preview && !preview.authorityStale && !preview.tooLarge && !preview.unsupported && !preview.inconsistent && !preview.replyErrorCount ? <>
