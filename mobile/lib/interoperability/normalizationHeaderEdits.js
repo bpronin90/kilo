@@ -29,12 +29,14 @@ const NAME_DESCRIPTOR_RE = /\s*[^\p{L}\p{N}\s'’\-./&+°*]|\s[^\p{L}\p{N}\s&+*]
 const PAIRS = { '(': ')', '[': ']', '{': '}', '<': '>', '"': '"', '“': '”', "'": "'", '‘': '’' };
 const JOINS = [', ', '; ', ' '];
 
-// The moved text keeps its wording, case and internal punctuation: only the
-// separator that introduced it and ONE bracket/quote pair enclosing all of it
-// may go (plus a separator left dangling before the prescription). Any other
-// leading symbol (+, @, ?, ...) is descriptor content and must be kept.
+// The moved text keeps its wording, case and internal punctuation: only ONE
+// separator token that introduced it, ONE separator left dangling before the
+// prescription, and ONE bracket/quote pair enclosing all of it may go. A
+// separator glued to a word or number ("-5 lb", "...slow") is content, and any
+// further punctuation after the introducing one ("-5 lb", "--heavy", "((a))",
+// "slow!!") is descriptor content that must survive exactly.
 export function cleanDescriptor(text) {
-  let out = String(text).trim().replace(/^[\s,;:|—–\-/~#!.]+/u, '').replace(/[\s,;:|—–-]+$/u, '');
+  let out = String(text).trim().replace(/^(?:[,;:|]|[—–\-/~#!.](?=\s|$))?\s*/u, '').replace(/(?:\s[—–-]|[,;:|])$/u, '').trimEnd();
   const closer = PAIRS[out[0]];
   if (closer && out.length > 1 && out.endsWith(closer)) {
     const inner = out.slice(1, -1);

@@ -407,6 +407,39 @@ describe('planHeaderEdit rebuilds headers from the original bytes (#1383 safety 
     expect(applySelectedChanges(ok2.entries[0])).toBe('Monday\n-Farmer\\Carry 2x40');
   });
 
+  test('only ONE introducing separator and one enclosing pair go; further punctuation is content', () => {
+    const name = 'Bench Press';
+    // Repro: the minus after the separator is part of the descriptor.
+    expect(ok('-bench 3x5, -5 lb', { name, descriptor: '-5 lb' }).comment).toBe('-5 lb');
+    rejected('-bench 3x5, -5 lb', { name, descriptor: '5 lb' });
+    for (const [raw, kept, dropped] of [
+      ['-bench 3x5, --heavy', '--heavy', 'heavy'],
+      ['-bench 3x5; ...slow', '...slow', 'slow'],
+      ['-bench 3x5 - -slow', '-slow', 'slow'],
+      ['-bench 3x5: !!go', '!!go', 'go'],
+      ['-bench 3x5, , slow', ', slow', 'slow'],
+      ['-bench 3x5, ((light))', '((light))', 'light'],
+      ['-bench 3x5, (light) (heavy)', '(light) (heavy)', 'light heavy'],
+      ['-bench 3x5 slow!!', 'slow!!', 'slow'],
+      ['-bench 3x5 slow,,', 'slow,', 'slow'],
+      ['-bench 3x5 slow --', 'slow --', 'slow'],
+      ['-bench 3x5 "(a)"', '"(a)"', '(a)'],
+      ['-bench 3x5, -- -', '--', '-- -'],
+    ]) {
+      expect(ok(raw, { name, descriptor: kept }).comment).toBe(kept);
+      rejected(raw, { name, descriptor: dropped });
+    }
+    expect(ok('-bench 3x5 slow -', { name, descriptor: 'slow' }).comment).toBe('slow');
+    // A single wrapped pair still unwraps, and a glued separator is not an introducing one.
+    expect(ok('-bench 3x5, (light)', { name, descriptor: 'light' }).comment).toBe('light');
+    expect(ok('-bench 3x5,paused', { name, descriptor: 'paused' }).comment).toBe('paused');
+    expect(ok('-bench 3x5 -heavy', { name, descriptor: '-heavy' }).comment).toBe('-heavy');
+    rejected('-bench 3x5 -heavy', { name, descriptor: 'heavy' });
+    // Both sides of the prescription clean independently, one token each.
+    expect(ok('-bench, -a 3x5, -b', { name, descriptor: '-a, -b' }).comment).toBe('-a, -b');
+    rejected('-bench, -a 3x5, -b', { name, descriptor: 'a, b' });
+  });
+
   test('only a separator and one enclosing bracket pair are dropped from the moved text', () => {
     const name = 'Bench Press';
     expect(ok('-Bench Press 3x5 (a (b) c)', { name, descriptor: '(a (b) c)' }).newBody).toBe('-Bench Press 3x5');
