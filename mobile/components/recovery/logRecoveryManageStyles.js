@@ -26,6 +26,7 @@ export const createLogManageStyles = (colors, kua = null) => {
     historyRow: { minHeight: 48, paddingHorizontal: 18, paddingVertical: 8, gap: 2, borderTopWidth: 1, borderTopColor: border },
     historyRowSelected: { backgroundColor: kua ? kua.surfaceSection : colors.subtleBg },
     historyRowTitle: { fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '700', color: ink },
+    historyRowSummary: { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600', color: ink },
     historyRowMeta: { fontSize: TYPOGRAPHY['body-sm'].fontSize, color: inkMuted },
   });
 };

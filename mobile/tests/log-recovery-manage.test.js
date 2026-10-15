@@ -75,6 +75,19 @@ describe('Recovery History reads before Manage (#1329)', () => {
   });
 });
 
+describe('completed rows show the canonical total (#1378)', () => {
+  test('the summary renders through Log, and a pick still focuses Manage without a write', () => {
+    const weeks = [{ id: 'w-old-2', block_id: 'rb-old', note_id: 'n2', week_number: 2, deleted_at: null }];
+    const notes = [...NOTES, { id: 'n2', title: 'W2', raw_text: '-Bench\n- 80 5\n-Squat\n- 80 5' }];
+    const c = mount({ blocks: [done('rb-old', '2026-05-01T00:00:00Z'), done('rb-new', '2026-06-01T00:00:00Z')], weeks, notes });
+    press(c.root, 'recovery-history-header');
+    expect(texts(c.root)).toEqual(expect.arrayContaining(['80% total recovery · Week 2', 'Baseline captured. No week logged yet.']));
+    press(c.root, 'recovery-history-row-rb-old');
+    expect(shown(c.root)).toEqual(['recovery-manage-card-rb-old']);
+    for (const fn of Object.values(mockLifecycle)) expect(fn).not.toHaveBeenCalled();
+  });
+});
+
 describe('the selector is labelled Recovery Blocks, not History (#1331)', () => {
   test('with an active block the caption counts both kinds', () => {
     const c = mount({ blocks: [block(), done('rb-old', '2026-05-01T00:00:00Z'), done('rb-new', '2026-06-01T00:00:00Z')] });

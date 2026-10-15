@@ -208,6 +208,26 @@ function _build(block, weeks, notes, comparison, selectedWeek, { stale }) {
   };
 }
 
+// #1378: the compact line a Recovery Blocks row prints, worded from the
+// snapshot's own display (never a second percentage or another week). An
+// unreadable latest week keeps the carried total but says it adds nothing, and a
+// stale snapshot says it is last saved data.
+export function compactRecoverySummary(snapshot) {
+  if (!snapshot) return null;
+  const { display, total } = snapshot;
+  const scored = display.state === SNAPSHOT_STATE.SCORE;
+  const text = scored
+    ? [display.headline, display.weekLabel].filter(Boolean).join(' · ')
+    : `${display.weekLabel ? `${display.weekLabel}: ` : ''}${display.message}`;
+  const qualifiers = [];
+  if (scored && !total.selectedReadable) qualifiers.push(`${display.weekLabel} note can’t be read; total is from earlier weeks`);
+  if (snapshot.stale) qualifiers.push('From last saved data');
+  return Object.freeze({
+    text, weekLabel: display.weekLabel, qualifiers: Object.freeze(qualifiers),
+    a11y: [text.replace(/ · /g, ', '), ...qualifiers].map(_sentence).join(' '),
+  });
+}
+
 // Movement groups depend on the notes-read error, which Home does not carry. They
 // are layered on the cached core so a differing `notesError` never re-derives
 // the comparison or strength.
