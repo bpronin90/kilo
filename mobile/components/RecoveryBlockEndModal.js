@@ -12,7 +12,7 @@
 // to it, so a failed inclusion write never runs completion.
 
 import { TYPOGRAPHY } from '../theme/typography';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   KeyboardAvoidingView,
@@ -31,6 +31,8 @@ import { GEOMETRY, SPACING } from '../theme/spacing';
 import { MODAL_SUPPORTED_ORIENTATIONS, dialogWidthStyle } from './adaptiveLayout';
 import { scrim } from '../theme/styleHelpers';
 
+const REPLACED_MESSAGE = 'The active recovery block changed. Close this and choose End recovery block again.';
+
 export function RecoveryBlockEndModal({
   visible,
   block,
@@ -38,7 +40,7 @@ export function RecoveryBlockEndModal({
   // `orderedLiveWeeks`) — used to state the summary's first-to-last date
   // range, not just a single "started" date.
   weeks = [],
-  blockingMessage = null,
+  blockingMessage: externalBlockingMessage = null,
   onSetInclusion,
   onConfirmComplete,
   onClose,
@@ -62,6 +64,16 @@ export function RecoveryBlockEndModal({
     });
     return () => { cancelled = true; sub?.remove(); };
   }, []);
+
+  // The block this confirmation was opened for (#1424). If the live active block
+  // is replaced while the modal is open, confirming must never end the new one.
+  const openedBlockId = useRef(null);
+  useEffect(() => {
+    openedBlockId.current = visible ? (block?.id ?? null) : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+  const replaced = visible && openedBlockId.current != null && block?.id !== openedBlockId.current;
+  const blockingMessage = replaced ? REPLACED_MESSAGE : externalBlockingMessage;
 
   useEffect(() => {
     if (visible) {

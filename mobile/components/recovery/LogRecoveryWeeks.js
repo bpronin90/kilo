@@ -43,6 +43,11 @@ export function LogRecoveryWeeks({
   onCompleteWeek,
   onOpenAddWeek,
   onUndoCompleteWeek,
+  // End recovery (#1424): visible without opening Manage block. `canEndBlock` is
+  // the live active-block eligibility; the confirmation modal is unchanged.
+  canEndBlock = false,
+  endDisabled = false,
+  onOpenEndBlockModal,
   // Everything the expanded note surface (LogRecoveryEvidence) consumes for a
   // viewed row, forwarded unchanged.
   editingTitle = '',
@@ -256,6 +261,19 @@ export function LogRecoveryWeeks({
             <Text style={styles.undoButtonText}>
               {busy === 'undo-week' ? 'Reopening…' : 'Undo completion'}
             </Text>
+          </Pressable>
+        )}
+        {canEndBlock && (
+          <Pressable
+            onPress={() => onOpenEndBlockModal?.()}
+            disabled={endDisabled}
+            style={[styles.endButton, endDisabled && styles.manageRowDisabled]}
+            accessibilityRole="button"
+            accessibilityLabel="End recovery block"
+            accessibilityHint="Completes this block and asks how its weeks should count in analytics."
+            accessibilityState={{ disabled: endDisabled, busy: !!busy }}
+          >
+            <Text style={styles.endButtonText}>End recovery block</Text>
           </Pressable>
         )}
       </View>

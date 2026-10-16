@@ -129,7 +129,7 @@ describe('#1056 negative: stale identity', () => {
 
     // Identity changes underneath the same mounted section: the disclosure is
     // keyed by block id, so it must read as collapsed for the new block rather
-    // than exposing Unlink / End / the inclusion switch it had opened for the
+    // than exposing Unlink / the inclusion switch it had opened for the
     // previous one.
     const blockB = { ...activeBlock, id: 'rb-next', baseline_note_title: 'Upper/Lower' };
     render.act(() => {
@@ -142,7 +142,8 @@ describe('#1056 negative: stale identity', () => {
     const triggerB = byLabel(root, 'Manage recovery block: Upper/Lower');
     expect(triggerB).toBeTruthy();
     expect(triggerB.props.accessibilityState).toEqual({ expanded: false });
-    expect(textCount(root, 'End recovery block')).toBe(0);
+    // End recovery lives in the active card (#1424) and follows the live active block.
+    expect(textCount(root, 'End recovery block')).toBe(1);
   });
 });
 
