@@ -8,7 +8,11 @@ import {
   enqueueDirty,
   getDirtyRecords,
 } from '../syncQueue';
-import { withWorkoutNotebookLock, planWorkoutNoteTextBatch } from '../entries/workoutNotes';
+import {
+  withWorkoutNotebookLock,
+  applyNoteTextBatchWithTracking,
+  finishNormalizationApplyIntent as finishApplyIntentWith,
+} from '../entries/workoutNotes';
 
 function localDateToday() {
   const d = new Date();
@@ -104,43 +108,29 @@ export function updateWorkoutNoteItem(id, patch) {
 }
 
 // Cloud batch compare-and-set (#1172): one lock covers the authority check,
-// the stamped local write, and the enqueue. `pending_sync` is true only once
-// the dirty-queue record is durable. A failed enqueue reports the item as
-// failed with `landed: true, pending_sync: false` (local text committed, no
-// upload intent); Retry accepts the landed `next_raw_text` and re-queues it.
-export function applyWorkoutNoteTextBatchIfUnchanged(request) {
-  return withWorkoutNotebookLock(async () => {
-    const list = await Storage.loadWorkoutNotesRaw();
-    const plan = planWorkoutNoteTextBatch(list, request, (n) => !isTombstone(n));
-    if (plan.authority !== 'unchanged') return { authority: plan.authority, saved: [], skipped: [], failed: [] };
-    const skipped = plan.skipped.map((s) => ({ ...s, pending_sync: false }));
+// the stamped local write, its Track transition (#1395), and the enqueue — the
+// shared journaled commit in entries/workoutNotes.js with cloud stamping.
+// `pending_sync` is true only once the dirty-queue record is durable. A failed
+// enqueue reports the item as failed with `landed: true, pending_sync: false`
+// (local text AND its Track transition committed, no upload intent); Retry
+// accepts the landed `next_raw_text`, re-queues it, and translates nothing
+// again because the landed text no longer renames anything.
+const CLOUD_TEXT_OPS = {
+  isLive: (n) => !isTombstone(n),
+  prepare: async () => {
     const clientId = await getClientId();
-    const now = new Date().toISOString();
-    const nextById = new Map(plan.writes.map((w) => [w.id, w.next_raw_text]));
-    const stamped = [];
-    const updated = list.map((n) => {
-      if (!nextById.has(n?.id) || isTombstone(n)) return n;
-      const row = stampWrite({ ...n, raw_text: nextById.get(n.id), updated_at: now }, clientId);
-      stamped.push(row);
-      return row;
-    });
-    try {
-      await Storage.replaceWorkoutNotesRaw(updated);
-    } catch (error) {
-      return { authority: 'unchanged', saved: [], skipped, failed: plan.writes.map((w) => ({ id: w.id, message: error?.message || 'Write failed', pending_sync: false })) };
-    }
-    const saved = [];
-    const failed = [];
-    for (const row of stamped) {
-      try {
-        await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, row);
-        saved.push({ id: row.id, pending_sync: true });
-      } catch (error) {
-        failed.push({ id: row.id, message: error?.message || 'Enqueue failed', landed: true, pending_sync: false });
-      }
-    }
-    return { authority: 'unchanged', saved, skipped, failed };
-  });
+    return (row) => stampWrite(row, clientId);
+  },
+  enqueue: (row) => enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, row),
+};
+
+export function applyWorkoutNoteTextBatchIfUnchanged(request) {
+  return applyNoteTextBatchWithTracking(request, CLOUD_TEXT_OPS);
+}
+
+// Cloud-mode roll-forward of an interrupted normalization apply (#1395).
+export function finishNormalizationApplyIntent() {
+  return finishApplyIntentWith(CLOUD_TEXT_OPS);
 }
 
 // Cloud compare-and-set (#1172): same contract as the local one, stamped and

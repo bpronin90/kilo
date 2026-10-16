@@ -44,3 +44,7 @@ export const REST_TIMER_KEY = 'kilo_rest_timer';
 // Exact routine snapshot captured when a normalization prompt is copied.
 // Device-local protocol state: it is neither synced nor included in a backup.
 export const NORMALIZATION_IMPORT_SNAPSHOT_KEY = 'kilo_normalization_import_snapshot_v1';
+// Roll-forward intent of one normalization apply (#1395): the note texts and
+// Track maps it commits together. Device-local protocol state, present only
+// while that commit is unfinished; neither synced nor backed up.
+export const NORMALIZATION_APPLY_INTENT_KEY = 'kilo_normalization_apply_intent_v1';

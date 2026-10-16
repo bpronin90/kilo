@@ -116,6 +116,25 @@ export async function loadTrackedLiftActivations() {
   }
 }
 
+// Fail-closed reads for a writer that must not mistake "unreadable" for "none"
+// (#1395): a storage failure or a non-object payload throws instead of reading
+// as an empty map. Activation records are still shape-normalized.
+async function _readObjectStrict(key) {
+  const raw = await AsyncStorage.getItem(key);
+  if (raw == null) return {};
+  const value = JSON.parse(raw);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Unreadable data at "${key}"`);
+  return value;
+}
+
+export function loadTrackedLiftsStrict() {
+  return _readObjectStrict(TRACKED_LIFTS_KEY);
+}
+
+export async function loadTrackedLiftActivationsStrict() {
+  return normalizeTrackedLiftActivations(await _readObjectStrict(TRACKED_LIFT_ACTIVATIONS_KEY));
+}
+
 export async function saveTrackedLiftActivations(map, store = AsyncStorage) {
   await store.setItem(
     TRACKED_LIFT_ACTIVATIONS_KEY,

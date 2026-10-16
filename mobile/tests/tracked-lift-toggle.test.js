@@ -15,6 +15,11 @@ import * as Storage from '../storage/entries';
 import { parseWorkoutNote } from '../lib/parser';
 import { __resetMaybeSyncCloudForTests, maybeSyncCloud } from '../hooks/entries/storageMode';
 import { SYNC_PHASE, SYNC_STATUS, getSyncState, __resetSyncQueue } from '../storage/syncRecovery';
+import { applyWorkoutNoteTextBatch, useWorkoutNotes } from '../hooks/entries/workoutNoteHooks';
+import * as CloudNotes from '../storage/cloud/cloudDomainMethods';
+
+jest.mock('../lib/reminderScheduler', () => ({ reconcileWorkoutReminder: () => Promise.resolve() }));
+jest.mock('../lib/supabaseClient', () => ({ getSupabaseClient: jest.fn() }));
 
 let mountedTrees = [];
 
@@ -463,5 +468,204 @@ describe('a durable Track write requests a cloud pass (#1393)', () => {
     expect(last.lifts).toEqual({ bench: true, squat: true });
     expect(Object.keys(last.activations).sort()).toEqual(['bench', 'squat']);
     expect(syncStatus()).toBe(SYNC_STATUS.COMPLETE);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A normalization apply carries Track to the renamed key (#1395)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// The real apply (workoutNoteHooks → storage batch) against the real hook and
+// the real coalescer. The cloud adapter's sync() records the durable tuple a
+// pass would read, and blocks until released.
+
+describe('a normalization apply carries Track (#1395)', () => {
+  const AUTH = { id: 'ra', title: 'Auth', raw_text: 'Monday\n-DB Bench Press 3x6-8\n60 8' };
+  const TARGET = { id: 'rt', title: 'Upper', raw_text: 'Monday\n-DB Bench Press 3x6-8, step up\n60 8\n60 8' };
+  const NEXT = 'Monday\n-DB Bench Press 3x6-8\n60 8\n60 8\n-- step up';
+  const SRC = 'db bench press 3x6-8, step up';
+  const DST = 'db bench press';
+  const notebook = () => parseWorkoutNote(`${AUTH.raw_text}\n---\n${TARGET.raw_text}`).sections;
+  const request = () => ({
+    authority: { id: 'ra', expected_raw_text: AUTH.raw_text, accepted_raw_texts: [] },
+    items: [{ id: 'rt', expected_raw_text: TARGET.raw_text, next_raw_text: NEXT }],
+  });
+
+  async function seedNotes() {
+    await Storage.saveWorkoutNoteItem(AUTH);
+    await Storage.saveWorkoutNoteItem(TARGET);
+  }
+
+  async function durable() {
+    const notes = await Storage.loadWorkoutNotesRaw();
+    return {
+      text: notes.find(n => n.id === 'rt')?.raw_text,
+      lifts: await Storage.loadTrackedLifts(),
+      activations: await Storage.loadTrackedLiftActivations(),
+    };
+  }
+
+  function mockCloudApply() {
+    const passes = [];
+    const seen = [];
+    const sync = jest.fn(async () => {
+      seen.push(await durable());
+      const gate = deferred();
+      passes.push(gate);
+      return gate.promise;
+    });
+    jest.spyOn(Storage, 'getStorageAdapter').mockReturnValue({
+      mode: 'cloud',
+      sync,
+      applyWorkoutNoteTextBatchIfUnchanged: CloudNotes.applyWorkoutNoteTextBatchIfUnchanged,
+    });
+    return { sync, passes, seen };
+  }
+
+  // Tracks the source through the real toggle, so its record is a real one.
+  async function trackSource(ref) {
+    await act(async () => { await ref.current.toggle('DB Bench Press 3x6-8, step up', notebook()); });
+    await settle();
+  }
+
+  test('local mode: the mounted hook shows the carried flag, a later toggle keeps it, and no pass runs', async () => {
+    const { sync } = mockCloudApply();
+    await seedNotes();
+    const ref = renderHook();
+    await settle();
+    await trackSource(ref);
+    expect(ref.current.trackedLifts).toEqual({ [SRC]: true });
+
+    let result;
+    await act(async () => { result = await applyWorkoutNoteTextBatch(request()); });
+    await settle();
+    expect(result.saved.map(r => r.id)).toEqual(['rt']);
+    expect(ref.current.trackedLifts).toEqual({ [DST]: true });
+    expect(ref.current.activations[DST].anchor).toBe(3);
+
+    // The next toggle derives from the committed transition, not a module cache.
+    await act(async () => { await ref.current.toggle('squat', HISTORY); });
+    await settle();
+    expect(await durable()).toEqual({
+      text: NEXT,
+      lifts: { [DST]: true, squat: true },
+      activations: { [DST]: expect.objectContaining({ anchor: 3 }), squat: expect.objectContaining({ anchor: 0 }) },
+    });
+    expect(sync).not.toHaveBeenCalled();
+  });
+
+  test('a toggle issued during the apply lands wholly before or after it; neither change is lost', async () => {
+    await seedNotes();
+    const ref = renderHook();
+    await settle();
+    await trackSource(ref);
+    await act(async () => {
+      await Promise.all([applyWorkoutNoteTextBatch(request()), ref.current.toggle('squat', HISTORY)]);
+    });
+    await settle();
+    const after = await durable();
+    expect(after.lifts).toEqual({ [DST]: true, squat: true });
+    expect(Object.keys(after.activations).sort()).toEqual([DST, 'squat']);
+    expect(ref.current.trackedLifts).toEqual(after.lifts);
+  });
+
+  test('cloud mode: one pass after the commit, and it reads the complete note + flag + activation tuple', async () => {
+    await seedNotes();
+    const ref = renderHook();
+    // A mounted notes consumer refreshes on the note broadcast; it joins the pass.
+    function NotesProbe() { useWorkoutNotes(); return null; }
+    act(() => { mountedTrees.push(renderer.create(React.createElement(NotesProbe))); });
+    await settle();
+    await trackSource(ref);
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    const { sync, passes, seen } = mockCloudApply();
+
+    let result;
+    await act(async () => { result = await applyWorkoutNoteTextBatch(request()); });
+    await settle();
+    expect(result.saved).toEqual([{ id: 'rt', pending_sync: true }]);
+    expect(sync).toHaveBeenCalledTimes(1);
+    expect(seen[0]).toEqual({ text: NEXT, lifts: { [DST]: true }, activations: { [DST]: expect.objectContaining({ anchor: 3 }) } });
+    passes[0].resolve({ ok: true });
+    await settle();
+    expect(syncStatus()).toBe(SYNC_STATUS.COMPLETE);
+  });
+
+  test('cloud mode: an apply waits out a running pass, which therefore never reads half of it', async () => {
+    await seedNotes();
+    const ref = renderHook();
+    await settle();
+    await trackSource(ref);
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    const { sync, passes, seen } = mockCloudApply();
+    await act(async () => { maybeSyncCloud(); });
+    await settle();
+    expect(sync).toHaveBeenCalledTimes(1);
+
+    let done = false;
+    const applying = applyWorkoutNoteTextBatch(request()).then((r) => { done = true; return r; });
+    await settle();
+    expect(done).toBe(false);
+    expect((await durable()).text).toBe(TARGET.raw_text);
+
+    passes[0].resolve({ ok: true });
+    await act(async () => { await applying; });
+    await settle();
+    expect(sync).toHaveBeenCalledTimes(2);
+    expect(seen[1]).toEqual({ text: NEXT, lifts: { [DST]: true }, activations: { [DST]: expect.objectContaining({ anchor: 3 }) } });
+    passes[1].resolve({ ok: true });
+    await settle();
+  });
+
+  test('cloud mode: a failed pass keeps the committed transition and reports failed/retryable', async () => {
+    await seedNotes();
+    const ref = renderHook();
+    await settle();
+    await trackSource(ref);
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    const { passes } = mockCloudApply();
+    await act(async () => { await applyWorkoutNoteTextBatch(request()); });
+    await settle();
+    passes[0].reject(new Error('offline'));
+    await settle();
+    expect(getSyncState()[SYNC_PHASE.SYNC]).toEqual(expect.objectContaining({ status: SYNC_STATUS.FAILED, retryable: true }));
+    expect((await durable()).lifts).toEqual({ [DST]: true });
+  });
+
+  test('an unfinished commit is finished before the next toggle, and before a pass reads anything', async () => {
+    await seedNotes();
+    const ref = renderHook();
+    await settle();
+    await trackSource(ref);
+    // Rollback and roll-forward both fail at the activation write: the commit
+    // stays recorded with the flags moved but the records not.
+    const realSetItem = AsyncStorage.setItem.getMockImplementation();
+    AsyncStorage.setItem.mockImplementation((key, value) => (key === 'kilo_tracked_lift_activations'
+      ? Promise.reject(new Error('disk full'))
+      : realSetItem(key, value)));
+    let result;
+    await act(async () => { result = await applyWorkoutNoteTextBatch(request()); });
+    expect(result.failed).toEqual([expect.objectContaining({ id: 'rt', landed: true })]);
+
+    // A pass cannot finish it while storage still fails, so it fails and reads nothing.
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    const { sync, passes, seen } = mockCloudApply();
+    await act(async () => { await maybeSyncCloud(); });
+    expect(sync).not.toHaveBeenCalled();
+    expect(syncStatus()).toBe(SYNC_STATUS.FAILED);
+
+    // Healed: the next toggle first finishes the commit, then applies on top.
+    AsyncStorage.setItem.mockImplementation(realSetItem);
+    await act(async () => { await ref.current.toggle('squat', HISTORY); });
+    await settle();
+    expect(await durable()).toEqual({
+      text: NEXT,
+      lifts: { [DST]: true, squat: true },
+      activations: { [DST]: expect.objectContaining({ anchor: 3 }), squat: expect.objectContaining({ anchor: 0 }) },
+    });
+    expect(await AsyncStorage.getItem('kilo_normalization_apply_intent_v1')).toBeNull();
+    expect(seen[0]).toEqual(await durable());
+    passes.forEach(p => p.resolve({ ok: true }));
+    await settle();
   });
 });

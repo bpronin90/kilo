@@ -1,4 +1,4 @@
-import { deriveWorkoutAnalytics, normalizeExerciseKey } from '../parser.js';
+import { deriveWorkoutAnalytics, normalizeExerciseKey, parseWorkoutNote } from '../parser.js';
 import { loggedSessionUnits } from '../parser/analytics.js';
 
 // ── Tracked-span activation records (#893 / F12a contract revision 3) ────────
@@ -245,4 +245,148 @@ export function reconcileTrackedLiftActivations(sections, activations) {
     next[key] = anchor === record.anchor ? record : { ...record, anchor };
   }
   return { next, changed };
+}
+
+// ── Carrying Track across a normalization rename (#1395) ─────────────────────
+//
+// A rename moves header occurrences from one canonical key to another. Their
+// sessions are matched before/after by PROVENANCE only: note (notebook order),
+// section, exercise slot and position inside the slot — never set values,
+// spelling or `at`. Pure; the caller supplies the whole live unfiltered notebook.
+
+function _slots(text, noteIndex) {
+  const sections = text ? (parseWorkoutNote(text).sections || []) : [];
+  const slots = [];
+  sections.forEach((s, si) => (s.exercises || []).forEach((ex, ei) => {
+    const occ = { heading: s.heading, subheading: s.subheading, kind: s.kind, rows: ex.rows, sets: ex.sets, unparsed_rows: ex.unparsed_rows, session_entries: ex.session_entries };
+    slots.push({ id: `${noteIndex}:${si}:${ei}`, key: normalizeExerciseKey(ex.name), occ, units: loggedSessionUnits([occ]) });
+  }));
+  return { sections: sections.length, slots };
+}
+
+// An edit may change exercise names (and add `--` note lines) and nothing the
+// session ordinal reads; anything more means the correspondence is unknown.
+function _sameShape(a, b) {
+  if (a.sections !== b.sections || a.slots.length !== b.slots.length) return false;
+  return a.slots.every((x, i) => {
+    const y = b.slots[i];
+    return x.id === y.id && x.occ.heading === y.occ.heading && x.occ.subheading === y.occ.subheading
+      && x.occ.kind === y.occ.kind && _witnessSessions(x.units) === _witnessSessions(y.units);
+  });
+}
+
+// key -> { occurrences, units, ids } in the normative notebook order.
+function _population(notes) {
+  const byKey = new Map();
+  for (const { slots } of notes) {
+    for (const slot of slots) {
+      if (!byKey.has(slot.key)) byKey.set(slot.key, { occurrences: [], units: [], ids: [] });
+      const pop = byKey.get(slot.key);
+      pop.occurrences.push(slot.occ);
+      slot.units.forEach((u, i) => { pop.units.push(u); pop.ids.push(`${slot.id}:${i}`); });
+    }
+  }
+  return byKey;
+}
+
+const _canon = key => normalizeExerciseKey(key) || key;
+const _EMPTY = { occurrences: [], units: [], ids: [] };
+
+// Display metadata only; deterministic whatever order contributors arrive in.
+function _latestAt(contributors) {
+  let best = null;
+  for (const { at } of contributors) {
+    if (typeof at !== 'string') continue;
+    const a = Date.parse(at) || 0;
+    const b = best === null ? -1 : (Date.parse(best) || 0);
+    if (a > b || (a === b && at > best)) best = at;
+  }
+  return best;
+}
+
+const _entriesFor = (map, key, canon) => JSON.stringify(Object.entries(map).filter(([k]) => canon(k) === key));
+
+/**
+ * Plan the Track transition of one committed rename batch. `notes` is the live
+ * notebook in order (current texts), `nextById` maps written note ids to their
+ * new text. Returns `{ ok: true, changed, lifts, activations }`, or
+ * `{ ok: false, reason }` when a written note's sessions cannot be matched.
+ *
+ *  - only slots whose key differs before/after are edits; same-key edits and
+ *    untouched keys stay exactly as stored;
+ *  - a tracked source makes its destination tracked; a source keeps its flag
+ *    while ANY live header in the resulting notebook still produces it;
+ *  - each valid activation (verified against the before population) excludes
+ *    its first `anchor` sessions. In each resulting key the boundary is the
+ *    shortest prefix holding every excluded session that landed there; the
+ *    maximum over contributors wins and the witness is rebuilt over the result;
+ *  - boolean-only or invalid records contribute no boundary and are never
+ *    re-attached; with no valid contributor the key is boolean-only.
+ */
+export function planTrackedLiftRenameTransition(notes, nextById, trackedLifts, activations) {
+  const before = [];
+  const after = [];
+  const edges = new Map();
+  for (const [i, note] of (notes || []).entries()) {
+    const b = _slots(note?.raw_text, i);
+    before.push(b);
+    if (!nextById.has(note?.id)) { after.push(b); continue; }
+    const a = _slots(nextById.get(note.id), i);
+    if (!_sameShape(b, a)) return { ok: false, reason: 'A renamed routine’s sessions could not be matched, so nothing was written.' };
+    after.push(a);
+    b.slots.forEach((slot, k) => {
+      const to = a.slots[k].key;
+      if (slot.key === to) return;
+      if (!edges.has(to)) edges.set(to, new Set());
+      edges.get(to).add(slot.key);
+    });
+  }
+  const lifts = { ...(trackedLifts || {}) };
+  const records = { ...(activations || {}) };
+  if (edges.size === 0) return { ok: true, changed: false, lifts, activations: records };
+
+  const popB = _population(before);
+  const popA = _population(after);
+  const tracked = new Set(Object.keys(lifts).filter(k => lifts[k]).map(_canon));
+  const winners = _dedupeByCanonicalKey(activations);
+  const excluded = new Map();
+  // The excluded session ids of a tracked key's VALID activation, else null.
+  const valid = (key) => {
+    if (!excluded.has(key)) {
+      const rec = tracked.has(key) ? winners.get(key)?.record : null;
+      const pop = popB.get(key) || _EMPTY;
+      const verdict = rec ? _verifyActivation(pop, rec) : { live: false };
+      excluded.set(key, verdict.live ? { at: rec.at ?? null, ids: pop.ids.slice(0, verdict.anchor) } : null);
+    }
+    return excluded.get(key);
+  };
+
+  const affected = new Set(edges.keys());
+  for (const sources of edges.values()) for (const s of sources) affected.add(s);
+  let changed = false;
+  for (const key of [...affected].sort()) {
+    const incoming = [...(edges.get(key) || [])].filter(s => tracked.has(s));
+    const pop = popA.get(key);
+    const trackedAfter = !!pop && (tracked.has(key) || incoming.length > 0);
+    if (!tracked.has(key) && !trackedAfter) continue;
+    const prior = _entriesFor(lifts, key, _canon) + _entriesFor(records, key, normalizeExerciseKey);
+    for (const k of Object.keys(lifts)) if (_canon(k) === key) delete lifts[k];
+    for (const k of Object.keys(records)) if (normalizeExerciseKey(k) === key) delete records[k];
+    const contributors = trackedAfter ? [...(tracked.has(key) ? [key] : []), ...incoming].map(valid).filter(Boolean) : [];
+    if (trackedAfter) lifts[key] = true;
+    if (contributors.length) {
+      const index = new Map(pop.ids.map((id, i) => [id, i]));
+      const anchor = Math.max(...contributors.map(c => c.ids.reduce((m, id) => (index.has(id) ? Math.max(m, index.get(id) + 1) : m), 0)));
+      records[key] = {
+        anchor,
+        at: _latestAt(contributors),
+        witness: anchor === 0 ? null : {
+          headings: _witnessHeadings(pop.occurrences),
+          sessions: _witnessSessions(pop.units.slice(0, Math.min(anchor, TRACKED_LIFT_WITNESS_SESSIONS))),
+        },
+      };
+    }
+    if (prior !== _entriesFor(lifts, key, _canon) + _entriesFor(records, key, normalizeExerciseKey)) changed = true;
+  }
+  return { ok: true, changed, lifts, activations: records };
 }

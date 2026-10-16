@@ -16,6 +16,7 @@ import {
 import { deriveNonWeightedTrackedExerciseMetrics } from '../lib/data/nonWeightedMetrics';
 import { normalizeExerciseKey } from '../lib/parser';
 import { getDefaultTrackedNames } from '../lib/data/exerciseCatalog';
+import { planTrackedLiftRenameTransition } from '../lib/data/workoutAnalyticsActivations';
 
 const parse = (text) => parseWorkoutNote(text).sections;
 const anchorsFor = (sections, activations) => resolveTrackedLiftAnchors(sections, activations);
@@ -667,5 +668,173 @@ describe('#1391 population translation', () => {
     expect(nw['band pull-apart'].reps_arrow).toBe('up');
     // Without translation the same data reads as no comparison yet.
     expect(deriveNonWeightedTrackedExerciseMetrics(filtered, names, activations)['band pull-apart'].reps_arrow).toBe('dash');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Carrying Track across a normalization rename (#1395)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Pure planner fixtures. Every set row is identical ("60 8") so a correct result
+// can only come from provenance (note, slot, position), never content matching.
+
+describe('rename transition (#1395)', () => {
+  const N = (id, raw_text, title = 'Routine') => ({ id, title, raw_text });
+  const sectionsOf = notes => notes.flatMap(n => parse(n.raw_text));
+  const run = (notes, next, lifts, activations) => planTrackedLiftRenameTransition(notes, new Map(Object.entries(next)), lifts, activations);
+  const applied = (notes, next) => notes.map(n => (next[n.id] ? { ...n, raw_text: next[n.id] } : n));
+  const T1 = '2026-08-01T00:00:00.000Z';
+  const T2 = '2026-09-01T00:00:00.000Z';
+  const T3 = '2026-10-01T00:00:00.000Z';
+  const SRC = 'db bench press 3x6-8, step up';
+  const DST = 'db bench press';
+
+  // Destination history BEFORE, the source, and destination history AFTER it.
+  const NOTES = [
+    N('n1', 'Monday\n-DB Bench Press 3x6-8\n60 8\n60 8'),
+    N('n2', 'Monday\n-DB Bench Press 3x6-8, step up\n60 8\n60 8\n60 8'),
+    N('n3', 'Tuesday\n-DB Bench Press 3x6-8\n60 8'),
+  ];
+  const RENAMED = { n2: 'Monday\n-DB Bench Press 3x6-8\n60 8\n60 8\n60 8\n-- step up' };
+  // Minted when the source had two sessions; a third was logged since.
+  const atToggle = [NOTES[0], N('n2', 'Monday\n-DB Bench Press 3x6-8, step up\n60 8\n60 8'), NOTES[2]];
+  const SRC_RECORD = activate(sectionsOf(atToggle), 'DB Bench Press 3x6-8, step up', T2);
+
+  test('a tracked rename carries the flag and translates the anchor by provenance, with a rebuilt witness', () => {
+    expect(SRC_RECORD.anchor).toBe(2);
+    const out = run(NOTES, RENAMED, { [SRC]: true, squat: true }, { [SRC]: SRC_RECORD });
+    expect(out.ok).toBe(true);
+    expect(out.changed).toBe(true);
+    expect(out.lifts).toEqual({ squat: true, [DST]: true });
+    // Resulting order: n1 (2), the moved source (3), n3 (1). The two excluded
+    // source sessions are positions 3-4, so the shortest prefix holding them is 4:
+    // the destination's own earlier sessions are excluded conservatively, and the
+    // third source session and n3 stay eligible. Never the old ordinal 2.
+    expect(out.activations[DST]).toEqual({
+      anchor: 4,
+      at: T2,
+      witness: { headings: ['Monday', 'Tuesday'], sessions: expect.any(String) },
+    });
+    expect(out.activations[SRC]).toBeUndefined();
+    // The next ordinary save-boundary reconcile keeps it exactly.
+    const after = sectionsOf(applied(NOTES, RENAMED));
+    expect(reconcileTrackedLiftActivations(after, out.activations)).toEqual({ next: out.activations, changed: false });
+    expect(anchorsFor(after, out.activations)).toEqual({ [DST]: 4 });
+  });
+
+  test('destination history between source sessions is excluded, never a surviving excluded one admitted', () => {
+    const notes = [
+      N('a', 'Monday\n-DB Bench Press 3x6-8, step up\n60 8\n60 8'),
+      N('b', 'Monday\n-DB Bench Press 3x6-8\n60 8'),
+      N('c', 'Friday\n-DB Bench Press 3x6-8, step up\n60 8\n60 8'),
+    ];
+    const minted = activate(sectionsOf([notes[0], notes[1], N('c', 'Friday\n-DB Bench Press 3x6-8, step up\n60 8')]), 'DB Bench Press 3x6-8, step up', T1);
+    expect(minted.anchor).toBe(3);
+    const next = { a: 'Monday\n-DB Bench Press 3x6-8\n60 8\n60 8\n-- step up', c: 'Friday\n-DB Bench Press 3x6-8\n60 8\n60 8\n-- step up' };
+    const out = run(notes, next, { [SRC]: true }, { [SRC]: minted });
+    // a(2) b(1) c(2): excluded = a1, a2, c1 -> prefix 4; only c2 remains eligible.
+    expect(out.activations[DST].anchor).toBe(4);
+  });
+
+  test('deload and recovery-excluded notes are part of the ordering', () => {
+    const notes = [
+      N('d', 'Monday\n-DB Bench Press 3x6-8, step up\n60 8', 'Deload · Week'),
+      N('r', 'Monday\n-DB Bench Press 3x6-8\n60 8', 'Recovery week'),
+      N('n', 'Monday\n-DB Bench Press 3x6-8, step up\n60 8\n60 8'),
+    ];
+    const minted = activate(sectionsOf(notes), 'DB Bench Press 3x6-8, step up', T1);
+    expect(minted.anchor).toBe(3);
+    const next = { d: 'Monday\n-DB Bench Press 3x6-8\n60 8\n-- step up', n: 'Monday\n-DB Bench Press 3x6-8\n60 8\n60 8\n-- step up' };
+    const out = run(notes, next, { [SRC]: true }, { [SRC]: minted });
+    expect(out.activations[DST].anchor).toBe(4);
+    // A narrowed population (the deload and recovery notes excluded) translates
+    // the stored anchor into its own sessions and admits nothing pre-activation.
+    const after = applied(notes, next);
+    const anchorSource = { noteSectionsList: after.map(n => parse(n.raw_text)), included: [false, false, true] };
+    expect(resolveTrackedLiftAnchors(parse(after[2].raw_text), out.activations, anchorSource)).toEqual({ [DST]: 2 });
+  });
+
+  test('anchor zero stays zero; boolean-only and invalid records contribute no boundary and are not re-attached', () => {
+    const zero = { anchor: 0, at: T1, witness: null };
+    expect(run(NOTES, RENAMED, { [SRC]: true }, { [SRC]: zero }).activations).toEqual({ [DST]: { anchor: 0, at: T1, witness: null } });
+    const boolOnly = run(NOTES, RENAMED, { [SRC]: true }, {});
+    expect(boolOnly.lifts).toEqual({ [DST]: true });
+    expect(boolOnly.activations).toEqual({});
+    const invalid = { ...SRC_RECORD, witness: { ...SRC_RECORD.witness, headings: ['Someday'] } };
+    const out = run(NOTES, RENAMED, { [SRC]: true }, { [SRC]: invalid });
+    expect(out.lifts).toEqual({ [DST]: true });
+    expect(out.activations).toEqual({});
+    // A boolean-only destination still takes a valid source's boundary.
+    expect(run(NOTES, RENAMED, { [SRC]: true, [DST]: true }, { [SRC]: SRC_RECORD }).activations[DST].anchor).toBe(4);
+  });
+
+  test('untracked and same-key renames change no Track state', () => {
+    const untracked = run(NOTES, RENAMED, { squat: true }, {});
+    expect(untracked).toEqual(expect.objectContaining({ ok: true, changed: false, lifts: { squat: true }, activations: {} }));
+    const notes = [N('s', 'Monday\n-bench press 3x5\n60 8\n60 8')];
+    const record = activate(sectionsOf(notes), 'bench press', T1);
+    const same = run(notes, { s: 'Monday\n-Bench Press 3x5\n60 8\n60 8' }, { 'bench press': true }, { 'bench press': record });
+    expect(same).toEqual({ ok: true, changed: false, lifts: { 'bench press': true }, activations: { 'bench press': record } });
+  });
+
+  test('an already-tracked destination and several sources merge at the maximum boundary, in any order', () => {
+    const notes = [
+      N('x', 'Monday\n-Deadlift\n60 8\n60 8'),
+      N('y', 'Monday\n-Deadlift — trial sets, slow and controlled\n60 8\n60 8'),
+      N('z', 'Thursday\n-Deadlift, paused\n60 8\n60 8'),
+    ];
+    const keyY = normalizeExerciseKey('Deadlift — trial sets, slow and controlled');
+    const keyZ = normalizeExerciseKey('Deadlift, paused');
+    const acts = {
+      deadlift: activate(sectionsOf([N('x', 'Monday\n-Deadlift\n60 8')]), 'Deadlift', T1),
+      [keyY]: activate(sectionsOf(notes), 'Deadlift — trial sets, slow and controlled', T2),
+      [keyZ]: { anchor: 0, at: T3, witness: null },
+    };
+    expect(acts.deadlift.anchor).toBe(1);
+    const lifts = { deadlift: true, [keyY]: true, [keyZ]: true, row: true };
+    const next = { y: 'Monday\n-Deadlift\n60 8\n60 8\n-- trial sets, slow and controlled', z: 'Thursday\n-Deadlift\n60 8\n60 8\n-- paused' };
+    const reversed = Object.fromEntries(Object.entries(next).reverse());
+    const out = run(notes, next, lifts, acts);
+    // Boundaries: own 1, y's two sessions at 3-4 -> 4, z's zero -> 0. Max 4; the
+    // latest `at` is display metadata only.
+    expect(out.activations.deadlift.anchor).toBe(4);
+    expect(out.activations.deadlift.at).toBe(T3);
+    expect(out.lifts).toEqual({ deadlift: true, row: true });
+    expect(Object.keys(out.activations)).toEqual(['deadlift']);
+    expect(run(notes, reversed, lifts, acts)).toEqual(out);
+    expect(reconcileTrackedLiftActivations(sectionsOf(applied(notes, next)), out.activations).changed).toBe(false);
+  });
+
+  test('a source still produced by an unselected header keeps its flag and its span', () => {
+    const notes = [
+      N('m', 'Monday\n-DB Bench Press 3x6-8, step up\n60 8\n60 8\n---\nFriday\n-DB Bench Press 3x6-8, step up\n60 8\n60 8'),
+      N('o', 'Monday\n-Row\n60 8'),
+    ];
+    const minted = activate(sectionsOf([N('m', 'Monday\n-DB Bench Press 3x6-8, step up\n60 8\n60 8\n---\nFriday\n-DB Bench Press 3x6-8, step up\n60 8')]), 'DB Bench Press 3x6-8, step up', T1);
+    expect(minted.anchor).toBe(3);
+    // Only the Monday occurrence was selected.
+    const next = { m: 'Monday\n-DB Bench Press 3x6-8\n60 8\n60 8\n-- step up\n---\nFriday\n-DB Bench Press 3x6-8, step up\n60 8\n60 8' };
+    const out = run(notes, next, { [SRC]: true }, { [SRC]: minted });
+    expect(out.lifts).toEqual({ [SRC]: true, [DST]: true });
+    // The old movement keeps Friday, whose first session was excluded -> 1.
+    expect(out.activations[SRC].anchor).toBe(1);
+    expect(out.activations[DST].anchor).toBe(2);
+    expect(reconcileTrackedLiftActivations(sectionsOf(applied(notes, next)), out.activations).changed).toBe(false);
+  });
+
+  test('the three audited headers carry their tracking onto the canonical keys', () => {
+    const before = 'MONDAY — Lower\n+LIFTING\n-DB Bench Press 3x6-8, step up\n60 8\n60 8\n-Lat Pulldown 2x10-12 (pack shoulder down on eccentric)\n60 8\n-Deadlift — trial sets, slow and controlled\n60 8\n60 8';
+    const after = 'MONDAY — Lower\n+LIFTING\n-DB Bench Press 3x6-8\n60 8\n60 8\n-- step up\n-Lat Pulldown 2x10-12\n60 8\n-- pack shoulder down on eccentric\n-Deadlift\n60 8\n60 8\n-- trial sets, slow and controlled';
+    const notes = [N('w', before)];
+    const names = ['DB Bench Press 3x6-8, step up', 'Lat Pulldown 2x10-12 (pack shoulder down on eccentric)', 'Deadlift — trial sets, slow and controlled'];
+    const lifts = Object.fromEntries(names.map(n => [normalizeExerciseKey(n), true]));
+    const acts = Object.fromEntries(names.map(n => [normalizeExerciseKey(n), activate(sectionsOf(notes), n, T1)]));
+    const out = run(notes, { w: after }, lifts, acts);
+    expect(out.lifts).toEqual({ 'db bench press': true, 'lat pulldown': true, deadlift: true });
+    expect(Object.fromEntries(Object.entries(out.activations).map(([k, r]) => [k, r.anchor]))).toEqual({ 'db bench press': 2, 'lat pulldown': 1, deadlift: 2 });
+  });
+
+  test('a written note whose sessions cannot be matched is refused', () => {
+    expect(run(NOTES, { n2: 'Monday\n-DB Bench Press 3x6-8\n60 8\n60 8' }, { [SRC]: true }, { [SRC]: SRC_RECORD }).ok).toBe(false);
   });
 });

@@ -10,7 +10,9 @@ import {
   ensureWorkoutNoteDeleted as cloudEnsureWorkoutNoteDeleted,
   loadWorkoutNotePresenceState as cloudLoadWorkoutNotePresenceState,
   ensureWorkoutNoteLive as cloudEnsureWorkoutNoteLive,
+  finishNormalizationApplyIntent as cloudFinishNormalizationApplyIntent,
 } from '../../storage/cloud/cloudDomainMethods';
+import { finishNormalizationApplyIntent as localFinishNormalizationApplyIntent } from '../../storage/entries/workoutNotes';
 import { beginPhaseRun, markComplete, markFailed, SYNC_PHASE } from '../../storage/syncRecovery';
 
 // ── recovery journal ↔ storage mode wiring (#696) ────────────────────────────
@@ -75,6 +77,20 @@ export function registerRecoveryNoteOperations() {
 
 registerRecoveryNoteOperations();
 
+// Roll-forward of an interrupted normalization apply (#1395), through whichever
+// adapter is current when it runs (cloud stamps and enqueues; local writes only).
+export function finishNormalizationApplyIntent() {
+  return isCloudMode() ? cloudFinishNormalizationApplyIntent() : localFinishNormalizationApplyIntent();
+}
+
+// The tracked-lift hook registers a gate that runs the roll-forward inside its
+// write queue, so module Track state is reloaded with it; without the hook there
+// is no module state and the storage call is enough.
+let normalizationApplyGate = finishNormalizationApplyIntent;
+export function setNormalizationApplyGate(gate) {
+  normalizationApplyGate = gate || finishNormalizationApplyIntent;
+}
+
 // Raised when a sync pass cannot honestly be reported as complete because a
 // recovery lifecycle operation over workout notes, recovery blocks, or recovery
 // weeks is still unresolved. Carries the reconciliation cause so the existing
@@ -114,8 +130,13 @@ export class RecoveryReconciliationPendingError extends Error {
 // reconciliation cannot see it once the UI operation has verified and cleared its
 // own record. Reconciliation inside the callback deliberately skips re-acquiring
 // the guard (that is what `reconcile` is), so the nesting cannot deadlock.
+//
+// An interrupted normalization apply (#1395) is finished first, for the same
+// reason: a pass must never push renamed notes without their Track transition.
+// If it cannot be finished the pass fails and pushes nothing.
 export async function withRecoveryReconciliation(run) {
   return withExclusiveRecoveryAccess(async ({ reconcile }) => {
+    await normalizationApplyGate();
     const before = await reconcile();
     if (!before.ok) throw new RecoveryReconciliationPendingError(before);
     const result = await run();

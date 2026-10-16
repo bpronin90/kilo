@@ -4,9 +4,18 @@ import {
   WORKOUT_NOTE_KEY,
   WORKOUT_NOTES_KEY,
   CURRENT_WORKOUT_ID_KEY,
+  NORMALIZATION_APPLY_INTENT_KEY,
 } from './keys';
 import { readList, writeList } from './jsonStorage';
 import { stripDerivedSectionsFromList } from './derivedCache';
+import {
+  loadTrackedLiftsStrict,
+  loadTrackedLiftActivationsStrict,
+  saveTrackedLifts,
+  saveTrackedLiftActivations,
+} from './settings';
+import { withLocalWriteLock } from '../sync/localWriteLock';
+import { planTrackedLiftRenameTransition } from '../../lib/data/workoutAnalyticsActivations';
 
 // ── legacy workout sessions ────────────────────────────────────────────────────
 
@@ -179,26 +188,179 @@ export function planWorkoutNoteTextBatch(list, { authority, items }, isLive = n 
   return { authority: 'unchanged', writes, skipped };
 }
 
-export function applyWorkoutNoteTextBatchIfUnchanged(request) {
-  return withWorkoutNotebookLock(async () => {
-    const list = await readNotebook();
-    const plan = planWorkoutNoteTextBatch(list, request);
-    if (plan.authority !== 'unchanged') return { authority: plan.authority, saved: [], skipped: [], failed: [] };
+// ── the batch commit, with its Track transition (#1395) ──────────────────────
+//
+// A rename batch commits the note texts AND the Track flags/activations it moves
+// as one recoverable operation. Separate setItem calls are not atomic, so the
+// commit is journaled: a roll-forward intent (the note texts and both resulting
+// Track maps) is written first and removed last. An interrupted commit is
+// finished from that record — at the next apply, Track write, tracked-lift load
+// or sync pass — before anything reads or pushes the mixed state. An in-process
+// failure is rolled back instead, so a failed result means nothing changed; only
+// when the rollback fails too is the record rolled forward, and only when that
+// fails as well is the item reported `landed` (the record still finishes it).
+//
+// Runs under the notebook lock and then the shared local-write lock (#1393), so
+// note writers, Track toggles and a sync write-back all land wholly before or
+// after it. Neither lock is taken again inside, and no network call is made.
+// `ops` is the adapter: liveness, row stamping and (cloud) the upload enqueue.
+const LOCAL_TEXT_OPS = { isLive: n => !n.deleted_at, prepare: async () => row => row, enqueue: null };
+
+// True until a read shows no unfinished record, and again whenever a failed
+// commit may have left one; makes the common no-record check free.
+let applyIntentMaybePending = true;
+export function isNormalizationApplyIntentMaybePending() {
+  return applyIntentMaybePending;
+}
+
+async function readApplyIntent() {
+  const raw = await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY);
+  if (raw == null) return null;
+  const intent = JSON.parse(raw);
+  if (intent?.version !== 1 || !Array.isArray(intent.notes) || !intent.tracking || typeof intent.tracking !== 'object') {
+    throw new Error('An unfinished routine rename could not be read.');
+  }
+  return intent;
+}
+
+// Idempotent roll-forward. A note already holding its new text is left alone,
+// and one changed since by anything else is never overwritten. Unreadable state
+// throws and keeps the record: an unknown outcome is never treated as done.
+async function finishApplyIntentUnlocked(ops) {
+  if (!applyIntentMaybePending) return null;
+  const intent = await readApplyIntent();
+  if (intent) {
+    const stamp = await ops.prepare();
+    const byId = new Map(intent.notes.map(n => [n.id, n]));
     const now = new Date().toISOString();
-    const nextById = new Map(plan.writes.map(w => [w.id, w.next_raw_text]));
-    const updated = list.map(n => (nextById.has(n?.id) && !n.deleted_at ? { ...n, raw_text: nextById.get(n.id), updated_at: now } : n));
-    try {
-      await writeNotebook(updated);
-    } catch (error) {
-      return { authority: 'unchanged', saved: [], skipped: plan.skipped.map(s => ({ ...s, pending_sync: false })), failed: plan.writes.map(w => ({ id: w.id, message: error?.message || 'Write failed', pending_sync: false })) };
-    }
-    return {
-      authority: 'unchanged',
-      saved: plan.writes.map(w => ({ id: w.id, pending_sync: false })),
-      skipped: plan.skipped.map(s => ({ ...s, pending_sync: false })),
-      failed: [],
-    };
+    const rows = [];
+    const updated = (await readNotebook()).map(n => {
+      const rec = n && ops.isLive(n) ? byId.get(n.id) : null;
+      if (!rec || n.raw_text !== rec.expected_raw_text) return n;
+      const row = stamp({ ...n, raw_text: rec.next_raw_text, updated_at: now });
+      rows.push(row);
+      return row;
+    });
+    if (rows.length) await writeNotebook(updated);
+    await saveTrackedLifts(intent.tracking.lifts);
+    await saveTrackedLiftActivations(intent.tracking.activations);
+    await AsyncStorage.removeItem(NORMALIZATION_APPLY_INTENT_KEY);
+    // A missed enqueue is re-detected by the next pass's baseline reconciliation.
+    if (ops.enqueue) for (const row of rows) await ops.enqueue(row).catch(() => {});
+  }
+  applyIntentMaybePending = false;
+  return intent ? intent.tracking : null;
+}
+
+// Finish any unfinished record; resolves to the Track maps it committed, or null.
+export function finishNormalizationApplyIntent(ops = LOCAL_TEXT_OPS) {
+  if (!applyIntentMaybePending) return Promise.resolve(null);
+  return withWorkoutNotebookLock(() => withLocalWriteLock(() => finishApplyIntentUnlocked(ops)));
+}
+
+async function commitTextBatch(updated, intent) {
+  if (intent) {
+    applyIntentMaybePending = true;
+    await AsyncStorage.setItem(NORMALIZATION_APPLY_INTENT_KEY, JSON.stringify(intent));
+  }
+  await writeNotebook(updated);
+  if (!intent) return;
+  await saveTrackedLifts(intent.tracking.lifts);
+  await saveTrackedLiftActivations(intent.tracking.activations);
+  await AsyncStorage.removeItem(NORMALIZATION_APPLY_INTENT_KEY);
+  applyIntentMaybePending = false;
+}
+
+async function rollBackTextBatch(list, lifts, activations) {
+  try {
+    await writeNotebook(list);
+    await saveTrackedLifts(lifts);
+    await saveTrackedLiftActivations(activations);
+    await AsyncStorage.removeItem(NORMALIZATION_APPLY_INTENT_KEY);
+    applyIntentMaybePending = false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function applyTextBatchUnlocked(request, ops) {
+  await finishApplyIntentUnlocked(ops);
+  const list = await readNotebook();
+  const plan = planWorkoutNoteTextBatch(list, request, ops.isLive);
+  if (plan.authority !== 'unchanged') return { authority: plan.authority, saved: [], skipped: [], failed: [] };
+  const skipped = plan.skipped.map(s => ({ ...s, pending_sync: false }));
+  const fail = (message, landed = false) => ({
+    authority: 'unchanged', saved: [], skipped,
+    failed: plan.writes.map(w => ({ id: w.id, message, pending_sync: false, ...(landed ? { landed: true } : {}) })),
   });
+  if (!plan.writes.length) return { authority: 'unchanged', saved: [], skipped, failed: [] };
+
+  // The Track transition is planned over the whole live notebook, unfiltered.
+  // Unreadable Track state is unknown, never "untracked": nothing is written.
+  const nextById = new Map(plan.writes.map(w => [w.id, w.next_raw_text]));
+  let lifts;
+  let activations;
+  let transition;
+  try {
+    lifts = await loadTrackedLiftsStrict();
+    activations = await loadTrackedLiftActivationsStrict();
+    transition = planTrackedLiftRenameTransition(list.filter(n => n && ops.isLive(n)), nextById, lifts, activations);
+  } catch {
+    return fail('Couldn’t read Track settings, so nothing was written.');
+  }
+  if (!transition.ok) return fail(transition.reason);
+  let tracking = transition.changed ? { lifts: transition.lifts, activations: transition.activations } : null;
+  const intent = tracking && {
+    version: 1,
+    notes: plan.writes.map(w => ({ id: w.id, expected_raw_text: list.find(n => n?.id === w.id).raw_text, next_raw_text: w.next_raw_text })),
+    tracking,
+  };
+
+  const stamp = await ops.prepare();
+  const now = new Date().toISOString();
+  const rowById = new Map();
+  const updated = list.map((n) => {
+    if (!nextById.has(n?.id) || !ops.isLive(n)) return n;
+    const row = stamp({ ...n, raw_text: nextById.get(n.id), updated_at: now });
+    rowById.set(row.id, row);
+    return row;
+  });
+  try {
+    await commitTextBatch(updated, intent);
+  } catch (error) {
+    const message = error?.message || 'Write failed';
+    if (!intent || await rollBackTextBatch(list, lifts, activations)) return fail(message);
+    try {
+      tracking = await finishApplyIntentUnlocked(ops);
+    } catch {
+      return fail(message, true);
+    }
+    // No record: the intent write itself failed, so nothing else was written.
+    if (!tracking) return fail(message);
+    for (const n of await readNotebook()) if (rowById.has(n?.id) && n.raw_text === nextById.get(n.id)) rowById.set(n.id, n);
+  }
+
+  const saved = [];
+  const failed = [];
+  for (const { id } of plan.writes) {
+    if (!ops.enqueue) { saved.push({ id, pending_sync: false }); continue; }
+    try {
+      await ops.enqueue(rowById.get(id));
+      saved.push({ id, pending_sync: true });
+    } catch (error) {
+      failed.push({ id, message: error?.message || 'Enqueue failed', landed: true, pending_sync: false });
+    }
+  }
+  return { authority: 'unchanged', saved, skipped, failed, ...(tracking ? { tracking } : {}) };
+}
+
+export function applyNoteTextBatchWithTracking(request, ops) {
+  return withWorkoutNotebookLock(() => withLocalWriteLock(() => applyTextBatchUnlocked(request, ops)));
+}
+
+export function applyWorkoutNoteTextBatchIfUnchanged(request) {
+  return applyNoteTextBatchWithTracking(request, LOCAL_TEXT_OPS);
 }
 
 // Atomic compare-and-set of one note's text (#1172). Writes only while the note

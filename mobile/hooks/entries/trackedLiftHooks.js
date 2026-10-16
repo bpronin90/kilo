@@ -6,9 +6,11 @@ import {
   reconcileTrackedLiftActivations,
 } from '../../lib/data/workoutAnalytics';
 import { safeNotify } from './shared';
-import { maybeSyncCloud } from './storageMode';
+import { finishNormalizationApplyIntent, maybeSyncCloud, setNormalizationApplyGate } from './storageMode';
 import { markStartupPhase } from '../../storage/entries/startupTiming';
 import { withLocalWriteLock } from '../../storage/sync/localWriteLock';
+import { isNormalizationApplyIntentMaybePending } from '../../storage/entries/workoutNotes';
+import { withExclusiveRecoveryAccess } from '../../storage/entries/recoveryOperationJournal';
 
 let trackedLiftsListeners = [];
 const notifyTrackedLifts = () => safeNotify(trackedLiftsListeners);
@@ -55,11 +57,16 @@ let trackedLiftsGeneration = 0;
 // the rejection, but the next toggle/save/reconcile runs instead of inheriting it.
 // Every path that sets module state optimistically (toggle, save, reconcile) goes
 // through here, so it is counted as pending before it can touch that state.
+//
+// An unfinished normalization apply (#1395) is rolled forward before any queued
+// write derives from module state, so no write can land over its record (which
+// a later roll-forward would otherwise rewrite) or derive from the mixed state.
 function enqueueTrackedLiftWrite(work) {
   pendingTrackedLiftWrites += 1;
   const run = trackedLiftsPromise.then(async () => {
     trackedLiftsGeneration += 1;
     try {
+      await settleNormalizationApplyInQueue();
       return await work();
     } finally {
       trackedLiftsGeneration += 1;
@@ -87,17 +94,63 @@ let currentTrackedLifts = {};
 // write queue over both is what makes "untrack deletes flag and record together"
 // an invariant rather than a convention.
 let currentActivations = {};
+// A committed normalization transition replaces module state outright: every
+// later queued write derives from it, and mounted hooks re-read it on notify.
+function adoptTrackedLiftTransition(tracking) {
+  currentTrackedLifts = tracking.lifts;
+  currentActivations = Storage.normalizeTrackedLiftActivations(tracking.activations);
+}
+
+// Inside the queue only. Rolls an interrupted apply forward (#1395) and adopts
+// what it committed. A failure rejects the queued write: writing over a record
+// that is still pending would be undone when the record is finished.
+async function settleNormalizationApplyInQueue() {
+  if (!isNormalizationApplyIntentMaybePending()) return;
+  const tracking = await finishNormalizationApplyIntent();
+  if (!tracking) return;
+  adoptTrackedLiftTransition(tracking);
+  notifyTrackedLifts();
+}
+
 // Seed the write queue with the initial load so toggle/save always derive from
-// real storage, not the empty module-scope default.
-let trackedLiftsPromise = Promise.all([
-  Storage.loadTrackedLifts(),
-  Storage.loadTrackedLiftActivations(),
-])
-  .then(([lifts, activations]) => {
+// real storage, not the empty module-scope default. An apply interrupted by a
+// crash is finished first, so the seed never loads its mixed state; a read that
+// overlapped that roll-forward is discarded by the generation bump.
+let trackedLiftsPromise = Promise.resolve()
+  .then(() => finishNormalizationApplyIntent())
+  .then((replayed) => { if (replayed) trackedLiftsGeneration += 1; return replayed; }, () => null)
+  .then(replayed => Promise.all([
+    Storage.loadTrackedLifts(),
+    Storage.loadTrackedLiftActivations(),
+  ]).then(([lifts, activations]) => {
     currentTrackedLifts = lifts;
     currentActivations = activations;
-  })
+    if (replayed) notifyTrackedLifts();
+  }))
   .catch(() => {});
+
+// Sync passes finish an unfinished apply through this queue (#1395).
+setNormalizationApplyGate(() => (isNormalizationApplyIntentMaybePending()
+  ? enqueueTrackedLiftWrite(async () => {})
+  : Promise.resolve()));
+
+// The normalization apply (#1395): notes and their Track transition commit in
+// one storage operation, run as ONE queued tracked-lift write so toggles land
+// wholly before or after it and never derive from pre-apply module state. The
+// recovery-access guard around it is the one every sync pass holds, so no pass
+// reads half of the transition; it is taken before the queue (no queued write
+// ever waits on a pass). The caller requests the cloud pass once this resolves,
+// in the same tick as its note broadcast, so both share one coalesced pass.
+export function runNormalizationApplyWithTracking(apply) {
+  return withExclusiveRecoveryAccess(() => enqueueTrackedLiftWrite(async () => {
+    const result = await apply();
+    if (result?.tracking) {
+      adoptTrackedLiftTransition(result.tracking);
+      notifyTrackedLifts();
+    }
+    return result;
+  }));
+}
 
 // Collapse a stored flag map onto canonical keys (#892 contract revision 3, §4).
 // A no-op for every name outside the 8-entry alias table, so a legacy non-alias

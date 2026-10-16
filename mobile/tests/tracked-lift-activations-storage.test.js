@@ -21,6 +21,7 @@ import {
   resetStampClockForTests,
 } from '../storage/syncQueue';
 import { __resetSyncQueue } from '../storage/syncRecovery';
+import { loadTrackedLiftsStrict, loadTrackedLiftActivationsStrict } from '../storage/entries/settings';
 
 const RECORD = {
   anchor: 12,
@@ -529,5 +530,29 @@ describe('backup export and import', () => {
     const result = await importBackup(payload, IMPORT_MODES.REPLACE);
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/witness\.headings/);
+  });
+});
+
+// #1395: a rename transition must never mistake unreadable Track state for none.
+describe('fail-closed Track reads for the normalization apply', () => {
+  beforeEach(async () => { await AsyncStorage.clear(); });
+
+  test('absent is empty; corrupt or non-object payloads throw instead of reading as untracked', async () => {
+    expect(await loadTrackedLiftsStrict()).toEqual({});
+    expect(await loadTrackedLiftActivationsStrict()).toEqual({});
+    await AsyncStorage.setItem('kilo_tracked_lifts', '{oops');
+    await expect(loadTrackedLiftsStrict()).rejects.toThrow();
+    expect(await Storage.loadTrackedLifts()).toEqual({});
+    await AsyncStorage.setItem('kilo_tracked_lifts', '[1]');
+    await expect(loadTrackedLiftsStrict()).rejects.toThrow(/Unreadable/);
+    await AsyncStorage.setItem('kilo_tracked_lift_activations', 'null');
+    await expect(loadTrackedLiftActivationsStrict()).rejects.toThrow(/Unreadable/);
+    await AsyncStorage.setItem('kilo_tracked_lift_activations', '"x"');
+    await expect(loadTrackedLiftActivationsStrict()).rejects.toThrow(/Unreadable/);
+  });
+
+  test('strict activation reads keep the shape normalization', async () => {
+    await AsyncStorage.setItem('kilo_tracked_lift_activations', JSON.stringify({ squat: RECORD, bad: { anchor: -1 } }));
+    expect(await loadTrackedLiftActivationsStrict()).toEqual({ squat: RECORD });
   });
 });
