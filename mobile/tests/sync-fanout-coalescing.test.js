@@ -832,4 +832,36 @@ describe('a pulled Track change is adopted by a mounted hook (#1398)', () => {
     expect(Object.keys(healthRow(cloud).tracked_lift_activations).sort()).toEqual(['bench', 'squat']);
     act(() => tree.unmount());
   });
+
+  it('an unreadable rollback snapshot aborts the apply untouched; the pass is retryable and the next applies', async () => {
+    const cloud = makeXidFakeCloud();
+    const { ref, tree } = await deviceA(cloud);
+    await deviceBWrites(cloud, squatAdded);
+    // The strict snapshot read fails once; the later write of the activations
+    // would also fail. With no snapshot, applying anyway would leave a half pair
+    // that nothing can roll back.
+    const settings = jest.requireActual('../storage/entries/settings');
+    jest.spyOn(settings, 'loadTrackedLiftsStrict').mockRejectedValueOnce(new Error('transient read'));
+    const realSetItem = secureStorage.setItem.bind(secureStorage);
+    let failing = true;
+    jest.spyOn(secureStorage, 'setItem').mockImplementation(async (key, value) => {
+      if (failing && key === 'kilo_tracked_lift_activations') throw new Error('disk full');
+      return realSetItem(key, value);
+    });
+    await act(async () => { await maybeSyncCloud().catch(() => {}); });
+    await flushAsync(8);
+    expect(await Storage.loadTrackedLifts()).toEqual({ bench: true });
+    expect(Object.keys(await Storage.loadTrackedLiftActivations())).toEqual(['bench']);
+    const failed = getSyncState()[SYNC_PHASE.SYNC];
+    expect(failed.status).toBe(SYNC_STATUS.FAILED);
+    expect(failed.retryable).toBe(true);
+
+    failing = false;
+    await act(async () => { await maybeSyncCloud(); });
+    await flushAsync(8);
+    expect(await Storage.loadTrackedLifts()).toEqual({ bench: true, squat: true });
+    expect(Object.keys(ref.current.activations).sort()).toEqual(['bench', 'squat']);
+    expect(Object.keys(healthRow(cloud).tracked_lift_activations).sort()).toEqual(['bench', 'squat']);
+    act(() => tree.unmount());
+  });
 });

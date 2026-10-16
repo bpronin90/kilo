@@ -229,16 +229,10 @@ async function buildUserHealthProfileRecords() {
 // Flags + records land as one unit or not at all (#1398): a failure between the
 // two writes would leave a half pair that the next pass uploads over the other
 // device's good row. Roll back (best effort) and rethrow, so the pass fails
-// retryably and re-applies. Strict snapshot reads: unreadable is never "{}".
+// retryably and re-applies. An unreadable snapshot throws BEFORE any mutation.
 async function applyTrackedLiftsFromRow(row) {
-  let beforeFlags = null;
-  let beforeRecords = null;
-  try {
-    beforeFlags = await loadTrackedLiftsStrict();
-    beforeRecords = await loadTrackedLiftActivationsStrict();
-  } catch {
-    beforeFlags = null; // no snapshot: apply and repair as before
-  }
+  const beforeFlags = await loadTrackedLiftsStrict();
+  const beforeRecords = await loadTrackedLiftActivationsStrict();
   try {
     if (
       row.tracked_lifts &&
@@ -286,7 +280,6 @@ async function applyTrackedLiftsFromRow(row) {
     }
   } catch (err) {
     try {
-      if (beforeFlags === null || beforeRecords === null) throw err;
       const nowFlags = await Storage.loadTrackedLifts();
       if (stableStringify(nowFlags) !== stableStringify(beforeFlags)) await Storage.saveTrackedLifts(beforeFlags);
       const nowRecords = await Storage.loadTrackedLiftActivations();
