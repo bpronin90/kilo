@@ -1,4 +1,3 @@
-import { GEOMETRY } from '../../theme/spacing';
 import React, { useMemo, useState } from 'react';
 import { Platform, Pressable, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -7,14 +6,7 @@ import { useTheme } from '../../theme/ThemeContext';
 import { useKuaTypography, TYPOGRAPHY } from '../../theme/typography';
 import { localDateToday } from '../../lib/WeightScreenHelpers';
 import { createStyles } from './weightStyles';
-
-// DOM (react-native-web) equivalent of a mono role: letterSpacing needs a px string.
-const domMonoRole = (role) => ({
-  fontFamily: TYPOGRAPHY[role].fontFamily,
-  fontSize: TYPOGRAPHY[role].fontSize,
-  letterSpacing: `${TYPOGRAPHY[role].letterSpacing}px`,
-  fontVariantNumeric: 'tabular-nums',
-});
+import { webDateInputStyle } from './weightFormStyles';
 
 // Web-safe date input. The native @react-native-community/datetimepicker has no
 // usable rendering on web, so on web we render a real DOM <input type="date">
@@ -32,19 +24,7 @@ function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
       const next = e?.target?.value;
       if (next) onChangeDate(next);
     },
-    style: {
-      backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
-      borderRadius: GEOMETRY['radius-2xl'],
-      borderWidth: 1,
-      borderStyle: 'solid',
-      borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
-      padding: 14,
-      ...(kua ? domMonoRole('label-lg') : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontFamily: 'inherit' }),
-      colorScheme: colors.scheme,
-      color: kua ? kua.onSurface : colors.text,
-      width: '100%',
-      boxSizing: 'border-box',
-    },
+    style: webDateInputStyle(colors, kua),
   });
 }
 
