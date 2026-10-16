@@ -10,6 +10,12 @@ import { finishNormalizationApplyIntent, maybeSyncCloud, setNormalizationApplyGa
 import { markStartupPhase } from '../../storage/entries/startupTiming';
 import { withLocalWriteLock } from '../../storage/sync/localWriteLock';
 import { isNormalizationApplyIntentMaybePending } from '../../storage/entries/workoutNotes';
+import {
+  getTrackedLiftWriteGeneration,
+  setTrackedLiftWriteListener,
+  loadTrackedLiftsStrict,
+  loadTrackedLiftActivationsStrict,
+} from '../../storage/entries/settings';
 import { withExclusiveRecoveryAccess } from '../../storage/entries/recoveryOperationJournal';
 
 let trackedLiftsListeners = [];
@@ -37,9 +43,57 @@ function requestTrackedLiftSync() {
 // `lifts === null` writes the activation records alone (the note-save reconcile).
 function writeTrackedLiftStorage(lifts, activations) {
   return withLocalWriteLock(async () => {
-    if (lifts !== null) await Storage.saveTrackedLifts(lifts);
-    await Storage.saveTrackedLiftActivations(activations);
+    ownWriteInFlight = true;
+    try {
+      if (lifts !== null) await Storage.saveTrackedLifts(lifts);
+      await Storage.saveTrackedLiftActivations(activations);
+    } finally {
+      ownWriteInFlight = false;
+    }
   });
+}
+
+// ── adopting writes made outside this queue (#1395) ──────────────────────────
+//
+// Invariant: a queued write derives only from module state that matches durable
+// storage, apart from this queue's own optimistic (possibly failed) writes. Every
+// Track-map write bumps a storage write generation (settings.js). The hook claims
+// a bump as its own, synchronously, when it lands during its own write and is the
+// very next one; any other bump (an apply commit/rollback/replay from any entry
+// point, a note writer's lock-level settle, a sync pull, a backup restore) leaves
+// `adoptedGeneration` behind. Each queued write then re-reads storage before it
+// derives, and, while any consumer is mounted, an adoption-only queued step
+// re-reads and broadcasts so it shows the external change without waiting for a
+// toggle (an unmounted one reads storage when it mounts; #818's single cold-start
+// read is kept). Both run in the queue, so #1393's refresh() gating still holds.
+let adoptedGeneration = getTrackedLiftWriteGeneration();
+let ownWriteInFlight = false;
+let adoptionQueued = false;
+let rollingForwardInQueue = false;
+setTrackedLiftWriteListener((generation) => {
+  if (ownWriteInFlight && generation === adoptedGeneration + 1) {
+    adoptedGeneration = generation;
+    return;
+  }
+  if (adoptionQueued || rollingForwardInQueue || trackedLiftsListeners.length === 0) return;
+  adoptionQueued = true;
+  enqueueTrackedLiftWrite(async () => {}).catch(() => {});
+});
+
+// Inside the queue only. Strict reads: an unreadable map is unknown, never empty,
+// so the queued write is rejected instead of deriving from a guess. Read under
+// the local-write lock so a sync write-back is never seen half-way.
+async function adoptExternalTrackedLiftWrites() {
+  if (getTrackedLiftWriteGeneration() === adoptedGeneration) return;
+  const [generation, lifts, activations] = await withLocalWriteLock(async () => [
+    getTrackedLiftWriteGeneration(),
+    await loadTrackedLiftsStrict(),
+    await loadTrackedLiftActivationsStrict(),
+  ]);
+  currentTrackedLifts = lifts;
+  currentActivations = activations;
+  adoptedGeneration = generation;
+  notifyTrackedLifts();
 }
 
 // What refresh() needs in order to tell a storage read that may be older than the
@@ -60,13 +114,23 @@ let trackedLiftsGeneration = 0;
 //
 // An unfinished normalization apply (#1395) is rolled forward before any queued
 // write derives from module state, so no write can land over its record (which
-// a later roll-forward would otherwise rewrite) or derive from the mixed state.
+// a later roll-forward would otherwise rewrite) or derive from the mixed state;
+// then whatever any writer outside this queue made durable is adopted.
 function enqueueTrackedLiftWrite(work) {
   pendingTrackedLiftWrites += 1;
   const run = trackedLiftsPromise.then(async () => {
     trackedLiftsGeneration += 1;
+    adoptionQueued = false;
     try {
-      await settleNormalizationApplyInQueue();
+      // Bumps made while this step rolls forward queue nothing more: this step
+      // adopts them next, and a roll-forward failing every time cannot loop.
+      rollingForwardInQueue = true;
+      try {
+        if (isNormalizationApplyIntentMaybePending()) await finishNormalizationApplyIntent();
+      } finally {
+        rollingForwardInQueue = false;
+      }
+      await adoptExternalTrackedLiftWrites();
       return await work();
     } finally {
       trackedLiftsGeneration += 1;
@@ -94,24 +158,6 @@ let currentTrackedLifts = {};
 // write queue over both is what makes "untrack deletes flag and record together"
 // an invariant rather than a convention.
 let currentActivations = {};
-// A committed normalization transition replaces module state outright: every
-// later queued write derives from it, and mounted hooks re-read it on notify.
-function adoptTrackedLiftTransition(tracking) {
-  currentTrackedLifts = tracking.lifts;
-  currentActivations = Storage.normalizeTrackedLiftActivations(tracking.activations);
-}
-
-// Inside the queue only. Rolls an interrupted apply forward (#1395) and adopts
-// what it committed. A failure rejects the queued write: writing over a record
-// that is still pending would be undone when the record is finished.
-async function settleNormalizationApplyInQueue() {
-  if (!isNormalizationApplyIntentMaybePending()) return;
-  const tracking = await finishNormalizationApplyIntent();
-  if (!tracking) return;
-  adoptTrackedLiftTransition(tracking);
-  notifyTrackedLifts();
-}
-
 // Seed the write queue with the initial load so toggle/save always derive from
 // real storage, not the empty module-scope default. An apply interrupted by a
 // crash is finished first, so the seed never loads its mixed state; a read that
@@ -119,14 +165,18 @@ async function settleNormalizationApplyInQueue() {
 let trackedLiftsPromise = Promise.resolve()
   .then(() => finishNormalizationApplyIntent())
   .then((replayed) => { if (replayed) trackedLiftsGeneration += 1; return replayed; }, () => null)
-  .then(replayed => Promise.all([
-    Storage.loadTrackedLifts(),
-    Storage.loadTrackedLiftActivations(),
-  ]).then(([lifts, activations]) => {
-    currentTrackedLifts = lifts;
-    currentActivations = activations;
-    if (replayed) notifyTrackedLifts();
-  }))
+  .then((replayed) => {
+    const generation = getTrackedLiftWriteGeneration();
+    return Promise.all([
+      Storage.loadTrackedLifts(),
+      Storage.loadTrackedLiftActivations(),
+    ]).then(([lifts, activations]) => {
+      currentTrackedLifts = lifts;
+      currentActivations = activations;
+      adoptedGeneration = generation;
+      if (replayed) notifyTrackedLifts();
+    });
+  })
   .catch(() => {});
 
 // Sync passes finish an unfinished apply through this queue (#1395).
@@ -141,12 +191,22 @@ setNormalizationApplyGate(() => (isNormalizationApplyIntentMaybePending()
 // reads half of the transition; it is taken before the queue (no queued write
 // ever waits on a pass). The caller requests the cloud pass once this resolves,
 // in the same tick as its note broadcast, so both share one coalesced pass.
+//
+// Its storage writes (commit, rollback, roll-forward) are external to this hook,
+// so they are adopted like any other. A failed re-read must not turn a committed
+// apply into a reported failure: it falls back to the committed maps, and the
+// stale generation makes the next queued write retry the read.
 export function runNormalizationApplyWithTracking(apply) {
   return withExclusiveRecoveryAccess(() => enqueueTrackedLiftWrite(async () => {
     const result = await apply();
-    if (result?.tracking) {
-      adoptTrackedLiftTransition(result.tracking);
-      notifyTrackedLifts();
+    try {
+      await adoptExternalTrackedLiftWrites();
+    } catch {
+      if (result?.tracking) {
+        currentTrackedLifts = result.tracking.lifts;
+        currentActivations = Storage.normalizeTrackedLiftActivations(result.tracking.activations);
+        notifyTrackedLifts();
+      }
     }
     return result;
   }));

@@ -115,7 +115,7 @@ export function updateWorkoutNoteItem(id, patch) {
 // (local text AND its Track transition committed, no upload intent); Retry
 // accepts the landed `next_raw_text`, re-queues it, and translates nothing
 // again because the landed text no longer renames anything.
-const CLOUD_TEXT_OPS = {
+export const CLOUD_TEXT_OPS = {
   isLive: (n) => !isTombstone(n),
   prepare: async () => {
     const clientId = await getClientId();

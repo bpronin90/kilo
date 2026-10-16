@@ -10,9 +10,12 @@ import {
   ensureWorkoutNoteDeleted as cloudEnsureWorkoutNoteDeleted,
   loadWorkoutNotePresenceState as cloudLoadWorkoutNotePresenceState,
   ensureWorkoutNoteLive as cloudEnsureWorkoutNoteLive,
-  finishNormalizationApplyIntent as cloudFinishNormalizationApplyIntent,
+  CLOUD_TEXT_OPS,
 } from '../../storage/cloud/cloudDomainMethods';
-import { finishNormalizationApplyIntent as localFinishNormalizationApplyIntent } from '../../storage/entries/workoutNotes';
+import {
+  finishNormalizationApplyIntent as finishNormalizationApplyIntentWithCurrentOps,
+  setNormalizationApplySettleOps,
+} from '../../storage/entries/workoutNotes';
 import { beginPhaseRun, markComplete, markFailed, SYNC_PHASE } from '../../storage/syncRecovery';
 
 // ── recovery journal ↔ storage mode wiring (#696) ────────────────────────────
@@ -79,8 +82,11 @@ registerRecoveryNoteOperations();
 
 // Roll-forward of an interrupted normalization apply (#1395), through whichever
 // adapter is current when it runs (cloud stamps and enqueues; local writes only).
+// Registered as a thunk for the same reason as the journal operations above, so
+// every settle — this one, a note writer's lock-level one — resolves it then.
+setNormalizationApplySettleOps(() => (isCloudMode() ? CLOUD_TEXT_OPS : null));
 export function finishNormalizationApplyIntent() {
-  return isCloudMode() ? cloudFinishNormalizationApplyIntent() : localFinishNormalizationApplyIntent();
+  return finishNormalizationApplyIntentWithCurrentOps();
 }
 
 // The tracked-lift hook registers a gate that runs the roll-forward inside its

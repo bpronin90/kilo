@@ -424,14 +424,21 @@ describe('replay with a changed target note (#1395)', () => {
     AsyncStorage.setItem.mockImplementation(realSet);
     let fresh;
     let finish;
+    const mods = {};
     jest.isolateModules(() => {
       jest.doMock('@react-native-async-storage/async-storage', () => AsyncStorage);
       // eslint-disable-next-line global-require
       fresh = require('../storage/entries');
       // eslint-disable-next-line global-require
       ({ finishNormalizationApplyIntent: finish, withWorkoutNotebookLock: fresh.withWorkoutNotebookLock } = require('../storage/entries/workoutNotes'));
+      /* eslint-disable global-require */
+      mods.secure = require('../storage/secureStorage').secureStorage;
+      mods.queue = require('../storage/syncQueue');
+      mods.cloud = require('../storage/cloud/cloudDomainMethods');
+      require('../hooks/entries/storageMode');
+      /* eslint-enable global-require */
     });
-    return { fresh, finish, end: async () => { die(new Error('process gone')); await crashed.catch(() => {}); } };
+    return { fresh, finish, mods, end: async () => { die(new Error('process gone')); await crashed.catch(() => {}); } };
   }
 
   // The notebook rows carry the apply id from the same setItem as the text, so
@@ -495,6 +502,34 @@ describe('replay with a changed target note (#1395)', () => {
     await expect(replace).rejects.toThrow();
     expect((await fresh.loadWorkoutNotesRaw()).map(n => n.id)).toEqual(['ra', 'rt']);
     expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).not.toBeNull();
+    await end();
+  });
+
+  // The restarted process has driven no apply, so the adapter comes from the
+  // storage mode at settle time, not from whichever one last ran an apply.
+  test('a cloud-mode note write after restart settles through the cloud adapter (stamped, enqueued)', async () => {
+    const { fresh, mods, end } = await crashAt(WORKOUT_NOTES_KEY);
+    fresh.setStorageMode(fresh.STORAGE_MODES.CLOUD);
+    await mods.cloud.updateWorkoutNoteItem('ra', { title: 'edited after restart' });
+    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).toBeNull();
+    expect(await fresh.loadTrackedLifts()).toEqual(AFTER().lifts);
+    const dirty = await mods.queue.getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES);
+    expect(dirty.find(r => r.id === 'rt')).toEqual(expect.objectContaining({ raw_text: RT_NEXT, client_id: expect.any(String) }));
+    fresh.setStorageMode(fresh.STORAGE_MODES.LOCAL);
+    await end();
+  });
+
+  // Device-key recovery (#1186) restores into a private overlay while the shared
+  // store is latched; an orphaned, unreadable intent must not block it.
+  test('while the device key is latched the notebook lock does not settle, so recovery can run', async () => {
+    const { fresh, mods, end } = await crashAt(TRACKED_LIFT_ACTIVATIONS_KEY);
+    await editRt(fresh, `${RT_NEXT}\n60 9`);
+    await fresh.saveTrackedLiftActivations({ ...AFTER().activations, [SRC]: { ...sourceRecord(), at: '2026-09-02T00:00:00.000Z' } });
+    const latch = jest.spyOn(mods.secure, 'isKeyUnavailable').mockReturnValue(true);
+    await expect(fresh.withWorkoutNotebookLock(async () => 'restored into overlay')).resolves.toBe('restored into overlay');
+    latch.mockRestore();
+    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).not.toBeNull();
+    await expect(fresh.withWorkoutNotebookLock(async () => 'ran')).rejects.toThrow();
     await end();
   });
 

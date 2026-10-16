@@ -782,10 +782,19 @@ sync pass; a replay whose target note changed after the interruption decides whe
 write landed from a local-only apply id stamped on the rows in that same write (never
 uploaded; the cloud column whitelist drops it): landed rolls the intent's affected Track
 keys forward, not landed retires it untouched, and a key matching neither its before nor
-after value keeps the intent and fails safe. Every notebook-lock holder (backup restore, sync write-back, migration, purge) settles a pending
-intent first, refusing its own write if the intent cannot be reconciled, and the stamp is
-stripped once the intent completes. The hook runs the apply as one tracked-lift queue entry under the recovery
-guard every sync pass holds, so toggles and passes see it wholly or not at all.
+after value keeps the intent and fails safe. Every notebook-lock holder (note writers,
+backup restore, sync write-back, migration, purge) settles a pending intent first, through
+the adapter of the storage mode current at that moment, refusing its own write if the
+intent cannot be reconciled (skipped while the device key is latched, so a #1186 recovery
+restore can still replace everything); the stamp is stripped once the intent completes.
+Lock order is recovery guard → tracked-lift queue → notebook → local-write, and no
+local-write holder takes the notebook lock. The hook runs the apply as one tracked-lift
+queue entry under the recovery guard every sync pass holds, so toggles and passes see it
+wholly or not at all. Every write of either Track map bumps a storage write generation
+(`settings.js`); the hook claims its own bumps, and any other writer (an apply or replay
+from any entry point, a lock-level settle, a sync pull, a restore) makes the next queued
+write re-read storage before it derives, while an adoption-only queue step re-reads and
+broadcasts to mounted consumers.
 
 ## Parse-to-Persistence Flow
 

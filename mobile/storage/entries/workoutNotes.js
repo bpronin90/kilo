@@ -114,10 +114,8 @@ export async function loadWorkoutNotes() {
   return (await readNotebook()).filter((note) => !note?.deleted_at);
 }
 
-// Raw cache accessors for the cloud sync engine (Phase 4 / Task 11). Expose the
-// unfiltered backing notebook list (including delete tombstones and sync
-// metadata) so the sync loop can merge, push, and advance cursors over the full
-// record set. Local mode never uses these.
+// Raw cache accessors for the cloud sync engine (Phase 4 / Task 11): the
+// unfiltered list (tombstones, sync metadata included). Local mode never uses them.
 export async function loadWorkoutNotesRaw() {
   return readNotebook();
 }
@@ -127,27 +125,26 @@ export async function replaceWorkoutNotesRaw(list) {
 }
 
 // #1172: `loadWorkoutNotesRaw` / `replaceWorkoutNotesRaw` are the UNLOCKED
-// notebook primitives for code already inside this lock. Every public notebook
-// read-modify-write (here, cloud domain methods, sync pass writes, backup
-// restore, migration, derived-cache purge) takes the lock; the lock is not
-// reentrant, so a locked function must never call another locked one.
-// Serializes the notebook read-modify-write of the note writers (local
-// and cloud save/delete, and the compare-and-set below) so a compare can never
-// be split from its write by another writer. The chain survives a rejected
-// step. Callers inside the lock must use the unlocked raw helpers.
+// primitives for code already inside this lock. Every public notebook
+// read-modify-write (note writers, compare-and-set, sync pass writes, backup
+// restore, migration, derived-cache purge) takes it, so a compare is never split
+// from its write. Not reentrant; the chain survives a rejected step.
 let notebookLock = Promise.resolve();
 //
 // #1395: every holder first settles any unfinished rename (apply intent), so a
-// notebook replace (backup restore, sync write-back, migration, purge) can never
-// erase the landing evidence and strand Track on the old key. The settle runs on
-// the unlocked internals under THIS lock (no re-entry) and takes no other lock,
-// so a holder that already owns the local-write lock (sync write-back) cannot
-// deadlock on it. Lock order stays notebook -> local-write everywhere. If the
-// intent cannot reach a safe terminal state the settle throws and the caller's
-// fn never runs: the write is refused rather than replacing the notebook.
+// notebook replace can never erase the landing evidence and strand Track on the
+// old key. The settle runs under THIS lock only and never waits on another, and
+// no local-write holder ever takes this lock: the order notebook -> local-write
+// is total. Its Track writes bump the storage write generation the tracked-lift
+// hook adopts from. An intent that cannot reach a safe terminal state throws and
+// the caller's fn never runs: the write is refused, nothing is replaced.
+// Skipped while the device key is latched (#1186): the shared store then refuses
+// every encrypting write, so no holder can erase evidence there, and the only
+// writer, a recovery restore into its private overlay, replaces the orphaned
+// intent with everything else; settling would only block that recovery.
 export function withWorkoutNotebookLock(fn) {
   return runInNotebookLock(async () => {
-    if (applyIntentMaybePending) await finishApplyIntentUnlocked(settleOps);
+    if (applyIntentMaybePending && !AsyncStorage.isKeyUnavailable?.()) await finishApplyIntentUnlocked(resolveSettleOps());
     return fn();
   });
 }
@@ -229,9 +226,13 @@ const LOCAL_TEXT_OPS = { isLive: n => !n.deleted_at, prepare: async () => row =>
 // True until a read shows no unfinished record, and again whenever a failed
 // commit may have left one; makes the common no-record check free.
 let applyIntentMaybePending = true;
-// The adapter (local or cloud) that last drove an apply or replay in this
-// process; the lock-level settle reuses it so cloud rows are stamped/enqueued.
-let settleOps = LOCAL_TEXT_OPS;
+// The adapter for a settle no caller chose (lock-level, startup), resolved when
+// it runs, so a restart or mode switch never reuses a stale one. storageMode.js
+// registers the mode-aware resolver; local is the default.
+let resolveSettleOps = () => LOCAL_TEXT_OPS;
+export function setNormalizationApplySettleOps(resolve) {
+  resolveSettleOps = () => resolve?.() || LOCAL_TEXT_OPS;
+}
 export function isNormalizationApplyIntentMaybePending() {
   return applyIntentMaybePending;
 }
@@ -328,8 +329,7 @@ async function settleApplyIntentUnlocked(ops) {
 }
 
 // Finish any unfinished record; resolves to the Track maps it committed, or null.
-export function finishNormalizationApplyIntent(ops = LOCAL_TEXT_OPS) {
-  settleOps = ops;
+export function finishNormalizationApplyIntent(ops = resolveSettleOps()) {
   if (!applyIntentMaybePending) return Promise.resolve(null);
   return runInNotebookLock(() => withLocalWriteLock(() => finishApplyIntentUnlocked(ops)));
 }
@@ -435,7 +435,6 @@ async function applyTextBatchUnlocked(request, ops) {
 }
 
 export function applyNoteTextBatchWithTracking(request, ops) {
-  settleOps = ops;
   return runInNotebookLock(() => withLocalWriteLock(() => applyTextBatchUnlocked(request, ops)));
 }
 

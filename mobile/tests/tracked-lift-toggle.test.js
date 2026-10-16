@@ -668,4 +668,62 @@ describe('a normalization apply carries Track (#1395)', () => {
     passes.forEach(p => p.resolve({ ok: true }));
     await settle();
   });
+
+  // Review round 4: a note writer's notebook lock finishes the record OUTSIDE the
+  // hook's queue. The hook must adopt that durable transition (and show it)
+  // before deriving its next write, or the toggle reverts the recovered rename.
+  test('a record finished by an ordinary note write is adopted before the next toggle derives', async () => {
+    await seedNotes();
+    const ref = renderHook();
+    await settle();
+    await trackSource(ref);
+    const realSetItem = AsyncStorage.setItem.getMockImplementation();
+    AsyncStorage.setItem.mockImplementation((key, value) => (key === 'kilo_tracked_lift_activations'
+      ? Promise.reject(new Error('disk full'))
+      : realSetItem(key, value)));
+    let result;
+    await act(async () => { result = await applyWorkoutNoteTextBatch(request()); });
+    expect(result.failed).toEqual([expect.objectContaining({ id: 'rt', landed: true })]);
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    const { passes } = mockCloudApply();
+    await act(async () => { await maybeSyncCloud(); });
+
+    AsyncStorage.setItem.mockImplementation(realSetItem);
+    await act(async () => { await CloudNotes.updateWorkoutNoteItem('ra', { title: 'edited after recovery' }); });
+    await settle();
+    expect(await AsyncStorage.getItem('kilo_normalization_apply_intent_v1')).toBeNull();
+    expect((await durable()).lifts).toEqual({ [DST]: true });
+    // Mounted consumers show the recovered transition without any toggle.
+    expect(ref.current.trackedLifts).toEqual({ [DST]: true });
+    expect(ref.current.activations[DST]).toEqual(expect.objectContaining({ anchor: 3 }));
+
+    await act(async () => { await ref.current.toggle('squat', HISTORY); });
+    await settle();
+    expect(await durable()).toEqual({
+      text: NEXT,
+      lifts: { [DST]: true, squat: true },
+      activations: { [DST]: expect.objectContaining({ anchor: 3 }), squat: expect.objectContaining({ anchor: 0 }) },
+    });
+    passes.forEach(p => p.resolve({ ok: true }));
+    await settle();
+  });
+
+  // The same invariant for any writer outside the queue (a sync pull, a backup
+  // restore): the hook adopts it and shows it; its own writes need no re-read.
+  test('any Track write made outside the hook is adopted before the next toggle', async () => {
+    const ref = renderHook();
+    await settle();
+    await act(async () => { await ref.current.toggle('squat', HISTORY); });
+    await settle();
+    await act(async () => {
+      await Storage.saveTrackedLifts({ squat: true, bench: true });
+      await Storage.saveTrackedLiftActivations({ squat: (await Storage.loadTrackedLiftActivations()).squat, bench: { anchor: 0, at: '2026-09-01T00:00:00.000Z', witness: null } });
+    });
+    await settle();
+    expect(ref.current.trackedLifts).toEqual({ squat: true, bench: true });
+    await act(async () => { await ref.current.toggle('deadlift', HISTORY); });
+    await settle();
+    expect(await Storage.loadTrackedLifts()).toEqual({ squat: true, bench: true, deadlift: true });
+    expect(Object.keys(await Storage.loadTrackedLiftActivations()).sort()).toEqual(['bench', 'deadlift', 'squat']);
+  });
 });

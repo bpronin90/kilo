@@ -32,8 +32,29 @@ export async function loadTrackedLifts(store = AsyncStorage) {
   }
 }
 
+// Write generation of the two Track maps (#1395). Bumped after EVERY successful
+// write of either key, whoever makes it: the tracked-lift hook, an apply commit,
+// rollback or replay, a sync pull, a backup restore. The hook's module cache uses
+// it to tell its own writes from everyone else's and re-reads storage before
+// deriving from a cache another writer has overtaken. The listener (one: the
+// hook) is told synchronously, so it can claim its own write before any other
+// code runs.
+let trackedLiftWriteGeneration = 0;
+let trackedLiftWriteListener = null;
+function noteTrackedLiftWrite() {
+  trackedLiftWriteGeneration += 1;
+  try { trackedLiftWriteListener?.(trackedLiftWriteGeneration); } catch { /* listener only */ }
+}
+export function getTrackedLiftWriteGeneration() {
+  return trackedLiftWriteGeneration;
+}
+export function setTrackedLiftWriteListener(listener) {
+  trackedLiftWriteListener = listener || null;
+}
+
 export async function saveTrackedLifts(map, store = AsyncStorage) {
   await store.setItem(TRACKED_LIFTS_KEY, JSON.stringify(map));
+  noteTrackedLiftWrite();
 }
 
 // ── tracked-span activation records (#893) ──────────────────────────────────
@@ -140,6 +161,7 @@ export async function saveTrackedLiftActivations(map, store = AsyncStorage) {
     TRACKED_LIFT_ACTIVATIONS_KEY,
     JSON.stringify(normalizeTrackedLiftActivations(map)),
   );
+  noteTrackedLiftWrite();
 }
 
 export async function loadWorkoutCollapsed() {
