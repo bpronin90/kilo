@@ -175,6 +175,9 @@ function hasText(root, needle) {
 }
 
 function byLabel(root, label) {
+  if (label instanceof RegExp) {
+    return root.findAll(n => typeof n.props.onPress === 'function' && typeof n.props.accessibilityLabel === 'string' && label.test(n.props.accessibilityLabel))[0];
+  }
   return root.findAll(inst => inst.props.accessibilityLabel === label)[0];
 }
 
@@ -264,6 +267,13 @@ function groupHeaders(root) {
 // Completed-block history is collapsed by default (#758).
 function expandHistory(root) {
   const toggle = byLabel(root, 'Expand recovery history');
+  expect(toggle).toBeDefined();
+  act(() => { toggle.props.onPress(); });
+}
+
+// A focused completed block starts collapsed behind its ended header (#1425).
+function expandEnded(root) {
+  const toggle = byLabel(root, /^Expand ended recovery block/);
   expect(toggle).toBeDefined();
   act(() => { toggle.props.onPress(); });
 }
@@ -2443,6 +2453,7 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
         });
         return c.root;
       })();
+      expandEnded(root);
       const routine = hostById(root, 'recovery-context-routine')[0];
       const title = routine.findAll(n => n.type === 'Text' && n.props.accessibilityLabel === `Baseline: ${longTitle}`)[0];
       expect(title).toBeDefined();
@@ -2922,6 +2933,7 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
         />
       );
     });
+    if (blockOver.completed_at) expandEnded(c.root);
     // The roster summary sits in the collapsed-by-default Lifts disclosure (#1315).
     const toggle = byLabel(c.root, 'Expand lifts');
     if (toggle) act(() => { toggle.props.onPress(); });
@@ -3141,5 +3153,87 @@ describe('AnalyticsRecoverySection — week rows without a scoreable denominator
     const lines = hostTextsIn(hostById(root, 'recovery-scale-note')[0]);
     expect(lines).toEqual(['Week bars run 0–100%. 100% is your baseline: a full return to baseline strength.']);
     expect(lines.join(' ')).not.toMatch(/lift|120%/i);
+  });
+});
+
+// ── #1425: completed mode collapsed, no maintenance navigation ────────────────
+
+describe('AnalyticsRecoverySection — ended block starts collapsed (#1425)', () => {
+  const done = () => block({ id: 'rb-done', baseline_note_title: 'Old Routine', completed_at: '2026-09-01T00:00:00Z' });
+  const mount = (props) => {
+    require('../lib/data/recoverySnapshot')._resetRecoverySnapshotStore();
+    let c;
+    act(() => {
+      c = render.create(<AnalyticsRecoverySection blocks={[done()]} weeks={[week(1, 'note-w1', { block_id: 'rb-done' })]} notes={[note('note-w1', BASELINE_TEXT)]} {...props} />);
+    });
+    return c;
+  };
+
+  test('initial visit: header states ended status, canonical total, week count; no evidence or Manage/Open affordance', () => {
+    const { root } = mount();
+    const header = byLabel(root, /^Expand ended recovery block/);
+    expect(header.props.accessibilityState).toEqual({ expanded: false });
+    expect(hasText(root, 'Ended · 100% total recovery · Week 1')).toBe(true);
+    expect(hasText(root, '1 week · 05-01-2026 to 09-01-2026 · Old Routine')).toBe(true);
+    expect(hostById(root, 'recovery-footer-row')).toHaveLength(0);
+    expect(byLabel(root, /Manage|Open Recovery/i)).toBeUndefined();
+    expandEnded(root);
+    expect(hostById(root, 'recovery-footer-row').length).toBeGreaterThan(0);
+    expect(byLabel(root, /Manage this recovery block|Open Recovery/i)).toBeUndefined();
+    expect(hostById(root, 'recovery-manage-in-log')).toHaveLength(0);
+  });
+
+  test('a collapsed header with no logged week is truthful, never a 0%', () => {
+    require('../lib/data/recoverySnapshot')._resetRecoverySnapshotStore();
+    let c;
+    act(() => { c = render.create(<AnalyticsRecoverySection blocks={[done()]} weeks={[]} notes={[]} />); });
+    expect(hasText(c.root, '0%')).toBe(false);
+    expect(hasText(c.root, '0 weeks')).toBe(true);
+  });
+
+  test('failed notes read with no notes says there is no total; stale stays qualified', () => {
+    const failed = mount({ notes: [], notesError: new Error('x') }).root;
+    expect(hasText(failed, 'Workout notes couldn’t be loaded, so there is no total to show.')).toBe(true);
+    expect(hasText(failed, '%')).toBe(false);
+    const stale = mount({ stateStale: true }).root;
+    expect(hasText(stale, 'From last saved data')).toBe(true);
+  });
+
+  test('active -> completed without remount collapses; reopen and complete again collapses again', () => {
+    require('../lib/data/recoverySnapshot')._resetRecoverySnapshotStore();
+    const weeks = [week(1, 'note-w1', { block_id: 'rb-done' })];
+    const notes = [note('note-w1', BASELINE_TEXT)];
+    const mk = (b) => <AnalyticsRecoverySection blocks={[b]} weeks={weeks} notes={notes} />;
+    let c;
+    act(() => { c = render.create(mk({ ...done(), completed_at: null })); });
+    expect(hostById(c.root, 'recovery-footer-row').length).toBeGreaterThan(0);
+    expect(byLabel(c.root, /ended recovery block/)).toBeUndefined();
+    act(() => { c.update(mk(done())); });
+    expect(hostById(c.root, 'recovery-footer-row')).toHaveLength(0);
+    expandEnded(c.root);
+    act(() => { c.update(mk({ ...done(), completed_at: null })); });
+    act(() => { c.update(mk({ ...done(), completed_at: '2026-09-09T00:00:00Z' })); });
+    expect(byLabel(c.root, /^Expand ended recovery block/)).toBeDefined();
+    expect(hostById(c.root, 'recovery-footer-row')).toHaveLength(0);
+  });
+
+  test('picking a history row opens that block only; the previous block returns collapsed', () => {
+    require('../lib/data/recoverySnapshot')._resetRecoverySnapshotStore();
+    const a = done();
+    const b = block({ id: 'rb-b', baseline_note_title: 'Other Routine', completed_at: '2026-05-01T00:00:00Z' });
+    let c;
+    act(() => {
+      c = render.create(<AnalyticsRecoverySection blocks={[a, b]} weeks={[week(1, 'note-w1', { block_id: 'rb-done' }), week(1, 'note-w2', { id: 'rw-b', block_id: 'rb-b' })]} notes={[note('note-w1', BASELINE_TEXT), note('note-w2', BASELINE_TEXT)]} />);
+    });
+    expect(hostById(c.root, 'recovery-footer-row')).toHaveLength(0);
+    expandHistory(c.root);
+    act(() => { byLabel(c.root, /^View recovery evidence for Other Routine/).props.onPress(); });
+    expect(hostById(c.root, 'recovery-footer-row').length).toBeGreaterThan(0);
+    act(() => { byLabel(c.root, /^View recovery evidence for Old Routine/).props.onPress(); });
+    act(() => { byLabel(c.root, /^Collapse ended recovery block/).props.onPress(); });
+    act(() => { byLabel(c.root, /^View recovery evidence for Other Routine/).props.onPress(); });
+    act(() => { byLabel(c.root, /^Collapse ended recovery block/).props.onPress(); });
+    act(() => { byLabel(c.root, /^View recovery evidence for Old Routine/).props.onPress(); });
+    expect(hostById(c.root, 'recovery-footer-row').length).toBeGreaterThan(0);
   });
 });

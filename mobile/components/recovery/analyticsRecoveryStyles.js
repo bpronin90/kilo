@@ -247,16 +247,6 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  manageLinkRow: {
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: kua ? kua.surfaceBorder : colors.divider,
-  },
-  manageLinkText: {
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
-    fontWeight: '700',
-    color: kua ? kua.primary : colors.accentText,
-  },
   paceInfoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -309,6 +299,21 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   historySummaryEmphasis: {
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
+  },
+  endedPanel: {
+    borderRadius: GEOMETRY['radius-2xl'],
+    borderWidth: 1,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    overflow: 'hidden',
+  },
+  endedSummary: {
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600' }),
+    color: kua ? kua.onSurface : colors.text,
+  },
+  endedMeta: {
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    marginTop: 2,
   },
   historyBlockGroup: {
   },

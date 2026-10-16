@@ -3,7 +3,7 @@
 // Analytics holds NO maintenance control: Manage block lives in Log (see
 // log-recovery-manage.test.js). This file pins the strength week rows as the sole
 // week selector, history focus, per-block selection scoping, and that the only
-// path to maintenance is one quiet `Manage in Log` link carrying the exact block id.
+// Analytics carries no Manage/Open navigation at all (#1425).
 
 import React from 'react';
 import render, { act } from 'react-test-renderer';
@@ -63,6 +63,10 @@ const host = (root, id) => root.findAll(n => typeof n.type === 'string' && n.pro
 const byLabel = (root, l) => root.findAll(n => n.props && n.props.accessibilityLabel === l)[0];
 const texts = (root) => root.findAllByType('Text').map(t => [].concat(t.props.children).join(''));
 const summary = (root) => host(root, 'recovery-strength-summary')[0].props.accessibilityLabel;
+// A focused ended block starts collapsed behind its header (#1425).
+const expandEnded = (root) => act(() => {
+  root.findAll(n => typeof n.props.onPress === 'function' && /^Expand ended recovery block/.test(n.props.accessibilityLabel || ''))[0].props.onPress();
+});
 const pickWeek = (root, n) => press(root, `recovery-strength-week-${n}`);
 const isRow = (n) => typeof n.type !== 'string' && /^recovery-strength-week-\d+$/.test(n.props.testID || '') && n.props.onPress;
 
@@ -76,20 +80,16 @@ describe('Analytics Recovery is read-only (#1315)', () => {
     for (const fn of Object.values(mockLifecycle)) expect(fn).not.toHaveBeenCalled();
   });
 
-  test('one quiet Manage in Log link carries the exact focused block id and writes nothing', () => {
+  test('no Manage in Log link or Open Recovery navigation for any focused block, and nothing is written (#1425)', () => {
     const onNavigate = jest.fn();
     const done = block({ id: 'rb-done', completed_at: '2026-06-01T00:00:00Z', baseline_note_title: 'Old' });
     const c = mount({ blocks: [block(), done], weeks: WEEKS, onNavigate });
-    const links = host(c.root, 'recovery-manage-in-log');
-    expect(links).toHaveLength(1);
-    expect(StyleSheet.flatten(links[0].props.style).minHeight).toBeGreaterThanOrEqual(44);
-    press(c.root, 'recovery-manage-in-log');
-    expect(onNavigate).toHaveBeenLastCalledWith('Log', { kind: 'recovery-manage', blockId: 'rb1' });
-    // Focus the completed block: the link follows the focused block, by id.
+    expect(host(c.root, 'recovery-manage-in-log')).toHaveLength(0);
     act(() => { byLabel(c.root, 'Expand recovery history').props.onPress(); });
     act(() => { byLabel(c.root, `View recovery evidence for Old, completed ${formatDate(done.completed_at)}`).props.onPress(); });
-    press(c.root, 'recovery-manage-in-log');
-    expect(onNavigate).toHaveBeenLastCalledWith('Log', { kind: 'recovery-manage', blockId: 'rb-done' });
+    expect(host(c.root, 'recovery-manage-in-log')).toHaveLength(0);
+    expect(c.root.findAll(n => /Manage|Open Recovery/i.test(String(n.props && n.props.accessibilityLabel || '')))).toHaveLength(0);
+    expect(onNavigate).not.toHaveBeenCalled();
     for (const fn of Object.values(mockLifecycle)) expect(fn).not.toHaveBeenCalled();
   });
 });
@@ -242,7 +242,8 @@ describe('Robustness and single-week selector', () => {
     act(() => { c = render.create(el([A, B])); });
     pickWeek(c.root, 1);
     expect(summary(c.root)).toMatch(/^Week 1: /);
-    act(() => { c.update(el([B])); }); // A disappears: B is focused
+    act(() => { c.update(el([B])); }); // A disappears: B is focused (ended, collapsed)
+    expandEnded(c.root);
     expect(summary(c.root)).toMatch(/^Week 2: /);
     act(() => { c.update(el([A, B])); }); // A returns
     expect(summary(c.root)).toMatch(/^Week 3: /);
@@ -304,6 +305,7 @@ describe('Selection invalidation across every focus transition', () => {
     const bWeeks = [week(1, 'w1', { block_id: 'rb-b' }), week(2, 'w2', { block_id: 'rb-b' })];
     let c;
     act(() => { c = render.create(<AnalyticsRecoverySection blocks={[B]} weeks={bWeeks} notes={NOTES} />); });
+    expandEnded(c.root);
     pickWeek(c.root, 1);
     act(() => { byLabel(c.root, 'Expand recovery history').props.onPress(); });
     act(() => { byLabel(c.root, `View recovery evidence for Old, completed ${formatDate(B.completed_at)}`).props.onPress(); });

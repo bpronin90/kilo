@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, Text, View, useWindowDimensions } from 'react-native';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { Text, View, useWindowDimensions } from 'react-native';
 import { Card } from '../UI';
 import { InfoButton, InfoNote, useInfoExplainer } from '../InfoExplainer';
 import { useTheme } from '../../theme/ThemeContext';
@@ -49,8 +48,6 @@ export function BlockEvidence({
   onSelectWeek = null,
   // Failed notes read (#1306): saved group choices are then unavailable.
   notesError = null,
-  // The only way to change this block from Analytics: a quiet link to Log.
-  onManageInLog = null,
   // The effective 1K selection (resolveOneKSelections), the same one Home's
   // Recovery card reads its Big 3 from (#1351).
   oneKSelections = null,
@@ -236,18 +233,6 @@ export function BlockEvidence({
                 {block.reason}
               </Text>
             </View>
-          ) : null}
-          {onManageInLog ? (
-            <Pressable
-              testID="recovery-manage-in-log"
-              onPress={onManageInLog}
-              style={[styles.contextRow, styles.manageLinkRow]}
-              accessibilityRole="button"
-              accessibilityLabel={`Manage this recovery block in Log: ${routineTitle}`}
-            >
-              <Text style={styles.manageLinkText}>Manage in Log</Text>
-              <MaterialIcons name="chevron-right" size={18} color={kua ? kua.primary : colors.accentText} accessible={false} />
-            </Pressable>
           ) : null}
         </View>
       </Card>

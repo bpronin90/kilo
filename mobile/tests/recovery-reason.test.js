@@ -717,6 +717,10 @@ describe('AnalyticsRecoverySection: completed history carries the reason', () =>
 
   test('the evidence card names the reason for a completed block', () => {
     const root = renderSection([completed({ reason: 'torn hamstring' })]).root;
+    // An ended block starts collapsed (#1425); the evidence card is behind its header.
+    renderer.act(() => {
+      root.findAll(n => typeof n.props.onPress === 'function' && /^Expand ended recovery block/.test(n.props.accessibilityLabel || ''))[0].props.onPress();
+    });
     // #1219: a labelled Reason row ("Reason" + value), no longer one "Reason: …" string.
     expect(hasText(root, 'Reason')).toBe(true);
     expect(hasText(root, 'torn hamstring')).toBe(true);
