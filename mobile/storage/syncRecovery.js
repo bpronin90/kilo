@@ -20,6 +20,7 @@
 // to own.
 
 import { secureStorage as AsyncStorage } from './secureStorage';
+import { NORMALIZATION_APPLY_QUARANTINE_PREFIX } from './entries/keys';
 
 const LAST_SUCCESS_KEY = 'kilo_sync_last_success_at';
 
@@ -260,8 +261,60 @@ export function retryPhase(phase, runner) {
   return runPhase(phase, runner);
 }
 
+// ── unfinished normalization rename (#1402) ──────────────────────────────────
+//
+// A rename's apply intent that can never be replayed blocks note writes, Track
+// toggles and sync. `block` is `{ reason }` while such an intent was observed
+// (by any settle, or a probe) and null once a settle succeeds or it is discarded.
+// Not a sync phase: it is never published as synced/complete.
+let renameBlock = null;
+let renameListeners = [];
+
+export function getUnfinishedRenameBlock() {
+  return renameBlock;
+}
+
+export function setUnfinishedRenameBlock(next) {
+  if ((next?.reason ?? null) === (renameBlock?.reason ?? null)) return;
+  renameBlock = next ? { reason: next.reason } : null;
+  for (const l of renameListeners) {
+    try { l(renameBlock); } catch (e) { console.warn('[syncRecovery] listener error', e); }
+  }
+}
+
+export function subscribeUnfinishedRename(listener) {
+  if (typeof listener !== 'function') return () => {};
+  renameListeners.push(listener);
+  return () => { renameListeners = renameListeners.filter((l) => l !== listener); };
+}
+
+const quarantinedRaw = (held) => {
+  try { return JSON.parse(held).raw; } catch { return undefined; }
+};
+
+// Preserve the exact raw intent under the first free `<prefix><n>`; an existing
+// slot is never overwritten. A slot already holding this exact raw (an earlier
+// attempt interrupted before the active key was removed) is reused, so a retry
+// leaves one copy. Verified by read-back: a write that cannot be read is a failure.
+export async function quarantineApplyIntent(raw, reason) {
+  for (let n = 1; n < 1000; n += 1) {
+    const key = `${NORMALIZATION_APPLY_QUARANTINE_PREFIX}${n}`;
+    const held = await AsyncStorage.getItem(key);
+    if (held != null) {
+      if (quarantinedRaw(held) === raw) return key;
+      continue;
+    }
+    await AsyncStorage.setItem(key, JSON.stringify({ version: 1, quarantined_at: new Date().toISOString(), reason, raw }));
+    if (quarantinedRaw(await AsyncStorage.getItem(key)) !== raw) throw new Error('The unfinished rename could not be preserved.');
+    return key;
+  }
+  throw new Error('Too many preserved unfinished renames.');
+}
+
 // Test/teardown helper: clear all state and listeners.
 export function __resetSyncQueue() {
+  renameBlock = null;
+  renameListeners = [];
   // Claim rather than zero the tokens: a run left over from the previous test
   // must not be able to settle a phase in the next one, and tokens are never
   // reused because the counter keeps advancing.

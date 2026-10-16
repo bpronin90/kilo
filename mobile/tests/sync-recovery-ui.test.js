@@ -1062,3 +1062,159 @@ describe('cloud bootstrap is gated on recovery reconciliation', () => {
     expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_BLOCK_WEEKS_KEY))[0].deleted_at).toBeTruthy();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Unfinished rename recovery (#1402): found, explained, confirmed, discarded
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CloudSyncRecovery: unfinished rename recovery (#1402)', () => {
+  const USER = { id: 'u_1', email: 'me@x.co' };
+  const INTENT_KEY = 'kilo_normalization_apply_intent_v1';
+  const QUARANTINE = 'kilo_normalization_apply_quarantine_v1_';
+  const CORRUPT = '{not json';
+  const DISCARD = 'Discard unfinished rename';
+  const quarantined = async () => (await AsyncStorage.getAllKeys()).filter(k => k.startsWith(QUARANTINE));
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    entries.setStorageMode('local');
+  });
+
+  function renderPanel() {
+    let tree;
+    act(() => { tree = renderer.create(React.createElement(CloudSyncRecovery, { user: USER })); });
+    return tree;
+  }
+  const press = async (tree, title) => {
+    await act(async () => { await tree.root.findByProps({ title }).props.onPress(); });
+    await flush();
+  };
+  const has = (tree, title) => tree.root.findAllByProps({ title }).length > 0;
+  const status = (tree) => tree.root.findByProps({ accessibilityLabel: 'Unfinished rename status' }).props.children;
+
+  test('a corrupt intent is explained and reachable without a cloud consent grant', async () => {
+    fetchConsentStatus.mockResolvedValue({ allowed: false, code: DENIAL_CODES.CONSENT_REQUIRED });
+    await AsyncStorage.setItem(INTENT_KEY, CORRUPT);
+    const tree = renderPanel();
+    await flush();
+    await flush();
+    expect(has(tree, DISCARD)).toBe(true);
+    const copy = tree.root.findByProps({ accessibilityLabel: 'Unfinished rename' }).props.children;
+    expect(copy).toMatch(/interrupted/);
+    expect(copy).toMatch(/current notes and tracked lifts stay exactly as they are/);
+    // No synced/complete claim and no sync controls without a grant.
+    expect(has(tree, 'Sync Now')).toBe(false);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).not.toBe(SYNC_STATUS.COMPLETE);
+  });
+
+  test('Cancel writes nothing', async () => {
+    await AsyncStorage.setItem(INTENT_KEY, CORRUPT);
+    const tree = renderPanel();
+    await flush();
+    await flush();
+    await press(tree, DISCARD);
+    expect(has(tree, 'Cancel')).toBe(true);
+    expect(has(tree, DISCARD)).toBe(false);
+    await press(tree, 'Cancel');
+    expect(has(tree, DISCARD)).toBe(true);
+    expect(await AsyncStorage.getItem(INTENT_KEY)).toBe(CORRUPT);
+    expect(await quarantined()).toEqual([]);
+  });
+
+  test('confirming preserves the record, retires the intent and says nothing about the cloud', async () => {
+    await AsyncStorage.setItem(INTENT_KEY, CORRUPT);
+    const tree = renderPanel();
+    await flush();
+    await flush();
+    await press(tree, DISCARD);
+    await press(tree, 'Discard');
+    await flush();
+    expect(await AsyncStorage.getItem(INTENT_KEY)).toBeNull();
+    const slots = await quarantined();
+    expect(slots).toHaveLength(1);
+    expect(JSON.parse(await AsyncStorage.getItem(slots[0])).raw).toBe(CORRUPT);
+    expect(status(tree)).toMatch(/discarded/);
+    expect(status(tree)).toMatch(/Cloud Sync has not run/);
+    expect(has(tree, DISCARD)).toBe(false);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).not.toBe(SYNC_STATUS.COMPLETE);
+  });
+
+  test('a reconcilable intent is never offered for discard', async () => {
+    await AsyncStorage.setItem(INTENT_KEY, JSON.stringify({
+      version: 1, id: 'i1', notes: [], tracking: { lifts: {}, activations: {} }, before: { lifts: {}, activations: {} },
+    }));
+    const tree = renderPanel();
+    await flush();
+    await flush();
+    expect(has(tree, DISCARD)).toBe(false);
+  });
+
+  test('a transient read failure is not reported as an unreconcilable rename', async () => {
+    await AsyncStorage.setItem(INTENT_KEY, CORRUPT);
+    const realGet = AsyncStorage.getItem.getMockImplementation();
+    AsyncStorage.getItem.mockImplementation(key => (key === INTENT_KEY ? Promise.reject(new Error('io')) : realGet(key)));
+    const tree = renderPanel();
+    await flush();
+    await flush();
+    expect(has(tree, DISCARD)).toBe(false);
+    AsyncStorage.getItem.mockImplementation(realGet);
+  });
+
+  test('a stale confirmation (the record was replaced) discards nothing and says so', async () => {
+    await AsyncStorage.setItem(INTENT_KEY, CORRUPT);
+    const tree = renderPanel();
+    await flush();
+    await flush();
+    await press(tree, DISCARD);
+    await AsyncStorage.setItem(INTENT_KEY, '{a different record');
+    await press(tree, 'Discard');
+    await flush();
+    expect(status(tree)).toMatch(/changed, so nothing was discarded/);
+    expect(await AsyncStorage.getItem(INTENT_KEY)).toBe('{a different record');
+    expect(await quarantined()).toEqual([]);
+  });
+
+  test('a failed quarantine is reported, keeps the intent and keeps offering the action', async () => {
+    await AsyncStorage.setItem(INTENT_KEY, CORRUPT);
+    const tree = renderPanel();
+    await flush();
+    await flush();
+    await press(tree, DISCARD);
+    const realSet = AsyncStorage.setItem.getMockImplementation();
+    AsyncStorage.setItem.mockImplementation((key, value) => (key.startsWith(QUARANTINE)
+      ? Promise.reject(new Error('disk full'))
+      : realSet(key, value)));
+    await press(tree, 'Discard');
+    AsyncStorage.setItem.mockImplementation(realSet);
+    expect(status(tree)).toMatch(/Could not discard/);
+    expect(await AsyncStorage.getItem(INTENT_KEY)).toBe(CORRUPT);
+    expect(has(tree, DISCARD)).toBe(true);
+  });
+
+  test('stays reachable while a cloud deletion is pending', async () => {
+    fetchConsentStatus.mockResolvedValue({ allowed: false, code: DENIAL_CODES.HEALTH_DATA_DELETION_PENDING });
+    await AsyncStorage.setItem(INTENT_KEY, CORRUPT);
+    const tree = renderPanel();
+    await flush();
+    await flush();
+    expect(has(tree, DISCARD)).toBe(true);
+  });
+});
+
+describe('unfinished rename block store (#1402)', () => {
+  test('publishes only changes, never touches the sync phases, and unsubscribes', () => {
+    const { getUnfinishedRenameBlock, setUnfinishedRenameBlock, subscribeUnfinishedRename } = require('../storage/syncRecovery');
+    const seen = [];
+    const unsubscribe = subscribeUnfinishedRename(b => seen.push(b));
+    setUnfinishedRenameBlock({ reason: 'invalid' });
+    setUnfinishedRenameBlock({ reason: 'invalid' });
+    expect(getUnfinishedRenameBlock()).toEqual({ reason: 'invalid' });
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.IDLE);
+    setUnfinishedRenameBlock(null);
+    unsubscribe();
+    setUnfinishedRenameBlock({ reason: 'diverged' });
+    expect(seen).toEqual([{ reason: 'invalid' }, null]);
+    __resetSyncQueue();
+    expect(getUnfinishedRenameBlock()).toBeNull();
+  });
+});

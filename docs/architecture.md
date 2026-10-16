@@ -787,6 +787,16 @@ backup restore, sync write-back, migration, purge) settles a pending intent firs
 the adapter of the storage mode current at that moment, refusing its own write if the
 intent cannot be reconciled (skipped while the device key is latched, so a #1186 recovery
 restore can still replace everything); the stamp is stripped once the intent completes.
+An intent that can never be replayed (unparseable or structurally invalid JSON, or a note that matches
+neither side while a recorded Track key matches neither its before nor after value) is distinguished
+from a transient read/write failure and published through the sync-recovery store
+(`getUnfinishedRenameBlock`); the Cloud Sync recovery panel (reachable without a consent grant)
+re-inspects it on mount and offers **Discard unfinished rename** only for a currently proven
+one. The discard runs under recovery guard → tracked-lift queue → notebook → local-write without settling
+first, revalidates the exact raw record, preserves it in the encrypted device-local, unsynced,
+unbacked-up `kilo_normalization_apply_quarantine_v1_<n>` (never overwritten; an interrupted attempt reuses
+its copy), and only then removes the active key. Note text and both Track maps are never written; it does not
+mark any sync phase complete, and it refuses while the device key is latched.
 Lock order is recovery guard → tracked-lift queue → notebook → local-write, and no
 local-write holder takes the notebook lock. The hook runs the apply as one tracked-lift
 queue entry under the recovery guard every sync pass holds, so toggles and passes see it
@@ -1002,6 +1012,7 @@ chip is gone; nothing in the active path produces or reads `rep_drop_off_flags`.
 | `kilo_tracked_lifts` | JSON object keyed by canonical exercise key for global Track toggles. Keys are canonicalized at an exercise's next toggle, so a legacy alias key stays readable until then |
 | `kilo_tracked_lift_activations` | JSON object keyed by canonical exercise key holding the tracked-span activation record for each currently tracked exercise (`anchor`, `at`, `witness`). A sibling of `kilo_tracked_lifts`, never folded into it; a record never outlives the flag it belongs to, and a flag with no record is legacy boolean-only state that keeps full-history progression |
 | `kilo_normalization_apply_intent_v1` | Present only while a normalization apply's commit is unfinished (#1395): the renamed note ids with their expected/next texts and the resulting `tracked_lifts` / activation maps. Rolled forward before the next apply, Track write, tracked-lift load, or sync pass, then removed. Device-local; not synced or backed up |
+| `kilo_normalization_apply_quarantine_v1_<n>` | The exact raw record of an unreconcilable apply intent the user discarded (#1402), kept as evidence: `{version, quarantined_at, reason, raw}`. Written before the active intent is removed; never overwritten. Device-local, encrypted; not synced or backed up; wiped with the device's other `kilo_` keys |
 | `kilo_user_profile` | Optional native calorie-profile object with `height_cm`, `date_of_birth`, `sex`, `activity_level`, and `saved_at` |
 | `kilo_workout_sessions` | Legacy JSON array of native structured workout sessions, retained only as a migration source |
 | `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises`, `one_k_exercises`, `exercise_classifications`, `skip_markers`, `attendance_flags`, and `session_checkins` fields; legacy entries may still carry stale `rep_drop_off_flags`. Never carries parser output: a `derived_sections` field is stripped on every write and purged once from older notebooks (#813) |

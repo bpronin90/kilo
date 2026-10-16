@@ -1183,3 +1183,132 @@ describe('Track-on mints from the current notebook (#1403)', () => {
     expect((await Storage.loadTrackedLiftActivations()).bench.anchor).toBe(3);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// An unreconcilable apply intent blocks the Track queue until discarded (#1402)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('discarding an unreconcilable rename intent (#1402)', () => {
+  const INTENT_KEY = 'kilo_normalization_apply_intent_v1';
+  const QUARANTINE = 'kilo_normalization_apply_quarantine_v1_';
+  const AUTH = { id: 'ra', title: 'Auth', raw_text: 'Monday\n-DB Bench Press 3x6-8\n60 8' };
+  const TARGET = { id: 'rt', title: 'Upper', raw_text: 'Monday\n-DB Bench Press 3x6-8, step up\n60 8\n60 8' };
+  const NEXT = 'Monday\n-DB Bench Press 3x6-8\n60 8\n60 8\n-- step up';
+  const notebook = () => parseWorkoutNote(`${AUTH.raw_text}\n---\n${TARGET.raw_text}`).sections;
+  const CORRUPT = '{not json';
+
+  // The local-only apply stamp is spent evidence the discard cleans up; nothing else may move.
+  const snapshot = async () => ({
+    notes: (await Storage.loadWorkoutNotesRaw()).map(({ normalization_apply_id: _stamp, ...n }) => n),
+    lifts: await Storage.loadTrackedLifts(),
+    activations: await Storage.loadTrackedLiftActivations(),
+  });
+
+  // Leaves the journaled commit unfinished (so the "may be pending" flag is
+  // set), then corrupts the durable record: nothing can ever replay it.
+  async function stuckRename() {
+    await Storage.saveWorkoutNoteItem(AUTH);
+    await Storage.saveWorkoutNoteItem(TARGET);
+    const ref = renderHook();
+    await settle();
+    await act(async () => { await ref.current.toggle('DB Bench Press 3x6-8, step up', notebook()); });
+    await settle();
+    const realSetItem = AsyncStorage.setItem.getMockImplementation();
+    AsyncStorage.setItem.mockImplementation((key, value) => (key === 'kilo_tracked_lift_activations'
+      ? Promise.reject(new Error('disk full'))
+      : realSetItem(key, value)));
+    await act(async () => {
+      await applyWorkoutNoteTextBatch({
+        authority: { id: 'ra', expected_raw_text: AUTH.raw_text, accepted_raw_texts: [] },
+        items: [{ id: 'rt', expected_raw_text: TARGET.raw_text, next_raw_text: NEXT }],
+      });
+    });
+    AsyncStorage.setItem.mockImplementation(realSetItem);
+    expect(await AsyncStorage.getItem(INTENT_KEY)).not.toBeNull();
+    await AsyncStorage.setItem(INTENT_KEY, CORRUPT);
+    return ref;
+  }
+
+  function cloudAdapterWithPass() {
+    const sync = jest.fn(async () => ({ ok: true }));
+    jest.spyOn(Storage, 'getStorageAdapter').mockReturnValue({ mode: 'cloud', sync });
+    return sync;
+  }
+
+  test('toggles, note saves and the sync gate are all blocked; discard clears them without touching state', async () => {
+    const ref = await stuckRename();
+    const before = await snapshot();
+
+    // Blocked: a toggle rejects and writes nothing.
+    let toggleError = null;
+    await act(async () => { await ref.current.toggle('squat', HISTORY).catch((e) => { toggleError = e; }); });
+    await settle();
+    expect(toggleError).toBeTruthy();
+    expect(await snapshot()).toEqual(before);
+
+    // Blocked: a note save refuses.
+    await expect(Storage.saveWorkoutNoteItem({ id: 'z', title: 'Z', raw_text: 'Friday\n-Row' })).rejects.toThrow('unfinished routine rename');
+
+    // Blocked: a sync pass fails (reads and pushes nothing) and is never published as complete.
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    const sync = cloudAdapterWithPass();
+    await act(async () => { await maybeSyncCloud(); });
+    await settle();
+    expect(sync).not.toHaveBeenCalled();
+    expect(syncStatus()).toBe(SYNC_STATUS.FAILED);
+
+    // Discard, through the hook queue: nothing but the active intent changes.
+    const { discardUnfinishedRenameWithTracking } = require('../hooks/entries/trackedLiftHooks');
+    let result;
+    await act(async () => { result = await discardUnfinishedRenameWithTracking(CORRUPT); });
+    await settle();
+    expect(result).toEqual({ outcome: 'discarded' });
+    expect(await snapshot()).toEqual(before);
+    expect(await AsyncStorage.getItem(INTENT_KEY)).toBeNull();
+    const slots = (await AsyncStorage.getAllKeys()).filter(k => k.startsWith(QUARANTINE));
+    expect(slots).toHaveLength(1);
+    expect(JSON.parse(await AsyncStorage.getItem(slots[0])).raw).toBe(CORRUPT);
+    // Discard itself claims nothing about the cloud.
+    expect(syncStatus()).toBe(SYNC_STATUS.FAILED);
+    expect(sync).not.toHaveBeenCalled();
+
+    // Resumed: the toggle, the note save and a consent-authorized pass all proceed.
+    await act(async () => { await ref.current.toggle('squat', HISTORY); });
+    await settle();
+    expect(ref.current.trackedLifts).toEqual({ ...before.lifts, squat: true });
+    await Storage.saveWorkoutNoteItem({ id: 'z', title: 'Z', raw_text: 'Friday\n-Row' });
+    await act(async () => { await maybeSyncCloud(); });
+    await settle();
+    // (the resumed toggle also requests a pass in cloud mode)
+    expect(sync).toHaveBeenCalled();
+    expect(syncStatus()).toBe(SYNC_STATUS.COMPLETE);
+    expect((await Storage.loadWorkoutNotesRaw()).find(n => n.id === 'rt').raw_text).toBe(NEXT);
+  });
+
+  test('a stale discard (the record was replaced) leaves everything blocked and untouched', async () => {
+    await stuckRename();
+    const before = await snapshot();
+    const { discardUnfinishedRenameWithTracking } = require('../hooks/entries/trackedLiftHooks');
+    await AsyncStorage.setItem(INTENT_KEY, '{another bad record');
+    let result;
+    await act(async () => { result = await discardUnfinishedRenameWithTracking(CORRUPT); });
+    expect(result).toEqual({ outcome: 'stale' });
+    expect(await AsyncStorage.getItem(INTENT_KEY)).toBe('{another bad record');
+    expect(await snapshot()).toEqual(before);
+    expect((await AsyncStorage.getAllKeys()).some(k => k.startsWith(QUARANTINE))).toBe(false);
+  });
+
+  test('a discard queued behind a toggle runs after it and is not deadlocked by the blocked settle', async () => {
+    const ref = await stuckRename();
+    const { discardUnfinishedRenameWithTracking } = require('../hooks/entries/trackedLiftHooks');
+    let outcome;
+    await act(async () => {
+      const blocked = ref.current.toggle('squat', HISTORY).catch(() => 'rejected');
+      const discarded = discardUnfinishedRenameWithTracking(CORRUPT);
+      outcome = await Promise.all([blocked, discarded]);
+    });
+    await settle();
+    expect(outcome[0]).toBe('rejected');
+    expect(outcome[1]).toEqual({ outcome: 'discarded' });
+  });
+});
