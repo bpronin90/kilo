@@ -12163,7 +12163,8 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
     // Exactly one lifecycle action is visible by default.
     expect(byLabel(root, 'Complete Week 3')).toBeTruthy();
     expect(byLabel(root, 'Add next recovery week')).toBeUndefined();
-    expect(byLabel(root, 'End recovery block')).toBeUndefined();
+    // End recovery is visible in the active card without opening Manage block (#1424).
+    expect(byLabel(root, 'End recovery block')).toBeTruthy();
     expect(byLabel(root, 'Unlink Week 3')).toBeUndefined();
     expect(inclusionRow(root)).toBeUndefined();
   });
@@ -12353,7 +12354,7 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
     expect(trigger(root).props.accessibilityLabel).toBe('Manage recovery block: Upper/Lower');
     expect(trigger(root).props.accessibilityState).toEqual({ expanded: false });
     expect(byLabel(root, 'Unlink Week 1')).toBeUndefined();
-    expect(byLabel(root, 'End recovery block')).toBeUndefined();
+    expect(byLabel(root, 'End recovery block')).toBeTruthy();
     expect(inclusionRow(root)).toBeUndefined();
 
     // And it still opens normally, now scoped to the new block.
