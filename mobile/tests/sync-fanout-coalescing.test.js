@@ -1024,6 +1024,8 @@ describe('settings writers vs the ack write-back (#1399)', () => {
     }
   };
   const remote = (cloud, table) => cloud.remoteRow(table, SELF);
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const ms = (t) => (t == null ? null : Date.parse(t));
   const goal = (target) => ({
     target_weight: target, target_date: '2026-12-01', start_weight: 190, start_date: '2026-06-01',
   });
@@ -1129,7 +1131,9 @@ describe('settings writers vs the ack write-back (#1399)', () => {
         first: () => mergeUserProfile({ display_name: 'B' }),
         during: () => [Storage.saveUserProfile({ display_name: 'D', unit_system: 'kg' })],
       });
-      expect((await Storage.loadUserProfile()).display_name).toBe('D');
+      expect(await Storage.loadUserProfile()).toEqual(
+        expect.objectContaining({ display_name: 'D', unit_system: 'kg' }),
+      );
       expect(remote(cloud, SYNC_TABLES.USER_PROFILE)).toEqual(
         expect.objectContaining({ display_name: 'D', unit_system: 'kg' }),
       );
@@ -1142,7 +1146,9 @@ describe('settings writers vs the ack write-back (#1399)', () => {
         during: () => [Storage.clearUserProfile()],
       });
       expect(await Storage.loadUserProfile()).toBeNull();
-      expect(remote(cloud, SYNC_TABLES.USER_PROFILE).display_name).toBeNull();
+      expect(remote(cloud, SYNC_TABLES.USER_PROFILE)).toEqual(
+        expect.objectContaining({ display_name: null, unit_system: null }),
+      );
     });
 
     it('rapid profile edits keep the last one', async () => {
@@ -1270,6 +1276,45 @@ describe('settings writers vs the ack write-back (#1399)', () => {
     });
   });
 
+  describe('active deload note timestamps', () => {
+    const base = { table: SYNC_TABLES.USER_HEALTH_PROFILE, key: WORKOUT_DELOAD_NOTE_KEY };
+    const stored = async () => JSON.parse(await AsyncStorage.getItem(WORKOUT_DELOAD_NOTE_KEY));
+
+    it('updated_at moves with raw_text and saved_at unchanged', async () => {
+      let before;
+      const r = await run({
+        ...base, first: async () => { before = await Storage.saveDeloadNote('d1'); await sleep(5); },
+        during: () => [Storage.saveDeloadNote('d1')],
+      });
+      const note = await stored();
+      expect(note.raw_text).toBe('d1');
+      expect(note.saved_at).toBe(before.saved_at);
+      expect(note.updated_at).not.toBe(before.updated_at);
+      const row = remote(r.cloud, base.table);
+      expect(ms(row.current_deload_note_saved_at)).toBe(ms(note.saved_at));
+      expect(ms(row.current_deload_note_updated_at)).toBe(ms(note.updated_at));
+    });
+
+    it('saved_at and updated_at both move (re-generated deload, same text)', async () => {
+      let before;
+      let after;
+      const r = await run({
+        ...base, first: async () => { before = await Storage.saveDeloadNote('d1'); await sleep(5); },
+        during: () => [
+          Storage.clearDeloadNote().then(() => Storage.saveDeloadNote('d1')).then((n) => { after = n; }),
+        ],
+      });
+      const note = await stored();
+      expect(note.raw_text).toBe('d1');
+      expect(note.saved_at).toBe(after.saved_at);
+      expect(note.saved_at).not.toBe(before.saved_at);
+      expect(note.updated_at).toBe(after.updated_at);
+      const row = remote(r.cloud, base.table);
+      expect(ms(row.current_deload_note_saved_at)).toBe(ms(after.saved_at));
+      expect(ms(row.current_deload_note_updated_at)).toBe(ms(after.updated_at));
+    });
+  });
+
   describe('feature_toggles', () => {
     const toggles = [
       ['weight_date_edit_enabled', WEIGHT_DATE_EDIT_KEY, 'saveWeightDateEditEnabled', 'loadWeightDateEditEnabled'],
@@ -1341,6 +1386,42 @@ describe('settings writers vs the ack write-back (#1399)', () => {
       expect(remote(r.cloud, base.table).target_weight).toBe(170);
     });
 
+    const GOAL_V1 = { ...goal(175), goal_json: { k: 'v1' } };
+    const fieldCases = [
+      ['target_date', { target_date: '2027-01-15' }],
+      ['start_weight', { start_weight: 200 }],
+      ['start_date', { start_date: '2026-07-04' }],
+      ['goal_json', { goal_json: { k: 'v2' } }],
+    ];
+    it.each(fieldCases)('%s edit with target_weight unchanged lands and uploads', async (field, patch) => {
+      const r = await run({
+        ...base,
+        setup: () => Storage.saveWeightGoal({ ...goal(180), goal_json: { k: 'v0' } }),
+        first: () => Storage.saveWeightGoal(GOAL_V1),
+        during: () => [Storage.saveWeightGoal({ ...GOAL_V1, ...patch })],
+      });
+      const durable = await Storage.loadWeightGoal();
+      const row = remote(r.cloud, base.table);
+      expect(durable.target_weight).toBe(175);
+      expect(row.target_weight).toBe(175);
+      expect(durable[field]).toEqual(patch[field]);
+      expect(row[field]).toEqual(patch[field]);
+      expect(ms(row.saved_at)).toBe(ms(durable.saved_at));
+    });
+
+    it('saved_at (re-stamped by the write) with every other field unchanged lands and uploads', async () => {
+      let v1;
+      const r = await run({
+        ...base,
+        setup: () => Storage.saveWeightGoal(GOAL_V1),
+        first: async () => { v1 = await Storage.saveWeightGoal(GOAL_V1); await sleep(5); },
+        during: () => [Storage.saveWeightGoal(GOAL_V1)],
+      });
+      const durable = await Storage.loadWeightGoal();
+      expect(durable.saved_at).not.toBe(v1.saved_at);
+      expect(ms(remote(r.cloud, base.table).saved_at)).toBe(ms(durable.saved_at));
+    });
+
     it('goal clear lands and uploads as a delete', async () => {
       const r = await run({
         ...base,
@@ -1373,6 +1454,39 @@ describe('settings writers vs the ack write-back (#1399)', () => {
       expect(list.map((x) => [x.id, x.raw_text])).toEqual([['dh_1', 'one-v2'], ['dh_2', 'two-v2']]);
       expect(r.cloud.remoteRow(base.table, 'dh_1').raw_text).toBe('one-v2');
       expect(r.cloud.remoteRow(base.table, 'dh_2').raw_text).toBe('two-v2');
+    });
+
+    it.each([
+      ['date', { date: '2026-07-01' }],
+      ['saved_at', { saved_at: '2026-07-01T09:30:00.000Z' }],
+    ])('%s edit with raw_text unchanged lands and uploads', async (field, patch) => {
+      const r = await run({
+        ...base, setup, first,
+        during: () => [Storage.updateDeloadHistory('dh_1', patch)],
+      });
+      const row = (await Storage.loadDeloadHistory()).find((x) => x.id === 'dh_1');
+      const up = r.cloud.remoteRow(base.table, 'dh_1');
+      expect(row.raw_text).toBe('one-v1');
+      expect(up.raw_text).toBe('one-v1');
+      const norm = (v) => (field === 'saved_at' ? ms(v) : v);
+      expect(norm(row[field])).toBe(norm(patch[field]));
+      expect(norm(up[field])).toBe(norm(patch[field]));
+    });
+
+    it('record_json metadata (session_count, completed_at) with raw_text unchanged lands and uploads', async () => {
+      const patch = { session_count: 7, completed_at: '2026-07-02T11:00:00.000Z' };
+      const r = await run({
+        ...base, setup,
+        first: () => Storage.updateDeloadHistory('dh_1', {
+          raw_text: 'one-v1', session_count: 3, completed_at: '2026-07-01T11:00:00.000Z',
+        }),
+        during: () => [Storage.updateDeloadHistory('dh_1', patch)],
+      });
+      const row = (await Storage.loadDeloadHistory()).find((x) => x.id === 'dh_1');
+      const up = r.cloud.remoteRow(base.table, 'dh_1');
+      expect(row).toEqual(expect.objectContaining({ raw_text: 'one-v1', ...patch }));
+      expect(up.raw_text).toBe('one-v1');
+      expect(up.record_json).toEqual(expect.objectContaining(patch));
     });
 
     it('a delete is not resurrected and uploads as a tombstone', async () => {
