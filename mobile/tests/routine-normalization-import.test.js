@@ -883,6 +883,73 @@ describe('owner descriptor examples apply through the batch write (#1383, compac
   });
 });
 
+describe('post-prescription text is a descriptor in authority names and targets (#1394)', () => {
+  const AUTH = { id: 'a1394', title: 'Lower', raw_text: 'Monday\n-Single-Leg RDL 2x8 each leg\n- 20 8,8\n-Squat 5/3/1 3x5 heavy\n-Squat\n-Plank 3x30s each side\n-Lat Pulldown 2x10-12 (pack shoulder)\n-Row\n-Hold 3x30s2 sides\nCore: Dead Bug 3x10 slow\n-Bike 5 min easy' };
+  const ORIG = 'Monday\n+LIFTING\n-Single-Leg RDL 2x8 each leg, light\n25 8,8\n-- existing note\n- 30 8 *PR\n-Squat 5/3/1 3x5 heavy\n- 185 5\n';
+  const OUT = 'Monday\n+LIFTING\n-Single-Leg RDL 2x8\n25 8,8\n-- existing note\n- 30 8 *PR\n-- each leg, light\n-Squat 5/3/1 3x5\n- 185 5\n-- heavy\n';
+  const TARGET = { id: 't1394', title: 'Lower', raw_text: ORIG };
+  const snap = snapshotOf(AUTH, [TARGET]);
+  const RDL = '-Single-Leg RDL 2x8 each leg, light';
+  const SQUAT = '-Squat 5/3/1 3x5 heavy';
+  const preview = choices => buildNormalizationPreview(replyFor(snap, choices), snap, [AUTH, TARGET]);
+
+  test('authority names exclude the prescription and everything after it; names without one, numbers before it and unsupported splits are unchanged', () => {
+    expect(buildHeaderCatalog(AUTH, [TARGET]).names).toEqual([
+      'Single-Leg RDL', 'Squat 5/3/1', 'Squat', 'Plank', 'Lat Pulldown', 'Row', 'Hold 3x30s2 sides', 'Core: Dead Bug', 'Bike 5 min easy',
+    ]);
+    expect(snap.catalog.headers.map(h => h.raw)).toEqual([RDL, SQUAT]);
+    // "-Bike 5 min" would declare a timed row the original doesn't; a target edit can't split it either.
+    expect(planFor('-Bike 5 min easy', { name: 'Bike', descriptor: 'easy' }).ok).toBe(false);
+  });
+
+  test('the RDL target accepts the authority name with its post-prescription descriptor and lands byte-exactly through the batch write', async () => {
+    const p = preview({ [RDL]: 'Single-Leg RDL | each leg, light', [SQUAT]: 'Squat 5/3/1 | heavy' });
+    expect(p.rejected).toEqual([]);
+    expect(p.mappings.map(m => [m.oldHeader, m.newHeader, m.descriptor])).toEqual([
+      [RDL, '-Single-Leg RDL 2x8', 'each leg, light'],
+      [SQUAT, '-Squat 5/3/1 3x5', 'heavy'],
+    ]);
+    const items = p.entries.map(entry => ({ id: entry.id, expected_raw_text: entry.snapshot, next_raw_text: applySelectedChanges(entry) }));
+    expect(items).toEqual([{ id: 't1394', expected_raw_text: ORIG, next_raw_text: OUT }]);
+    await Storage.replaceWorkoutNotesRaw([]);
+    for (const note of [AUTH, TARGET]) await Storage.saveWorkoutNoteItem(note);
+    const result = await applyWorkoutNoteTextBatchIfUnchanged({ authority: { id: AUTH.id, expected_raw_text: AUTH.raw_text, accepted_raw_texts: [] }, items });
+    expect(result.saved.map(r => r.id)).toEqual(['t1394']);
+    expect((await Storage.loadWorkoutNotes()).find(n => n.id === 't1394').raw_text).toBe(OUT);
+  });
+
+  test('prescription text can never ride in a name; descriptor mismatch, dropped name numbers and no match write nothing', () => {
+    const p = preview({
+      [RDL]: 'Single-Leg RDL 2x8 each leg | light',
+      [SQUAT]: 'Squat | heavy',
+    });
+    expect(p.mappings).toEqual([]);
+    expect(p.rejected).toEqual([
+      { ref: 'H1', header: RDL, problem: expect.stringMatching(/“Single-Leg RDL 2x8 each leg” isn’t an exercise name/) },
+      { ref: 'H2', header: SQUAT, problem: expect.stringMatching(/doesn’t match the header’s own text “5\/3\/1, heavy”/) },
+    ]);
+    expect(planFor('-BB Squat 5/3/1 3x5 heavy', { name: 'Squat', descriptor: 'heavy' }).problem).toMatch(/Numbers in the old name would be dropped/);
+    const mismatch = preview({ [RDL]: 'Single-Leg RDL | each leg', [SQUAT]: 'Squat 5/3/1 | Heavy' });
+    expect(mismatch.rejected.map(r => r.problem)).toEqual([
+      expect.stringMatching(/doesn’t match the header’s own text “each leg, light”/),
+      expect.stringMatching(/doesn’t match the header’s own text “heavy”/),
+    ]);
+    expect(planFor(RDL, { name: 'Single-Leg RDL' }).ok).toBe(false);
+    const none = preview({});
+    expect(none.noMatchCount).toBe(2);
+    expect(applySelectedChanges(none.entries[0])).toBeNull();
+  });
+
+  test('a snapshot saved with the old authority names is inconsistent and needs a fresh prompt', () => {
+    const old = { ...snap, catalog: { ...snap.catalog, names: snap.catalog.names.map(n => (n === 'Single-Leg RDL' ? 'Single-Leg RDL 2x8 each leg' : n)) } };
+    const p = buildNormalizationPreview(replyFor(old, { [RDL]: 'Single-Leg RDL | each leg, light' }), old, [AUTH, TARGET]);
+    expect(p.inconsistent).toBe(true);
+    expect(p.entries).toEqual([]);
+    const stale = buildNormalizationPreview(replyFor(snap, { [RDL]: 'Single-Leg RDL | each leg, light' }), snap, [AUTH, { ...TARGET, raw_text: `${ORIG}-Row\n` }]);
+    expect(stale.entries[0].problems[0]).toMatch(/edited after the prompt/);
+  });
+});
+
 describe('saveWorkoutNoteTextIfUnchanged', () => {
   beforeEach(async () => { await Storage.replaceWorkoutNotesRaw([]); });
   const OUT = 'Friday\n-Bench Press 3x5\n- 140 5,5,5';
