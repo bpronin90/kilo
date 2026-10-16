@@ -4,7 +4,7 @@ import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-na
 import { Alert } from '../lib/platformAlert';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button } from './UI';
-import { createWeightFormStyles, webDateInputStyle } from '../screens/weight/weightFormStyles';
+import { weightFormStyleSet, webDateInputStyle } from '../screens/weight/weightFormStyles';
 import { useTheme } from '../theme/ThemeContext';
 import { useKuaTypography, TYPOGRAPHY, TYPOGRAPHY_FALLBACK } from '../theme/typography';
 import { formatDate } from '../lib/format';
@@ -300,7 +300,7 @@ export function WeightGoalCard({
 const monoRole = (typo, role) => (typo || TYPOGRAPHY_FALLBACK)[role];
 
 export const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
-  ...createWeightFormStyles(colors, kua, typo),
+  ...weightFormStyleSet(colors, kua, typo),
   goalCard: {
     gap: 8,
     backgroundColor: kua ? kua.surfaceCard : undefined,

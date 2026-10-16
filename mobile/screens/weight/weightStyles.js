@@ -1,7 +1,7 @@
 import { GEOMETRY } from '../../theme/spacing';
 import { TYPOGRAPHY, TYPOGRAPHY_FALLBACK } from '../../theme/typography';
 import { StyleSheet } from 'react-native';
-import { createWeightFormStyles } from './weightFormStyles';
+import { weightFormStyleSet } from './weightFormStyles';
 
 // Full JetBrains Mono role (family, tracking, tabular-nums); weight is encoded in the family.
 const monoRole = (typo, role) => (typo || TYPOGRAPHY_FALLBACK)[role];
@@ -64,7 +64,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     fontWeight: '600',
     marginBottom: 8,
   },
-  ...createWeightFormStyles(colors, kua, typo),
+  ...weightFormStyleSet(colors, kua, typo),
   entryCard: {
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,

@@ -6,7 +6,7 @@ import { TYPOGRAPHY, TYPOGRAPHY_FALLBACK } from '../../theme/typography';
 // visual reference; goal-specific layout stays local to the Goal card.
 const monoRole = (typo, role) => (typo || TYPOGRAPHY_FALLBACK)[role];
 
-export const createWeightFormStyles = (colors, kua = null, typo = null) => {
+export const weightFormStyleSet = (colors, kua = null, typo = null) => {
   const field = {
     backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
     borderRadius: GEOMETRY['radius-2xl'],
