@@ -23,7 +23,14 @@ import {
   runPhase,
   __resetSyncQueue,
 } from '../storage/syncRecovery';
-import { SYNC_TABLES, resetClientIdCacheForTests, resetStampClockForTests } from '../storage/syncQueue';
+import {
+  SINGLETON_SYNC_ID,
+  SYNC_TABLES,
+  resetClientIdCacheForTests,
+  resetStampClockForTests,
+} from '../storage/syncQueue';
+import { useTrackedLifts } from '../hooks/entries/trackedLiftHooks';
+import { parseWorkoutNote } from '../lib/parser';
 import { cloudAdapter, setCloudTransport } from '../storage/cloudAdapter';
 import { maybeSyncCloud, __resetMaybeSyncCloudForTests } from '../hooks/entries/storageMode';
 import { useWeightEntries, useWorkoutNotes } from '../hooks/useEntries';
@@ -386,6 +393,84 @@ describe('entry hooks read on-device storage once at mount unless a pass ran (#8
     await flushAsync();
     expect(sync).toHaveBeenCalledTimes(1);
     expect(refs.every((r) => r.notes[0].raw_text === '-Bench\n140 5,5')).toBe(true);
+    act(() => tree.unmount());
+  });
+});
+
+// A Track toggle is a write too (#1393). Before this it requested no pass at
+// all, so the health row stayed stale until some unrelated note/weight save,
+// launch, or refresh happened to run one — while the indicator kept showing the
+// last successful pass. Real cloud adapter and engine, xid-faithful transport.
+describe('Track toggles upload through the shared pass (#1393)', () => {
+  const HISTORY = parseWorkoutNote('Monday\n-Bench\n225 5\n235 5\n245 5').sections;
+
+  function mountTracked() {
+    const ref = { current: null };
+    function Probe() {
+      ref.current = useTrackedLifts();
+      return null;
+    }
+    let tree;
+    act(() => { tree = TestRenderer.create(React.createElement(Probe)); });
+    return { ref, tree };
+  }
+
+  const healthRow = (cloud) => cloud.remoteRow(SYNC_TABLES.USER_HEALTH_PROFILE, SINGLETON_SYNC_ID);
+
+  async function signedInDevice(cloud) {
+    setCloudTransport(cloud.transport);
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    await cloudAdapter.sync({ ownedDevice: false });
+  }
+
+  it('Track and untrack each reach kilo.user_health_profile with no other trigger', async () => {
+    const cloud = makeXidFakeCloud();
+    await signedInDevice(cloud);
+    const passSpy = jest.spyOn(cloudAdapter, 'sync');
+    const { ref, tree } = mountTracked();
+    await flushAsync(8);
+    expect(passSpy).not.toHaveBeenCalled();
+
+    await act(async () => { await ref.current.toggle('bench', HISTORY); });
+    await flushAsync(8);
+    expect(passSpy).toHaveBeenCalledTimes(1);
+    expect(healthRow(cloud).tracked_lifts).toEqual({ bench: true });
+    expect(healthRow(cloud).tracked_lift_activations.bench).toEqual(
+      expect.objectContaining({ anchor: 3, witness: expect.objectContaining({ headings: ['Monday'] }) }),
+    );
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+
+    await act(async () => { await ref.current.toggle('bench', HISTORY); });
+    await flushAsync(8);
+    expect(passSpy).toHaveBeenCalledTimes(2);
+    expect(healthRow(cloud).tracked_lifts).toEqual({});
+    expect(healthRow(cloud).tracked_lift_activations).toEqual({});
+    act(() => tree.unmount());
+  });
+
+  it('offline: the toggle stays local, the phase fails retryably, and a retry uploads it', async () => {
+    const cloud = makeXidFakeCloud();
+    await signedInDevice(cloud);
+    const { ref, tree } = mountTracked();
+    await flushAsync(8);
+
+    const realPush = cloud.transport.push;
+    cloud.transport.push = jest.fn(() => Promise.reject(new Error('Network request failed')));
+    await act(async () => { await ref.current.toggle('squat', HISTORY); });
+    await flushAsync(8);
+
+    const failed = getSyncState()[SYNC_PHASE.SYNC];
+    expect(failed.status).toBe(SYNC_STATUS.FAILED);
+    expect(failed.retryable).toBe(true);
+    expect(healthRow(cloud)?.tracked_lifts?.squat).toBeUndefined();
+    expect(await Storage.loadTrackedLifts()).toEqual({ squat: true });
+
+    cloud.transport.push = realPush;
+    await act(async () => { await maybeSyncCloud(); });
+    await flushAsync(8);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    expect(healthRow(cloud).tracked_lifts).toEqual({ squat: true });
+    expect(healthRow(cloud).tracked_lift_activations.squat).toEqual(expect.objectContaining({ anchor: 0 }));
     act(() => tree.unmount());
   });
 });
