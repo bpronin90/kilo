@@ -1191,6 +1191,21 @@ describe('CloudSyncRecovery: unfinished rename recovery (#1402)', () => {
     expect(has(tree, DISCARD)).toBe(true);
   });
 
+  test('a quarantined copy whose removal failed is reported as partial, not as unchanged', async () => {
+    await AsyncStorage.setItem(INTENT_KEY, CORRUPT);
+    const tree = renderPanel();
+    await flush();
+    await flush();
+    await press(tree, DISCARD);
+    const realRemove = AsyncStorage.removeItem.getMockImplementation();
+    AsyncStorage.removeItem.mockImplementation(key => (key === INTENT_KEY ? Promise.reject(new Error('io')) : realRemove(key)));
+    await press(tree, 'Discard');
+    AsyncStorage.removeItem.mockImplementation(realRemove);
+    expect(status(tree)).toMatch(/private copy was saved, but the unfinished rename could not be cleared/);
+    expect(await AsyncStorage.getItem(INTENT_KEY)).toBe(CORRUPT);
+    expect(await quarantined()).toHaveLength(1);
+  });
+
   test('stays reachable while a cloud deletion is pending', async () => {
     fetchConsentStatus.mockResolvedValue({ allowed: false, code: DENIAL_CODES.HEALTH_DATA_DELETION_PENDING });
     await AsyncStorage.setItem(INTENT_KEY, CORRUPT);

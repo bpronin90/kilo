@@ -258,7 +258,8 @@ export function useUnfinishedRename() {
     }
     await refresh();
     const { outcome, quarantined } = result;
-    return { ...result, message: RENAME_DISCARD_STATUS[outcome] || RENAME_DISCARD_STATUS[quarantined ? 'partial' : 'failed'] };
+    const key = outcome === 'failed' && quarantined ? 'partial' : outcome;
+    return { ...result, message: RENAME_DISCARD_STATUS[key] || RENAME_DISCARD_STATUS.failed };
   }, [refresh]);
 
   return { found, refresh, discard };

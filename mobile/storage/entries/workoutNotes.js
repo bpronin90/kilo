@@ -213,7 +213,12 @@ export class UnfinishedRenameError extends Error {
 function parseApplyIntent(raw) {
   let intent;
   try { intent = JSON.parse(raw); } catch { throw new UnfinishedRenameError('unreadable'); }
-  if (intent?.version !== 1 || !Array.isArray(intent.notes) || !intent.tracking || typeof intent.tracking !== 'object') {
+  const map = m => !!m && typeof m === 'object' && !Array.isArray(m);
+  const maps = t => map(t) && map(t.lifts) && map(t.activations);
+  const note = n => map(n) && typeof n.id === 'string' && typeof n.expected_raw_text === 'string' && typeof n.next_raw_text === 'string';
+  // `before` is absent only on a pre-journal intent (still reconciled or blocked below).
+  if (intent?.version !== 1 || !Array.isArray(intent.notes) || !intent.notes.every(note) || !maps(intent.tracking)
+    || (intent.before != null && !maps(intent.before))) {
     throw new UnfinishedRenameError('invalid');
   }
   return intent;

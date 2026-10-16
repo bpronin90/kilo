@@ -685,6 +685,9 @@ function coldStart() {
 const FIXTURES = {
   'corrupt JSON': { plant: () => '{not json', reason: 'unreadable' },
   'structurally invalid': { plant: () => JSON.stringify({ version: 2, notes: [] }), reason: 'invalid' },
+  'missing activation map': { plant: () => JSON.stringify({ version: 1, notes: [], tracking: { lifts: {} } }), reason: 'invalid' },
+  'null note entry': { plant: () => JSON.stringify({ ...validIntent(), notes: [null] }), reason: 'invalid' },
+  'malformed before maps': { plant: () => JSON.stringify({ ...validIntent(), before: { lifts: [] } }), reason: 'invalid' },
   // The note matches neither side AND a recorded Track key matches neither its
   // before nor its after value: nothing can say which state was wanted.
   'diverged note with a Track key matching neither recorded value': {
