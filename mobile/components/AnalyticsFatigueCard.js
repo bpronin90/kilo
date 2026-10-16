@@ -100,6 +100,11 @@ export function AnalyticsFatigueCard({
     );
   }
 
+  const { top_reason: topReason, roughTotal } = checkInHistory.summary;
+  const flaggedCopy = roughTotal > 0
+    ? `${roughTotal} flagged session${roughTotal > 1 ? 's' : ''}`
+    : null;
+
   return (
     <Card style={styles.fatigueCard}>
       <Text style={styles.fatiguePanelLabel}>Session Check-ins</Text>
@@ -112,14 +117,14 @@ export function AnalyticsFatigueCard({
       >
         <View style={styles.fatigueSummaryMain}>
           <Text style={styles.fatigueInsightLabel}>
-            {checkInHistory.summary.top_reason ? 'Most common reason' : 'Session status'}
+            {topReason ? 'Most common issue' : 'Session status'}
           </Text>
-          <Text style={styles.fatigueInsightValue} numberOfLines={1}>
-            {checkInHistory.summary.top_reason
-              || (checkInHistory.summary.roughTotal > 0
-                ? `${checkInHistory.summary.roughTotal} flagged session${checkInHistory.summary.roughTotal > 1 ? 's' : ''}`
-                : 'No flagged sessions')}
+          <Text style={topReason ? styles.fatigueInsightPrimary : styles.fatigueInsightValue}>
+            {topReason || flaggedCopy || 'No flagged sessions'}
           </Text>
+          {topReason && flaggedCopy ? (
+            <Text style={styles.fatigueInsightSecondary}>{flaggedCopy}</Text>
+          ) : null}
         </View>
         {checkInHistory.summary.pendingTotal > 0 && (
           <View
@@ -236,6 +241,15 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   fatigueInsightValue: {
     ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
+  },
+  fatigueInsightPrimary: {
+    ...(kua ? TYPOGRAPHY['headline-sm'] : { fontSize: TYPOGRAPHY['headline-sm'].fontSize, fontWeight: '700' }),
+    color: kua ? kua.onSurface : colors.text,
+  },
+  fatigueInsightSecondary: {
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
+    fontWeight: '500',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   fatigueSection: {
     gap: 0,
