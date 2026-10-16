@@ -833,6 +833,57 @@ describe('a pulled Track change is adopted by a mounted hook (#1398)', () => {
     act(() => tree.unmount());
   });
 
+  const CORRUPT = '{not json';
+  const squatOnly = { tracked_lifts: { squat: true }, tracked_lift_activations: { squat: RECORD } };
+
+  // Synced and EMPTY, so the corrupt (reads-as-{}) local map is no local edit
+  // against the baseline and the pulled row is what wins.
+  async function deviceAEmpty(cloud) {
+    const mounted = await deviceA(cloud);
+    await act(async () => { await mounted.ref.current.toggle('bench', HISTORY); });
+    await flushAsync(8);
+    return mounted;
+  }
+
+  it('a corrupt local flags map does not block a pull: a successful apply heals it', async () => {
+    const cloud = makeXidFakeCloud();
+    const { ref, tree } = await deviceAEmpty(cloud);
+    await deviceBWrites(cloud, squatOnly);
+    await secureStorage.setItem('kilo_tracked_lifts', CORRUPT);
+    await act(async () => { await maybeSyncCloud(); });
+    await flushAsync(8);
+    expect(await Storage.loadTrackedLifts()).toEqual({ squat: true });
+    expect(await secureStorage.getItem('kilo_tracked_lifts')).not.toBe(CORRUPT);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    expect(Object.keys(ref.current.activations)).toEqual(['squat']);
+    act(() => tree.unmount());
+  });
+
+  it('a corrupt map plus an activation write failure restores the exact corrupt bytes, retryably', async () => {
+    const cloud = makeXidFakeCloud();
+    const { tree } = await deviceAEmpty(cloud);
+    await deviceBWrites(cloud, squatOnly);
+    await secureStorage.setItem('kilo_tracked_lifts', CORRUPT);
+    const realSetItem = secureStorage.setItem.bind(secureStorage);
+    let failing = true;
+    jest.spyOn(secureStorage, 'setItem').mockImplementation(async (key, value) => {
+      if (failing && key === 'kilo_tracked_lift_activations') throw new Error('disk full');
+      return realSetItem(key, value);
+    });
+    await act(async () => { await maybeSyncCloud().catch(() => {}); });
+    await flushAsync(8);
+    expect(await secureStorage.getItem('kilo_tracked_lifts')).toBe(CORRUPT);
+    const failed = getSyncState()[SYNC_PHASE.SYNC];
+    expect(failed.status).toBe(SYNC_STATUS.FAILED);
+    expect(failed.retryable).toBe(true);
+
+    failing = false;
+    await act(async () => { await maybeSyncCloud(); });
+    await flushAsync(8);
+    expect(await Storage.loadTrackedLifts()).toEqual({ squat: true });
+    act(() => tree.unmount());
+  });
+
   it('an unreadable rollback snapshot aborts the apply untouched; the pass is retryable and the next applies', async () => {
     const cloud = makeXidFakeCloud();
     const { ref, tree } = await deviceA(cloud);
@@ -841,7 +892,7 @@ describe('a pulled Track change is adopted by a mounted hook (#1398)', () => {
     // would also fail. With no snapshot, applying anyway would leave a half pair
     // that nothing can roll back.
     const settings = jest.requireActual('../storage/entries/settings');
-    jest.spyOn(settings, 'loadTrackedLiftsStrict').mockRejectedValueOnce(new Error('transient read'));
+    jest.spyOn(settings, 'readTrackedLiftRaw').mockRejectedValueOnce(new Error('transient read'));
     const realSetItem = secureStorage.setItem.bind(secureStorage);
     let failing = true;
     jest.spyOn(secureStorage, 'setItem').mockImplementation(async (key, value) => {

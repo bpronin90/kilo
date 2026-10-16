@@ -1,5 +1,5 @@
 import * as Storage from '../entries';
-import { loadTrackedLiftsStrict, loadTrackedLiftActivationsStrict } from '../entries/settings';
+import { readTrackedLiftRaw, restoreTrackedLiftRaw } from '../entries/settings';
 import { mergeUserProfile } from '../entries/profileStorage';
 import {
   loadDeloadNote,
@@ -229,10 +229,11 @@ async function buildUserHealthProfileRecords() {
 // Flags + records land as one unit or not at all (#1398): a failure between the
 // two writes would leave a half pair that the next pass uploads over the other
 // device's good row. Roll back (best effort) and rethrow, so the pass fails
-// retryably and re-applies. An unreadable snapshot throws BEFORE any mutation.
+// retryably and re-applies. The snapshot is the RAW stored strings, so a corrupt
+// value restores byte-for-byte (or is healed by a successful apply); a raw read
+// I/O error throws BEFORE any mutation.
 async function applyTrackedLiftsFromRow(row) {
-  const beforeFlags = await loadTrackedLiftsStrict();
-  const beforeRecords = await loadTrackedLiftActivationsStrict();
+  const before = await readTrackedLiftRaw();
   try {
     if (
       row.tracked_lifts &&
@@ -280,10 +281,7 @@ async function applyTrackedLiftsFromRow(row) {
     }
   } catch (err) {
     try {
-      const nowFlags = await Storage.loadTrackedLifts();
-      if (stableStringify(nowFlags) !== stableStringify(beforeFlags)) await Storage.saveTrackedLifts(beforeFlags);
-      const nowRecords = await Storage.loadTrackedLiftActivations();
-      if (stableStringify(nowRecords) !== stableStringify(beforeRecords)) await Storage.saveTrackedLiftActivations(beforeRecords);
+      await restoreTrackedLiftRaw(before);
     } catch {
       // Storage is failing; the original error is the one to surface.
     }
