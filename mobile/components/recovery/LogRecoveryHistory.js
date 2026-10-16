@@ -27,7 +27,7 @@ const NOTES_UNREAD = 'Workout notes couldn’t be loaded, so there is no total t
 const _notesUnread = Object.freeze({ text: NOTES_UNREAD, weekLabel: null, qualifiers: Object.freeze([]), a11y: NOTES_UNREAD });
 // Week identity comes from the live week links, which do not depend on notes or
 // the baseline: a non-numeric summary with no week of its own still names it.
-const _withLiveWeek = (summary, weeks, block) => {
+export const withLiveWeek = (summary, weeks, block) => {
   if (summary.weekLabel) return summary;
   const live = orderedLiveWeeks(weeks, block.id);
   if (live.length === 0) return summary;
@@ -50,14 +50,14 @@ export function LogRecoveryHistory({
     if (!open) return null;
     // A failed notes refresh keeps the last notes: their evidence is last saved
     // data too. With no notes ever read there is nothing truthful to score.
-    if (notesError && notes.length === 0) return new Map(completedBlocks.map(b => [b.id, _withLiveWeek(_notesUnread, weeks, b)]));
+    if (notesError && notes.length === 0) return new Map(completedBlocks.map(b => [b.id, withLiveWeek(_notesUnread, weeks, b)]));
     const old = stale || !!notesError;
     const next = new Map();
     const byId = new Map();
     for (const block of completedBlocks) {
       const key = `${old ? 1 : 0}|${recoveryInputFingerprint(block, weeks, notes)}`;
       const summary = summaryCache.current.get(key)
-        || _withLiveWeek(compactRecoverySummary(getRecoverySnapshot({ block, weeks, notes, stale: old })), weeks, block);
+        || withLiveWeek(compactRecoverySummary(getRecoverySnapshot({ block, weeks, notes, stale: old })), weeks, block);
       next.set(key, summary);
       byId.set(block.id, summary);
     }

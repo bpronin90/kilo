@@ -459,7 +459,7 @@ describe('typed navigation intent', () => {
     expect(texts(c.root)).not.toContain(MANAGE_TARGET_UNAVAILABLE);
     act(() => { c.update(<Harness blocks={[block(), newest, older]} nav={{ id: 'rb-old', key: 1 }} onShow={onShow} />); });
     expect(shown(c.root)).toEqual(['recovery-manage-card-rb-old']);
-    expect(onShow).toHaveBeenCalledTimes(1);
+    expect(onShow).toHaveBeenCalledTimes(2);
   });
 
   test('a consumed reveal is one-shot: remounting the section (tab switch) neither re-expands nor re-scrolls', () => {

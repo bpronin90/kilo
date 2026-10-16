@@ -1,5 +1,4 @@
 import React from 'react';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Pressable, Text, View } from 'react-native';
 import { ScreenShell } from '../../components/ScreenShell';
 import { ErrorBanner, Card, Button } from '../../components/UI';
@@ -11,6 +10,7 @@ import { RoutineAdoptionPrompt } from '../../components/LogScreenEditorCard';
 import { useTheme } from '../../theme/ThemeContext';
 import { createStyles } from './logScreenStyles';
 import { LogSkeleton } from './LogScreenStates';
+import { RecoveryEntryRow, RecoverySurface } from './RecoveryManagementScreen';
 import { Alert } from '../../lib/platformAlert';
 import { compareRecoveryBlocksNewestCompletedFirst } from '../../storage/entries/recoveryStorage';
 
@@ -30,7 +30,7 @@ export function LogScreenContent(props) {
     adoptableRoutine, hasContent, activeRoutineCard, recoveryBlocks, recoveryWeeks, handleCompleteCurrentWeek,
     handleUndoCompleteWeek, openAddWeekModal, openEndBlockModal, handleUnlinkRecoveryWeek, recoveryActionBusy, pendingRecovery,
     recoveryPendingError, handleRetryRecovery, recoveryReady, recoveryLoading, recoveryRefreshing, recoveryStale,
-    recoveryStateError, recoveryMutationsAllowed, showRecoveryStartInManagement, openStartRecoveryBlock, showRecoveryReopenInManagement, openReopenRecoveryBlockConfirm,
+    recoveryStateError, recoveryMutationsAllowed, showRecoveryStartInManagement, openStartRecoveryBlock, showRecoveryEntry,
     newestCompletedRecoveryBlock, otherNotes, guardedHandleDeleteRoutine, recoveryWeekNumberByNoteId,
   } = props;
   const { colors, kuaPalette: kua } = useTheme();
@@ -66,7 +66,7 @@ export function LogScreenContent(props) {
           <LogEmptyState onCreateRoutine={handleCreateRoutineEntry} />
         ) : (
           <>
-            {(deloadTabEnabled || recoveryTabVisible) && (
+            {(deloadTabEnabled || recoveryTabVisible) && effectiveTabView !== 'manage' && (
               <View style={styles.tabToggle} accessibilityRole="tablist">
                 {/* Recovery is first when present (#823) — see
                     `recoveryTabVisible` above for exactly when that is, so it
@@ -168,7 +168,11 @@ export function LogScreenContent(props) {
 
             {effectiveTabView === 'routine' && currentEditor.mode === 'read' && hasContent && activeRoutineCard}
 
-            {effectiveTabView === 'recovery' && (
+            {(effectiveTabView === 'recovery' || effectiveTabView === 'manage') && (
+              <RecoverySurface
+                isManage={effectiveTabView === 'manage'} onBack={() => handleTabViewChange('routine')}
+                showStart={showRecoveryStartInManagement} onStart={openStartRecoveryBlock} hasCompleted={recoveryManage.completedBlocks.length > 0}
+              >
               <LogRecoverySection
                 blocks={recoveryBlocks}
                 weeks={recoveryWeeks}
@@ -222,39 +226,16 @@ export function LogScreenContent(props) {
                 mutationsAllowed={recoveryMutationsAllowed}
                 manage={recoveryManage}
               />
+              </RecoverySurface>
             )}
 
-            {/* Recovery entry points (#823 Start, #839 Reopen), each computing its
-                own visibility, now share ONE outlined group under the current
-                card instead of two floating outline rows (#1325): Start stays
-                primary ink, Reopen sits below a hairline in muted ink. */}
-            {effectiveTabView === 'routine' && (showRecoveryStartInManagement || showRecoveryReopenInManagement) && (
-              <View style={styles.recoveryEntryGroup} testID="log-recovery-entry-group">
-                {showRecoveryStartInManagement && (
-                  <Pressable
-                    onPress={openStartRecoveryBlock}
-                    style={styles.recoveryStartRow}
-                    accessibilityRole="button"
-                    accessibilityLabel="Start recovery block"
-                  >
-                    <Text style={styles.recoveryStartRowText}>Start recovery block</Text>
-                    <MaterialIcons name="chevron-right" size={18} color={kua ? kua.primary : colors.accent} accessible={false} />
-                  </Pressable>
-                )}
-                {showRecoveryReopenInManagement && (
-                  <Pressable
-                    onPress={openReopenRecoveryBlockConfirm}
-                    style={[styles.recoveryReopenRow, showRecoveryStartInManagement && styles.recoveryEntryDivider]}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Reopen recovery block: ${newestCompletedRecoveryBlock.baseline_note_title || 'Untitled Routine'}`}
-                  >
-                    <Text style={styles.recoveryReopenRowText} numberOfLines={1}>
-                      {`Reopen recovery block: ${newestCompletedRecoveryBlock.baseline_note_title || 'Untitled Routine'}`}
-                    </Text>
-                    <MaterialIcons name="chevron-right" size={18} color={colors.textMuted} accessible={false} />
-                  </Pressable>
-                )}
-              </View>
+            {/* Inactive Recovery (#1423): one compact entry under the current routine;
+                completed history alone never earns a tab. */}
+            {effectiveTabView === 'routine' && showRecoveryEntry && !recoveryTabVisible && (
+              <RecoveryEntryRow
+                newestCompleted={newestCompletedRecoveryBlock} weeks={recoveryWeeks} notes={notes}
+                notesError={notesError} onOpen={() => handleTabViewChange('manage')}
+              />
             )}
 
             {effectiveTabView === 'routine' && (
@@ -344,14 +325,13 @@ export function buildLogRecovery(deps) {
     .filter(b => !!b.completed_at)
     .sort(compareRecoveryBlocksNewestCompletedFirst)[0] || null;
 
-  const showRecoveryReopenInManagement =
+  // The compact inactive entry (#1423) needs a verified, fresh, settled
+  // snapshot: loading, stale, errored or pending state is never inactivity.
+  const showRecoveryEntry =
     !activeRecoveryBlock
     && recoveryReady
     && !recoveryStale
-    && !recoveryActionBusy
-    && (pendingRecovery?.length || 0) === 0
-    && recoveryMutationsAllowed
-    && !!newestCompletedRecoveryBlock;
+    && (pendingRecovery?.length || 0) === 0;
 
   const handleConfirmRecoveryBlock = async ({ baselineNoteId, weekChoice, weekNoteId, newNoteTitle, reason }) => {
     if (!startRecoveryBlock) {
@@ -541,7 +521,7 @@ export function buildLogRecovery(deps) {
 
 
   return {
-    recoveryBlockingMessage, openStartRecoveryBlock, closeRecoveryModal, showRecoveryStartInManagement, newestCompletedRecoveryBlock, showRecoveryReopenInManagement,
+    recoveryBlockingMessage, openStartRecoveryBlock, closeRecoveryModal, showRecoveryStartInManagement, newestCompletedRecoveryBlock, showRecoveryEntry,
     handleConfirmRecoveryBlock, openAddWeekModal, closeAddWeekModal, handleConfirmAddWeek, handleCompleteCurrentWeek, handleCompleteRecoveryBlock,
     handleSetRecoveryInclusionFromEndModal, openEndBlockModal, closeEndBlockModal, handleReopenRecoveryBlock, openReopenRecoveryBlockConfirm, handleUnlinkRecoveryWeek,
     handleRetryRecovery, handleUndoCompleteWeek,

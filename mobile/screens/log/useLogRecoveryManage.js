@@ -63,6 +63,8 @@ export function useLogRecoveryManage({
       setSelectedId(target.id);
       setReveal({ blockId: target.id, key: navKey });
       setUnavailable(false);
+      // With no active block the target lives on the inactive management screen.
+      if (onShow) onShow();
     } else {
       setReveal({ blockId: null, key: 0 });
       setUnavailable(true);

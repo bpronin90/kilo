@@ -1416,6 +1416,22 @@ const openOtherRoutineMenu = (root) => {
   const trigger = root.findAll(n => n.props && n.props.testID === 'log-other-routine-menu-button' && typeof n.props.onPress === 'function')[0];
   render.act(() => { trigger.props.onPress(); });
 };
+const openRecoveryManagement = (root) => {
+  const entry = root.findAll(n => n.props.testID === 'log-recovery-entry' && n.props.onPress)[0];
+  expect(entry).toBeTruthy();
+  render.act(() => { entry.props.onPress(); });
+};
+const pressByTestId = (root, id) => {
+  const node = root.findAll(n => n.props.testID === id && n.props.onPress)[0];
+  expect(node).toBeTruthy();
+  render.act(() => { node.props.onPress(); });
+};
+// #1423: Reopen is a Manage-card action on the inactive management screen.
+const pressReopen = (root, blockId = 'rb-done') => {
+  openRecoveryManagement(root);
+  pressByTestId(root, `recovery-manage-trigger-${blockId}`);
+  pressByTestId(root, `recovery-reopen-${blockId}`);
+};
 const findPressableByText = (root, text) => {
   const matches = root.findAll(n => {
     if (n.type !== 'Text') return false;
@@ -7241,7 +7257,10 @@ describe('Recovery Block start flow', () => {
   // #823: it is now a persistent row directly under the current routine
   // card, never nested inside routine management — reachable with no
   // disclosure to open first.
+  // #1423: Start now lives on the inactive management screen, reached through
+  // the compact `Recovery ›` entry under the current routine.
   const openEntryPoint = (root) => {
+    openRecoveryManagement(root);
     const startBtn = findPressableByText(root, 'Start recovery block');
     expect(startBtn).toBeTruthy();
     render.act(() => { startBtn.props.onPress(); });
@@ -7261,7 +7280,7 @@ describe('Recovery Block start flow', () => {
     // Visible with no disclosure to open first (#823) — unlike #724, routine
     // management stays collapsed and the control is already there.
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Mark as recovery week').length).toBe(0);
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Start recovery block').length).toBe(1);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery').length).toBe(1);
 
     openEntryPoint(root);
 
@@ -7809,16 +7828,14 @@ describe('LogScreen: leaving Recovery is refused while a recovery note is mid-ed
     expect(editBtn).toBeTruthy();
     render.act(() => { editBtn.props.onPress(); });
 
-    // Now mid-edit: both sibling tabs report disabled and refuse to switch.
+    // Now mid-edit: the Routine tab reports disabled and refuses to switch.
+    // Deload is not offered at all while Recovery is active (#1423).
     const routineTab = tabButton(root, 'Routine');
-    const deloadTab = tabButton(root, 'Deload');
+    expect(tabButton(root, 'Deload')).toBeNull();
     expect(routineTab.props.disabled).toBe(true);
     expect(routineTab.props.accessibilityState.disabled).toBe(true);
-    expect(deloadTab.props.disabled).toBe(true);
-    expect(deloadTab.props.accessibilityState.disabled).toBe(true);
 
     render.act(() => { routineTab.props.onPress(); });
-    render.act(() => { deloadTab.props.onPress(); });
     // Recovery's own inline editor is still on screen — the tab never moved.
     expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery note title')[0]).toBeTruthy();
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'More Routines').length).toBe(0);
@@ -9273,26 +9290,19 @@ describe('Recovery Block reopen flow', () => {
     journalModule.__resetRecoveryOperationJournal();
   });
 
-  test('Start and Reopen are independent: both render together when both qualify', async () => {
+  test('Start and Reopen are independent: both are on the management screen, not the Routine tab', async () => {
     await setup({ notes: [baselineNote, otherBaselineNote] });
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
+    // Routine tab: only the compact entry, no Start/Reopen slab.
+    expect(findPressableByText(root, 'Start recovery block')).toBeNull();
+    expect(root.findAll(n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.startsWith('Reopen recovery block')).length).toBe(0);
+    openRecoveryManagement(root);
     expect(findPressableByText(root, 'Start recovery block')).toBeTruthy();
-    expect(findPressableByText(root, 'Reopen recovery block: Push Day')).toBeTruthy();
-    // One outlined group, not two floating outline rows: both rows live in it,
-    // and neither row carries its own border.
-    const { StyleSheet } = require('react-native');
-    const groups = root.findAll(n => typeof n.type === 'string' && n.props.testID === 'log-recovery-entry-group');
-    expect(groups).toHaveLength(1);
-    const start = findPressableByText(root, 'Start recovery block');
-    const reopen = findPressableByText(root, 'Reopen recovery block: Push Day');
-    for (const row of [start, reopen]) {
-      expect(groups[0].findAll(n => n === row)).toHaveLength(1);
-      expect(StyleSheet.flatten(row.props.style).borderWidth).toBeUndefined();
-    }
-    expect(StyleSheet.flatten(reopen.props.style).borderTopWidth).toBeGreaterThan(0);
+    pressByTestId(root, 'recovery-manage-trigger-rb-done');
+    expect(root.findAll(n => n.props.testID === 'recovery-reopen-rb-done').length).toBeGreaterThan(0);
   });
 
   test('Reopen is absent with no eligible completed block, even though Start renders', async () => {
@@ -9301,8 +9311,9 @@ describe('Recovery Block reopen flow', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
+    openRecoveryManagement(root);
     expect(findPressableByText(root, 'Start recovery block')).toBeTruthy();
-    expect(root.findAll(n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.startsWith('Reopen recovery block')).length).toBe(0);
+    expect(root.findAll(n => typeof n.props.testID === 'string' && n.props.testID.startsWith('recovery-reopen-')).length).toBe(0);
   });
 
   test('Reopen is absent while a block is already active, even though a completed block exists', async () => {
@@ -9325,7 +9336,7 @@ describe('Recovery Block reopen flow', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    render.act(() => { findPressableByText(root, 'Reopen recovery block: Push Day').props.onPress(); });
+    pressReopen(root);
 
     expect(alertSpy).toHaveBeenCalledWith(
       'Reopen this recovery block?',
@@ -9358,7 +9369,7 @@ describe('Recovery Block reopen flow', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    render.act(() => { findPressableByText(root, 'Reopen recovery block: Push Day').props.onPress(); });
+    pressReopen(root);
     const buttons = alertSpy.mock.calls[0][2];
     await render.act(async () => { await buttons.find(b => b.text === 'Reopen block').onPress(); });
 
@@ -9380,7 +9391,7 @@ describe('Recovery Block reopen flow', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    render.act(() => { findPressableByText(root, 'Reopen recovery block: Push Day').props.onPress(); });
+    pressReopen(root);
     const buttons = alertSpy.mock.calls[0][2];
     await render.act(async () => { await buttons.find(b => b.text === 'Reopen block').onPress(); });
 
@@ -9401,7 +9412,7 @@ describe('Recovery Block reopen flow', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    render.act(() => { findPressableByText(root, 'Reopen recovery block: Push Day').props.onPress(); });
+    pressReopen(root);
     const confirmOnPress = alertSpy.mock.calls[0][2].find(b => b.text === 'Reopen block').onPress;
     let firstPromise;
     render.act(() => { firstPromise = confirmOnPress(); });

@@ -399,10 +399,16 @@ export function useLogScreenController(params) {
   // (e.g. the active block completes while its tab is open, or Recovery
   // starts while Deload is open), exactly as Deload already fell back before
   // Recovery existed (#823).
-  const deloadTabEnabled = deloadModeEnabled && !baselinePaused;
-  const effectiveTabView = tabView === 'recovery' && recoveryTabVisible
+  //
+  // #1423: while Recovery is active or pending Deload is hidden. 'manage' is the
+  // inactive management screen: it needs a verified read, and maps to the active
+  // Recovery view the moment a block starts or reopens.
+  const deloadTabEnabled = deloadModeEnabled && !baselinePaused && !recoveryTabVisible;
+  const effectiveTabView = (tabView === 'recovery' || tabView === 'manage') && recoveryTabVisible
     ? 'recovery'
-    : tabView === 'deload' && deloadTabEnabled
+    : tabView === 'manage' && recoveryReady
+      ? 'manage'
+      : tabView === 'deload' && deloadTabEnabled
       ? 'deload'
       : 'routine';
 
