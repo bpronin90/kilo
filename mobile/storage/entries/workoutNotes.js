@@ -572,13 +572,12 @@ export async function loadCurrentWorkoutId() {
   }
 }
 
-export async function saveCurrentWorkoutId(id) {
-  await AsyncStorage.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(id));
-}
-
-export async function clearCurrentWorkoutId() {
-  await AsyncStorage.removeItem(CURRENT_WORKOUT_ID_KEY);
-}
+// Current-id writers hold the local-write lock (#1399); Unlocked twins are for
+// a holder (sync applyMerged). A notebook holder takes it second.
+export const saveCurrentWorkoutIdUnlocked = id => AsyncStorage.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(id));
+export const clearCurrentWorkoutIdUnlocked = () => AsyncStorage.removeItem(CURRENT_WORKOUT_ID_KEY);
+export const saveCurrentWorkoutId = id => withLocalWriteLock(() => saveCurrentWorkoutIdUnlocked(id));
+export const clearCurrentWorkoutId = () => withLocalWriteLock(clearCurrentWorkoutIdUnlocked);
 
 // Mark a note as the current routine.
 // All other notes in the list are marked isCurrent: false.
@@ -593,6 +592,6 @@ export function setCurrentWorkoutNote(id) {
       return { ...n, isCurrent: false };
     });
     await writeNotebook(updated);
-    await AsyncStorage.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(id));
+    await saveCurrentWorkoutId(id);
   });
 }

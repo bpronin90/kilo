@@ -1,6 +1,11 @@
 import { secureStorage as AsyncStorage } from '../secureStorage';
 import { WORKOUT_DELOAD_NOTE_KEY, WORKOUT_DELOAD_HISTORY_KEY } from './keys';
 import { readList, writeList } from './jsonStorage';
+import { withLocalWriteLock } from '../sync/localWriteLock';
+
+// Every writer here runs under the shared local-write lock (#1399; see
+// settings.js), read-modify-write included. applyDeloadNoteFromSync is the one
+// UNLOCKED writer: only a write-back that already holds the lock calls it.
 
 // ── deload note (independent of routine note) ─────────────────────────────────
 
@@ -14,7 +19,11 @@ export async function loadDeloadNote(store = AsyncStorage) {
   }
 }
 
-export async function saveDeloadNote(raw_text, working_context, store = AsyncStorage) {
+export function saveDeloadNote(raw_text, working_context, store = AsyncStorage) {
+  return withLocalWriteLock(() => saveDeloadNoteUnlocked(raw_text, working_context, store));
+}
+
+async function saveDeloadNoteUnlocked(raw_text, working_context, store) {
   const now = new Date().toISOString();
   const existing = await loadDeloadNote(store);
   const note = {
@@ -34,8 +43,12 @@ export async function saveDeloadNote(raw_text, working_context, store = AsyncSto
   return note;
 }
 
-export async function clearDeloadNote() {
+export async function clearDeloadNoteUnlocked() {
   await AsyncStorage.removeItem(WORKOUT_DELOAD_NOTE_KEY);
+}
+
+export function clearDeloadNote() {
+  return withLocalWriteLock(clearDeloadNoteUnlocked);
 }
 
 // Apply an active-deload note pulled from cloud sync (issue #498).
@@ -71,24 +84,30 @@ export async function loadDeloadHistory() {
   return readList(WORKOUT_DELOAD_HISTORY_KEY);
 }
 
-export async function appendDeloadHistory(record) {
-  const list = await readList(WORKOUT_DELOAD_HISTORY_KEY);
-  list.push(record);
-  await writeList(WORKOUT_DELOAD_HISTORY_KEY, list);
+export function appendDeloadHistory(record) {
+  return withLocalWriteLock(async () => {
+    const list = await readList(WORKOUT_DELOAD_HISTORY_KEY);
+    list.push(record);
+    await writeList(WORKOUT_DELOAD_HISTORY_KEY, list);
+  });
 }
 
-export async function deleteDeloadHistory(id) {
-  const list = await readList(WORKOUT_DELOAD_HISTORY_KEY);
-  const filtered = list.filter(r => r.id !== id);
-  await writeList(WORKOUT_DELOAD_HISTORY_KEY, filtered);
-  return filtered;
+export function deleteDeloadHistory(id) {
+  return withLocalWriteLock(async () => {
+    const list = await readList(WORKOUT_DELOAD_HISTORY_KEY);
+    const filtered = list.filter(r => r.id !== id);
+    await writeList(WORKOUT_DELOAD_HISTORY_KEY, filtered);
+    return filtered;
+  });
 }
 
-export async function updateDeloadHistory(id, patch) {
-  const list = await readList(WORKOUT_DELOAD_HISTORY_KEY);
-  const idx = list.findIndex(r => r.id === id);
-  if (idx < 0) return false;
-  list[idx] = { ...list[idx], ...patch };
-  await writeList(WORKOUT_DELOAD_HISTORY_KEY, list);
-  return list[idx];
+export function updateDeloadHistory(id, patch) {
+  return withLocalWriteLock(async () => {
+    const list = await readList(WORKOUT_DELOAD_HISTORY_KEY);
+    const idx = list.findIndex(r => r.id === id);
+    if (idx < 0) return false;
+    list[idx] = { ...list[idx], ...patch };
+    await writeList(WORKOUT_DELOAD_HISTORY_KEY, list);
+    return list[idx];
+  });
 }

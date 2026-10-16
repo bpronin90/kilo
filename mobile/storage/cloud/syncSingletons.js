@@ -1,14 +1,15 @@
 import * as Storage from '../entries';
 import * as TrackedRaw from '../entries/settings';
-import { mergeUserProfile } from '../entries/profileStorage';
+import { mergeUserProfileUnlocked } from '../entries/profileStorage';
 import {
   loadDeloadNote,
-  clearDeloadNote,
+  clearDeloadNoteUnlocked,
   applyDeloadNoteFromSync,
 } from '../entries/deloadStorage';
 import { WORKOUT_DELOAD_HISTORY_KEY } from '../entries/keys';
 import { writeList } from '../entries/jsonStorage';
-import { replaceWeightGoalRaw } from '../entries/weightGoal';
+import { replaceWeightGoalRaw, clearWeightGoalUnlocked } from '../entries/weightGoal';
+import { saveCurrentWorkoutIdUnlocked, clearCurrentWorkoutIdUnlocked } from '../entries/workoutNotes';
 import {
   SYNC_TABLES,
   SINGLETON_SYNC_ID,
@@ -183,7 +184,7 @@ async function applyUserProfile(mergedList) {
   if (row.ui_state && typeof row.ui_state === 'object') {
     const next = !!row.ui_state.log_current_collapsed;
     const local = !!(await Storage.loadWorkoutCollapsed());
-    if (local !== next) await Storage.saveWorkoutCollapsed(next);
+    if (local !== next) await TrackedRaw.saveWorkoutCollapsedUnlocked(next);
   }
 
   // MERGE, never replace: the local profile record also holds the device-local
@@ -196,7 +197,7 @@ async function applyUserProfile(mergedList) {
     (profile?.display_name ?? null) !== nextName ||
     (profile?.unit_system ?? null) !== nextUnit
   ) {
-    await mergeUserProfile({ display_name: nextName, unit_system: nextUnit });
+    await mergeUserProfileUnlocked({ display_name: nextName, unit_system: nextUnit });
   }
 }
 
@@ -299,14 +300,14 @@ async function applyUserHealthProfile(mergedList) {
   const nextCurrent = row.current_workout_note_id ?? null;
   const localCurrent = (await Storage.loadCurrentWorkoutId()) ?? null;
   if (localCurrent !== nextCurrent) {
-    if (nextCurrent == null) await Storage.clearCurrentWorkoutId();
-    else await Storage.saveCurrentWorkoutId(nextCurrent);
+    if (nextCurrent == null) await clearCurrentWorkoutIdUnlocked();
+    else await saveCurrentWorkoutIdUnlocked(nextCurrent);
   }
 
   if (row.fatigue_multiplier != null && isValidFatigueMultiplier(row.fatigue_multiplier)) {
     const next = Number(row.fatigue_multiplier);
     const local = Number(await Storage.loadFatigueMultiplier());
-    if (local !== next) await Storage.saveFatigueMultiplier(next);
+    if (local !== next) await TrackedRaw.saveFatigueMultiplierUnlocked(next);
   }
 
   // Active deload (issue #498). A null raw_text is a cleared deload; removing the
@@ -320,7 +321,7 @@ async function applyUserHealthProfile(mergedList) {
   const nextDeloadUpdated = row.current_deload_note_updated_at ?? null;
   const localDeload = await loadDeloadNote();
   if (nextDeloadRaw == null) {
-    if (localDeload) await clearDeloadNote();
+    if (localDeload) await clearDeloadNoteUnlocked();
   } else {
     const sameTs = (a, b) => {
       const ta = a == null ? null : Date.parse(a);
@@ -373,10 +374,10 @@ async function applyFeatureToggles(mergedList) {
   if (!row || isTombstone(row)) return;
 
   const setters = [
-    ['weight_date_edit_enabled', Storage.loadWeightDateEditEnabled, Storage.saveWeightDateEditEnabled],
-    ['deload_date_edit_enabled', Storage.loadDeloadDateEditEnabled, Storage.saveDeloadDateEditEnabled],
-    ['fatigue_tracking_enabled', Storage.loadFatigueTrackingEnabled, Storage.saveFatigueTrackingEnabled],
-    ['deload_mode_enabled', Storage.loadDeloadModeEnabled, Storage.saveDeloadModeEnabled],
+    ['weight_date_edit_enabled', Storage.loadWeightDateEditEnabled, TrackedRaw.saveWeightDateEditEnabledUnlocked],
+    ['deload_date_edit_enabled', Storage.loadDeloadDateEditEnabled, TrackedRaw.saveDeloadDateEditEnabledUnlocked],
+    ['fatigue_tracking_enabled', Storage.loadFatigueTrackingEnabled, TrackedRaw.saveFatigueTrackingEnabledUnlocked],
+    ['deload_mode_enabled', Storage.loadDeloadModeEnabled, TrackedRaw.saveDeloadModeEnabledUnlocked],
   ];
   for (const [field, load, save] of setters) {
     if (typeof row[field] !== 'boolean') continue;
@@ -406,7 +407,7 @@ async function applyWeightGoal(mergedList) {
   // A tombstoned (or absent) goal means the goal was cleared. Removing it locally
   // is what stops the next pass from re-pushing it — no resurrection.
   if (!row || isTombstone(row)) {
-    if (existing) await Storage.clearWeightGoal();
+    if (existing) await clearWeightGoalUnlocked();
     return;
   }
 
@@ -518,6 +519,10 @@ async function buildFatigueCheckinRecords() {
 // this table needs. Writing merged rows anywhere else would create a second copy.
 async function applyFatigueCheckins() {}
 
+// Every applyMerged above runs INSIDE the local-write lock (tableSync's
+// write-back), which is not re-entrant, so each uses the `...Unlocked` setters
+// (#1399); the public ones would wait on the lock their caller holds.
+//
 // Sync order note: workout_notes runs before user_health_profile, so a routine
 // pulled in the same pass already exists locally by the time
 // current_workout_note_id points at it.

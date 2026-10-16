@@ -1,5 +1,9 @@
 import { secureStorage as AsyncStorage } from '../secureStorage';
 import { USER_PROFILE_KEY } from './keys';
+import { withLocalWriteLock } from '../sync/localWriteLock';
+
+// Writers run under the shared local-write lock (#1399; see settings.js). The
+// `...Unlocked` merge is for a sync applyMerged that already holds it.
 
 export async function loadUserProfile() {
   try {
@@ -10,10 +14,12 @@ export async function loadUserProfile() {
   }
 }
 
-export async function saveUserProfile(profile, store = AsyncStorage) {
-  const record = { ...profile, saved_at: new Date().toISOString() };
-  await store.setItem(USER_PROFILE_KEY, JSON.stringify(record));
-  return record;
+export function saveUserProfile(profile, store = AsyncStorage) {
+  return withLocalWriteLock(async () => {
+    const record = { ...profile, saved_at: new Date().toISOString() };
+    await store.setItem(USER_PROFILE_KEY, JSON.stringify(record));
+    return record;
+  });
 }
 
 // Merge a partial patch into the stored profile, preserving every field the
@@ -26,7 +32,7 @@ export async function saveUserProfile(profile, store = AsyncStorage) {
 // hold pending a Play Data Safety / DPA / privacy-policy update). Applying a
 // pulled cloud profile with saveUserProfile would therefore silently delete the
 // user's demographics off the device. Sync must merge, never replace.
-export async function mergeUserProfile(patch) {
+export async function mergeUserProfileUnlocked(patch) {
   const existing = await loadUserProfile();
   const record = {
     ...(existing || {}),
@@ -37,6 +43,10 @@ export async function mergeUserProfile(patch) {
   return record;
 }
 
-export async function clearUserProfile() {
-  await AsyncStorage.removeItem(USER_PROFILE_KEY);
+export function mergeUserProfile(patch) {
+  return withLocalWriteLock(() => mergeUserProfileUnlocked(patch));
+}
+
+export function clearUserProfile() {
+  return withLocalWriteLock(() => AsyncStorage.removeItem(USER_PROFILE_KEY));
 }
