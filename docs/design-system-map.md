@@ -1,1750 +1,202 @@
 # Design System Map
 
-Status: current implementation map. Use this document to locate visual tokens,
-shared components, and established screen treatments. The active code is
-authoritative for exact values.
+For UI maintainers choosing an implementation reference. [UI Design Rules](ui-design-rules.md)
+owns adopted behavior and layout rules; the [KUA package](design/kinetic-utilitarian-athletic/README.md)
+owns approved visual tokens and foundations. These implementation references
+map that system to the shipped app and preserve legacy fallback evidence.
 
-The approved design target is the **Kinetic Utilitarian Athletic three-theme system**
-documented in [`docs/design/kinetic-utilitarian-athletic/`](design/kinetic-utilitarian-athletic/README.md).
-The Analog Iron direction is retired; `docs/design/analog-iron-v0.125/` is an archive only.
+The Analog Iron package is retired historical material.
 
-Scheduling for the theme migration lives in the
-[Post-Launch Redesign Roadmap](post-launch-redesign-roadmap.md).
-
-The [repo-grounded migration audit and child issue drafts](design/analog-iron-v0.125/migration-audit.md)
-inventory current routes, states and shared components, record reference conflicts
-and unresolved tokens, and assign disjoint implementation stages. The audit also
-qualifies native appearance: `mobile/app.json` requests automatic appearance,
-and `ThemeContext.applyNativeAppearance()` synchronizes explicit Light/Dark
-choices with native controls while passing System through to the OS. The
-JavaScript palette wiring described below handles the app's themed surfaces.
-
-For the design rules derived from these patterns, see
-`docs/ui-design-rules.md`. This document records implementation; it does not own
-product history or issue chronology.
-
-`colors.<token>` below means the active palette read from `useTheme()` — there
-is no static `Colors` object any more. Every token resolves to a Light and a
-Dark value; see the Color Palette table.
-
-Paths and component names are preferred over line-number references so this map
-survives ordinary code movement.
-
----
+Paths and component names take precedence over retained historical line numbers.
 
 ## Appearance Modes
 
-Source: `mobile/theme/colors.js`, `mobile/theme/ThemeContext.js`,
-`mobile/lib/themePreference.js`
-
-Kilo ships two complete palettes — **Light** and **Dark (indigo)** — sharing the
-brand-orange accent `#d98d42`. There is no static `Colors` export and no mutable
-global palette: components read the active palette from `useTheme()` and build
-their sheets with `useThemedStyles(createStyles)`, so a preference or OS scheme
-change repaints every mounted surface without a reload.
-
-- Preference values: `light`, `dark`, `system`. Missing or invalid resolves to
-  `system`.
-- Persisted at AsyncStorage key `kilo.appearance_preference` (dot-namespaced so
-  the `kilo_` account-switch purge does not wipe a device display setting).
-- `system` resolves through React Native `useColorScheme()`, defaulting to light
-  when the platform reports no scheme.
-- `ThemeProvider` is mounted in `App.js` **above** `AppShell`, so the outermost
-  container, safe area, status bar, tab bar, screens, and modals all share one
-  resolved palette.
-- Chosen from **More → Settings → Appearance** via a three-way segmented
-  control that follows the existing `unitToggle` visual convention.
+See [Appearance Modes](ui-theme-reference.md#appearance-modes).
 
 ## Court Theme Picker
 
-Source: `mobile/components/ThemeSelectionControl.js`, `mobile/lib/themePreference.js`
-
-The production court theme picker lives in **More → Settings → Appearance**, directly
-above the Light/Dark/System appearance control. It is shown in all builds; the
-development-only `ThemePreviewControl` and DEV PREVIEW Settings section have been
-removed (#1136).
-
-- Theme values: `hard-court`, `clay-court`, `grass-court`. Missing or invalid normalizes
-  to `hard-court`.
-- Persisted at AsyncStorage key `kilo.theme_selection` (dot-namespaced, same account-switch
-  exclusion as `kilo.appearance_preference`).
-- Rendered by `ThemeSelectionControl`: a three-option segmented row labelled **Court**, each
-  option showing its full name (Hard Court, Clay Court, Grass Court) with a 44×44dp touch
-  target. The selected option is distinguished by both fill color and font weight (satisfying
-  the "without color alone" accessibility requirement).
-- The selection and the Light/Dark/System appearance choice are fully independent: changing
-  one never alters the other.
+See [Court Theme Picker](ui-theme-reference.md#court-theme-picker).
 
 ## Color Palette
 
-Source: `mobile/theme/colors.js`
-
-| Token | Light | Dark | Role |
-|---|---|---|---|
-| `background` | `#f7f2ea` | `#100f1a` | Global scroll background |
-| `card` | `#ffffff` | `#1e1c2c` | Card fill (dark keeps a deliberate elevation jump from `background`) |
-| `cardBorder` | `rgba(34,28,23,0.1)` | `rgba(217,141,66,0.28)` | Card stroke, dividers, separators. Uniform 1px on every ordinary card; accent-tinted in dark |
-| `accent` | `#d98d42` | `#d98d42` | Primary brand orange — fills, strokes, marks, chart lines, active states. **Not for text**; use `accentText` (#908) |
-| `text` | `#221c17` | `#f2f0f7` | Primary text |
-| `textMuted` | `#6b6259` | `#a29fb3` | Secondary/support text |
-| `textLight` | `#faf6f0` | `#f2f0f7` | Text on filled tone surfaces |
-| `tabBarBackground` | `#201914` | `#1e1c2c` | Bottom tab bar |
-| `tabInactive` | `#8a8177` | `#6a6780` | Inactive tab icons |
-| `inputBackground` | `#fbf8f3` | `#242235` | Text input fill |
-| `inputBorder` | `rgba(34,28,23,0.16)` | `rgba(217,141,66,0.28)` | Text input stroke |
-| `chipBackground` | `#f3ddc0` | `rgba(217,141,66,0.32)` | Chip/badge/highlight fill |
-| `chipText` | `#96571c` | `#ffc98a` | Chip/badge text |
-| `success` | `#4a7c44` | `#7ed968` | Green — direct status marks and text |
-| `error` | `#b03a2e` | `#f2705c` | Red — direct status marks and text |
-| `caution` | `#c98f1a` | `#f2b94a` | Yellow — direct status marks, dots, meter segments. **Not for text**; use `cautionText` (#908) |
-| `divider` | `rgba(31,26,23,0.05)` | `rgba(255,255,255,0.08)` | Subtle separator overlay |
-| `subtleBg` | `rgba(34,28,23,0.04)` | `rgba(255,255,255,0.06)` | Very subtle tinted background — history/column header rows |
-| `panelBackground` | `#ffffff` | `#1e1c2c` | Panel/section background |
+See [Color Palette](ui-theme-reference.md#color-palette).
 
 ### Derived semantic tokens
 
-These carry the pairings that would otherwise be unreadable in one of the two
-modes. Every ratio below is asserted automatically in
-`mobile/tests/theme-rendering.test.js`.
-
-| Token | Light | Dark | Role and measured contrast |
-|---|---|---|---|
-| `cardAccentBg` | `#96571c` | `#7a4a14` | Filled accent tone card/badge, label `textLight` — 5.30:1 / 6.60:1 |
-| `cardSuccessBg` | `#3a6035` | `#2f5a28` | Filled success tone, label `textLight` — 6.72:1 / 7.11:1 |
-| `cardCautionBg` | `#7f6310` | `#6b5210` | Filled caution tone, label `textLight` — 5.28:1 / 6.54:1 |
-| `cardErrorBg` | `#b03a2e` | `#8a2f24` | Filled error tone, label `textLight` — 5.59:1 / 7.40:1 |
-| `buttonLabel` | `#faf6f0` | `#100f1a` | Label on the shared Button (background is `text`) — 15.65:1 / 16.81:1 |
-| `onAccent` | `#221c17` | `#100f1a` | Label on small accent-filled controls (segmented tabs, confirm, checkmarks) — 6.29:1 / 7.09:1 |
-| `accentText` | `#8a4e15` | `#d98d42` | Accent-colored **copy** on `card` / `background` / `subtleBg` — 6.60:1, 5.92:1, 6.11:1 / 6.23:1, 7.09:1, 5.24:1. Never on a chip fill: use `chipAccentText` |
-| `cautionText` | `#6f5510` | `#f2b94a` | Caution-colored **copy** on `card` / `background` / `subtleBg` / `chipBackground` — 7.04:1, 6.32:1, 6.51:1, 5.34:1 / 9.39:1, 10.69:1, 7.89:1, 5.33:1 |
-| `chipAccentText` | `#8a4e15` | `#ffc98a` | Accent-colored **copy** that can land on a `chipBackground` fill in any state (#918, #923) — `card` / `background` / `subtleBg` / `chipBackground` / `errorSurface` — 6.60:1, 5.92:1, 6.11:1, 5.00:1, 5.78:1 / 11.11:1, 12.64:1, 9.33:1, 6.31:1, 10.03:1 |
-| `errorSurface` | `#fdeceb` | `#3a1f1c` | Tinted error surface, label `error` — 5.26:1 / 5.20:1 |
-| `cautionSurface` | `#f7ecd2` | `#2e2717` | Tinted caution surface (fatigue alert) — see `cautionSurfaceText` |
-| `cautionSurfaceText` | `#7f6310` | `#f2b94a` | Ink on `cautionSurface` — 4.84:1 / 8.33:1 |
-| `roughBackground` | `#fbeee0` | `#2a2338` | "Rough session" tier surface, label `chipText` — 5.01:1 / 10.01:1 |
-| `roughBorder` | `#e5c49c` | `rgba(217,141,66,0.32)` | Rough tier stroke |
-| `overlay` | `rgba(31,26,23,0.55)` | `rgba(0,0,0,0.65)` | Modal scrim |
-| `shadowColor` | `#000000` | `#000000` | Tab bar / panel shadow ink |
-
-The `card*Bg` tokens are used only for *filled* tone surfaces (UI.js
-Card/StatCard tone variants, trend badges, pace badges, error banners). The
-direct `success`/`caution`/`error`/`accent` values are for status marks, dots,
-meter segments, strokes, and chart lines — dark mode intentionally uses the
-brighter supplied values there, which is exactly why they cannot back a
-`textLight` label.
-
-**Text vs. mark (#908).** `accent` and `caution` are *mark* colors and must not
-be used as a text `color`: in light mode they measure 2.68:1 and 2.83:1 against
-`card`, well under AA. Anything the user reads uses `accentText` /
-`cautionText` instead. The split is by role, not by component — the same screen
-may draw an `accent` dot beside an `accentText` label. `success` and `error`
-need no equivalent: both already clear AA as light-mode copy.
-
-Both inks are darker than the obvious `chipText` / `cautionSurfaceText` reuse
-because accent and caution copy also lands on `chipBackground`: the Settings
-stepper, the Big 3 slot picker's selected row, Recovery's retry button, Home's
-sync notice, and the weight history list's pressed rows. A new pairing must be
-measured against every surface the string can sit on, pressed states included.
-Those five accent strings now carry `chipAccentText` rather than `accentText`
-(#923); the rule that produced the darker inks still governs `cautionText`.
-
-Two call sites keep the mark value on purpose and are not text for this rule:
-the trend glyphs in `AnalyticsCrossDayComparison.js` (`↔` / `—` / `↑` / `↓`,
-which are icon substitutes sitting beside `MaterialIcons` arrows) and the
-outlined `!` + count validation badge in `LogScreenEditorCard.js`, whose glyph
-matches its own ring stroke.
-
-**`chipAccentText` is the ink for accent copy on a chip fill.** Not just for new
-work: as of #923 no shipping surface pairs `accentText` with `chipBackground` in
-any state, so the former "dark `accentText` on `chipBackground` 3.54:1" gap is
-retired rather than tolerated. `chipAccentText` clears AA on that fill in both
-modes (5.00:1 / 6.31:1) and on every other text surface too, so a string that
-sits on a chip in only *some* state carries it in all of them. It invents no
-color: light is `accentText`'s light value, dark is `chipText`'s dark value.
-
-The 3.54:1 measurement is still pinned in `mobile/tests/theme-rendering.test.js`,
-repurposed — it now records why `accentText` is unfit for that fill rather than a
-gap the app ships. The five surfaces migrated in #923 are `SettingsScreen.js`
-`stepperText`, `AnalyticsStrengthSection.js` `slotOptionTextSelected` (selected),
-`AnalyticsRecoverySection.js` `stateRetryText`, `WeightHistoryList.js`
-`loadMoreText` (pressed), and `HomeScreen.js` `syncNoticeActionText`.
-
-That last one is the only dual-fill site: the sync notice paints
-`chipBackground` while a sync is pending and `errorSurface` once it fails, with
-the same action label on both. `chipAccentText` was measured against both rather
-than assumed — 5.78:1 light / 10.03:1 dark on `errorSurface` — so one ink covers
-both states. The notice's *title* still switches to `error` on failure; only the
-action label is shared.
-
-**Known gap:** `chipText` on `chipBackground` in light mode measures 4.33:1,
-just under AA for normal text. Both values are contractually fixed by the #689
-approved palette, so this is recorded rather than adjusted; dark mode is fine at
-11.11:1.
+See [Derived semantic tokens](ui-theme-reference.md#derived-semantic-tokens).
 
 ### Hardcoded Color Leaks (not in colors.js)
 
-| File | Reference | Value | Used For |
-|---|---|---|---|
-| `components/KiloWordmark.js` | KiloWordmark SVG (Home title and startup overlay) | `#FF5C00` | KiloWordmark SVG accents (brand mark, intentionally fixed in both modes) |
-
-This is now the complete list: every other visual color in the migrated
-production surfaces resolves through a palette token.
-
----
+See [Hardcoded Color Leaks (not in colors.js)](ui-theme-reference.md#hardcoded-color-leaks-not-in-colorsjs).
 
 ## Shared Components
 
-Source: `mobile/components/UI.js`
+See [Shared Components](ui-shared-components.md#shared-components).
 
 ### Card
 
-| Property | Value | Line |
-|---|---|---|
-| backgroundColor | `colors.card` | `158` |
-| borderRadius | `16` (`GEOMETRY['radius-2xl']`) | `159` |
-| padding | `18` | `160` |
-| borderWidth | `1` | `161` |
-| borderColor | `colors.cardBorder` | `162` |
-| gap (between children) | `10` | `163` |
-
-Every ordinary card uses this 1px `cardBorder` in both modes — no card is
-special-cased. The single documented exception is the current-routine card in
-`LogActiveRoutineCard.js`, which keeps a 4px `colors.accent` border on all
-sides so the active note is identifiable at a glance.
-
-Tone variants (accent/success/error/warn) override bg and border to the tone color. Lines `165-180`.
+See [Card](ui-shared-components.md#card).
 
 ### SectionTitle
 
-| Property | Value | Line |
-|---|---|---|
-| fontSize | `18` | `182` |
-| fontWeight | `700` | `183` |
-| color | `colors.text` | `184` |
-| marginTop | `6` | `185` |
+See [SectionTitle](ui-shared-components.md#sectiontitle).
 
 ### Button
 
-| Property | Value | Line |
-|---|---|---|
-| backgroundColor | `colors.text` | `188` |
-| borderRadius | `18` | `189` |
-| paddingVertical | `16` | `190` |
-| text fontSize | `16` | `199` |
-| text fontWeight | `700` | `200` |
-| text color | `colors.buttonLabel` | `198` |
-
-The pill/label pairing inverts by mode: light renders a dark pill with a light
-label, dark renders a light pill with a dark label. Both clear AA (see the
-derived-token table above).
-
-`tone="danger"` (#822): transparent `backgroundColor`, `borderWidth: 1.5`
-`colors.error` border, `colors.error` text — for irreversible actions, paired
-with the Danger Zone container pattern (`ui-design-rules.md` #14). Default
-tone is unchanged.
+See [Button](ui-shared-components.md#button).
 
 ### StatCard
 
-| Property | Value | Line |
-|---|---|---|
-| label fontSize | `13` | `207` |
-| label fontWeight | `700` | `208` |
-| label color | `colors.textMuted` | `209` |
-| value fontSize | `28` | `212` |
-| value fontWeight | `800` | `213` |
+See [StatCard](ui-shared-components.md#statcard).
 
 ### Badge
 
-| Property | Value | Line |
-|---|---|---|
-| fontSize | `11` | `238` |
-| fontWeight | `800` | `239` |
-| textTransform | `uppercase` | `241` |
-| borderRadius | `8` | `222` |
+See [Badge](ui-shared-components.md#badge).
 
 ### Chip
 
-| Property | Value | Line |
-|---|---|---|
-| fontSize | `12` | `250` |
-| fontWeight | `600` | `251` |
-| borderRadius | `999` (pill) | `248` |
-
----
+See [Chip](ui-shared-components.md#chip).
 
 ### InfoExplainer (`components/InfoExplainer.js`, #1245)
 
-The one explainer pattern outside More: `InfoButton` (`info-outline`, glyph
-`18`, `onSurfaceVariant`/`textMuted`, real `44x44`, `flexShrink: 0`, no auto or
-negative margins, `accessibilityState.expanded`) anchored beside the label or
-heading it explains, plus `InfoNote` (always mounted, polite live region) that
-holds the explanation, hidden until tapped. `useInfoExplainer()` owns the
-toggle. Used by Home `Exercise Progress` (only when a count needs explaining:
-first tracked session or inherited history), 1K Progress, Progressive Overload's
-`Exercise Progress` (beside the Progressing/Steady/Regressing trio) and
-`Metrics` (beside the 1RM/Kilo/Best/Trend header) labels, progression-suggestion
-cards (beside `HEURISTIC`), Log's `Counting in normal analytics` row, and
-Recovery `Started`/`Dates`. Each explains only the thing beside it (#1356): no
-multi-topic notes, and no inline explainer paragraphs on these surfaces.
+See [InfoExplainer (`components/InfoExplainer.js`, #1245)](ui-shared-components.md#infoexplainer-componentsinfoexplainerjs-1245).
 
 ## ScreenShell
 
-Source: `mobile/components/ScreenShell.js`
-
-| Property | Value | Line |
-|---|---|---|
-| Content horizontal padding | `16` | `63` |
-| Content bottom padding | `measured TabBar height + 24 + bottom safe-area inset` (tab bar clearance) | `51-52` |
-| Gap between top-level children | `16` | `65` |
-| Header paddingTop | `8` | `71` |
-| Header paddingBottom | `8` | `72` |
-| Header internal gap | `8` | `73` |
-| Screen title fontSize | `34` | `87` |
-| Screen title fontWeight | `700` | `88` |
-| Screen title color | `colors.text` | `89` |
-| Subtitle fontSize | `15` | `96` |
-| Subtitle lineHeight | `22` | `97` |
-| Subtitle color | `colors.textMuted` | `98` |
-
-Current values live in `styles` at the bottom of `ScreenShell.js`
-(`container` gap/padding ~123-127, `header` ~131-135, `title` ~152-156). The
-sticky back-header (`onBack`) uses `paddingHorizontal: 16`, `paddingVertical: 12`
-with a 1px `cardBorder` bottom.
-
-The absolute `TabBar` keeps 16px horizontal insets and a 4px visual bottom
-gap (`TAB_BAR_VISUAL_GAP` in `mobile/components/TabBarLayout.js`), then adds
-the runtime bottom safe-area inset from `react-native-safe-area-context`. The
-bar's own rendered height is never added to that offset. `TabBar` reports its
-rendered height through `onLayout`; `mobile/App.js` owns that measurement in
-state and provides it to every `ScreenShell` via `TabBarLayoutContext`, which
-adds it to the shared 4px gap and the bottom inset for scroll clearance.
-`SafeAreaProvider` is owned by `mobile/App.js`; `ScreenShell` consumes only
-the bottom inset so existing top spacing is unchanged.
-
-The compact `TabBar` auto-hides on user-driven scroll (`useTabBarAutoHide` and
-`nextTabBarScrollState` in `mobile/components/TabBarLayout.js`): a downward
-drag past `TAB_BAR_SCROLL_THRESHOLD` (8dp) slides it off with a translateY
-only, never a fade, and it stays opaque whenever shown. It is shown again on
-scroll up, on tab change, and at both scroll boundaries (#1231). The top
-boundary is `y <= 0`. The bottom boundary is `y` within the fixed
-`TAB_BAR_BOTTOM_EPSILON` (1dp, logical points, deliberately not scaled by
-viewport or content height) of `maxY = max(0, contentHeight - layoutHeight)`,
-including any iOS rubber-band offset beyond it. Content that cannot scroll
-(`maxY <= 0`) always shows the bar, and `maxY` is recomputed from every scroll
-event so a window/orientation change re-evaluates the boundary. Reaching the
-bottom resets the scroll baseline to exactly `maxY`; that is the hysteresis:
-bounce and settle events at the end can neither hide nor flicker the bar, and
-it can hide again only after the user moves off the bottom and drags down
-more than 8dp from that new baseline. Programmatic scrolls (`userDriven` false,
-for example `scrollToEnd`) re-baseline and reveal at either boundary but never
-hide. A hidden bar keeps `pointerEvents="none"` and no-hide-descendants
-accessibility semantics, and scroll clearance above is unchanged by hidden
-state.
-
----
-
-## More Screen
-
-Source: `mobile/screens/MoreScreen.js`, `mobile/components/SettingsScreen.js`,
-`mobile/components/ProfileScreen.js`, `mobile/components/AboutScreen.js`,
-`mobile/components/BackupScreen.js`, `mobile/components/HelpScreen.js`, and
-`mobile/screens/more/`.
-
-More is a menu of quiet, individually actionable rows. The rows are grouped by
-`SectionTitle` into **Preferences** (User Profile, Settings), **Account & Data**
-(Account, Data & Backup), and **Help & Support** (App Guide, About Kilo). Rows
-with supporting copy put a 13px `colors.textMuted` help line below the label;
-all rows end with a 20px muted `MaterialIcons` `chevron-right` disclosure.
-
-| Element | Property | Value |
-|---|---|---|
-| Menu list | gap | `12` |
-| Menu row | background / border / radius | `colors.card` / 1px `colors.cardBorder` / `16` (`GEOMETRY['radius-2xl']`) |
-| Menu row | padding / minimum height | `20` / `44` |
-| Main label | fontSize / fontWeight / color | `17` / `600` / `colors.text` |
-| Help line | fontSize / color | `13` / `colors.textMuted` |
-| Disclosure | icon / size / color | `chevron-right` / `20` / `colors.textMuted` |
-
-The top-level destinations Settings, Profile, About, Backup, Help, and Account
-are `ScreenShell` views that receive `onBack={() => showView('menu')}` from
-`MoreScreen`. The remaining listed surfaces are nested ownership details, not
-More-menu destinations: `AccountScreen` renders `AccountLifecycle` and
-`LegalLinks` inline; `BackupScreen` renders `CloudSyncRecovery` inline; and
-`CloudSyncRecovery` owns the inline `HealthDataConsent` step. A recovery session
-in `AccountScreen` renders the separate `SetNewPasswordScreen`, which has its
-own `ScreenShell` and receives Account's `onBack` callback. These nested
-components remain part of their parent flows rather than adding rows to the
-top-level menu.
-
-Settings' Appearance and Units controls, and Profile's height unit control, use
-the shared `unitTab` segmented convention: inline 44dp targets with 12px
-horizontal and 6px vertical padding, 12px/700 labels, muted inactive ink, and
-the active accent treatment. Settings' fatigue multiplier is a 44dp stepper
-(`borderRadius: 12`) with decrement/value/increment controls. Irreversible
-Account and Backup actions stay in the error-tinted, bordered 16px-radius
-**Danger Zone** containers owned by those screens, as required by
-`docs/ui-design-rules.md` §14.
+See [ScreenShell](ui-shared-components.md#screenshell).
 
 ## Modal System
 
-Sources: `PlateCalculatorModal.js`, `WorkoutSyntaxModal.js`,
-`RecoveryBlockStartModal.js`, `RecoveryBlockWeekModal.js`,
-`RecoveryBlockEndModal.js`, `SessionCheckInModal.js`, and `WebAlertHost.js`.
-
-The six sheet modals share a local implementation of this shell (duplicated in
-each file, not yet a shared component):
-
-| Element | Value |
-|---|---|
-| Scrim | `colors.overlay` |
-| Sheet | `colors.card`, `borderRadius: 20` |
-| Header | row, `paddingHorizontal: 20`, 1px `colors.cardBorder` bottom |
-| Title | `fontSize: 17` |
-| Close control | `✕`, `fontSize: 16`, `colors.textMuted`, `padding: 4`, `hitSlop={12}` |
-| Error banner | `colors.cardErrorBg`, `borderRadius: 10` |
-| Field fill | `colors.inputBackground` (via `createInputStyle(colors)`) |
-| Option row | `borderRadius: 12`, section `padding: 20` |
-
-`WebAlertHost.js` is intentionally the alert exception rather than a sheet:
-it uses a `borderRadius: 16` card with `padding: 20` inside a `padding: 24`
-overlay and has no header row. The sheet close control reaches the 44dp
-effective target through `hitSlop={12}` inside the padded header; the 20px row
-padding keeps that slop unclipped. This is a deliberate local compliance choice
-to the §15 target rule, not a general replacement for a real 44dp control box.
-Accessible names are specific where useful: `Close plate calculator` and
-`Close workout syntax help`; the four recovery/check-in sheet close controls
-use the concise name `Close` (Session Check-In also exposes a separate `Back`).
-
----
+See [Modal System](ui-shared-components.md#modal-system).
 
 ## Shared History-Panel System
 
-The single visual system used by **Weight History**
-(`mobile/components/WeightHistoryList.js`) and **Goal History**
-(`mobile/screens/WeightScreen.js`). Both render as one uniform panel: a header
-row that doubles as the column-header (expanded) or summary (collapsed) row, a
-3-column value·value·date grid, and a trailing control cell.
-
-The constants are **duplicated, not imported**, in both files so each panel stays
-inside its own `Allowed Files`. WeightHistoryList defines them as
-`HISTORY_*` constants + `historyPanel` StyleSheet (`WeightHistoryList.js`
-`17-171`); WeightScreen mirrors them in local StyleSheet `hp`
-(`WeightScreen.js` `567+`). **Known exception:** these two must be kept
-numerically identical by hand.
-
-| Element | Property | Value |
-|---|---|---|
-| Panel card | bg / radius / border | `colors.card` / `16` / 1px `cardBorder`, `overflow: hidden` |
-| Header row | bg | `colors.subtleBg`, `paddingVertical: 10`, left pad 16 / right pad 0 |
-| Header row (expanded) | border | 1px `cardBorder` bottom (`headerRowBordered`) |
-| Column label | fontSize / weight | `11` / `700`, uppercase, `letterSpacing: 0.5`, `textMuted` |
-| Column flex | col1 / col2 / col3 | `1.35` (left) / `1.25` (center) / `1.5` (right) |
-| Control cell | width | `56` (trailing chevron / filter / delete) |
-| Row | padding | `paddingVertical: 12`, left 16 / right 0 |
-| Row value | fontSize / weight | `20` / `700`, `colors.text` |
-| Row date | fontSize / weight | `15` / `600`, `colors.textMuted`, right-aligned |
-| Collapsed summary count | fontSize / weight | `12` / `600`, `textMuted` |
-| Collapsed summary "Latest:" | fontSize / weight | `15` / `600`; emphasized value `900` `text` |
-| Collapse chevron | icon / size | `MaterialIcons` `expand-less`/`expand-more`, `18`, `textMuted` |
-
-Panel-specific outcome colors (the only intended difference between panels):
-- Weight History col2 = **Change** (delta), colored by severity
-  (`textMuted` → `caution` → `error`).
-- Goal History col2 = **End Weight**, colored `success` (met) / `error` (missed)
-  via `computeIsGoalMet`; col3 = **Target Date**.
+See [Shared History-Panel System](ui-shared-components.md#shared-history-panel-system).
 
 ### Collapse convention (standardized #389, #410)
 
-App-wide: collapse toggles are `MaterialIcons` `expand-more` (collapsed) /
-`expand-less` (expanded), size 16–18, `colors.textMuted`, with the whole header
-row as the press target. This replaced the earlier text `▲`/`▼` glyphs. Used by
-both history panels, the Analytics Big 3 Mapping header, and the 1K "How is this
-calculated?" toggle.
+See [Collapse convention (standardized #389, #410)](ui-shared-components.md#collapse-convention-standardized-389-410).
 
 ### Date-range filter (Weight History)
 
-Client-side filter over already-loaded entries (`filterByDateRange`,
-`WeightHistoryList.js` `204-212`) — no new data model. A `date-range`
-`MaterialIcons` icon in the Date header cell (turns `accent` when a range is
-active/open) reveals a From/To row (`dateFilterRow`, `subtleBg`) below the
-header. Web uses text inputs; native uses `DateTimePicker`. Tapping the icon
-while collapsed expands the panel and opens the filter row.
-
----
+See [Date-range filter (Weight History)](ui-shared-components.md#date-range-filter-weight-history).
 
 ## Home Screen
 
-Source: `mobile/screens/HomeScreen.js`
-
-**Hierarchy (#1339, visual summary #1341).** Home is an abstract of the app:
-signals as numbers, bars and a chart, explanation left to Analytics. Normal
-training: hero (current training / Exercise Progress / actions) → `1K Progress`
-(total, 1K bar, Big 3 bars) → body weight (value, goal, trend graph). Active
-Recovery (open week or between weeks): ONE Recovery card is the training
-surface — `Recovery · Week N`, the total as the hero number, Big 3 bars, and the
-action strip — → body weight. No training hero and no 1K card render in Recovery. Home has no
-generic Analytics footer — each section header deep-links to its own Analytics
-section. The `ScreenShell` subtitle is `Training and body weight at a glance.` in every
-state (#1341): the lead card already names the routine week or `Recovery · Week
-N`, so a state-specific subtitle only repeated it.
+See [Home Screen](ui-home.md#home-screen).
 
 ### Cloud Sync Notice (#737)
 
-Rendered above every other tier, only when the shell-published summary carries a
-notice. Queued work is informational and reuses the chip tone the shell's update
-banner already uses; only a real failure takes the error surface.
-
-| Element | Property | Value |
-|---|---|---|
-| Notice card (pending) | backgroundColor | `colors.chipBackground` |
-| | borderColor | `colors.cardBorder` |
-| Notice card (failed) | backgroundColor | `colors.errorSurface` |
-| | borderColor | `colors.error` |
-| Card wrapper (both) | padding / marginTop / gap | `16` / `12` / `8` |
-| Title | fontSize / fontWeight | `14` / `700` |
-| | color | `colors.text`, or `colors.error` when failed |
-| Body | fontSize / color | `13` / `colors.textMuted` (no fixed `lineHeight`) |
-| Action row | flexDirection / flexWrap | `row` / `wrap` |
-| | columnGap / rowGap | `16` / `4` |
-| Action (`Retry sync`, `Open Cloud Sync`) | minHeight | `44` (no fixed `height`) |
-| Action label | fontSize / fontWeight / color | `13` / `700` / `colors.accentText` |
-
-`Retry sync` renders only for the failed notice. Both actions are ≥44dp and the
-row wraps, so an enlarged label at 320dp drops to a second line rather than
-shrinking the target.
+See [Cloud Sync Notice (#737)](ui-home.md#cloud-sync-notice-737).
 
 ### Loading Placeholders (#737)
 
-Home, Log, and Weight each render a local, **static** placeholder while a first
-read is unresolved — no shimmer, no animation. There is no shared primitive;
-each screen shapes its bars to the tiers it is about to paint.
-
-| Element | Property | Value |
-|---|---|---|
-| Placeholder card | padding | `18` (Home, Log, Weight — shared Card value, #1278) |
-| | borderRadius | `16` (matches `Card`) |
-| | gap | `12` |
-| Bar | backgroundColor | `colors.cardBorder` |
-| | borderRadius / opacity | `6` / `0.6` |
-| | height | `12`, or `36` for Home's hero bar |
-| | width | `'35%'` / `'75%'` / `'100%'` — always relative, never fixed px |
-
-Each placeholder is one `accessibilityRole="progressbar"` node with a screen-
-specific label (`Loading your dashboard`, `Loading your workout notes`,
-`Loading your weight history`), so a screen reader announces a load in progress
-rather than reading a stack of empty containers.
+See [Loading Placeholders (#737)](ui-home.md#loading-placeholders-737).
 
 ### Recovery Status Card (#757)
 
-Inside the populated-dashboard branch only. In active Recovery it is Home's
-lead card (#1341): it uses the hero's `weeklyHero` surface (primary border),
-replaces the training hero and the 1K card, and carries the `Log workout` /
-`Log weight` strip (`HomeActionStrip`, Recovery-aware targets unchanged), so the
-week is named exactly once. Non-active states (loading, unverified, pending
-hold, stale with no active block) keep the compact message card below.
-
-Rendering is decided by the AUTHORITATIVE recovery state
-(`useRecoveryBlockState`, via `useHomeRecoverySummary`), not by the
-ordinary-analytics boundary Home already gates its body on. The two are
-different reads and only the first can say whether a block is active:
-
-| Recovery state | Home renders |
-|---|---|
-| Verified, active block | The return-to-baseline summary (#779/#782, below) and the `Recovery` handoff |
-| Verified and current, no active block | **Nothing.** Silence is a claim, and here a verified *current* read supports it |
-| Verified but stale | `RECOVERY_STALE_MESSAGE` and `Retry recovery` — over the last-known-good summary when one was cached, and on its own when none was. A stale snapshot that happened to cache no active block is still one whose newest refresh failed |
-| First read in flight | `RECOVERY_LOADING_MESSAGE`, and **no** retry — nothing has failed |
-| First read failed | `RECOVERY_UNVERIFIED_MESSAGE` and `Retry recovery` — never silence |
-
-Copy for the three non-ready conditions is the recovery state contract's own
-(`hooks/entries/recoveryBlockHooks.js`), so Home, Log, and Analytics cannot
-describe the same condition differently, and `Retry recovery` is the exact
-control name that copy tells the user to tap (ui-design-rules §12).
-
-**Active-block content (#779/#782, #1315; #1333; Big 3 hierarchy #1335).** Home
-is the entry point, not a second evidence surface — but Squat, Bench and Deadlift
-are what Kilo is built around, so they ARE the card. The active branch reads the
-ONE Recovery snapshot (`getRecoverySnapshot`, the same frozen object Analytics'
-section reads — **Recovery numbers come from one snapshot;
-surfaces never re-derive**) via `useHomeRecoverySummary`'s unchanged `big3` and
-`headline`. What stays on Analytics Recovery is the prose around them: the
-headline caption (`N of M lifts back · avg …% · Week n`), the roster count line,
-the week-scope explainer, and `Latest week:` wording. In order:
-
-- **Header** — accent bar and `Recovery · Week N` (`home-recovery-link`, a11y
-  label `Recovery`), the identity label and the `Analytics › recovery` handoff
-  (ui-design-rules.md §13). `home-recovery-week` is `Week N` from the snapshot's
-  selected week (#1341: the note title is no longer shown on Home); with no week
-  the header reads `Recovery`. Staleness is carried by the stale message.
-- **Total** (`home-recovery-headline`) — the snapshot's `display.percent` as the
-  card's hero number (`home-recovery-headline-value`: `{pct}%`, `metric-display`
-  48/52, `completion` at ≥100%) with a muted uppercase `total recovery` label;
-  absent when the snapshot has no total. With no total AND no Big 3 rows, the
-  snapshot's reason prints instead (`home-recovery-headline-reason`).
-- **Fallback status** — when the block or week cannot be compared, one plain
-  line: `Baseline data for this block isn't available.`, `Baseline captured. No
-  week logged yet.`, `This week's note is no longer available.`, `This week's
-  note couldn't be read.`, or `No baseline exercises were captured for this
-  block.` Carried Big 3 statuses still print under a note-status fallback (#1318).
-- **Big 3** (`home-recovery-big3`, shared `HomeBig3Bars`) — `home-recovery-lift-{squat,bench,deadlift}`
-  rows in the effective 1K selection's names (#1192): name left, value right
-  (`home-recovery-lift-{slot}-value`: the snapshot's floored `%`, or `Not in
-  baseline` / `Not retested` / `Not scored` / `Unknown`), a muted `Week k` age
-  marker (`-age`) only when the score is carried from an earlier week, and a
-  progress track filled only by a real score (`completion` at ≥100%).
-- **Stale message** — the existing `RECOVERY_STALE_MESSAGE`, only when stale,
-  with `Retry recovery`, under the last-known-good Big 3.
-
-The inclusion clause stays off Home (#820). The region carries one composed
-`accessibilityLabel`: week, the snapshot's `{pct}% total recovery` headline,
-fallback, `Big 3`, then each lift's snapshot `spoken` sentence.
-
-No `on track`, prediction, or medical claim.
-
-| Element | Property | Value |
-|---|---|---|
-| Active card | surface | `weeklyHero` (padding `18`, KUA `primary` 2px border) |
-| Message card (`recoveryCard`) | padding / paddingTop / gap | `20` / `12` / `4` |
-| `Recovery` header (`home-recovery-link`) | minHeight | `44` (no fixed `height`); marginTop `-10` |
-| | label | `heroSectionLabel` (KUA `headline-sm` `13`/`17`), uppercase, `onSurface` / `text`; week inline after ` · ` |
-| Total value / label | style | `metric-display` `48`/`52` (legacy `HeroMetric.hero`), `onSurface`; label KUA `label-md` uppercase `onSurfaceVariant` |
-| Big 3 name / scored value | style | KUA `label-lg`, legacy `body-md` / `700`; `onSurface` / `text` (value `completion` / `success` at ≥100%) |
-| Big 3 status value | style | KUA `label-md`, legacy `body-sm`; `onSurfaceVariant` / `textMuted` |
-| Big 3 age marker | style | KUA `label-sm`, legacy `label-sm`; `onSurfaceVariant` / `textMuted` |
-| Big 3 track / fill | height / radius | `6` / `radius-xs`; track `surfaceBorder`, fill `primary` (`completion` at ≥100%) |
-| Fallback status | style | KUA `body-md` `15`/`21`, legacy `16` / `700`; `onSurface` / `text` |
-| Status line | fontSize | KUA `12`, legacy `13`; `onSurfaceVariant` / `textMuted` (no fixed `lineHeight`) |
-| `Retry recovery` | minHeight | `44` (no fixed `height`) |
-| | label | KUA `body-sm` `primary`; legacy `13` / `700` `accentText` |
-
-No element in the card declares a fixed `height`, so every line grows with the
-user's text size; the `Recovery` handoff remains the card's only navigation press
-target and keeps its `minHeight: 44`.
-
-The header handoff (`home-recovery-link`) reuses the shared `sectionHeaderAction`
-treatment (label plus the plain SVG chevron) already used by `Exercise Progress`
-and `1K Progress`, and targets the `recovery` section of the Analytics tab
-(`onNavigate('Analytics', 'recovery')`) — the Recovery section itself, not just
-the tab that contains it, the same section-id vocabulary `weight` and `strength`
-already use and that is owned by `App.js`.
+See [Recovery Status Card (#757)](ui-home.md#recovery-status-card-757).
 
 ### Weekly Summary Hero Card
 
-**Current structure (#1112, #1333, #1339).** The hero answers three questions only:
-what is being trained (`home-hero-label`: `Week N`, `Current
-routine`, or `No current routine`, plus the routine title `home-routine-title`),
-how it is going (the `Exercise Progress` handoff `home-exercise-progress-link`
-→ `Analytics › progressive-overload`, then the Progressing/Steady/Regressing
-trio), and what to do next (the `Log workout` / `Log weight` strip). #1339
-removed the `Full history and insights` footer (sections deep-link instead) and,
-in Recovery, the hero's week subline, active-note title and the bare paused
-`Exercise Progress` handoff. #1341: the hero is normal-training only; in
-Recovery the Recovery card replaces it and carries the same action strip. Body weight moved to the weight card
-below. With no current routine there is no week and no trio: one line (`Pick a
-saved routine or write a new one in Log.`, or `Write a routine in Log to track
-your weeks.` with no saved routines) and the primary action reads `Choose
-routine` / `Write routine`, still `onNavigate('Log')`. An empty current routine
-reads `Current routine` with `Add exercises to this routine in Log to track
-progress.` The table below is the pre-#1112 layout, kept for history.
-
-
-| Element | Property | Value | Line |
-|---|---|---|---|
-| Card wrapper | borderRadius | `16` | `857` |
-| | padding | `0` (custom, overrides Card default) | `855` |
-| | marginTop | `12` | `861` |
-| Floating badge | fontSize | `10` | `876` |
-| | fontWeight | `700` | `877` |
-| | color | `colors.textMuted` | `878` |
-| | textTransform | `uppercase` | `879` |
-| | letterSpacing | `1` | `880` |
-| | borderRadius | `20` | `871` |
-| | position | `absolute`, top: `-12` | `863-864` |
-| Badge week number | color | `colors.text` | `883` |
-| Hero content | padding | `24` all, `32` top (badge clearance) | `886-887` |
-| **Weight value** | fontSize | **`48`** | `899` |
-| | fontWeight | `800` | `900` |
-| | color | **`colors.accentText`** | `901` |
-| Weight placeholder | fontSize | `48` | `905` |
-| | color | `colors.textMuted` | `907` |
-| Weight unit "lb" | fontSize | `20` | `911` |
-| | color | `colors.textMuted` | `913` |
-| Sublabels ("current weight", "7-day trend") | fontSize | `11` | `916` |
-| | fontWeight | `600` | `917` |
-| | textTransform | `uppercase` | `920` |
-| | letterSpacing | `0.3` | `921` |
-| Weight+sparkline row | gap | `16` | `893` |
-| | marginBottom | `24` | `892` |
-| Sparkline | color | `colors.accent` | `115` |
-| | height | `40` | `116` |
-| Classification dot | width/height | `8` | `936-937` |
-| Classification count | fontSize | `16` | `942` |
-| | fontWeight | `800` | `943` |
-| Classification label | fontSize | `10` | `946` |
-| | fontWeight | `600` | `947` |
-| | color | `colors.textMuted` | `948` |
-| Classification row | marginBottom | `24` | `928` |
-| Hero divider | height | `1` | `953` |
-| | color | `colors.cardBorder` | `954` |
-| | margin | `marginHorizontal: -24` (full-bleed) | `955` |
-| Insights link text | fontSize | `13` | `968` |
-| | fontWeight | `700` | `969` |
-| | color | `colors.accentText` | `970` |
-| Insights chevron SVG | stroke | `colors.accent` | `147` |
+See [Weekly Summary Hero Card](ui-home.md#weekly-summary-hero-card).
 
 ### Weight Goal Card
 
-**Current structure (#1333, compact #1339).** `screens/home/HomeWeightCard.js`
-(`home-weight-card`) is supporting context, the last card on Home, not a mini
-Weight tab. Its `Body weight` header (`home-weight-link`) is the Weight-tab
-handoff; then one wrapping row: the latest weigh-in (or `No weigh-in yet`) at
-`24`/`28` metric-display-mobile, and, with a goal, `home-goal` right-aligned —
-the mode (`Cutting`/`Bulking`/`Maintaining`, primary) `· {target} {unit}` and
-weeks left / `Goal ended`. #1341: the trend graph is back (`home-weight-trend`,
-the shared `LineChart` over `dashboardData.weightSeries`, height `64`, `primary`,
-marginTop `14`) whenever a series exists, with no `7-day rolling avg` label. The
-Target/Pace stat grid lives on Weight only. The legacy-only `See weight trends` link is unchanged. An
-ended goal or an unrealistic/aggressive pace adds `home-goal-attention`: the
-Weight goal card's own sentence in `warning`/`cautionText` and a ≥44dp `Review
-goal` action (`onNavigate('Weight')`). Card padding is `20` horizontal, `4` top
-(the 44dp header supplies the rest), `16` bottom. The table below is the
-pre-#1112 layout.
-
-
-| Element | Property | Value | Line |
-|---|---|---|---|
-| Card padding | `24` | | `972` |
-| Card borderRadius | `16` | | `973` |
-| Direction text ("Cutting"/"Bulking") | fontSize | `18` | `983` |
-| | fontWeight | `700` | `984` |
-| | color | dynamic: `colors.success` (gain), `colors.accentText` (loss), `colors.textMuted` (maintain) | `159-163` |
-| Weeks text | fontSize | `14` | `992` |
-| | fontWeight | `700` | `993` |
-| | color | `colors.text` | `994` |
-| Weeks chevron SVG | stroke | `colors.cardBorder` | `168` |
-| Stat label ("Target"/"Pace") | fontSize | `12` | `1004` |
-| | fontWeight | `600` | `1005` |
-| | color | `colors.textMuted` | `1006` |
-| Stat value (number) | fontSize | `32` | `1014` |
-| | fontWeight | `800` | `1015` |
-| | color | `colors.text` | `1016` |
-| Stat unit ("lb", "lb/wk") | fontSize | `16` | `1019` |
-| | color | `colors.textMuted` | `1021` |
-| Stats grid | gap | `40` | `998` |
+See [Weight Goal Card](ui-home.md#weight-goal-card).
 
 ### 1K Club Card (Home)
 
-**Current structure (#1341).** Left-aligned (`oneKCard`: padding `20`
-horizontal, `4` top, `20` bottom) under the start-aligned `1K Progress` header
-handoff (`classifSectionLabel`, like Exercise Progress and Body weight). With a
-total: the total (`home-one-k-total`, lerped hero color), the 1K bar (`8`,
-`primary` fill, toward 1000), then the Big 3 as bar rows (`home-one-k-big3`,
-`home-one-k-lift-{squat,bench,deadlift}`, shared `HomeBig3Bars`): name, value,
-and a `6` track whose fill is the lift's value on one shared scale (heaviest
-lift = full track) — a bar chart of the three numbers, not a new metric. No
-total yet: one `body-sm` line (`home-one-k-setup`: `Log a session of each Big 3
-lift to see your 1K total.`) and bar rows for only the lifts already logged; no
-`N/A` hero, empty progress bar or placeholder rows. The three-column grid and
-`oneKSetupCard` described below are retired.
-
-
-Home is the **compact-summary** treatment (#763): the breakdown is plain data
-(no chart, mapping, or explanation — those stay Analytics-owned). Progress
-bar, unit suffix, and per-lift value/label typography are normalized against
-the Analytics owner card below. The hero total itself spreads `HeroMetric.hero`
-just like Analytics' — #763 gave it a smaller `32`/`800` override to signal
-the compact-vs-owner distinction, but that read as a visual demotion of a
-primary progress summary, so #771 restored the shared hero scale; the
-compact-summary role is now carried by scope (no chart/mapping/explanation),
-not a shrunken total.
-
-**Header stays the handoff (#820).** The 44dp header tap-target box, stacked
-on top of the card's `24` padding, left ~78px of empty space before the hero
-number the card exists to show. A footer-link split (moving the handoff below
-the grid) was tried and reverted — it broke the header-is-the-handoff pattern
-shared with Exercise Progress and Analytics for one card without applying it
-to the others. The fix is instead a trimmed card top padding (`24` → `14`) and
-`gap` (`10` → `6`) around the still-44dp header, so the space shrinks without
-touching the touch target every Home handoff is held to. The Recovery card
-got the identical treatment for the same reason.
-
-| Element | Property | Value | Line |
-|---|---|---|---|
-| Card padding / paddingTop / gap | `24` / `14` / `6` | | `1289` |
-| Card borderRadius | `16` | | `1289` |
-| Header (`home-one-k-link`) | minHeight | `44` (no fixed `height`) | |
-| | label fontSize / fontWeight | `12` / `800`, uppercase | |
-| | color | `colors.textMuted` | |
-| Hero total value | fontSize | `48` (`HeroMetric.hero`) | `1153` |
-| | fontWeight | `900` (`HeroMetric.hero`) | `1153` |
-| | color | `colors.accentText` lerped toward `colors.success` as progress nears 1000 (inline override, always applied — `oneKHeroValue`'s own `colors.text` is never seen, `729`) | `1153` |
-| Hero unit | fontSize | `16` | `1157` |
-| | color | `colors.textMuted` | `1157` |
-| Progress bar | height | `8` | `1165` |
-| | background | `colors.divider` | `1165` |
-| | fill | `colors.accent` | `1173` |
-| | borderRadius | `4` | `1165` |
-| | marginBottom | `16` | `1165` |
-| Breakdown value | fontSize | `16` | `1194` |
-| | fontWeight | `700` | `1194` |
-| | color | `colors.text` | `1194` |
-| Breakdown label | fontSize | `11`, uppercase | `1199` |
-| | fontWeight | `600` | `1199` |
-| | color | `colors.textMuted` | `1199` |
-| Breakdown dividers | borderWidth | `1` | `1187` |
-| | color | `colors.cardBorder` | `1187` |
-
-The vertical `borderLeft/Right` breakdown dividers (vs. Analytics' single
-`borderTop` above the whole row) stay an intentional structural deviation —
-Home's three-column grid reads at a glance, Analytics' row sits under its own
-divider ahead of the chart and info disclosure beneath it.
-
----
+See [1K Club Card (Home)](ui-home.md#1k-club-card-home).
 
 ## Analytics Screen
 
-Source: `mobile/screens/AnalyticsScreen.js`
-
-Analytics is the evidence surface; Home owns the summary, so there is no
-Overview card. The legacy `overview` navigation id still means scroll offset 0.
-Ordering lives in `screens/analytics/AnalyticsLayout.js`
-(`orderAnalyticsSections`, pure):
-
-- **Normal training:** Strength → Progressive Overload → Weight Trends →
-  Routine Health → Recovery history (only when the Recovery section has
-  something to render).
-- **Active Recovery:** Recovery → Weight Trends → `Baseline training · paused
-  during Recovery` disclosure (collapsed by default) holding Strength →
-  Progressive Overload → Routine Health. Ending Recovery restores the normal
-  order.
-
-Strength owns the 1K/Big 3 evidence; Big 3 Mapping sits under the 1K panel,
-collapsed by default with a one-line summary of the mapped lifts. Progressive
-Overload (`AnalyticsProgressiveOverload.js`) is its own top-level section: the
-canonical Exercise Progress counts (`analytics.exerciseProgress`), progression
-suggestions, search/collapse controls and the table; tracked-span/inherited and
-column methodology sits behind its `ⓘ`. Routine Health wraps `SessionGauge`
-(`showTitle={false}`, the section titles it) over `deriveRoutineStatus()`, plus
-the Session Check-ins card when fatigue tracking is on.
+See [Analytics Screen](ui-analytics.md#analytics-screen).
 
 ### Weight Trends Card
 
-| Element | Property | Value | Line |
-|---|---|---|---|
-| Card padding | `20` | `356` |
-| "Latest weigh-in" label | fontSize | `12` | `365` |
-| | fontWeight | `700` | `366` |
-| | textTransform | `uppercase` | `367` |
-| Weight value | fontSize | `32` | `372` |
-| | fontWeight | `900` | `373` |
-| | color | `colors.accentText` | `374` |
-| Chart | height | `100` | `166` |
-| Window selector (`7D` / `30D`) | one chart; swaps `rolling7` ↔ `rolling30`, clears selection; radio role, `>=44dp` | | |
-| Pace badge | borderRadius | `12` | `379` |
-| | text fontSize | `12` | `387` |
-| | text fontWeight | `800` | `388` |
-| Footer stat value (7d/30d avg) | fontSize | `18` | `403` |
-| | fontWeight | `700` | `404` |
-| Footer stat label | fontSize | `11` | `408` |
-| | fontWeight | `600` | `409` |
-| | textTransform | `uppercase` | `410` |
-| Footer divider | borderTopWidth `1` / `colors.cardBorder` | | `394-395` |
+See [Weight Trends Card](ui-analytics.md#weight-trends-card).
 
 ### 1K Progress Card
 
-| Element | Property | Value | Line |
-|---|---|---|---|
-| Card padding | `24` | `413` |
-| "1K PROGRESS" label | fontSize | `14` | `419` |
-| | fontWeight | `700` | `420` |
-| | textTransform | `uppercase` | `421` |
-| | color | `colors.textMuted` | `421` |
-| Total value | fontSize | `48` | `424` |
-| | fontWeight | `900` | `425` |
-| | color | `colors.accentText` | `426` |
-| Breakdown divider | borderTopWidth `1` / `colors.cardBorder`, paddingTop `16` | | `433-436` |
-| Breakdown value | fontSize | `18` | `443` |
-| | fontWeight | `700` | `444` |
-| | color | `colors.text` | `445` |
-| Breakdown label | fontSize | `12` | `447` |
-| | color | `colors.textMuted` | `448` |
+See [1K Progress Card](ui-analytics.md#1k-progress-card).
 
 ### Strength Section (`AnalyticsStrengthSection.js`)
 
-| Element | Property | Value | Line |
-|---|---|---|---|
-| Section wrapper | gap | `16` (`strengthSection`) | `171-173` |
-| 1K card | padding / bg | `24` / `panelBackground` (ArtisanalPanel) | `174-179` |
-| 1K label | fontSize / weight | `12` / `800`, uppercase, `letterSpacing: 1` | `180-186` |
-| 1K value | style | `HeroMetric.hero` (single hero metric) | `187-190` |
-| Big 3 Mapping card | header | collapsible `Pressable`, default collapsed with mapped-lift summary | `111-125` |
-| Big 3 title | fontSize / weight | `12` / `700`, uppercase, `textMuted` | `297-303` |
-| Big 3 / info collapse | icon | `MaterialIcons` `expand-more`/`expand-less`, `14-16`, `textMuted` | `119-124`, `79-84` |
-| 1K explainer (#1245) | shared `InfoButton` | icon beside the `1K Progress` label (`What is 1K Progress?`); copy in an `InfoNote`, default hidden | `AnalyticsStrengthSection.js` |
-
-### Recovery Section (`AnalyticsRecoverySection.js`)
-
-Placement (#1347; see Analytics Screen above): during active Recovery this
-section leads the tab, above Weight Trends and the collapsed baseline-training
-disclosure; otherwise it closes the tab after Routine Health, and only while it
-has something to render (completed-block history, loading, stale or error).
-Completed history stays inside this section. Recovery keeps `HeroMetric` +
-per-exercise meters; Routine Health keeps `SessionGauge` + its Session
-Check-ins card, with no shared measure between them.
-
-Progressive disclosure (#758, R5b, restructured #1315): the section answers "how
-close am I to my normal training?" before it shows any evidence, and it is
-**read-only**. Under the one `Recovery` `SectionTitle` it is two sibling cards
-(never nested): **card 1** = headline `%` + ONE caption → week rows (the sole week
-selector, #1307) → quiet block context (`Baseline`, `Started {date}` with its info
-button, read-only `Reason`, and at most one `Manage in Log` link); **card 2** =
-the per-exercise disclosures (`Lifts`, `Movement groups`, `N not retested`,
-`N not scored for strength`). **ONE disclosure rule** for every per-exercise
-list: collapsed by default, a `>=44dp` header with a counted title/caption and a
-`MaterialIcons` chevron (`RecoveryDisclosure`), reset to collapsed when the block
-or week changes. The strength ladder and the older Exercise details overlapped
-(both are per-lift evidence for the same baseline lifts), so they are ONE `Lifts`
-disclosure with ONE list: each lift's row shows its strength % and expands to its
-raw Load/Total-work evidence (`WeekEvidence` rows decorated by the snapshot's
-strength lifts), instead of two parallel lists.
-**Recovery numbers come from one snapshot; surfaces never re-derive** (see
-`lib/data/recoverySnapshot.js`): Home's Recovery panel and this section read the
-same frozen object. **Maintenance lives only in
-Log** (reason, inclusion, reopen, rebuild baseline, match/tidy names,
-movement-group overrides — Log's Manage block, below); Analytics renders no write
-control. Every sentence the compact view no longer prints is in an accessibility
-label, the `About these numbers` explainer or a named disclosure.
-
-| Element | Property | Value |
-|---|---|---|
-| Strength headline | style | Same as Weight Trends `weightValueLarge` (#1219): KUA `metric-display-mobile` `32`/`36` `onSurface`; legacy `36`/`800` `accentText` — the average % of baseline strength (#1305), floored so a below-100 value never reads 100; the first in-card content, no title-like caption above it |
-| Strength caption | fontSize / weight | `13` / `600`, `textMuted` — ONE caption, `{N} lifts · Week {n}` (N = the headline cohort). Nothing else is printed beside the number: the routine name, coverage (`Average of N lifts scored every week · N of R baseline lifts`, R = full roster), cohort names, excluded weeks and dropped lifts are in the summary's accessibility label and the `About these numbers` explainer. No honest average: one short reason line (never a 0%) |
-| Summary group | accessibility | `accessible` + `accessibilityLabel` inside the card's `accessibilityLiveRegion="polite"` region so a week change is announced without scrolling |
-| Week rows (sole selector, #1307) | `RecoveryStrengthWeeks.js` | `Week by week` caption above one **pressable row per live week** (stable `week_id`, one row per live week including a single week; the retired `RecoveryWeekPicker` chips are gone, so there is no second selector). Row: `Week N`, the as-of bar + `N%`, or an explicit `No average` / `No data` (missing or unreadable week, still selectable so its notice shows) / `Select to view` (a week later than the selection) / `Not scored` (legacy baseline); `minHeight 44`, `accessibilityRole="button"`, `accessibilityState.selected`, full label (`Week N: 74% of baseline strength`). Selected = `surfaceSection` fill AND bold label (never colour alone). Default is the latest week; the selection persists across evidence updates while the id exists, falls back to the latest when it is removed, and resets when the focused block changes. Selecting re-derives the headline, ladder, group scores and as-of pace together |
-| Lifts disclosure header | title | `Lifts` + `{N} scored · {M} in details`, `minHeight 44`, `accessibilityState.expanded`, collapsed by default; body = the roster summary and ONE per-lift list: each exercise row (`recovery-exercise-row`) carries, for a scored lift, its strength half (%, bar, `best / baseline unit`, compact pace) and its raw Load/Total-work evidence on demand behind the row's tap — a lift is listed once, never in a second list. Row statuses, band marks, the roster summary and trained-elsewhere notes are READ from the Recovery snapshot (`bandById`, `detailSummary`, `trainedElsewhere`); no row or summary derives anything |
-| Roster summary | `RecoveryRosterSummary` | Inside the Lifts disclosure body (no longer under a separate header): the text-led `7 trained · 20 not yet · 5 added` tokens (unchanged derivation, whole-token wrapping layout, accessible label with every state count) |
-| Disclosure chevron | icon | `MaterialIcons` `expand-more`/`expand-less`, `18`, `textMuted` (app-wide convention), every disclosure |
-| **Exercise row** | `recoveryVisualStyles.js` `ex*` | name `15` / `700` `text`; `8` dot (graded token, or the shared neutral for not-graded rows) + plain status word `13` / `600` `textMuted`; one thin `6` bar (band token on `surfaceSection` track, fill capped at 100%) with the measure-named uncapped percent `13` / `800` (`Total work 11%`, `Reps 66%`, `Time 45%`); numbers `13` `textMuted` (`Load 135 lb / 135 lb`); full sentences only in `accessibilityLabel` |
-| Block context | `contextBlock` / `contextRow` | ONE quiet labelled list under a single divider (`13`; label `600` `onSurfaceVariant` on a shared `68` minimum-width column so values align at ordinary widths, relaxed to each label's own width when the window is under `300` wide or `fontScale >= 1.6` so a date is never squeezed; value `onSurface`; every row `minHeight 44`, no dead gap): **`Started {date}`** (active) or **`Dates {start} – {end}`** (completed; a narrow card wraps between the two whole dates) with the shared `InfoButton` (#1245; `About these numbers`, real `44x44`, glyph `18`) directly AFTER the `Started`/`Dates` label, before the date, by an ordinary `8` row gap — beside the label it explains, never margin-pushed to the card edge, with NO negative margins (its whole 44x44 box is reserved, so it cannot overlap the date or start outside the row); when label + date + button cannot share a line the whole button wraps to the next line, left-aligned at the row edge — and the non-medical note (`Training numbers only. Not a medical judgment — only you end a Recovery block.`) revealed right under it in the same always-mounted polite live region; then, when a reason exists, a quiet read-only **`Reason {value}`** row (up to two ellipsized lines, no control; editing lives only in Log's Manage block, #1307/#1315); a `Baseline {routine}` row always leads the block (one line, ellipsized; the summary no longer names the routine) and the only link is a quiet `Manage in Log` row (`>=44dp`, `onNavigate('Log', { kind: 'recovery-manage', blockId })`). Each row is announced ONCE: the visible label (`Started`/`Dates`/`Baseline`) is hidden from assistive tech (`accessibilityElementsHidden`, `importantForAccessibility="no"`) and the adjacent value's accessible label carries both (`Started 08-08-2026`, `Baseline: {routine}`); a read-only Reason row is one grouped element (`Reason: {value}`). Dates are never ellipsized or squeezed mid-number: the date row wraps (the info button wraps whole to the next line if label + date + button cannot share a line) and each date stays whole. Shared `Card` chrome, no local gap |
-| Completed-block history | default | collapsed, summary header states the count and the latest block |
-
-**Exercise row** (#1219) replaced the counted state-group headers and the metric
-legend: each row carries its own mark and plain status word. Three are graded
-(`At or above`, `Rebuilding`, `Early`); three are not graded and keep their
-plain words (`Not trained yet`, `Can't compare`, `Added during recovery`). The
-status comes from the existing return-band derivation for that one row, with the
-derived `close` bucket folded into `Rebuilding` (below).
-
-**Three visible bands and a quiet bucket** (#1219): Analytics shows graded states
-`At or above`, `Rebuilding`, `Early`. This is a PRESENTATION-ONLY grouping:
-`deriveRecoveryWeekBands`, its six buckets (`at_or_above`, `close`, `rebuilding`,
-`early`, `cannot_compare`, `not_trained_yet`), `RETURN_BANDS`, `_bandForRow` and
-the 90% / 50% thresholds are unchanged and still sum to the roster; Home,
-Overview and history read them as before. At render time `close + rebuilding`
-becomes the single `Rebuilding` count (`gradedCounts` / `displayBandId`,
-`RecoveryVisuals.js`), so a trained-but-not-met row at 50% or more of its
-limiting measure reads `Rebuilding`, `Close` is never named or colored, and two
-adjacent counts are never shown. `Not trained yet`, `Can't compare` and `Added
-during recovery` are not judgments: they keep their words, share ONE quiet
-neutral mark/count (the existing `onSurfaceVariant`; no new token), and never
-enter a colored segment. Only Analytics Recovery shows these names and colors,
-on two surfaces that share the same names, merged counts, tokens and quiet
-wording: the `RecoveryRosterSummary` text tokens (collapsed and expanded, no bar)
-and the exercise rows. Its accessible label names every state count, zeros
-included (`At or above 1, Rebuilding 2, Early 0, Not trained yet 0, Can't
-compare 0, Added during recovery 0`), and never announces a separate Close count.
-Home renders none of this (see Recovery Status
-Card).
-
-**Strength view** (#1305, compacted #1315): the Analytics Recovery card leads
-with strength relative to the frozen best set. `RecoveryStrengthSummary` is the
-one primary selected-week summary: the KUA metric hero tier (32/36) average % and
-one `{N} lifts · Week n` caption. `RecoveryStrengthWeeks` (label + bar/gap +
-value per week, no caption) and `StrengthLiftSummary` (the strength half of each per-lift row) share ONE percent scale
-(`strengthScaleMax`: 100, or the next 10 above the largest value) with an
-on-surface ink 100% reference mark and the court primary fill on the section
-track; the `Bars run 0-N%` legend is in the explainer. Each scored lift row is
-name, %, bar, ONE `best / baseline unit` line (`155×8 / 250×6 lb`) and a compact
-pace (`90% ~2 wk · 100% ~4 wk`, `need 3 wks`, `no gain`, `reached`, `pace
-hidden`); the full best-case pace text (rate, week window, insufficient / no-gain
-/ suppressed) is in the row label and the explainer. Lifts with no score this
-week or ever live in the `N not scored for strength` disclosure (identities
-de-duplicated), lifts with no entry this week in `N not retested`. An unreadable
-week is a dashed `No data` gap. No warning/amber ink. Styles:
-`recoveryStrengthStyles.js` (`disc*` for the shared disclosure).
-
-**Movement groups** (#1306): `RecoveryMovementGroups`
-(`components/recovery/RecoveryMovementGroups.js`, styles
-`recoveryMovementGroupStyles.js`) is one collapsed-by-default header under the
-strength ladder, not a second hero (the shared `RecoveryDisclosure`; an unavailable
-saved-choice read adds a concise `saved choices unavailable` to its caption, with
-the full notice on demand). Expanded, each group is a flat row (name, compact
-`{scored}/{cohort} scored · {baseline} baseline` — the full `N of M lifts in the
-average scored · B lifts in the baseline` wording is its label — and the
-mean % or `No score`, never 0%) that discloses its exercises; no nested cards.
-The read-only numbers are separate from the controls: the per-exercise editor
-(`MovementGroupEditor.js`) lives only in Log's Manage block (#1307, #1315), under a collapsed
-`Movement groups` header (`Choose which group each lift counts in.`) listing
-every baseline lift plus lifts added during recovery as `{group} · Automatic|Your
-choice`. Its `Change group` button, eight single-choice radio options (selected = radio glyph
-plus bold text) and `Reset to automatic` are all >=44dp with role/name/state;
-a failed save keeps the choice as an unsaved draft with `Not saved: <reason>`.
-Notices (failed read, missing routine, unreadable map, paused) use 13sp caption
-ink. Court tokens only.
-
-**Manage block** (#1307, moved to Log by #1315): `LogRecoveryLifecycle`
-(`components/recovery/LogRecoveryLifecycle.js`, rows in `LogRecoveryManageBlock.js`,
-chrome `logRecoveryStyles.js` / `logRecoveryManageStyles.js`) is the ONE
-maintenance surface for a block, active or completed, in the Log tab's Recovery
-view: a sibling `Card` (never nested), collapsed by default, with a >=48dp
-trigger (`Manage block`, chevron, `accessibilityLabel` `Manage recovery block:
-{routine}`, `expanded` state) that is never disabled. With writes locked (no
-verified state, a pending write or an inline note edit) the opened card says
-changes are paused; with only a stale read it says that matching or tidying names
-and movement groups are paused until Recovery data is current. Flat rows divided
-by hairlines, in this order: Reason (row + inline editor), `Counting in normal
-analytics` (the row is the switch, with its help sibling), Rebuild baseline,
-Match exercise names, Tidy names, Movement groups editor, Reopen (newest
-completed block only, no active block; the existing confirm and domain recheck),
-then — active block only — `Unlink Week {N}'s note` and `End recovery block`.
-Each action owns its own row, so an ineligible action leaves no empty row. A card
-exists per focused block and stays mounted while another block is focused (the
-unfocused card is `display: none`, `accessibilityElementsHidden`,
-`importantForAccessibility="no-hide-descendants"`); within a card the body mounts
-on first open and stays mounted while collapsed, so an in-flight write keeps its
-busy state, draft and error across collapse AND block switching, and nothing
-reaches another block. Opening, closing or switching writes nothing.
-**Recovery Blocks** (`LogRecoveryHistory.js`, renamed from Recovery History in
-#1331 because it includes the active block): a collapsed `>=48dp` header
-(`Recovery Blocks`, captioned `1 active · N completed` or, with no active block,
-`N completed blocks`) lists the active block (when present)
-and every live completed block, newest completed first, as `>=48dp` rows with
-`selected` state. It renders ABOVE the focused Manage card (#1329), so a pick
-reads top-down: choose the block, then manage it directly below. Choosing one
-focuses its single Manage card, opens it and scrolls it into view via the same
-reveal a navigation intent uses (#1321) — a pick never changes an off-screen card
-silently. The Recovery tab is
-reachable in a completed-only verified state (not the default view). A
-`recovery-manage` navigation intent from Analytics selects and expands that exact
-block id (repeats work via the shell nonce, scrolls the card into view) and shows
-an explicit unavailable notice for an unknown or deleted id; it waits for the
-verified read. Analytics history week rows stay focus targets
-(`Show evidence for {routine}, Recovery Week N, {state}`) with a separate
-`View note in Log` link (>=44dp, only for a readable note, never nested).
-
-**Tidy names** (#1309): `TidyRecoveryNamesAction` (`components/recovery/TidyRecoveryNames.js`,
-styles `recoveryTidyStyles.js`) is the single name-cleanup action in Log's Manage block, placed after `Rebuild baseline` and `Match exercise names`
-(the same reason-editor button/caption tokens; every control is a >=44dp button
-whose accessible name is its visible label). The preview (`recovery-tidy-preview`)
-is the plan captured when it opened and lists every week header as `Week N: old →
-new` with the scheme it keeps and the note the descriptor moves to (only a compact
-leading scheme such as `3x6-8` is promoted to the header and cut out of the moved
-note, never repeated in it; any other scheme-like text stays in the note
-untouched, #1314), each baseline
-`old → new`, every already-clean occurrence, warmups (never changed), skipped
-lifts with reasons, and an explicit no-change line; one Confirm applies the whole
-plan, and Cancel/Close write nothing. A partial failure shows its error in the
-card and the action is simply run again. The card mounts keyed by block id, so
-draft and error state never cross blocks; it is locked by the same
-verified-state/pending gates as the other Recovery writes (hosted in Analytics'
-Manage block from #1307 and in Log's Manage block since #1315).
-
-**Detail order** (#1219): rows follow the routine, not a state ranking. Baseline
-exercises the week logged come first, then baseline exercises not yet trained
-this week, each group in the baseline's own row order, then added-during-recovery
-rows in the order they first appear in the selected week's note
-(`compareWeekWorkToBaseline` keeps the parsed note's `Map` insertion order; it no
-longer sorts `added` by normalized key; `orderDetailRows`, `RecoveryStateGroups.js`,
-adds no sort of its own). Nothing is alphabetized. A v2 baseline stores rows in
-the routine's original order (`routine_order` equals the array index), which the
-comparison preserves; a retained v1 baseline is alphabetical and has no routine
-order, so it is shown exactly as stored. A not-comparable row counts as logged
-only when the week did log that exercise.
-
-**Exercise bar** (#1219): only compared rows draw a bar, and it is the weighted
-work measure, never the limiting (lowest-ratio) dimension: `Total work`
-(`volume`) for weighted exercises, `Reps` for reps-only, `Time` for time-based.
-The visible percent and the first evidence sentence of the accessible label name
-that same measure (`Total work 11% of baseline, 670 lb of 5850 lb`); the fill is
-capped at 100% while the text is not. This is presentation only: the band and
-`baseline_met` (weighted needs BOTH load and volume) are derived upstream and
-unchanged, so a deadlift above baseline load but at 11% Total work reads `Early`
-with an 11% bar. Because the band is graded on the limiting measure while the bar
-shows Total work, the two can differ (load 66% but Total work 133% reads
-`Rebuilding` with a full bar); the visible `Total work 133%` and the spoken label
-name the measure the bar shows. The bar line WRAPS: the track grows to fill it
-with a `96` floor, and the measure label (never truncated, `maxWidth: 100%`)
-drops under the bar when it cannot sit beside it, so a 4-digit percent at large
-text or a ~250dp card cannot overflow or clip. A not-trained row shows baseline numbers and no bar, so missing
-is never drawn as zero.
-
-**Recovery band tokens** (#1219): every graded mark (row dot, bar fill, hero and
-summary segments, legend dots) resolves through three KUA tokens in
-`mobile/theme/colors.js`, defined independently per court and mode (no shared
-graded colors; legacy palette fallback only when no court palette is resolved).
-Every not-graded mark/count (`Not trained yet`, `Can't compare`, `Added during
-recovery`) uses the EXISTING `onSurfaceVariant` neutral; `recoveryBandClose` and
-`recoveryBandUnavailable` do not exist. Tokens are marks, never text ink: the
-plain status word beside every mark uses `onSurface` / `onSurfaceVariant`, so
-color is never the sole carrier of status.
-
-| Token | State |
-|---|---|
-| `recoveryBandAtOrAbove` | At or above |
-| `recoveryBandRebuilding` | Rebuilding (derived close + rebuilding) |
-| `recoveryBandEarly` | Early |
-| `onSurfaceVariant` (existing) | Not trained yet, Can't compare, Added during recovery |
-
-| Palette | At or above | Rebuilding | Early |
-|---|---|---|---|
-| Hard Court light | `#00704C` | `#A66300` | `#B3261E` |
-| Hard Court dark | `#34D399` | `#FBBF24` | `#F2705C` |
-| Clay Court light | `#1E6B43` | `#9A5F00` | `#A8311C` |
-| Clay Court dark | `#4FBF7F` | `#E5A93C` | `#F0805F` |
-| Grass Court light | `#17692F` | `#8F6A00` | `#B52A2A` |
-| Grass Court dark | `#4ADE80` | `#E5B83C` | `#F26E6E` |
-
-Contrast and distinguishability contract, computed (not asserted in prose) in
-`tests/theme-rendering.test.js` for all six palettes: each of the three graded
-marks AND the shared neutral is at least **3:1** (WCAG non-text) against both
-`surfaceCard` and the `surfaceSection` bar track (shipped minimums: 4.77:1 card /
-4.27:1 track light, 5.77:1 / 6.12:1 dark); the status label ink (`onSurface`,
-`onSurfaceVariant`) stays at least **4.5:1** on `surfaceCard`; the three graded
-marks of a palette differ pairwise by at least CIE76 **delta-E 30** (shipped
-minimum 33.3, Clay Court light) with no equal values; and no court shares a
-graded value with another court in the same mode.
-
-Wording is part of the contract, not decoration:
-
-- The headline is strength relative to the frozen best set (#1305), an
-  average over one stated, consistent set of lifts. It is separate from the
-  per-exercise `Baseline met` criterion and never completes a block.
-- `Total work` replaces `Volume` (load × reps across completed working sets) and
-  `Load` is the heaviest completed working set that week. The visible rows no
-  longer print definition sentences; they use only these short labels.
-- No-week, note-missing, and note-unreadable copy matches Home's R3a wording
-  exactly: `Baseline captured. No week logged yet.`; `Week N — This week's
-  note is no longer available.`; `Week N — This week's note couldn't be
-  read.`
-- A week whose linked note is missing or unreadable states that **above** the
-  disclosure, which is not rendered at all — a collapsed panel is never the
-  reason evidence is absent. Loading, stale, retry, and unverified copy is
-  unchanged and still comes from the recovery state contract.
+See [Strength Section (`AnalyticsStrengthSection.js`)](ui-analytics.md#strength-section-analyticsstrengthsectionjs).
 
 ### Progressive Overload Table (`AnalyticsProgressiveOverload.js`)
 
-| Element | Property | Value | Line |
-|---|---|---|---|
-| Section | gap | `8` (`poSection`); not sticky — it no longer ends the tab | |
-| Exercise Progress counts | three columns | `poSummaryCount` metric display over uppercase `label-sm` | |
-| Column header row | paddingHorizontal / paddingBottom | `16` / `4` | `403-407` |
-| Column label | fontSize / weight | `11` / `800`, uppercase, `letterSpacing: 0.5`, center | `408-416` |
-| Group section | paddingBottom / border | `4` / 1px `divider` top (between groups) | `426+` |
+See [Progressive Overload Table (`AnalyticsProgressiveOverload.js`)](ui-analytics.md#progressive-overload-table-analyticsprogressiveoverloadjs).
 
-Grouping (`analyticsDerivations.js` `deriveGroupedSignals`): sections are merged
-by a **normalized leading-day key** (`MONDAY — Push` and `MONDAY — Push / Chest`
-→ one `MONDAY` group), with exercise dedup on merge, so a note with gym+home
-weeks no longer shows a day twice (#383/#385).
+### Recovery Section (`AnalyticsRecoverySection.js`)
 
----
+See [Recovery Section (`AnalyticsRecoverySection.js`)](ui-recovery.md#recovery-section-analyticsrecoverysectionjs).
 
 ## Weight Screen
 
-Sources: `mobile/screens/WeightScreen.js`, `mobile/components/UI.js`,
-`mobile/components/WeightTrendSection.js`, and
-`mobile/components/WeightGoalCard.js`.
+See [Weight Screen](ui-weight.md#weight-screen).
 
 ### Input Card
 
-| Element | Property | Value | Line |
-|---|---|---|---|
-| Input label | fontSize | `13` | `WeightScreen.js:480` |
-| | fontWeight | `700` | `WeightScreen.js:481` |
-| | color | `colors.textMuted` | `WeightScreen.js:482` |
-| Input field | fontSize | `16` | `WeightScreen.js:491` |
-| | borderRadius | `16` | `WeightScreen.js:486` |
-| | bg | `colors.inputBackground` | `WeightScreen.js:485` |
-| | border | `colors.inputBorder` | `WeightScreen.js:488` |
-| Save button | bg | `colors.text` | `UI.js:339` |
-| | paddingVertical | `16` | `UI.js:341` |
+See [Input Card](ui-weight.md#input-card).
 
 ### Trends Card
 
-| Element | Property | Value | Line |
-|---|---|---|---|
-| Card padding | `0` (merged sections) | `WeightScreen.js:521-525` |
-| Section title | fontSize | `12` | `WeightTrendSection.js:72` |
-| | fontWeight | `700` | `WeightTrendSection.js:73` |
-| | textTransform | `uppercase` | `WeightTrendSection.js:75` |
-| | letterSpacing | `0.5` | `WeightTrendSection.js:76` |
-| Trend value | fontSize | `20` | `UI.js:11` |
-| | fontWeight | `900` | `UI.js:11` |
-| | color | `colors.text` | `WeightTrendSection.js:96` |
-| Trend label | fontSize | `11` | `WeightTrendSection.js:99` |
-| | fontWeight | `700` | `WeightTrendSection.js:101` |
-| | textTransform | `uppercase` | `WeightTrendSection.js:102` |
-| | letterSpacing | `0.5` | `WeightTrendSection.js:103` |
-| Section divider | borderBottomWidth `1` / `colors.cardBorder` | | `WeightTrendSection.js:67-69` |
+See [Trends Card](ui-weight.md#trends-card).
 
 ### Goal Display
 
-| Element | Property | Value | Line |
-|---|---|---|---|
-| Goal value (target weight) | fontSize | `28` | `WeightGoalCard.js:352` |
-| | fontWeight | `900` | `WeightGoalCard.js:353` |
-| | color | `colors.accentText` | `WeightGoalCard.js:354` |
-| Goal value (target date) | fontSize | `28` | `WeightGoalCard.js:357` |
-| | fontWeight | `900` | `WeightGoalCard.js:358` |
-| | color | `colors.text` | `WeightGoalCard.js:359` |
-| Goal label | fontSize | `12` | `WeightGoalCard.js:362` |
-| | fontWeight | `700` | `WeightGoalCard.js:364` |
-| | textTransform | `uppercase` | `WeightGoalCard.js:365` |
-| | letterSpacing | `0.5` | `WeightGoalCard.js:366` |
-| Derived row label | fontSize | `12` | `WeightGoalCard.js:405` |
-| | fontWeight | `700` | `WeightGoalCard.js:407` |
-| Derived row value | fontSize | `16` | `WeightGoalCard.js:412` |
-| | fontWeight | `700` | `WeightGoalCard.js:413` |
+See [Goal Display](ui-weight.md#goal-display).
 
 ### Editor Actions (#919)
 
-The Weight tab's text-only editor actions each own a **44×44dp target from
-their own box**, never a `hitSlop` — `ui-design-rules.md` §15 (React Native
-clips a slop at a one-line row's bounds). Type, weight, color, and the input
-card's 16px rhythm are unchanged; only the tap box grew.
-
-| Control | Property | Value | Source |
-|---|---|---|---|
-| Editing-header `Cancel`, note/date `Done` (×4) | minHeight / minWidth | `44` / `44` (`justifyContent` + `alignItems` `center`) | `WeightScreen.js` `editorActionTarget`; label 14 / 600 stays on `cancelText` |
-| | accessibilityRole / Label | `button` / `"Cancel"` (header), `"Done …"` (each disclosure) | header `Cancel` gained both in #919 |
-| Goal `Edit` / `Archive` / `Clear` chip (5 sites) | minHeight / minWidth | `44` / `44` (`center` / `center`) | `WeightGoalCard.js` `goalActionChip`; 13 / 700 label, 12 / 6 padding unchanged |
-| | accessibilityRole / Label | `button` / visible label | added in #919 |
-| Goal-editor `Cancel` | minHeight / minWidth | `44` / `44` (`center` / `center`) | `WeightGoalCard.js` `goalCancelTarget`; 14 / 600 label stays on `goalActionText` |
-| | accessibilityRole / Label | `button` / `"Cancel"` | added in #919 |
-| Every one of the above | label `Text` | `accessible={false} importantForAccessibility="no"` | §15: the named parent announces once, not twice with its child |
-
-Guarded by the `Weight entry controls` and `Weight goal editor actions` blocks
-in `mobile/tests/interaction-target-a11y.test.js`, which assert the flattened
-target plus the parent role/name **and** `accessible === false` on the label.
+See [Editor Actions (#919)](ui-weight.md#editor-actions-919).
 
 ### History List / Goal History
 
-Both now use the **Shared History-Panel System** (see that section above) —
-`WeightHistoryList.js` for Weight History, `hp` StyleSheet in `WeightScreen.js`
-for Goal History. Values (radius 16, `subtleBg` header, 3-column grid, value 20,
-date 15, collapse chevron, summary count/latest) are documented there. The old
-stacked row layout (weight 17 / date 12 / stacked note) was replaced during
-#411/#412.
+See [History List / Goal History](ui-weight.md#history-list--goal-history).
 
-Weight History extras: date-range filter, collapse, empty-range message ("No
-entries in this range."), and a delete `✕` affordance in the trailing control
-cell. Goal History extras: End Weight outcome coloring, Target Date column.
+## More Screen
 
----
+See [More Screen](ui-more.md#more-screen).
 
 ## Log Screen
 
-Source: `mobile/screens/LogScreen.js`, and the extracted
-`mobile/components/LogActiveRoutineCard.js`, `LogPreviousRoutines.js`, and
-`LogScreenEditorCard.js`. The Log style lock spans all of these, not
-`LogScreen.js` alone.
-
-Style lock header at lines 1-46 (`mobile/screens/LogScreen.js`): do not change
-Log styling unless the repo owner explicitly asks. The authorized layout
-exceptions for #710 and #711 are enumerated in that same header block. #843
-is a further owner-authorized exception (the Recovery/Routine redesign
-below), scoped to `styles.tabToggle` in `LogScreen.js` plus
-`LogRecoverySection.js`, `RecoveryBlockEndModal.js` (new), and
-`LogPreviousRoutines.js`. #847 is a further owner-authorized exception,
-scoped to `LogPreviousRoutines.js` alone, that removes #843's enclosing More
-Routines panel and restores individually rounded non-current routine cards
-(see Consequences below). #918 is a further owner-authorized exception,
-scoped to text `color` values ONLY, that moves every string the user reads off
-the `accent` mark value onto `accentText` / `chipAccentText` across the Log
-tab, `RecoveryBlockEndModal.js`, and `WorkoutSubheading` in `UI.js`. #921 is a
-further owner-authorized exception, scoped to the effective target geometry of
-exactly two controls in `LogRecoverySection.js` — `Edit note` and the A/B
-segment — and to nothing else: no color, type, spacing, rail, or row-height
-value in the Recovery card changes with it. #1321 (a Log-tab cleanup the repo
-owner requested, which asked that the surrounding experience improve while the
-locked current-routine presentation stays as is) changes action presence and
-order only: Skip week's visibility on the current card (no style value changes),
-the Deload card's action order and retired hint, the previous-routine body's
-action order (`Set as current routine` becomes its one filled button), and tab
-roles on the view switcher. It is not a general exception to the style lock.
-
-The Current routine card remains locked. #843 and #847 do not authorize
-touching it at all; #918 reaches exactly one property on it —
-`currentNoteTitle`'s ink — and nothing else about that card. No exception to
-date changes any size, weight, spacing, layout, fill, or border value on it.
+See [Log Screen](ui-log.md#log-screen).
 
 ### Action hierarchy (#711)
 
-Routine-card headers carry identity only (`ui-design-rules.md` §14). Every
-action is placed by how often it is used:
-
-| Tier | Actions | Location |
-|---|---|---|
-| Primary — every session | `Track` a lift, `Edit`, `Week A/B`, `Skip week` | Active card body; `Week A/B` in the one action strip under its header (`LogActiveRoutineCard.js` `actionStrip`); `Edit`, `Skip week` and `Remove skip` lead the Routine actions menu (#1327) |
-| Occasional — workout-time tool | `Plate calculator` | The Routine actions menu, after the skip actions and before `Copy` (#1375); opens `PlateCalculatorModal` with an empty, typed target. Rendered note weights are plain text with no tap target or dashed cue, so nothing in the note body competes with double-tap-to-edit or text selection. Analytics Strength keeps its prefilled per-lift entry. |
-| Secondary — occasional | viewed-card `Week A/B`, `Set as current routine` (the body's one filled action), `Edit routine`, share/copy family, `Delete routine` last | Non-current row's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management, in that order |
-| Quick access — reachable without opening (#756, #836; the per-row quick action retired #843) | `New routine` (icon + visible label, the section's ONE create-routine affordance) | A sibling row of the section title, OUTSIDE the collection disclosure entirely (#843, #847) — present and identical whether the collection is collapsed or expanded (`LogPreviousRoutines.js` `topRow`) |
-| Rare — once per training block | `Start recovery block` | A persistent, low-emphasis row directly under the current routine card (`LogScreenContent.js` `recoveryStartRow`), the first row of the one outlined Recovery entry group (`recoveryEntryGroup`, #1325), never nested in a menu or disclosure; absent whenever a block cannot be started (#823, superseding #724's routine-management placement) |
-| Rare — reopening the most recently completed block, offered only with no block active (#839) | `Reopen recovery block: {baseline title}` | A second, lower-emphasis row (`LogScreenContent.js` `recoveryReopenRow`) in the same Recovery entry group, below a hairline when `Start recovery block` is present (#1325, replacing two separate outline rows) — same row shape, `textMuted` ink instead of `accent`, so `Start` stays visually primary; computes its own visibility independently and can render alongside `Start`. Since #1315 this row and the Manage block's own Reopen (newest completed block only, no active block) are the only Reopen entry points; Analytics offers none. |
-| Recovery — expected next step | `Complete Week {N}` **or** `Add week` (never both), each behind its own confirmation | The active card's action zone, visible by default, full-width/48px, and the card's only accent-filled control, with a muted explanatory caption beneath it (`LogRecoverySection.js`, #789/#804/#836/#843) |
-| Recovery — reversal, offered only for the just-completed latest week | `Undo completion` | Beside the primary action, muted (not `error`) ink — a routine correction, not a destructive action (#843; was an `error`-labeled chip) (`LogRecoverySection.js`, #836) |
-| Recovery — correction or once-per-block | `Counting in normal analytics`, `Unlink Week {N}'s note`, `End recovery block` | `Manage block`, a sibling card next to the active card (#843, no longer a disclosure INSIDE it), holding three divided list rows; `End recovery block` opens `RecoveryBlockEndModal` instead of `Alert.alert` |
-| Routine/Recovery editor — safe exit | `Done` (and Android Back) | Keeps the latest edit, flushing any pending or in-flight autosave before the editor closes (#851) |
-| Editor — whole-edit rollback | `Revert this edit` | A danger-zone body action, never an ambiguous header `Undo`; confirmation names the editor-entry snapshot and includes already-autosaved changes. Recovery's scoped inline `Cancel` opens a choice between Keep editing, Done, and the same confirmed rollback (#851) |
-
-Consequences to preserve:
-
-- **More Routines has no enclosing panel (#847, superseding #843's
-  card-equivalent panel with a flat, divided row list).** Each non-current
-  routine renders as its own quiet, individually rounded `Card` (`radius 16`,
-  1px `cardBorder`, standard card background), separated from its siblings by
-  ordinary shell spacing (`LogPreviousRoutines.js` `cardList`, `gap: 12`) —
-  not a shared outer surface, a flat divided list, or a tinted collection bar.
-  This restores the pre-#843 (`096bf89^`) hierarchy: individual pills,
-  restrained borders, the active routine dramatically more prominent by
-  comparison. No accent rails, filled accent headers, or "current" badges are
-  added to these cards.
-- **The count and `New routine` live OUTSIDE the collection disclosure
-  entirely (#843, #847, superseding #756/#836's in-header placement).**
-  `More Routines · {count}` IS the section's `SectionTitle` now — always
-  visible, expanded or collapsed, never repeated or hidden by the
-  disclosure's own state — and a sibling 44dp outlined `New routine` control
-  (icon + visible label, this section's ONE create-routine affordance) sits
-  beside it in the same header row.
-- **More Routines is a collapsed-by-default disclosure (#724), and since #847
-  the disclosure trigger is a lightweight text-plus-glyph control, not a
-  bordered panel header.** It is modeled on Analytics → Progressive
-  Overload's bulk expand/collapse control (`AnalyticsScreen.js`
-  `collapseAllButton`): compact `Show routines`/`Hide routines` text (muted
-  ink, uppercase, letter-spaced) plus a `MaterialIcons` `unfold-more`/
-  `unfold-less` glyph (16, `textMuted`), a 44dp touch target, explicit
-  `accessibilityRole="button"`, and `accessibilityState={{ expanded }}`. It
-  carries no border, background tint, or card radius of its own — unlike
-  #843's bordered/tinted panel header, and unlike Progressive Overload's own
-  chevron (`unfold-less`/`unfold-more` is reused here deliberately: this
-  control also acts on a whole collection at once, not a single panel).
-  Collapsed, the routine cards render nowhere. An external request to reveal
-  a non-current routine — a typed navigation intent (#718) naming a
-  non-current, non-deload routine, and nothing else since #775 — auto-expands
-  the disclosure via a monotonic reveal nonce keyed on the REQUEST, not on
-  `viewingNoteId`, so a repeat request for the already-selected note reopens
-  it while an unchanged nonce respects a user's collapse. A Recovery tap
-  reveals nothing: it reads its note in the Recovery card instead (see below).
-- **The per-row icon-only `Set as current routine` quick action is retired
-  (#843, superseding #756).** Switching the current routine is reachable only
-  from a row's own expanded body now, alongside `Edit routine` and `Delete
-  routine`; a collapsed row shows only title and an inline `Created {date} ·
-  Recovery week {n}` metadata caption (folding the former standalone recovery
-  badge into that one line) plus the expand glyph.
-- **The disclosure state is owned by `LogScreen`, not by the sections (#775).**
-  Routine and Deload are mutually exclusive branches, so `LogPreviousRoutines`
-  and `LogDeloadSection` unmount on every view switch; `expanded`,
-  `deloadCollapsed`, and the consumed-reveal marker therefore live in
-  `LogScreen` and arrive as props. A user's collapse choice survives
-  Routine↔Deload↔Routine, and a consumed reveal request is never replayed by the
-  remount.
-- **A routine row's date is its creation day (#775).** The sub-line and the
-  row's `accessibilityLabel` read `Created <date>` from `saved_at`, falling back
-  to the creation day encoded in the note id (`wn_YYYY-MM-DD_…`) and then to no
-  date at all. `updated_at` is never displayed: it is the sync conflict cursor
-  (`docs/backend-schema.md`), so editing, tapping `Week A/B`, syncing, or
-  restoring a backup all moved it. The expanded list sorts by that same
-  displayed field, newest first, undated last in notebook order. The viewed
-  row keeps its `Week <X> · ` prefix in front of the date.
-- **The collapsed header has no `Latest:` line (#836, retiring #775's
-  collapsed-summary naming).** Naming one routine out of several implied a
-  hierarchy among prior routines that does not exist. Collapsed, the header
-  shows only a `{N} more routine(s)` count, at a weight legible as a
-  section heading (`15`/`700`, `colors.text`) rather than a small caption;
-  expanded, the count is not repeated at all, since the list below it already
-  shows every routine.
-- **Both skip actions live in the Routine actions menu (#1327, owner request),
-  right after `Edit`:** `Skip week` is always offered (skips stack by design) —
-  through a save in flight and after a skip; a press during a save answers with
-  `Finishing the previous save. Try again.` — and `Remove skip` sits beside it
-  only while a trailing skip exists. Both are live menu items, never a dimmed
-  pair. Choosing one (or `Copy`) from a collapsed card opens the card first,
-  so its result line is visible. The strip under the header now carries `Week A/B` only, so a
-  single-week routine renders no strip at all. There is no opacity-dimmed
-  disabled variant.
-- The `Double-tap to edit` hint is retired in the active card, the non-current
-  card body, and the Deload cards (#711, #724); the gesture itself still works.
-- The active Deload card keeps `Deload complete` as its one filled action
-  (#1329). Beneath it one row holds an outlined `Edit` beside a 44dp
-  `More deload actions` trigger, whose bottom sheet (`log/ActionSheetMenu.js`)
-  lists `Regenerate deload` (disabled, reading `Generating…`, while a generation
-  runs) and `Delete active deload` (danger ink, same confirmation).
-- **Prompt tools share one flow (#1385):** `RoutinePromptToolsScreen.js` is
-  configuration for `routinePromptTools/PromptFlow.js` (Choose, summary,
-  Copy/Share, optional import slot, collapsed `PromptDisclosure`). Routine
-  choices use `RoutinePicker.js`, a summary row that opens a bottom sheet with
-  single or multi select and a `Done` button; Targets also offers Select all,
-  All except authority and Clear. `NormalizationImport.js` holds the
-  normalization return path and renders before the expanded prompt text.
-  Normalize is the compact exercise-only protocol (#1386): its summary reads
-  `N routines · M distinct headers`, a selection with nothing safe to share
-  shows a blocked message instead of a prompt, and the return path previews each
-  header mapping (`old header → authority name`, the descriptor that moves to a
-  note, affected occurrences) with checkbox rows to deselect a mapping, a whole
-  routine, or one occurrence. A malformed reply lists its line errors and blocks
-  Apply; a snapshot saved by an older version shows a `Discard saved prompt`
-  notice instead of the reply field.
-- **An expanded non-current routine shows three controls (#1329):** the filled
-  `Set as current routine`, then one row with an outlined `Edit routine` beside a
-  44dp `More actions for {title}` trigger. Its bottom sheet lists `Copy`, `Share`,
-  `Share as Image` and `Delete routine` (danger ink), with the same accessibility
-  labels and handlers they had as full buttons. A chosen sheet item runs only once the
-  sheet is gone (iOS: the Modal's `onDismiss`, with a 700ms fallback), so its
-  alert, share sheet or image preview never opens behind the dismissing sheet. The
-  sheet's bottom padding is `24 +` the bottom safe-area inset (#1331), so its
-  last item clears the home indicator; the current-routine card's Routine
-  actions sheet uses the same padding.
-- **More Routines opens on its three newest routines (#1329).** A
-  `Show all {N} routines` / `Show fewer` text control (44dp, accent ink) appears
-  below the list only when more exist. The viewed routine always renders, so a
-  navigation intent never targets a hidden card.
-- **An unsaved routine has no `Delete routine` (#1329).** Before the first save,
-  `Clear draft` is the Danger Zone's only action. The New Routine button reads
-  `Save routine`, captioned `Saves and keeps editing. Done saves and closes.`
-- **Rest timer is one docked control.** In current-routine edit the header
-  control stays mounted through idle (stopwatch), running (live countdown) and
-  done (`Rest over`); one anchored 280dp panel (#1327, clamped to both
-  viewport edges on narrow screens) holds a header with
-  the state in large type (`Rest timer`, the live countdown, or `Rest over`)
-  and a caption, four equal-width presets in one row labelled in the
-  countdown's m:ss format (`1:00 1:30 2:00 3:00`; Start, or Restart while
-  running/done), and a full-width outlined Cancel or Dismiss button; a failed background alert shows
-  on the closed control as a `notifications-off` glyph. App.js hides the
-  app-shell pill only while that control is on screen — once the editor scrolls
-  it away the fixed pill returns — so the countdown never shows twice and is
-  never unreachable; the pill shows Cancel (running) or Dismiss (done) directly.
-- **Recovery is its own tab, present only while `LogRecoverySection` has
-  something to show (#823).** `recoveryTabVisible` (`LogScreen.js`) mirrors
-  that component's own early-return contract exactly — not just an active
-  block, but also a pending/in-flight recovery operation, a stale snapshot
-  with no active block, or a terminal initial-load failure
-  (`!recoveryReady && recoveryStateError`, as opposed to still-loading), all
-  of which the component already renders a banner/retry for. The
-  Routine/Deload pill becomes a three-way
-  Routine/Deload/Recovery toggle whenever `deloadModeEnabled` or
-  `recoveryTabVisible` is true; Recovery renders first (leftmost) whenever
-  it's present, and the tab disappears the instant nothing is left to show —
-  `effectiveTabView` falls back to `routine` the same way it already did for
-  a since-disabled Deload tab. Recovery is also the DEFAULT landing tab
-  whenever it's present: it rendered unconditionally at the top of the
-  Routine tab before this redesign, so a one-shot effect
-  (`recoveryDefaultAppliedRef`, `LogScreen.js`) selects it the first time
-  verified Recovery state resolves with something to show, preserving that
-  same effective visibility without fighting a later manual switch to
-  Routine/Deload. Confirming `RecoveryBlockStartModal` also navigates there
-  (`setTabView('recovery')` in `handleConfirmRecoveryBlock`), so the block
-  just created is where the user lands. `LogRecoverySection` itself renders
-  unchanged — only which tab hosts it, and when, moved.
-- The primary Recovery entry point (`Start recovery block`) is a persistent
-  row under the current routine card, not inside routine management or the
-  Recovery tab (#823, superseding #724's routine-management placement). It is
-  **absent** — not merely disabled — whenever a block cannot be started: it
-  renders only when a baseline note is eligible, no block is active, the
-  shared Recovery read is verified and not stale, and no Recovery action is
-  pending/in-flight with `mutationsAllowed` true. When shown it is always
-  live, and opens `RecoveryBlockStartModal` with
-  `{ mode: 'routine', note: null }` so the modal's own baseline/Week 1 pickers
-  choose the subject; `startRecoveryBlock` rechecks the authoritative
-  precondition at confirm.
-- **A second, secondary entry point reopens the newest completed block
-  (#839).** `Reopen recovery block: {baseline title}` renders directly below
-  `Start recovery block` — same row shape, `textMuted` ink rather than
-  `accent` so `Start` stays visually primary — whenever no block is active
-  and the newest completed block (by `completed_at`) is live. It computes its
-  visibility independently of `Start`'s and the two render together whenever
-  both qualify; neither gates the other, and both disappear once either
-  succeeds and a block becomes active. Tapping it confirms
-  (`Reopen this recovery block?`, naming the baseline, stating that every
-  week's status is unchanged and that only the most recent completed block
-  can be reopened while no other is active) before calling
-  `useRecoveryBlockLifecycle().reopenBlock`, which clears only the block's
-  `completed_at` — no week's completion state moves. The Analytics evidence
-  card (`AnalyticsRecoverySection.js`) offers the identical action, low
-  -emphasis and non-destructive, on the newest completed block's own card
-  only — never on every collapsed history row, and never on an older
-  completed block. `Start` and `reopenBlock`'s writes now run behind the same
-  process-wide recovery-operation lock (`runGuardedRecoveryAction`), so the
-  two can never both observe "no active block" and create conflicting state.
-- **A Recovery week row reads its own note (#775).** Tapping a live week renders
-  that note inline in the Recovery card, off the same
-  `viewingNoteId`/`viewingNote`/`viewingNoteDayGroups` state the routine and
-  deload viewers use; More Routines is not revealed and does not change state,
-  and a week linked to the *current* routine is readable like any other rather
-  than being an inert press. Because that viewer state projects one half of an
-  A/B note, the inline read also carries the non-current card's `Week A/B` pill
-  in its existing treatment and with the same role, label, and `selected` state
-  — otherwise an A/B recovery week's other week would be unreachable here. The
-  inline read also carries an `Edit` button in the same `inlineSwitchButton`
-  treatment (#823), opening the shared editor via `handleEditViewedNote`
-  (not `handleOpenOtherNote`, deliberately: it reads the currently-selected
-  A/B week off shared viewing state, so Edit opens the same half the user was
-  just reading) — every other note viewer in this tab (deload record, prior
-  routines) already had one; a recovery week's note previously had no path
-  back into editing. A week whose `note_id` is null, or names a note
-  absent from the notebook, shows `Note unavailable` in place of a title,
-  announces `Recovery Week N, note unavailable`, and carries no `onPress`, no
-  `chevron-right`, and no
-  `accessibilityRole="button"` — the row remains, its `Unlink` remains
-  (in the disclosure, see below), and that unlink confirmation drops both the
-  quoted title and the "note itself is kept" clause. `Untitled Routine` is
-  reserved for notes that exist.
-- **The active Recovery card is one grouped, three-zone card (#789, restyled
-  #843).** `padding: 0`, clipped at the existing 16px radius/border, holding a
-  state zone, a week table, and an action zone, followed by a SIBLING `Manage
-  block` card (see below) — the disclosure that used to live inside the
-  active card moved out. The state zone (`colors.subtleBg`) leads with a
-  `RECOVERY BLOCK` kicker, then a state-derived headline — `Week {N} in
-  progress` or `Week {N} complete — add the next week` — then the baseline as
-  one de-emphasized `Baseline: <routine>` caption; the headline still
-  describes only the CURRENT week. The action zone holds exactly one
-  full-width 48px primary action (`Complete Week {N}` while the week is open,
-  `Add week` once it completes — mutually exclusive by construction) with a
-  muted explanatory caption beneath it; once the current week is complete, a
-  muted-ink (not `error`) `Undo completion` control sits beside it (#836) —
-  offered only for that just-completed latest week. `Complete Week {N}`
-  confirms its consequence before committing (`Complete Week {N}?`, stating
-  that it completes the current week, preserves its note, and does not create
-  or submit the next week's note, via `Alert.alert`, unchanged); `Undo
-  completion` confirms too (`Reopen Week {N}?`).
-- **Every live week is its own labeled, distinguishable row (#836, restyled
-  #843).** Each row (`minHeight: 56`, 18px horizontal padding, divider lines)
-  holds a 26px status dot (a success-at-12%-alpha filled circle with a 16px
-  check for completed; an accent-bordered ring for in-progress — no more
-  repeated `In progress`/`Completed` text), a fixed 56px `Week {N}` label, a
-  one-line note title, and an `expand-more`/`expand-less` glyph — never
-  `chevron-right` — for every linked-note row, completed weeks included. The
-  current week's row and expanded body share an accent-at-6%-alpha background
-  and a 3px accent left rail (padding compensated 18→15). A second tap on an
-  already-expanded row collapses it; Back also collapses it. Accessible names
-  are unchanged (`View <title>, Recovery Week N` / `Recovery Week N, note
-  unavailable`; a completed row's name gains `, completed`). The expanded body
-  is inset in a card-colored, 14px-radius bordered surface with an uppercase
-  accent kicker on the left and the Recovery `A`/`B` segment (replacing the
-  former `Week A/B` pill; a 32px visual centered in a real 44×44dp target box,
-  so the header row is 44dp tall — **not** a sub-44dp exception, and **not** a
-  `hitSlop`, which #921 removed because `noteSurfaceHeader` clipped it)
-  above the content it governs. Note content renders via
-  `WorkoutContentRenderer`'s `compact` prop (exercise 14/700; sets
-  13/muted/600) — Routine rendering elsewhere stays full-scale. The one
-  expanded-note action is a single outlined `Edit note` control
-  (`accessibilityLabel="Edit"`, unchanged) at `minHeight: 44` since #921, with
-  its 13px label, 1px outline, and 10px radius unchanged, opening the shared
-  inline editor (#841) on the exact note and A/B half being viewed. Neither
-  this control nor the A/B segment declares a fixed `height`, so both grow
-  with the user's text scale (`ui-design-rules.md` §15, which holds the single
-  authoritative sub-44dp exception list — this map records none of its own).
-- **`Manage block` is a sibling card, not a disclosure inside the active card
-  (#843, superseding #789's in-card placement).** Its trigger is **never**
-  disabled — a locked user can still open it and see why each row is
-  unavailable — and it renders four divided list rows with trailing
-  chevrons: `Reason for this block` (#872 — the optional free text, showing
-  the stored reason or `Not set. Add why this recovery started.`; tapping it
-  swaps the row in place for an inline `TextInput` with `Cancel`/`Save`
-  rather than opening a modal, seeded from the stored value so `Cancel` is a
-  true discard, and saving empty text clears the field. Collapsing `Manage
-  block` closes the editor with it — and note that this is not the only place
-  the field is editable; since #1315 the same card also serves a completed
-  block selected in Recovery Blocks),
-  `Counting in normal analytics` (the row itself IS the
-  Log-surface inclusion control now, `accessibilityRole="switch"` — tapping
-  it writes `include_in_normal_analytics` directly, live `On`/`Off` stated
-  on the row; a trailing `info-outline` help toggle swaps the subtitle for
-  the same `RECOVERY_INCLUSION_HELP` copy on demand. The switch Pressable
-  and the help Pressable are TRUE siblings under a plain, non-accessible
-  wrapper View — not nested inside one another — so VoiceOver never groups
-  the help button into the switch's own accessible tree (#843 review).
-  `RecoveryInclusionToggle`'s own Switch presentation is unchanged but no
-  longer used here — it still hosts Analytics/Home's per-completed-block
-  rows), `Unlink Week {N}'s note` (always naming the concrete current week —
-  there is no row-level `Unlink`), and error-colored `End recovery block`,
-  which opens `RecoveryBlockEndModal` instead of `Alert.alert`.
-- **Recovery's expanded-note viewer is a separate state slot from Routine's
-  (#836).** `useLogOtherRoutineEditor.js` instantiates its shared
-  `viewingNoteId`/`viewingNote`/`viewingNoteDayGroups`/`Week A/B` machinery
-  twice — once for the Routine tab (`LogPreviousRoutines`, unchanged prop
-  names), once for Recovery (`recoveryViewingNoteId` etc., consumed by
-  `LogRecoverySection`) — so an expanded note on one tab can never appear on,
-  or be inherited by, the other. Recovery's own note tap
-  (`handleViewRecoveryNote`) is now toggling, matching the Routine tab's
-  `handleViewOtherNote`, rather than the previous set-only handler.
-- `LogRecoverySection` renders only when Recovery affects the current workout
-  (active/pending/terminal-error/stale). Completed history and its inclusion
-  controls live in Analytics (#727-729), so completed-only users see no Recovery
-  section on Log. A cold first read stays neutral (renders nothing) so a
-  non-adopter never sees a Recovery card flash; a terminal first-read failure
-  still shows the unknown state with `Retry recovery`.
-- `RecoveryInclusionToggle` (#843: no longer hosted on Log — see the
-  `Manage block` bullet above — no longer hosted by Analytics since #1315; Log's
-  inclusion row owns the control for the focused active or completed block, and the
-  component's copy constants stay shared) states `Include recovery notes in normal analytics` and
-  nothing else by default. The explanation moved behind an
-  `info-outline` info button beside the label (#757): a 16dp glyph centered in
-  a real `44 x 44` Pressable box — **not** a `hitSlop`, which React Native
-  clips at the parent's bounds and which would therefore claim a target this
-  one-text-line-tall row never had — plus `accessibilityState={{ expanded }}`
-  and an accessible name that names the block so one row's button is distinguishable
-  from the next. The disclosed paragraph describes what turning the switch ON
-  does, names every surface it changes, and closes the two questions the
-  always-visible copy existed to answer (the notes stay in Recovery Analytics,
-  and stay editable). Disclosure state is per mounted control and is not
-  persisted. Switch behavior, accessible names, and the error banner are
-  unchanged.
-- Relocated controls keep their existing style objects — the pill
-  (`inlineSwitchButton`, `minHeight: 44`) and the shared `Button` variants
-  (`switchButton` / `deleteButton`) are unchanged.
-
-| Element | Property | Value | Line |
-|---|---|---|---|
-| Current note title | fontSize | `24` | `LogActiveRoutineCard.js` |
-| | fontWeight | `800` | `LogActiveRoutineCard.js` |
-| | color | `colors.accentText` (#918) | `LogActiveRoutineCard.js` |
-| Current routine card | borderWidth | `4`, `colors.accent` on all sides | `LogActiveRoutineCard.js` |
-| | padding | `0` | `LogActiveRoutineCard.js` |
-| Other note title | fontSize | `17` | `LogPreviousRoutines.js:337` |
-| | fontWeight | `700` | `LogPreviousRoutines.js:338` |
-| Other note subtitle | fontSize | `12` | `LogPreviousRoutines.js:342` |
-| | color | `colors.textMuted` | `LogPreviousRoutines.js:343` |
-| WorkoutHeading (UI.js) | fontSize | `22` | UI.js:640 |
-| | fontWeight | `800` | UI.js:641 |
-| | textTransform | `capitalize` | UI.js:645 |
-| WorkoutSubheading (UI.js) | fontSize | `14` | UI.js:655 |
-| | fontWeight | `700` | UI.js:656 |
-| | color | `colors.accentText` (#918) | UI.js:657 |
-| | textTransform | `uppercase` | UI.js:658 |
-| Exercise name (UI.js) | fontSize | `17` | UI.js:678 |
-| | fontWeight | `700` | UI.js:679 |
-| Set row font size (UI.js) | fontSize | `14` (`SET_ROW_FONT_SIZE`) | UI.js:8 |
-| Mode toggle ("Done") | fontSize | `14` | `LogScreen.js:744` |
-| | fontWeight | `700` | `LogScreen.js:745` |
-| | color | `colors.chipAccentText` (#918 — sits on the chip fill) | `LogScreen.js:746` |
-| | bg | `colors.chipBackground` | `LogScreen.js:741` |
-| | borderRadius | `12` | `LogScreen.js:740` |
-| Input field | fontSize | `16` | `LogScreenEditorCard.js:626` |
-| | borderRadius | `16` | `LogScreenEditorCard.js:621` |
-
----
+See [Action hierarchy (#711)](ui-log.md#action-hierarchy-711).
 
 ## Cross-Screen Inconsistencies
 
-**Reconciled after #383→#413.** These were resolved:
-- Weight History and Goal History are now one shared panel system (identical
-  header/grid/summary/collapse), replacing the two divergent stacked layouts.
-- Collapse toggles are unified on the `MaterialIcons` chevron convention across
-  history panels and analytics (was: mixed text arrows / SVGs).
-- Title-to-panel and panel-to-panel spacing is normalized to the 16px shell gap
-  (was: flush titles and per-screen drift — the reopened #383 defect).
-- The duplicate-day Progressive Overload group is fixed via normalized day-key
-  grouping.
-
-The items below are **remaining/known** cross-screen differences (Home and Log
-were out of the cleanup's scope) and still document real divergence.
+See [Cross-Screen Inconsistencies](ui-compatibility-notes.md#cross-screen-inconsistencies).
 
 ### Hero Metric Sizes
 
-| Screen | Element | fontSize | fontWeight | color |
-|---|---|---|---|---|
-| Home | Weight value | `48` | `800` | `accent` |
-| Home | 1K total | `48` | `900` (`HeroMetric.hero`) | lerped `accent`→`success` |
-| Analytics | Weight value | `32` | `900` | `accent` |
-| Analytics | 1K total | `48` | `900` | `accent` |
-| Weight | Goal value | `24` | `900` | `accent` |
-| Weight | Trend value | `20` | `900` | `text` |
-
-Home uses `800` for bold metrics; Weight uses `900` with no shared system between
-those two screens. The Home/Analytics 1K pair shares the same `HeroMetric.hero`
-scale — see below.
+See [Hero Metric Sizes](ui-compatibility-notes.md#hero-metric-sizes).
 
 ### 1K Card: Home vs Analytics (#763, restored #771)
 
-Home is the compact-summary treatment; Analytics is the detail owner (chart,
-Big 3 mapping, calculation explanation, plate calculator). #763 gave Home's
-hero total its own smaller `32`/`800` override to signal that hierarchy, but
-that read as a visual demotion of a primary progress summary — #771 restored
-the pre-#763 scale so the total spreads `HeroMetric.hero` (`48`/`900`) exactly
-like Analytics' owner card. A plain, quiet chevron in the card's header still
-marks Home as a handoff rather than the destination, so the compact-vs-owner
-distinction lives in scope and ownership, not typographic scale. Everything
-that plays a supporting role — progress track, unit suffix,
-and per-lift breakdown typography — stays normalized so the two surfaces read
-as one family.
-
-| Property | Home | Analytics | Status |
-|---|---|---|---|
-| Total fontSize | `48` (`HeroMetric.hero`) | `48` (`HeroMetric.hero`) | normalized (#771; was a `32`/`800` explicit override on Home, #763) |
-| Total fontWeight | `900` (`HeroMetric.hero`) | `900` (`HeroMetric.hero`) | normalized (#771) |
-| Card padding | `24` | `24` | normalized |
-| Progress bar background | `colors.divider` | `colors.divider` | normalized (#763; was `cardBorder` on Home) |
-| Progress bar borderRadius | `4` | `4` | normalized (#763; was `6` on Home) |
-| Unit suffix | literal leading space (`" {unit}"`) | literal leading space (`" {unit}"`) | normalized (#763 review) — both are a `Text` nested inside the value `Text`, where native RN treats the child as an inline attributed run, not a Yoga box, so `marginLeft` on the nested `Text` did not reliably create spacing on either surface; both now use a literal leading space to guarantee "1000 lb" renders correctly on iOS/Android |
-| Breakdown value fontWeight | `700` | `700` | normalized (#763; was `800` on Home) |
-| Breakdown value fontSize | `16` | `18` | intentional (scales with hero size) |
-| Breakdown label | `11`, uppercase | `11`, uppercase | normalized (#763; Home was `12`, sentence case) |
-| Breakdown divider | vertical `borderLeft/Right` between items | horizontal `borderTop` above row | intentional (Home's 3-column grid vs Analytics' row-then-chart layout) |
-
-The remaining differences (breakdown fontSize, divider orientation) are the
-owner-vs-compact-summary hierarchy working as intended, not unresolved drift.
+See [1K Card: Home vs Analytics (#763, restored #771)](ui-compatibility-notes.md#1k-card-home-vs-analytics-763-restored-771).
 
 ### Support Label Patterns
 
-| Pattern | fontSize | Weight | Case | Screens |
-|---|---|---|---|---|
-| Uppercase micro-label | `10` | `700` | `uppercase` | Analytics (column headers, trend labels), Weight (trend labels) |
-| Uppercase small label | `11` | `600` | `uppercase` | Home (hero sublabels, 1K breakdown labels — #763), Analytics (footer stat labels, 1K breakdown labels) |
-| Uppercase label | `12` | `700` | `uppercase` | Home (goal stat label), Analytics (weight label, 1K label, slot title), Weight (section titles, goal labels) |
-| Section title label | `14` | `700` | `uppercase` | Analytics (1K progress label) |
-
-Four different sizes for the same role (metadata label above a value). The `10px` labels on Home classifications and Analytics column headers are the smallest text in the app.
+See [Support Label Patterns](ui-compatibility-notes.md#support-label-patterns).
 
 ### Card Padding
 
-| Screen | Card | Padding |
-|---|---|---|
-| Shared default | Card component | `18` |
-| Home | Weekly hero | `18` (#1278) |
-| Home | Goal card | `24` |
-| Home | 1K card | `24` |
-| Analytics | Weight card | `20` |
-| Analytics | 1K card | `24` |
-| Analytics | Slot card | `16` |
-| Weight | Trends card | `0` (merged sections, `16` per section) |
+See [Card Padding](ui-compatibility-notes.md#card-padding).
 
 ### Divider Patterns
 
-| Type | Used Where |
-|---|---|
-| Full-bleed `marginHorizontal: -24` | Home hero divider |
-| `borderTop 1px` | Analytics weight footer, Analytics 1K breakdown, Weight trend sections |
-| `borderBottom 1px` | Weight history rows, Analytics signal rows |
-| `borderLeft/Right 1px` | Home 1K breakdown items |
-| `opacity: 0.5` divider | Weight goal divider |
+See [Divider Patterns](ui-compatibility-notes.md#divider-patterns).
 
 ### Orange Usage (colors.accent)
 
-| Screen | Elements using accent |
-|---|---|
-| Home | Weight value, sparkline, CTA text, CTA chevron, 1K total, wordmark SVG |
-| Analytics | Weight value, 1K total, pace badge bg, loading spinners |
-| Weight | Goal display values, save button bg, edit title, delta notable |
-| Log | Current routine card border, the primary-action fill, A/B active segment, dots and glyphs. Its **copy** — current note title, subheadings, mode toggle, switch/create buttons — moved to `accentText` / `chipAccentText` in #918 |
-
-Home has the highest orange density — 6 distinct elements. The wordmark is fixed (brand), but the remaining 5 compete for attention inside a single scroll view.
+See [Orange Usage (colors.accent)](ui-compatibility-notes.md#orange-usage-colorsaccent).
 
 ### SectionTitle Usage
 
-| Screen | Between-card SectionTitles |
-|---|---|
-| Home | none — Home does not import `SectionTitle` |
-| Analytics | "Strength", "Progressive Overload", "Weight Trends", "Routine Health", "Recovery" |
-| Weight | "Goal", "Trends", "Goal History", "History" |
-| Log | "Recovery", "More Routines" |
-
-On Analytics/Weight, SectionTitles separate genuinely different content areas with many items each. Home relies on card content alone to communicate section purpose. `LogRecoverySection` and `LogPreviousRoutines` both render their heading through the shared `SectionTitle` component (`UI.js`), so `Recovery` and `More Routines` already match in size, weight, color, casing, and spacing (#771) — no separate token or override exists for either.
+See [SectionTitle Usage](ui-compatibility-notes.md#sectiontitle-usage).

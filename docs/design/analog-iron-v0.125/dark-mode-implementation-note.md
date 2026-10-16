@@ -1,4 +1,10 @@
 # Kilo Dark Mode Architecture & Implementation Usage Note
+
+> **Retired design record.** Preserved for provenance; the authority statements,
+> approval checkboxes, "current-main" inventories and proposed cards below refer
+> to the historical Analog Iron handoff. They do not govern current implementation.
+> Use the [KUA package](../kinetic-utilitarian-athletic/README.md) and the
+> [current UI map](../../design-system-map.md).
 **System Version:** v0.125.0 (Cast Iron & Machined Surface Production Baseline)  
 **Applicability:** Autonomous AI coding agents, mobile frontend engineers (React Native / Expo), and design systems.
 

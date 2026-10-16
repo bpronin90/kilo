@@ -77,8 +77,8 @@ starting points are:
 | Doc | What it covers |
 |-----|----------------|
 | [`docs/current-state.md`](docs/current-state.md) | MVP status, known gaps, and launch prerequisites |
-| [`docs/architecture.md`](docs/architecture.md) | Runtime boundaries, data flows, persistence, and analytics ownership |
-| [`docs/testing-and-qa.md`](docs/testing-and-qa.md) | Test commands, coverage inventory, CI gates, and manual smoke checks |
+| [`docs/architecture.md`](docs/architecture.md) | Index to focused runtime, storage, sync, security, and analytics contracts |
+| [`docs/testing-and-qa.md`](docs/testing-and-qa.md) | Index to test execution, coverage evidence, CI gates, and manual QA |
 | [`docs/repo-structure.md`](docs/repo-structure.md) | Active directory and file map |
 
 ## Copyright
