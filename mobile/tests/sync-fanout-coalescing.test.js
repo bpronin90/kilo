@@ -937,11 +937,11 @@ describe('a pulled Track change is adopted by a mounted hook (#1398)', () => {
   // there cannot make a tolerant {} look equal to an incoming {} and skip a write.
   async function pullWithReadErrorAfterSnapshot(cloud, failKey) {
     const settings = jest.requireActual('../storage/entries/settings');
-    const realSnapshot = settings.readTrackedLiftRaw;
+    const realSnapshot = settings.readHealthRowRaw;
     const realGetItem = secureStorage.getItem.bind(secureStorage);
     let armed = false;
     let rejected = 0;
-    jest.spyOn(settings, 'readTrackedLiftRaw').mockImplementation(async (...args) => {
+    jest.spyOn(settings, 'readHealthRowRaw').mockImplementation(async (...args) => {
       const out = await realSnapshot(...args);
       armed = true;
       return out;
@@ -988,7 +988,7 @@ describe('a pulled Track change is adopted by a mounted hook (#1398)', () => {
     // would also fail. With no snapshot, applying anyway would leave a half pair
     // that nothing can roll back.
     const settings = jest.requireActual('../storage/entries/settings');
-    jest.spyOn(settings, 'readTrackedLiftRaw').mockRejectedValueOnce(new Error('transient read'));
+    jest.spyOn(settings, 'readHealthRowRaw').mockRejectedValueOnce(new Error('transient read'));
     const realSetItem = secureStorage.setItem.bind(secureStorage);
     let failing = true;
     jest.spyOn(secureStorage, 'setItem').mockImplementation(async (key, value) => {
@@ -1010,6 +1010,204 @@ describe('a pulled Track change is adopted by a mounted hook (#1398)', () => {
     expect(Object.keys(ref.current.activations).sort()).toEqual(['bench', 'squat']);
     expect(Object.keys(healthRow(cloud).tracked_lift_activations).sort()).toEqual(['bench', 'squat']);
     act(() => tree.unmount());
+  });
+
+  // Atomic whole-row application (#1405). Every key a pulled health row writes is
+  // snapshotted raw first; any later failure restores all of them byte-for-byte.
+  describe('whole-row atomicity (#1405)', () => {
+    const KEYS = [
+      TRACKED_LIFTS_KEY, TRACKED_LIFT_ACTIVATIONS_KEY, CURRENT_WORKOUT_ID_KEY,
+      FATIGUE_MULTIPLIER_KEY, WORKOUT_DELOAD_NOTE_KEY,
+    ];
+    const DELOAD_BEFORE = JSON.stringify({
+      raw_text: 'old deload', saved_at: '2026-08-01T00:00:00.000Z',
+      updated_at: '2026-08-01T00:00:00.000Z', working_context: { deviceLocal: 'keep' },
+    });
+    const DELOAD_TS = '2026-09-02T00:00:00.000Z';
+    const allChanged = {
+      ...squatAdded,
+      current_workout_note_id: 'routine-b',
+      fatigue_multiplier: 1.2,
+      current_deload_note_raw_text: 'new deload',
+      current_deload_note_saved_at: DELOAD_TS,
+      current_deload_note_updated_at: DELOAD_TS,
+    };
+    const deloadCleared = {
+      ...allChanged,
+      current_deload_note_raw_text: null,
+      current_deload_note_saved_at: null,
+      current_deload_note_updated_at: null,
+    };
+    const rawKeys = async () => Object.fromEntries(
+      await Promise.all(KEYS.map(async (k) => [k, await secureStorage.getItem(k)])),
+    );
+
+    // Fail every write/remove of one key (the mutation boundary under test).
+    function failKey(key, alsoRemove = []) {
+      const state = { on: true };
+      const realSet = secureStorage.setItem.bind(secureStorage);
+      const realRemove = secureStorage.removeItem.bind(secureStorage);
+      jest.spyOn(secureStorage, 'setItem').mockImplementation(async (k, v) => {
+        if (state.on && k === key) throw new Error('disk full');
+        return realSet(k, v);
+      });
+      jest.spyOn(secureStorage, 'removeItem').mockImplementation(async (k) => {
+        if (state.on && (k === key || alsoRemove.includes(k))) throw new Error('disk full');
+        return realRemove(k);
+      });
+      return state;
+    }
+
+    async function pass() {
+      await act(async () => { await maybeSyncCloud().catch(() => {}); });
+      await flushAsync(8);
+    }
+
+    async function setup(deloadBefore) {
+      if (deloadBefore) await secureStorage.setItem(WORKOUT_DELOAD_NOTE_KEY, deloadBefore);
+      const cloud = makeXidFakeCloud();
+      const mounted = await deviceA(cloud);
+      return { cloud, ...mounted };
+    }
+
+    it.each([
+      ['deload set', allChanged],
+      ['deload clear', deloadCleared],
+    ])('%s failing after the Track pair and earlier fields: every key restored, retry applies the full row', async (_n, patch) => {
+      const { cloud, ref, tree } = await setup(DELOAD_BEFORE);
+      await deviceBWrites(cloud, patch);
+      const before = await rawKeys();
+      const syncedAt = await loadLastSuccessfulSyncAt();
+      const state = failKey(WORKOUT_DELOAD_NOTE_KEY);
+      const pushes = cloud.calls.push;
+      await pass();
+
+      expect(await rawKeys()).toEqual(before);
+      expect(before[WORKOUT_DELOAD_NOTE_KEY]).toBe(DELOAD_BEFORE);
+      const failed = getSyncState()[SYNC_PHASE.SYNC];
+      expect(failed.status).toBe(SYNC_STATUS.FAILED);
+      expect(failed.retryable).toBe(true);
+      await expect(loadLastSuccessfulSyncAt()).resolves.toBe(syncedAt);
+      // No mixed row went up as a local edit: the server row is still B's.
+      expect(cloud.calls.push).toBe(pushes);
+      expect(healthRow(cloud).tracked_lifts).toEqual(squatAdded.tracked_lifts);
+      expect(healthRow(cloud).fatigue_multiplier).toBe(1.2);
+      expect(ref.current.trackedLifts).toEqual({ bench: true });
+
+      state.on = false;
+      await act(async () => { await maybeSyncCloud(); });
+      await flushAsync(8);
+      expect(await Storage.loadTrackedLifts()).toEqual({ bench: true, squat: true });
+      expect(await Storage.loadCurrentWorkoutId()).toBe('routine-b');
+      expect(await Storage.loadFatigueMultiplier()).toBe(1.2);
+      if (patch.current_deload_note_raw_text == null) {
+        expect(await secureStorage.getItem(WORKOUT_DELOAD_NOTE_KEY)).toBeNull();
+      } else {
+        expect(JSON.parse(await secureStorage.getItem(WORKOUT_DELOAD_NOTE_KEY)).raw_text).toBe('new deload');
+      }
+      expect(ref.current.trackedLifts).toEqual({ bench: true, squat: true });
+      expect(healthRow(cloud).tracked_lifts).toEqual({ bench: true, squat: true });
+      expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+      act(() => tree.unmount());
+    });
+
+    it('absent pre-apply keys are removed again on rollback (no deload, no current id, no multiplier)', async () => {
+      const { cloud, tree } = await setup(null);
+      await deviceBWrites(cloud, allChanged);
+      const before = await rawKeys();
+      expect(before[WORKOUT_DELOAD_NOTE_KEY]).toBeNull();
+      expect(before[FATIGUE_MULTIPLIER_KEY]).toBeNull();
+      const state = failKey(WORKOUT_DELOAD_NOTE_KEY);
+      await pass();
+      expect(await rawKeys()).toEqual(before);
+      state.on = false;
+      await act(async () => { await maybeSyncCloud(); });
+      await flushAsync(8);
+      expect(await Storage.loadFatigueMultiplier()).toBe(1.2);
+      act(() => tree.unmount());
+    });
+
+    it.each([
+      ['fatigue multiplier', FATIGUE_MULTIPLIER_KEY],
+      ['current workout id', CURRENT_WORKOUT_ID_KEY],
+      ['tracked activations', TRACKED_LIFT_ACTIVATIONS_KEY],
+    ])('a %s write failure restores the whole row, not just its own field', async (_n, key) => {
+      const { cloud, ref, tree } = await setup(DELOAD_BEFORE);
+      await deviceBWrites(cloud, allChanged);
+      const before = await rawKeys();
+      const state = failKey(key);
+      await pass();
+      expect(await rawKeys()).toEqual(before);
+      expect(getSyncState()[SYNC_PHASE.SYNC].retryable).toBe(true);
+      state.on = false;
+      await act(async () => { await maybeSyncCloud(); });
+      await flushAsync(8);
+      expect(await Storage.loadFatigueMultiplier()).toBe(1.2);
+      expect(ref.current.trackedLifts).toEqual({ bench: true, squat: true });
+      act(() => tree.unmount());
+    });
+
+    it('a snapshot read error on any affected key aborts before any mutation, retryably', async () => {
+      const { cloud, tree } = await setup(DELOAD_BEFORE);
+      await deviceBWrites(cloud, allChanged);
+      const before = await rawKeys();
+      const settings = jest.requireActual('../storage/entries/settings');
+      const realSnapshot = settings.readHealthRowRaw;
+      const realGet = secureStorage.getItem.bind(secureStorage);
+      let failing = true;
+      let inSnapshot = false;
+      // Only the strict snapshot read fails (the tolerant loaders would otherwise
+      // read an absent note and look like a local clear).
+      jest.spyOn(settings, 'readHealthRowRaw').mockImplementation(async (...args) => {
+        inSnapshot = true;
+        try { return await realSnapshot(...args); } finally { inSnapshot = false; }
+      });
+      jest.spyOn(secureStorage, 'getItem').mockImplementation(async (k) => {
+        if (failing && inSnapshot && k === WORKOUT_DELOAD_NOTE_KEY) throw new Error('transient read');
+        return realGet(k);
+      });
+      const sets = jest.spyOn(secureStorage, 'setItem');
+      const removes = jest.spyOn(secureStorage, 'removeItem');
+      await pass();
+      const rowWrites = [...sets.mock.calls, ...removes.mock.calls].filter(([k]) => KEYS.includes(k));
+      expect(rowWrites).toEqual([]);
+      failing = false;
+      expect(await rawKeys()).toEqual(before);
+      expect(getSyncState()[SYNC_PHASE.SYNC].retryable).toBe(true);
+      await act(async () => { await maybeSyncCloud(); });
+      await flushAsync(8);
+      expect(await Storage.loadFatigueMultiplier()).toBe(1.2);
+      act(() => tree.unmount());
+    });
+
+    it('a corrupt readable deload note does not block a valid pull', async () => {
+      // Synced with no note, so the corrupt (reads-as-absent) local one is no edit.
+      const { cloud, tree } = await setup(null);
+      await deviceBWrites(cloud, allChanged);
+      await secureStorage.setItem(WORKOUT_DELOAD_NOTE_KEY, '{not json');
+      await act(async () => { await maybeSyncCloud(); });
+      await flushAsync(8);
+      expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+      expect(JSON.parse(await secureStorage.getItem(WORKOUT_DELOAD_NOTE_KEY)).raw_text).toBe('new deload');
+      act(() => tree.unmount());
+    });
+
+    // Documented non-goal: when the rollback ITSELF cannot write, the partial
+    // state stays. The pass still fails (never reported as success); nothing here
+    // is durable across process death, and a later pass may upload the mixed
+    // local state as an edit. Durable recovery is separate work (#1405).
+    it('application failure followed by restore failure: still failed, other keys still restored', async () => {
+      const { cloud, tree } = await setup(DELOAD_BEFORE);
+      await deviceBWrites(cloud, allChanged);
+      // Fatigue was absent before, so its restore is a removeItem, which fails too.
+      failKey(WORKOUT_DELOAD_NOTE_KEY, [FATIGUE_MULTIPLIER_KEY]);
+      await pass();
+      expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.FAILED);
+      expect(await secureStorage.getItem(FATIGUE_MULTIPLIER_KEY)).toBe('1.2');
+      expect(await secureStorage.getItem(WORKOUT_DELOAD_NOTE_KEY)).toBe(DELOAD_BEFORE);
+      expect(await secureStorage.getItem(CURRENT_WORKOUT_ID_KEY)).toBeNull();
+      act(() => tree.unmount());
+    });
   });
 });
 

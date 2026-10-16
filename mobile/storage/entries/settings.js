@@ -1,5 +1,7 @@
 import { secureStorage as AsyncStorage } from '../secureStorage';
 import {
+  CURRENT_WORKOUT_ID_KEY,
+  WORKOUT_DELOAD_NOTE_KEY,
   FATIGUE_MULTIPLIER_KEY,
   WEIGHT_DATE_EDIT_KEY,
   DELOAD_DATE_EDIT_KEY,
@@ -205,6 +207,57 @@ export async function restoreTrackedLiftRaw(snapshot, store = AsyncStorage) {
     else await store.setItem(key, want);
     noteTrackedLiftWrite();
   }
+}
+
+// Raw snapshot of every key a pulled user_health_profile row writes (#1405):
+// the Track pair plus current workout id, fatigue multiplier and the active
+// deload note. Exact strings or absence, through the writers' own store, so a
+// corrupt or device-local value (the deload note's working_context) restores
+// byte-for-byte. A read I/O error throws, before the caller mutates anything.
+export async function readHealthRowRaw(store = AsyncStorage) {
+  const tracked = await readTrackedLiftRaw(store);
+  return {
+    tracked,
+    currentWorkoutId: await store.getItem(CURRENT_WORKOUT_ID_KEY),
+    fatigue: await store.getItem(FATIGUE_MULTIPLIER_KEY),
+    deload: await store.getItem(WORKOUT_DELOAD_NOTE_KEY),
+  };
+}
+
+// Parse the non-Track snapshot fields WITHOUT touching storage. Absent is null;
+// unparseable is `undefined`, which compares unequal to anything a row carries.
+export function parseHealthRowRaw(snapshot) {
+  const parse = (raw) => {
+    if (raw == null) return null;
+    try { return JSON.parse(raw); } catch { return undefined; }
+  };
+  return {
+    currentWorkoutId: parse(snapshot.currentWorkoutId),
+    fatigue: parse(snapshot.fatigue),
+    deload: parse(snapshot.deload),
+  };
+}
+
+// Best-effort: every key is attempted even if one fails, then the first error
+// throws. Rollback cannot be atomic if storage keeps failing, and nothing here
+// survives process death (durable recovery is separate work, #1405).
+export async function restoreHealthRowRaw(snapshot, store = AsyncStorage) {
+  const errors = [];
+  const attempt = async (fn) => { try { await fn(); } catch (err) { errors.push(err); } };
+  await attempt(() => restoreTrackedLiftRaw(snapshot.tracked, store));
+  for (const [key, want] of [
+    [CURRENT_WORKOUT_ID_KEY, snapshot.currentWorkoutId],
+    [FATIGUE_MULTIPLIER_KEY, snapshot.fatigue],
+    [WORKOUT_DELOAD_NOTE_KEY, snapshot.deload],
+  ]) {
+    // eslint-disable-next-line no-await-in-loop
+    await attempt(async () => {
+      if ((await store.getItem(key)) === want) return;
+      if (want == null) await store.removeItem(key);
+      else await store.setItem(key, want);
+    });
+  }
+  if (errors.length) throw errors[0];
 }
 
 export async function saveTrackedLiftActivations(map, store = AsyncStorage) {
