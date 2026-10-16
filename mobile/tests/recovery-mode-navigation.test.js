@@ -68,7 +68,7 @@ function setup(next = {}, { deload = false } = {}) {
   useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: deload });
   useEntries.useRecoveryBlockState.mockImplementation(() => ({
     activeBlock: state.blocks.find(b => !b.completed_at) || null, blocks: state.blocks, weeks: state.weeks,
-    recoveryWeekNumberByNoteId: {}, loading: false, error: null, refresh, ready: state.ready, stale: state.stale,
+    recoveryWeekNumberByNoteId: {}, loading: false, error: null, refresh, ready: state.ready, stale: state.stale, refreshing: !!state.refreshing,
     pendingRecovery: state.pending, mutationsAllowed: true,
   }));
   useEntries.useStartRecoveryBlock.mockReturnValue({ startBlock: jest.fn() });
@@ -178,6 +178,20 @@ describe('inactive Recovery navigation', () => {
     const pending = mount().root;
     expect(byId(pending, 'log-recovery-entry')).toHaveLength(0);
     expect(tab(pending, 'Recovery')).toBeTruthy();
+  });
+
+  test('an in-flight refresh over a verified snapshot hides the entry and holds management writes', () => {
+    setup({ refreshing: true });
+    expect(byId(mount().root, 'log-recovery-entry')).toHaveLength(0);
+    setup();
+    const c = mount();
+    press(c.root, 'log-recovery-entry');
+    press(c.root, 'recovery-manage-trigger-rb-done');
+    expect(pressable(c.root, 'recovery-reopen-rb-done').props.disabled).toBe(false);
+    state.refreshing = true;
+    rerender(c);
+    expect(hasText(c.root, 'Start recovery block')).toBe(false);
+    expect(pressable(c.root, 'recovery-reopen-rb-done').props.disabled).toBe(true);
   });
 
   test('a stale refresh while management is open swaps to the Recovery view with its retry, not a verified state', () => {

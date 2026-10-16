@@ -177,7 +177,7 @@ export function LogScreenContent(props) {
             {(effectiveTabView === 'recovery' || effectiveTabView === 'manage' || recoveryMounted) && (
               <RecoverySurface
                 mode={effectiveTabView === 'recovery' || effectiveTabView === 'manage' ? effectiveTabView : 'hidden'} onBack={() => handleTabViewChange('routine')}
-                showStart={showRecoveryStartInManagement} onStart={openStartRecoveryBlock} hasCompleted={recoveryManage.completedBlocks.length > 0}
+                showStart={showRecoveryStartInManagement && !recoveryRefreshing} onStart={openStartRecoveryBlock} hasCompleted={recoveryManage.completedBlocks.length > 0}
               >
               <LogRecoverySection
                 blocks={recoveryBlocks}
@@ -229,7 +229,8 @@ export function LogScreenContent(props) {
                 stateRefreshing={recoveryRefreshing}
                 stateStale={recoveryStale}
                 stateError={recoveryStateError}
-                mutationsAllowed={recoveryMutationsAllowed}
+                // An in-flight refresh is not verified inactivity: management writes wait for it (#1423).
+                mutationsAllowed={recoveryMutationsAllowed && !(effectiveTabView === 'manage' && recoveryRefreshing)}
                 manage={recoveryManage}
               />
               </RecoverySurface>
@@ -237,7 +238,7 @@ export function LogScreenContent(props) {
 
             {/* Inactive Recovery (#1423): one compact entry under the current routine;
                 completed history alone never earns a tab. */}
-            {effectiveTabView === 'routine' && showRecoveryEntry && !recoveryTabVisible && (
+            {effectiveTabView === 'routine' && showRecoveryEntry && !recoveryTabVisible && !recoveryRefreshing && !recoveryLoading && (
               <RecoveryEntryRow
                 newestCompleted={newestCompletedRecoveryBlock} weeks={recoveryWeeks} notes={notes}
                 notesError={notesError} onOpen={() => handleTabViewChange('manage')}
