@@ -284,14 +284,14 @@ export function LogScreen({
   // alone, is what keeps those banners from becoming unreachable once
   // Recovery is a separate tab instead of an always-mounted section of the
   // Routine tab.
-  // #1315: a verified completed-only history also earns the tab (Recovery History).
+  // #1423: completed history alone earns no tab; see the 'manage' tabView.
   const recoveryDefaultEligible = !!activeRecoveryBlock
     || (pendingRecovery?.length || 0) > 0
     || !!recoveryPendingError
     || recoveryStale
     || (!recoveryReady && !!recoveryStateError);
-  const recoveryHistory = useLogRecoveryManage({ blocks: recoveryBlocks, ready: recoveryReady, readError: recoveryStateError, navManageBlockId, navKey: navRecoveryKey, onShow: () => setTabView('recovery') });
-  const recoveryTabVisible = recoveryDefaultEligible || (recoveryReady && (recoveryHistory.hasCompleted || recoveryHistory.manage.unavailable));
+  const recoveryHistory = useLogRecoveryManage({ blocks: recoveryBlocks, ready: recoveryReady, readError: recoveryStateError, navManageBlockId, navKey: navRecoveryKey, onShow: () => setTabView('manage') });
+  const recoveryTabVisible = recoveryDefaultEligible;
 
   const editorScrollRef = useRef(null);
   const readScrollRef = useRef(null);
@@ -377,6 +377,7 @@ export function LogScreen({
     // while the other tab is showing (review finding): Routine and Deload
     // both read off `otherEditor.viewingNoteId`, so that check is gated on
     // every tab except Recovery, symmetric to the Recovery gate above it.
+    if (tabView === 'manage' && !recoveryTabVisible) { setTabView('routine'); return true; }
     if (tabView === 'recovery' && otherEditor.recoveryViewingNoteId) {
       otherEditor.setRecoveryViewingNoteId(null);
       return true;
@@ -428,7 +429,7 @@ export function LogScreen({
     activeEditorInteraction, editorCardProps, guardedHandleDeleteRoutine,
   } = useLogScreenController(screen);
   const {
-    recoveryBlockingMessage, openStartRecoveryBlock, closeRecoveryModal, showRecoveryStartInManagement, newestCompletedRecoveryBlock, showRecoveryReopenInManagement,
+    recoveryBlockingMessage, openStartRecoveryBlock, closeRecoveryModal, showRecoveryStartInManagement, newestCompletedRecoveryBlock, showRecoveryEntry,
     handleConfirmRecoveryBlock, openAddWeekModal, closeAddWeekModal, handleConfirmAddWeek, handleCompleteCurrentWeek, handleCompleteRecoveryBlock,
     handleSetRecoveryInclusionFromEndModal, openEndBlockModal, closeEndBlockModal, handleReopenRecoveryBlock, openReopenRecoveryBlockConfirm, handleUnlinkRecoveryWeek,
     handleRetryRecovery, handleUndoCompleteWeek,
@@ -498,8 +499,8 @@ export function LogScreen({
         pendingRecovery={pendingRecovery} recoveryPendingError={recoveryPendingError} handleRetryRecovery={handleRetryRecovery}
         recoveryReady={recoveryReady} recoveryLoading={recoveryLoading} recoveryRefreshing={recoveryRefreshing}
         recoveryStale={recoveryStale} recoveryStateError={recoveryStateError} recoveryMutationsAllowed={recoveryMutationsAllowed}
-        showRecoveryStartInManagement={showRecoveryStartInManagement} openStartRecoveryBlock={openStartRecoveryBlock} showRecoveryReopenInManagement={showRecoveryReopenInManagement}
-        openReopenRecoveryBlockConfirm={openReopenRecoveryBlockConfirm} newestCompletedRecoveryBlock={newestCompletedRecoveryBlock} otherNotes={otherNotes}
+        showRecoveryStartInManagement={showRecoveryStartInManagement} openStartRecoveryBlock={openStartRecoveryBlock} showRecoveryEntry={showRecoveryEntry}
+        newestCompletedRecoveryBlock={newestCompletedRecoveryBlock} otherNotes={otherNotes}
         guardedHandleDeleteRoutine={guardedHandleDeleteRoutine} recoveryWeekNumberByNoteId={recoveryWeekNumberByNoteId} activeRoutineCard={activeRoutineCard}
       />
 
