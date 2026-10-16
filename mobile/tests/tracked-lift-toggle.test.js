@@ -17,6 +17,11 @@ import { __resetMaybeSyncCloudForTests, maybeSyncCloud } from '../hooks/entries/
 import { SYNC_PHASE, SYNC_STATUS, getSyncState, __resetSyncQueue } from '../storage/syncRecovery';
 import { applyWorkoutNoteTextBatch, useWorkoutNotes } from '../hooks/entries/workoutNoteHooks';
 import * as CloudNotes from '../storage/cloud/cloudDomainMethods';
+import { withLocalWriteLock } from '../storage/sync/localWriteLock';
+import { secureStorage } from '../storage/secureStorage';
+import { SINGLETON_SYNC_ID, SYNC_TABLES, resetClientIdCacheForTests, resetStampClockForTests } from '../storage/syncQueue';
+import { cloudAdapter, setCloudTransport } from '../storage/cloudAdapter';
+import { makeXidFakeCloud } from './mocks/xidFakeCloud';
 
 jest.mock('../lib/reminderScheduler', () => ({ reconcileWorkoutReminder: () => Promise.resolve() }));
 jest.mock('../lib/supabaseClient', () => ({ getSupabaseClient: jest.fn() }));
@@ -725,5 +730,84 @@ describe('a normalization apply carries Track (#1395)', () => {
     await settle();
     expect(await Storage.loadTrackedLifts()).toEqual({ squat: true, bench: true, deadlift: true });
     expect(Object.keys(await Storage.loadTrackedLiftActivations()).sort()).toEqual(['bench', 'deadlift', 'squat']);
+  });
+
+  // Review round 5: the adoption check, the derivation and the write of one
+  // queued change are ONE local-write-lock section. A writer already holding
+  // that lock (a sync write-back landing another device's normalized Track)
+  // finishes first; the toggle then derives from what it wrote.
+  const DST_RECORD = { anchor: 0, at: '2026-09-01T00:00:00.000Z', witness: null };
+
+  test('a toggle queued behind a lock-holding Track writer derives from what that writer landed', async () => {
+    const ref = renderHook();
+    await settle();
+    await trackSource(ref);
+    const held = deferred();
+    const writer = withLocalWriteLock(async () => {
+      await held.promise;
+      await Storage.saveTrackedLifts({ [DST]: true });
+      await Storage.saveTrackedLiftActivations({ [DST]: DST_RECORD });
+    });
+    let toggling;
+    await act(async () => { toggling = ref.current.toggle('squat', HISTORY); });
+    await settle();
+    held.resolve();
+    await act(async () => { await writer; await toggling; });
+    await settle();
+    expect(await Storage.loadTrackedLifts()).toEqual({ [DST]: true, squat: true });
+    expect(Object.keys(await Storage.loadTrackedLiftActivations()).sort()).toEqual([DST, 'squat']);
+    expect(ref.current.trackedLifts).toEqual({ [DST]: true, squat: true });
+  });
+
+  test('real pass: a toggle during an incoming normalized Track write-back keeps it, locally and on the server', async () => {
+    resetClientIdCacheForTests();
+    resetStampClockForTests();
+    const cloud = makeXidFakeCloud();
+    setCloudTransport(cloud.transport);
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    try {
+      await cloudAdapter.sync({ ownedDevice: false });
+      const ref = renderHook();
+      await settle(8);
+      await trackSource(ref);
+      await settle(8);
+      const healthRow = () => cloud.remoteRow(SYNC_TABLES.USER_HEALTH_PROFILE, SINGLETON_SYNC_ID);
+      expect(healthRow().tracked_lifts).toEqual({ [SRC]: true });
+
+      // Another device normalized the rename and uploaded its Track transition.
+      const { __xid: _x, updated_at: _u, ...row } = healthRow(); // eslint-disable-line no-unused-vars
+      await cloud.transport.push(SYNC_TABLES.USER_HEALTH_PROFILE, [{
+        ...row, tracked_lifts: { [DST]: true }, tracked_lift_activations: { [DST]: DST_RECORD },
+      }]);
+      // Pause that pull's write-back inside its lock, before its first Track write.
+      const held = deferred();
+      const reached = deferred();
+      let armed = true;
+      const realSetItem = secureStorage.setItem.bind(secureStorage);
+      jest.spyOn(secureStorage, 'setItem').mockImplementation(async (key, value) => {
+        if (armed && key === 'kilo_tracked_lifts') {
+          armed = false;
+          reached.resolve();
+          await held.promise;
+        }
+        return realSetItem(key, value);
+      });
+      let pulling;
+      await act(async () => { pulling = maybeSyncCloud(); });
+      await act(async () => { await reached.promise; });
+      let toggling;
+      await act(async () => { toggling = ref.current.toggle('squat', HISTORY); });
+      await settle(8);
+      held.resolve();
+      await act(async () => { await pulling; await toggling; });
+      await settle(16);
+
+      expect(await Storage.loadTrackedLifts()).toEqual({ [DST]: true, squat: true });
+      expect(healthRow().tracked_lifts).toEqual({ [DST]: true, squat: true });
+      expect(Object.keys(healthRow().tracked_lift_activations).sort()).toEqual([DST, 'squat']);
+      expect(syncStatus()).toBe(SYNC_STATUS.COMPLETE);
+    } finally {
+      setCloudTransport(null);
+    }
   });
 });

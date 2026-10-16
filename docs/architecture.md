@@ -794,7 +794,9 @@ wholly or not at all. Every write of either Track map bumps a storage write gene
 (`settings.js`); the hook claims its own bumps, and any other writer (an apply or replay
 from any entry point, a lock-level settle, a sync pull, a restore) makes the next queued
 write re-read storage before it derives, while an adoption-only queue step re-reads and
-broadcasts to mounted consumers.
+broadcasts to mounted consumers. That adoption, the derivation and both writes of one
+queued change run in a single local-write-lock section (any pending intent is rolled
+forward just before it), so a sync write-back can never land between derive and write.
 
 ## Parse-to-Persistence Flow
 
