@@ -27,8 +27,12 @@ import {
   WORKOUT_DELOAD_NOTE_KEY,
   WORKOUT_DELOAD_HISTORY_KEY,
   WEIGHT_GOAL_KEY,
+  TRACKED_LIFTS_KEY,
+  TRACKED_LIFT_ACTIVATIONS_KEY,
 } from '../storage/entries/keys';
 import { mergeUserProfile } from '../storage/entries/profileStorage';
+import { withLocalWriteLock } from '../storage/sync/localWriteLock';
+import { migrateToNotebook } from '../storage/entries/migrations';
 import { secureStorage } from '../storage/secureStorage';
 import {
   SYNC_PHASE,
@@ -48,7 +52,7 @@ import {
 import { useTrackedLifts } from '../hooks/entries/trackedLiftHooks';
 import { parseWorkoutNote } from '../lib/parser';
 import { cloudAdapter, setCloudTransport } from '../storage/cloudAdapter';
-import { maybeSyncCloud, __resetMaybeSyncCloudForTests } from '../hooks/entries/storageMode';
+import { maybeSyncCloud, withRecoveryReconciliation, __resetMaybeSyncCloudForTests } from '../hooks/entries/storageMode';
 import { useWeightEntries, useWorkoutNotes } from '../hooks/useEntries';
 import { makeXidFakeCloud } from './mocks/xidFakeCloud';
 
@@ -1515,5 +1519,179 @@ describe('settings writers vs the ack write-back (#1399)', () => {
       expect((await Storage.loadDeloadHistory()).map((x) => x.id)).toEqual(['dh_2']);
       expect(r.cloud.remoteRow(base.table, 'dh_1').deleted_at).toBeTruthy();
     });
+  });
+});
+
+// #1409. Clean-cloud hydration and the current-id migration, traced against sync
+// passes and ordinary locked writers.
+//
+// Hydration runs only from bootstrapFromLocal, whose sole production runner
+// wraps it in withRecoveryReconciliation: the same recovery guard every sync pass
+// holds. So a SYNC PASS cannot overlap it. The guard does NOT exclude ordinary
+// local writers (a Track toggle takes the hook queue and local-write lock, never
+// the guard), and hydration's flags -> read -> records sequence used raw savers.
+describe('clean-cloud hydration vs ordinary writers (#1409)', () => {
+  const REC = { anchor: 0, at: '2026-06-20T10:00:00.000Z', witness: null };
+  const tick = async (n = 6) => {
+    for (let i = 0; i < n; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  };
+  const readJson = async (k) => JSON.parse(await secureStorage.getItem(k));
+
+  // A Track toggle's storage section, as trackedLiftHooks runs it: both writes
+  // inside one local-write section.
+  const trackBench = () => withLocalWriteLock(async () => {
+    await Storage.saveTrackedLifts({ squat: true, bench: true });
+    await Storage.saveTrackedLiftActivations({ squat: REC, bench: REC });
+  });
+
+  async function hydrateWithTrackLanding() {
+    const realGet = secureStorage.getItem.bind(secureStorage);
+    let gate = null;
+    jest.spyOn(secureStorage, 'getItem').mockImplementation(async (k) => {
+      if (k === TRACKED_LIFTS_KEY && gate === null) {
+        gate = deferred();
+        await gate.promise;
+      }
+      return realGet(k);
+    });
+    const hydration = Storage.hydrateProfileFromCloud({
+      tracked_lifts: { squat: true },
+      tracked_lift_activations: { squat: REC },
+    }, null);
+    for (let i = 0; i < 40 && gate === null; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await tick(1);
+    }
+    expect(gate).not.toBeNull();
+    const track = trackBench();
+    await tick(6);
+    gate.resolve();
+    await Promise.all([hydration, track]);
+    jest.restoreAllMocks();
+  }
+
+  it('a Track toggle landing mid-hydration keeps its flag and its record', async () => {
+    await hydrateWithTrackLanding();
+    expect(await readJson(TRACKED_LIFTS_KEY)).toEqual({ squat: true, bench: true });
+    expect(Object.keys(await readJson(TRACKED_LIFT_ACTIVATIONS_KEY)).sort()).toEqual(['bench', 'squat']);
+  });
+
+  it('the surviving pair uploads on the next pass', async () => {
+    const cloud = makeXidFakeCloud();
+    setCloudTransport(cloud.transport);
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    await hydrateWithTrackLanding();
+    await cloudAdapter.sync({ ownedDevice: false });
+    const row = cloud.remoteRow(SYNC_TABLES.USER_HEALTH_PROFILE, SINGLETON_SYNC_ID);
+    expect(row.tracked_lifts).toEqual({ squat: true, bench: true });
+    expect(Object.keys(row.tracked_lift_activations).sort()).toEqual(['bench', 'squat']);
+  });
+
+  it('hydration still prunes records whose flags are absent, and applies the allowlist', async () => {
+    await Storage.hydrateProfileFromCloud({
+      tracked_lifts: { squat: true },
+      tracked_lift_activations: { squat: REC, ghost: REC },
+      fatigue_multiplier: 1e9,
+      display_name: 'Synthetic',
+    }, { deload_mode_enabled: true });
+    expect(await readJson(TRACKED_LIFT_ACTIVATIONS_KEY)).toEqual({ squat: REC });
+    expect(await Storage.loadDeloadModeEnabled()).toBe(true);
+    expect((await Storage.loadUserProfile()).display_name).toBe('Synthetic');
+  });
+
+  it('a failed holder inside hydration does not wedge later writers', async () => {
+    const realSet = secureStorage.setItem.bind(secureStorage);
+    jest.spyOn(secureStorage, 'setItem').mockImplementation(async (k, v) => {
+      if (k === TRACKED_LIFTS_KEY) throw new Error('disk full');
+      return realSet(k, v);
+    });
+    await expect(Storage.hydrateProfileFromCloud({ tracked_lifts: { squat: true } }, null))
+      .rejects.toThrow('disk full');
+    jest.restoreAllMocks();
+    await trackBench();
+    expect(await readJson(TRACKED_LIFTS_KEY)).toEqual({ squat: true, bench: true });
+  });
+
+  it('a sync pass cannot start while bootstrap holds the recovery guard', async () => {
+    const order = [];
+    const gate = deferred();
+    const boot = withRecoveryReconciliation(async () => {
+      order.push('boot:start');
+      await gate.promise;
+      order.push('boot:end');
+    });
+    await tick(2);
+    const pass = withRecoveryReconciliation(async () => { order.push('pass'); });
+    await tick(6);
+    expect(order).toEqual(['boot:start']);
+    gate.resolve();
+    await Promise.all([boot, pass]);
+    expect(order).toEqual(['boot:start', 'boot:end', 'pass']);
+  });
+});
+
+// migrateToNotebook has no production caller: the only references outside
+// storage/entries/migrations.js are the barrel and the local-adapter passthrough.
+// Its current-id write is inside the notebook lock, which the other notebook-lock
+// current-id writer (setCurrentWorkoutNote) also takes, so they serialize. No
+// local-write locking is added for a path that never runs.
+describe('current-id migration ordering (#1409)', () => {
+  it('has no production caller beyond the barrel and adapter passthrough', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const root = path.join(__dirname, '..');
+    const hits = [];
+    const walk = (dir) => {
+      fs.readdirSync(dir, { withFileTypes: true }).forEach((e) => {
+        if (['node_modules', 'tests', '.git', 'coverage'].includes(e.name)) return;
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) walk(full);
+        else if (/\.(js|jsx|ts|tsx)$/.test(e.name) && /\bmigrateToNotebook\b/.test(fs.readFileSync(full, 'utf8'))) {
+          hits.push(path.relative(root, full));
+        }
+      });
+    };
+    walk(root);
+    expect(hits.sort()).toEqual([
+      'storage/cloud/bootstrapPlan.js',
+      'storage/cloud/syncTableIo.js',
+      'storage/entries.js',
+      'storage/entries/migrations.js',
+      'storage/localAdapter.js',
+    ]);
+  });
+
+  it('concurrent migrations and a current-id writer serialize on the notebook lock', async () => {
+    await Storage.saveWorkoutNote('-Squat\n225 5,5,5');
+    const realSet = secureStorage.setItem.bind(secureStorage);
+    const gate = deferred();
+    let paused = false;
+    jest.spyOn(secureStorage, 'setItem').mockImplementation(async (k, v) => {
+      if (k === CURRENT_WORKOUT_ID_KEY && !paused) {
+        paused = true;
+        await gate.promise;
+      }
+      return realSet(k, v);
+    });
+    const first = migrateToNotebook();
+    for (let i = 0; i < 40 && !paused; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    expect(paused).toBe(true);
+    const second = migrateToNotebook();
+    const setter = Storage.setCurrentWorkoutNote('wn_other');
+    await new Promise((resolve) => setImmediate(resolve));
+    gate.resolve();
+    const [a, b] = await Promise.all([first, second, setter]);
+    jest.restoreAllMocks();
+    const notes = JSON.parse(await secureStorage.getItem(WORKOUT_NOTES_KEY));
+    expect(notes).toHaveLength(1);
+    expect(b).toEqual(a);
+    expect(JSON.parse(await secureStorage.getItem(CURRENT_WORKOUT_ID_KEY))).toBe('wn_other');
+    expect(notes[0].isCurrent).toBe(false);
   });
 });
