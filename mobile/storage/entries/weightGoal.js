@@ -1,5 +1,6 @@
 import { secureStorage as AsyncStorage } from '../secureStorage';
 import { WEIGHT_GOAL_KEY } from './keys';
+import { withLocalWriteLock } from '../sync/localWriteLock';
 
 const ARCHIVED_WEIGHT_GOALS_KEY = 'kilo_archived_weight_goals';
 
@@ -35,14 +36,23 @@ export async function loadWeightGoal() {
   return goal;
 }
 
-export async function saveWeightGoal(goal) {
-  const record = { ...goal, saved_at: new Date().toISOString() };
-  await AsyncStorage.setItem(WEIGHT_GOAL_KEY, JSON.stringify(record));
-  return record;
+// The active-goal writers run under the shared local-write lock (#1399; see
+// settings.js). clearWeightGoalUnlocked and replaceWeightGoalRaw are for a sync
+// applyMerged that already holds it.
+export function saveWeightGoal(goal) {
+  return withLocalWriteLock(async () => {
+    const record = { ...goal, saved_at: new Date().toISOString() };
+    await AsyncStorage.setItem(WEIGHT_GOAL_KEY, JSON.stringify(record));
+    return record;
+  });
 }
 
-export async function clearWeightGoal() {
+export async function clearWeightGoalUnlocked() {
   await AsyncStorage.removeItem(WEIGHT_GOAL_KEY);
+}
+
+export function clearWeightGoal() {
+  return withLocalWriteLock(clearWeightGoalUnlocked);
 }
 
 // Write the active weight goal verbatim, WITHOUT re-stamping `saved_at`
@@ -53,6 +63,7 @@ export async function clearWeightGoal() {
 // edits, so re-stamping `saved_at` every time a pulled cloud goal is applied
 // would make the goal look permanently dirty and ping-pong between devices
 // forever. The sync engine applies merged goals through this raw writer instead.
+// UNLOCKED by design: only a write-back that already holds the lock calls it.
 export async function replaceWeightGoalRaw(goal) {
   await AsyncStorage.setItem(WEIGHT_GOAL_KEY, JSON.stringify(goal));
 }

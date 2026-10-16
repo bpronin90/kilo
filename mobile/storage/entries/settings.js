@@ -20,6 +20,17 @@ import {
 } from '../../lib/reminders';
 import { normalizePlateCalculatorProfile } from '../../lib/plateMath';
 import { normalizeRestTimerRecord } from '../../lib/restTimer';
+import { withLocalWriteLock } from '../sync/localWriteLock';
+
+// Diff-synced setting writers (#1399). Each public saver runs inside the shared
+// local-write lock, so a sync write-back (which also applies under that lock)
+// lands wholly before or wholly after it. The `...Unlocked` twin is the same
+// write WITHOUT the lock, for code that already holds it (a sync `applyMerged`)
+// or will (a backup restore): the lock is not re-entrant, so those must never
+// call the public saver. Lock order: notebook -> local-write; no holder waits on
+// another queue or the network, and a sync request follows the write, never
+// precedes it.
+const locked = (fn) => (...args) => withLocalWriteLock(() => fn(...args));
 
 // The optional `store` on the loaders/savers a backup restore calls is the
 // device-key recovery overlay (#1186); ordinary callers omit it.
@@ -213,9 +224,10 @@ export async function loadWorkoutCollapsed() {
   }
 }
 
-export async function saveWorkoutCollapsed(isCollapsed, store = AsyncStorage) {
+export async function saveWorkoutCollapsedUnlocked(isCollapsed, store = AsyncStorage) {
   await store.setItem(COLLAPSED_STATE_KEY, JSON.stringify(isCollapsed));
 }
+export const saveWorkoutCollapsed = locked(saveWorkoutCollapsedUnlocked);
 
 export async function loadFatigueMultiplier() {
   try {
@@ -226,9 +238,10 @@ export async function loadFatigueMultiplier() {
   }
 }
 
-export async function saveFatigueMultiplier(multiplier, store = AsyncStorage) {
+export async function saveFatigueMultiplierUnlocked(multiplier, store = AsyncStorage) {
   await store.setItem(FATIGUE_MULTIPLIER_KEY, JSON.stringify(multiplier));
 }
+export const saveFatigueMultiplier = locked(saveFatigueMultiplierUnlocked);
 
 export async function loadWeightDateEditEnabled() {
   try {
@@ -239,9 +252,10 @@ export async function loadWeightDateEditEnabled() {
   }
 }
 
-export async function saveWeightDateEditEnabled(enabled, store = AsyncStorage) {
+export async function saveWeightDateEditEnabledUnlocked(enabled, store = AsyncStorage) {
   await store.setItem(WEIGHT_DATE_EDIT_KEY, JSON.stringify(enabled));
 }
+export const saveWeightDateEditEnabled = locked(saveWeightDateEditEnabledUnlocked);
 
 export async function loadDeloadDateEditEnabled() {
   try {
@@ -252,9 +266,10 @@ export async function loadDeloadDateEditEnabled() {
   }
 }
 
-export async function saveDeloadDateEditEnabled(enabled, store = AsyncStorage) {
+export async function saveDeloadDateEditEnabledUnlocked(enabled, store = AsyncStorage) {
   await store.setItem(DELOAD_DATE_EDIT_KEY, JSON.stringify(enabled));
 }
+export const saveDeloadDateEditEnabled = locked(saveDeloadDateEditEnabledUnlocked);
 
 export async function loadFatigueTrackingEnabled() {
   try {
@@ -265,9 +280,10 @@ export async function loadFatigueTrackingEnabled() {
   }
 }
 
-export async function saveFatigueTrackingEnabled(enabled, store = AsyncStorage) {
+export async function saveFatigueTrackingEnabledUnlocked(enabled, store = AsyncStorage) {
   await store.setItem(FATIGUE_TRACKING_KEY, JSON.stringify(enabled));
 }
+export const saveFatigueTrackingEnabled = locked(saveFatigueTrackingEnabledUnlocked);
 
 // Local reminder settings (issue #440). Persisted locally like the other
 // feature toggles; both reminders default OFF via the normalizers.
@@ -307,9 +323,10 @@ export async function loadDeloadModeEnabled() {
   }
 }
 
-export async function saveDeloadModeEnabled(enabled, store = AsyncStorage) {
+export async function saveDeloadModeEnabledUnlocked(enabled, store = AsyncStorage) {
   await store.setItem(DELOAD_MODE_KEY, JSON.stringify(enabled));
 }
+export const saveDeloadModeEnabled = locked(saveDeloadModeEnabledUnlocked);
 
 // ── Synchronous cache + subscription for the progression-suggestion UI ──────
 //

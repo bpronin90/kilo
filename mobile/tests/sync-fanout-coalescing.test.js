@@ -13,7 +13,22 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 
 import * as Storage from '../storage/entries';
-import { WORKOUT_NOTES_KEY, WEIGHT_KEY, CURRENT_WORKOUT_ID_KEY } from '../storage/entries/keys';
+import {
+  WORKOUT_NOTES_KEY,
+  WEIGHT_KEY,
+  CURRENT_WORKOUT_ID_KEY,
+  USER_PROFILE_KEY,
+  COLLAPSED_STATE_KEY,
+  FATIGUE_MULTIPLIER_KEY,
+  WEIGHT_DATE_EDIT_KEY,
+  DELOAD_DATE_EDIT_KEY,
+  FATIGUE_TRACKING_KEY,
+  DELOAD_MODE_KEY,
+  WORKOUT_DELOAD_NOTE_KEY,
+  WORKOUT_DELOAD_HISTORY_KEY,
+  WEIGHT_GOAL_KEY,
+} from '../storage/entries/keys';
+import { mergeUserProfile } from '../storage/entries/profileStorage';
 import { secureStorage } from '../storage/secureStorage';
 import {
   SYNC_PHASE,
@@ -991,5 +1006,400 @@ describe('a pulled Track change is adopted by a mounted hook (#1398)', () => {
     expect(Object.keys(ref.current.activations).sort()).toEqual(['bench', 'squat']);
     expect(Object.keys(healthRow(cloud).tracked_lift_activations).sort()).toEqual(['bench', 'squat']);
     act(() => tree.unmount());
+  });
+});
+
+// Diff-synced settings writers share the write-back's lock (#1399). Each case
+// parks the ACK write-back inside its own storage operations (the apply's read
+// of the setting's key, after the re-read guard), performs a local write while
+// it is parked, and then checks the write was neither reverted nor lost: the
+// durable value is the latest intent and the NEXT pass uploads it. Real cloud
+// adapter, real storage, xid-faithful fake transport.
+describe('settings writers vs the ack write-back (#1399)', () => {
+  const SELF = SINGLETON_SYNC_ID;
+  const tick = async (n = 8) => {
+    for (let i = 0; i < n; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  };
+  const remote = (cloud, table) => cloud.remoteRow(table, SELF);
+  const goal = (target) => ({
+    target_weight: target, target_date: '2026-12-01', start_weight: 190, start_date: '2026-06-01',
+  });
+  const dh = (id, text) => ({
+    id, date: '2026-06-20', raw_text: text, saved_at: '2026-06-20T10:00:00.000Z',
+  });
+
+  // Runs: init pass -> setup (v0) -> pass -> first (v1) -> parked pass with
+  // `during` writes fired while parked -> release -> one more pass.
+  async function run({ table, key, setup, first, during, failFirstWriteOf = null }) {
+    const cloud = makeXidFakeCloud();
+    setCloudTransport(cloud.transport);
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    await cloudAdapter.sync({ ownedDevice: false });
+    if (setup) {
+      await setup();
+      await cloudAdapter.sync();
+    }
+    await first();
+
+    let armed = false;
+    let reads = 0;
+    let gate = null;
+    const realPush = cloud.transport.push;
+    cloud.transport.push = jest.fn(async (t, records) => {
+      const acks = await realPush(t, records);
+      if (t === table && gate === null) armed = true;
+      return acks;
+    });
+    const realGet = secureStorage.getItem.bind(secureStorage);
+    jest.spyOn(secureStorage, 'getItem').mockImplementation(async (k) => {
+      if (armed && k === key) {
+        reads += 1;
+        if (reads === 2) {
+          armed = false;
+          gate = deferred();
+          await gate.promise;
+        }
+      }
+      return realGet(k);
+    });
+    if (failFirstWriteOf) {
+      const realSet = secureStorage.setItem.bind(secureStorage);
+      let failed = false;
+      jest.spyOn(secureStorage, 'setItem').mockImplementation(async (k, v) => {
+        if (gate && !failed && k === failFirstWriteOf) {
+          failed = true;
+          throw new Error('disk full');
+        }
+        return realSet(k, v);
+      });
+    }
+
+    const pass = cloudAdapter.sync();
+    for (let i = 0; i < 40 && gate === null; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await tick(1);
+    }
+    expect(gate).not.toBeNull();
+
+    const writes = during().map((p) => Promise.resolve(p).then(() => 'ok', () => 'failed'));
+    await tick(6);
+    gate.resolve();
+    const outcomes = await Promise.all(writes);
+    await pass;
+    jest.restoreAllMocks();
+    await cloudAdapter.sync();
+    await tick(4);
+    return { cloud, outcomes };
+  }
+
+  describe('user_profile', () => {
+    const base = { table: SYNC_TABLES.USER_PROFILE, key: USER_PROFILE_KEY };
+    const setup = () => Storage.saveUserProfile({
+      display_name: 'A', unit_system: 'lb', height_cm: 180,
+    });
+
+    it('display_name edit keeps unit_system and device-local fields', async () => {
+      const { cloud } = await run({
+        ...base, setup,
+        first: () => mergeUserProfile({ display_name: 'B' }),
+        during: () => [mergeUserProfile({ display_name: 'C' })],
+      });
+      const p = await Storage.loadUserProfile();
+      expect(p).toEqual(expect.objectContaining({ display_name: 'C', unit_system: 'lb', height_cm: 180 }));
+      expect(remote(cloud, SYNC_TABLES.USER_PROFILE).display_name).toBe('C');
+    });
+
+    it('unit_system edit while a display_name ack applies keeps both', async () => {
+      const { cloud } = await run({
+        ...base, setup,
+        first: () => mergeUserProfile({ display_name: 'B' }),
+        during: () => [mergeUserProfile({ unit_system: 'kg' })],
+      });
+      const p = await Storage.loadUserProfile();
+      expect(p).toEqual(expect.objectContaining({ display_name: 'B', unit_system: 'kg', height_cm: 180 }));
+      expect(remote(cloud, SYNC_TABLES.USER_PROFILE).unit_system).toBe('kg');
+    });
+
+    it('a whole-record save lands and uploads', async () => {
+      const { cloud } = await run({
+        ...base, setup,
+        first: () => mergeUserProfile({ display_name: 'B' }),
+        during: () => [Storage.saveUserProfile({ display_name: 'D', unit_system: 'kg' })],
+      });
+      expect((await Storage.loadUserProfile()).display_name).toBe('D');
+      expect(remote(cloud, SYNC_TABLES.USER_PROFILE)).toEqual(
+        expect.objectContaining({ display_name: 'D', unit_system: 'kg' }),
+      );
+    });
+
+    it('clearing the profile lands and uploads the cleared fields', async () => {
+      const { cloud } = await run({
+        ...base, setup,
+        first: () => mergeUserProfile({ display_name: 'B' }),
+        during: () => [Storage.clearUserProfile()],
+      });
+      expect(await Storage.loadUserProfile()).toBeNull();
+      expect(remote(cloud, SYNC_TABLES.USER_PROFILE).display_name).toBeNull();
+    });
+
+    it('rapid profile edits keep the last one', async () => {
+      const { cloud } = await run({
+        ...base, setup,
+        first: () => mergeUserProfile({ display_name: 'B' }),
+        during: () => [
+          mergeUserProfile({ display_name: 'C' }),
+          mergeUserProfile({ display_name: 'E' }),
+        ],
+      });
+      expect((await Storage.loadUserProfile()).display_name).toBe('E');
+      expect(remote(cloud, SYNC_TABLES.USER_PROFILE).display_name).toBe('E');
+    });
+
+    it('a collapsed-state flip lands and uploads', async () => {
+      const { cloud } = await run({
+        table: SYNC_TABLES.USER_PROFILE, key: COLLAPSED_STATE_KEY,
+        first: () => Storage.saveWorkoutCollapsed(true),
+        during: () => [Storage.saveWorkoutCollapsed(false)],
+      });
+      expect(await Storage.loadWorkoutCollapsed()).toBe(false);
+      expect(remote(cloud, SYNC_TABLES.USER_PROFILE).ui_state.log_current_collapsed).toBe(false);
+    });
+
+    it('a collapsed-state set lands and uploads', async () => {
+      const { cloud } = await run({
+        table: SYNC_TABLES.USER_PROFILE, key: COLLAPSED_STATE_KEY,
+        setup: () => Storage.saveWorkoutCollapsed(true),
+        first: () => Storage.saveWorkoutCollapsed(false),
+        during: () => [Storage.saveWorkoutCollapsed(true)],
+      });
+      expect(await Storage.loadWorkoutCollapsed()).toBe(true);
+      expect(remote(cloud, SYNC_TABLES.USER_PROFILE).ui_state.log_current_collapsed).toBe(true);
+    });
+  });
+
+  describe('user_health_profile', () => {
+    const base = { table: SYNC_TABLES.USER_HEALTH_PROFILE };
+
+    it('current workout id: set', async () => {
+      const { cloud } = await run({
+        ...base, key: CURRENT_WORKOUT_ID_KEY,
+        setup: () => Storage.saveCurrentWorkoutId('wn_a'),
+        first: () => Storage.saveCurrentWorkoutId('wn_b'),
+        during: () => [Storage.saveCurrentWorkoutId('wn_c')],
+      });
+      expect(await Storage.loadCurrentWorkoutId()).toBe('wn_c');
+      expect(remote(cloud, base.table).current_workout_note_id).toBe('wn_c');
+    });
+
+    it('current workout id: clear', async () => {
+      const { cloud } = await run({
+        ...base, key: CURRENT_WORKOUT_ID_KEY,
+        setup: () => Storage.saveCurrentWorkoutId('wn_a'),
+        first: () => Storage.saveCurrentWorkoutId('wn_b'),
+        during: () => [Storage.clearCurrentWorkoutId()],
+      });
+      expect(await Storage.loadCurrentWorkoutId()).toBeNull();
+      expect(remote(cloud, base.table).current_workout_note_id).toBeNull();
+    });
+
+    it('setCurrentWorkoutNote (notebook flags + direct id write)', async () => {
+      const note = (id) => ({ id, raw_text: `Day ${id}\n-Bench\n135 5`, updated_at: '2026-06-01T00:00:00.000Z' });
+      const { cloud } = await run({
+        ...base, key: CURRENT_WORKOUT_ID_KEY,
+        setup: async () => {
+          await Storage.saveWorkoutNoteItem(note('wn_a'));
+          await Storage.saveWorkoutNoteItem(note('wn_b'));
+          await Storage.setCurrentWorkoutNote('wn_a');
+        },
+        first: () => Storage.saveCurrentWorkoutId('wn_b'),
+        during: () => [Storage.setCurrentWorkoutNote('wn_a')],
+      });
+      expect(await Storage.loadCurrentWorkoutId()).toBe('wn_a');
+      const notes = await Storage.loadWorkoutNotesRaw();
+      expect(notes.find((n) => n.id === 'wn_a').isCurrent).toBe(true);
+      expect(remote(cloud, base.table).current_workout_note_id).toBe('wn_a');
+    });
+
+    it('fatigue multiplier: edit', async () => {
+      const r = await run({
+        ...base, key: FATIGUE_MULTIPLIER_KEY,
+        setup: () => Storage.saveFatigueMultiplier(1.1),
+        first: () => Storage.saveFatigueMultiplier(1.2),
+        during: () => [Storage.saveFatigueMultiplier(1.3)],
+      });
+      expect(await Storage.loadFatigueMultiplier()).toBe(1.3);
+      expect(remote(r.cloud, base.table).fatigue_multiplier).toBe(1.3);
+    });
+
+    it('fatigue multiplier: a failed holder then a good write still completes', async () => {
+      const r = await run({
+        ...base, key: FATIGUE_MULTIPLIER_KEY,
+        setup: () => Storage.saveFatigueMultiplier(1.1),
+        first: () => Storage.saveFatigueMultiplier(1.2),
+        during: () => [Storage.saveFatigueMultiplier(1.3), Storage.saveFatigueMultiplier(1.4)],
+        failFirstWriteOf: FATIGUE_MULTIPLIER_KEY,
+      });
+      expect(r.outcomes).toEqual(['failed', 'ok']);
+      expect(await Storage.loadFatigueMultiplier()).toBe(1.4);
+      expect(remote(r.cloud, base.table).fatigue_multiplier).toBe(1.4);
+    });
+
+    it('active deload note: save', async () => {
+      const r = await run({
+        ...base, key: WORKOUT_DELOAD_NOTE_KEY,
+        setup: () => Storage.saveDeloadNote('d0'),
+        first: () => Storage.saveDeloadNote('d1'),
+        during: () => [Storage.saveDeloadNote('d2')],
+      });
+      expect(JSON.parse(await AsyncStorage.getItem(WORKOUT_DELOAD_NOTE_KEY)).raw_text).toBe('d2');
+      expect(remote(r.cloud, base.table).current_deload_note_raw_text).toBe('d2');
+    });
+
+    it('active deload note: clear', async () => {
+      const r = await run({
+        ...base, key: WORKOUT_DELOAD_NOTE_KEY,
+        setup: () => Storage.saveDeloadNote('d0'),
+        first: () => Storage.saveDeloadNote('d1'),
+        during: () => [Storage.clearDeloadNote()],
+      });
+      expect(await AsyncStorage.getItem(WORKOUT_DELOAD_NOTE_KEY)).toBeNull();
+      expect(remote(r.cloud, base.table).current_deload_note_raw_text).toBeNull();
+    });
+  });
+
+  describe('feature_toggles', () => {
+    const toggles = [
+      ['weight_date_edit_enabled', WEIGHT_DATE_EDIT_KEY, 'saveWeightDateEditEnabled', 'loadWeightDateEditEnabled'],
+      ['deload_date_edit_enabled', DELOAD_DATE_EDIT_KEY, 'saveDeloadDateEditEnabled', 'loadDeloadDateEditEnabled'],
+      ['fatigue_tracking_enabled', FATIGUE_TRACKING_KEY, 'saveFatigueTrackingEnabled', 'loadFatigueTrackingEnabled'],
+      ['deload_mode_enabled', DELOAD_MODE_KEY, 'saveDeloadModeEnabled', 'loadDeloadModeEnabled'],
+    ];
+    const table = SYNC_TABLES.FEATURE_TOGGLES;
+
+    it.each(toggles)('%s: cleared while an on-ack applies', async (field, key, save, load) => {
+      const r = await run({
+        table, key,
+        first: () => Storage[save](true),
+        during: () => [Storage[save](false)],
+      });
+      expect(await Storage[load]()).toBe(false);
+      expect(remote(r.cloud, table)[field]).toBe(false);
+    });
+
+    it.each(toggles)('%s: set while an off-ack applies', async (field, key, save, load) => {
+      const r = await run({
+        table, key,
+        setup: () => Storage[save](true),
+        first: () => Storage[save](false),
+        during: () => [Storage[save](true)],
+      });
+      expect(await Storage[load]()).toBe(true);
+      expect(remote(r.cloud, table)[field]).toBe(true);
+    });
+
+    it('rapid toggles keep the last one', async () => {
+      const r = await run({
+        table, key: FATIGUE_TRACKING_KEY,
+        first: () => Storage.saveFatigueTrackingEnabled(true),
+        during: () => [
+          Storage.saveFatigueTrackingEnabled(false),
+          Storage.saveFatigueTrackingEnabled(true),
+          Storage.saveFatigueTrackingEnabled(false),
+        ],
+      });
+      expect(await Storage.loadFatigueTrackingEnabled()).toBe(false);
+      expect(remote(r.cloud, table).fatigue_tracking_enabled).toBe(false);
+    });
+
+    it('a failed toggle write does not wedge the next one', async () => {
+      const r = await run({
+        table, key: DELOAD_MODE_KEY,
+        first: () => Storage.saveDeloadModeEnabled(true),
+        during: () => [Storage.saveDeloadModeEnabled(false), Storage.saveDeloadModeEnabled(false)],
+        failFirstWriteOf: DELOAD_MODE_KEY,
+      });
+      expect(r.outcomes).toEqual(['failed', 'ok']);
+      expect(await Storage.loadDeloadModeEnabled()).toBe(false);
+      expect(remote(r.cloud, table).deload_mode_enabled).toBe(false);
+    });
+  });
+
+  describe('weight_goal', () => {
+    const base = { table: SYNC_TABLES.WEIGHT_GOAL, key: WEIGHT_GOAL_KEY };
+
+    it('goal edit lands and uploads', async () => {
+      const r = await run({
+        ...base,
+        setup: () => Storage.saveWeightGoal(goal(180)),
+        first: () => Storage.saveWeightGoal(goal(175)),
+        during: () => [Storage.saveWeightGoal(goal(170))],
+      });
+      expect((await Storage.loadWeightGoal()).target_weight).toBe(170);
+      expect(remote(r.cloud, base.table).target_weight).toBe(170);
+    });
+
+    it('goal clear lands and uploads as a delete', async () => {
+      const r = await run({
+        ...base,
+        setup: () => Storage.saveWeightGoal(goal(180)),
+        first: () => Storage.saveWeightGoal(goal(175)),
+        during: () => [Storage.clearWeightGoal()],
+      });
+      expect(await Storage.loadWeightGoal()).toBeNull();
+      expect(remote(r.cloud, base.table).deleted_at).toBeTruthy();
+    });
+  });
+
+  describe('deload_history', () => {
+    const base = { table: SYNC_TABLES.DELOAD_HISTORY, key: WORKOUT_DELOAD_HISTORY_KEY };
+    const setup = async () => {
+      await Storage.appendDeloadHistory(dh('dh_1', 'one'));
+      await Storage.appendDeloadHistory(dh('dh_2', 'two'));
+    };
+    const first = () => Storage.updateDeloadHistory('dh_1', { raw_text: 'one-v1' });
+
+    it('edits to both rows are kept and upload', async () => {
+      const r = await run({
+        ...base, setup, first,
+        during: () => [
+          Storage.updateDeloadHistory('dh_1', { raw_text: 'one-v2' }),
+          Storage.updateDeloadHistory('dh_2', { raw_text: 'two-v2' }),
+        ],
+      });
+      const list = await Storage.loadDeloadHistory();
+      expect(list.map((x) => [x.id, x.raw_text])).toEqual([['dh_1', 'one-v2'], ['dh_2', 'two-v2']]);
+      expect(r.cloud.remoteRow(base.table, 'dh_1').raw_text).toBe('one-v2');
+      expect(r.cloud.remoteRow(base.table, 'dh_2').raw_text).toBe('two-v2');
+    });
+
+    it('a delete is not resurrected and uploads as a tombstone', async () => {
+      const r = await run({ ...base, setup, first, during: () => [Storage.deleteDeloadHistory('dh_1')] });
+      expect((await Storage.loadDeloadHistory()).map((x) => x.id)).toEqual(['dh_2']);
+      expect(r.cloud.remoteRow(base.table, 'dh_1').deleted_at).toBeTruthy();
+    });
+
+    it('an append is kept and uploads', async () => {
+      const r = await run({
+        ...base, setup, first,
+        during: () => [Storage.appendDeloadHistory(dh('dh_3', 'three'))],
+      });
+      expect((await Storage.loadDeloadHistory()).map((x) => x.id)).toEqual(['dh_1', 'dh_2', 'dh_3']);
+      expect(r.cloud.remoteRow(base.table, 'dh_3').raw_text).toBe('three');
+      expect(r.cloud.remoteRow(base.table, 'dh_1').raw_text).toBe('one-v1');
+    });
+
+    it('a failed holder then a good delete still completes', async () => {
+      const r = await run({
+        ...base, setup, first,
+        during: () => [Storage.deleteDeloadHistory('dh_1'), Storage.deleteDeloadHistory('dh_1')],
+        failFirstWriteOf: WORKOUT_DELOAD_HISTORY_KEY,
+      });
+      expect(r.outcomes).toEqual(['failed', 'ok']);
+      expect((await Storage.loadDeloadHistory()).map((x) => x.id)).toEqual(['dh_2']);
+      expect(r.cloud.remoteRow(base.table, 'dh_1').deleted_at).toBeTruthy();
+    });
   });
 });
