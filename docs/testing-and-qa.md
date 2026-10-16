@@ -91,6 +91,18 @@ Run the active native test suite:
 npm --prefix mobile test
 ```
 
+Log-screen coverage is organized by behavior in `mobile/tests/log-screen-*.test.js`
+(editor save/revert, A/B weeks, routine cards, skip/deload, recovery lifecycle,
+and navigation). Repeated rendering/action helpers live in
+`mobile/tests/helpers/log-screen.js`; mocks and cleanup remain suite-local.
+Run all log-screen suites together, or one behavior suite independently:
+
+```sh
+cd mobile
+npx jest --runInBand --testPathPattern='tests/log-screen-.*\.test\.js$'
+timeout 200 npx jest --runInBand --runTestsByPath tests/log-screen-autosave.test.js
+```
+
 GitHub Actions runs this same mobile Jest suite with Node 24 and a reproducible
 `npm ci` install on every pull request and every push to `main` via
 `.github/workflows/test.yml`. The required job also exports and serves the Expo
