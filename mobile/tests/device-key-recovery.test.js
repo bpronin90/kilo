@@ -501,3 +501,24 @@ describe('device-key canary across recovery', () => {
     await expectCanaryLaunch(backingStore, primitives);
   });
 });
+
+describe('unfinished-rename quarantine under a latched key (#1402)', () => {
+  test('a latched store refuses the quarantine write and the orphaned intent stays', async () => {
+    const backingStore = makeBackingStore();
+    const primitives = makePrimitives();
+    const original = open(backingStore, primitives);
+    await original.setItem('kilo_normalization_apply_intent_v1', '{not json');
+    primitives.secureValues.delete(DEVICE_DATA_KEY_NAME);
+    const storage = open(backingStore, primitives);
+    await storage.probeDeviceKey();
+    expect(storage.isKeyUnavailable()).toBe(true);
+    const orphans = new Map(backingStore.values);
+
+    await expect(storage.setItem('kilo_normalization_apply_quarantine_v1_1', 'x')).rejects.toBeInstanceOf(EncryptedStorageError);
+    expect([...backingStore.values.keys()].some((key) => key.includes('quarantine'))).toBe(false);
+    for (const [key, value] of orphans) expect(backingStore.values.get(key)).toBe(value);
+    // The private-overlay recovery restore is still available and replaces the orphan.
+    await expect(storage.recoverDeviceData(restored)).resolves.toEqual({ ok: true });
+    expect(await storage.getItem('kilo_normalization_apply_intent_v1')).toBeNull();
+  });
+});

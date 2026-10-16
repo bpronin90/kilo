@@ -48,3 +48,7 @@ export const NORMALIZATION_IMPORT_SNAPSHOT_KEY = 'kilo_normalization_import_snap
 // Track maps it commits together. Device-local protocol state, present only
 // while that commit is unfinished; neither synced nor backed up.
 export const NORMALIZATION_APPLY_INTENT_KEY = 'kilo_normalization_apply_intent_v1';
+// Device-local, encrypted quarantine of an unreconcilable apply intent the user
+// discarded (#1402): `<prefix><n>`, never overwritten. Evidence only; never
+// synced, never in a backup, wiped with the device's other kilo_ keys.
+export const NORMALIZATION_APPLY_QUARANTINE_PREFIX = 'kilo_normalization_apply_quarantine_v1_';

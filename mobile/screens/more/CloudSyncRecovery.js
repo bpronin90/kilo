@@ -3,6 +3,7 @@ import { Share, StyleSheet, Text, View } from 'react-native';
 import { Button, SectionTitle } from '../../components/UI';
 import { useThemedStyles } from '../../theme/ThemeContext';
 import { useSyncRecovery, useCloudExport } from '../../hooks/useEntries';
+import { useUnfinishedRename } from '../../hooks/entries/syncRecoveryHooks';
 import * as Storage from '../../storage/entries';
 import { SYNC_STATUS } from '../../storage/syncRecovery';
 import { subscribeDirtyQueue } from '../../storage/syncQueue';
@@ -30,6 +31,10 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
   const { bootstrap, sync, runBootstrap, runSync, retryBootstrap, retrySync } =
     useSyncRecovery(user);
   const { exportCloud } = useCloudExport();
+  const { found: renameFound, discard: discardRename } = useUnfinishedRename();
+  // The exact record shown when the confirmation opened; the discard revalidates it.
+  const [renameConfirmRaw, setRenameConfirmRaw] = useState(null);
+  const [renameStatus, setRenameStatus] = useState('');
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [confirmingForeignUpload, setConfirmingForeignUpload] = useState(false);
@@ -237,6 +242,51 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
     }
   };
 
+  const handleDiscardRename = async () => {
+    setBusy(true);
+    try {
+      const { message } = await discardRename(renameConfirmRaw);
+      setRenameConfirmRaw(null);
+      setRenameStatus(message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Outside the consent gate: recovering a local rename needs no cloud grant.
+  const renameBlocked = renameFound.status === 'blocked';
+  const renameRecovery = renameBlocked || renameStatus ? (
+    <View style={styles.summaryBlock} testID="unfinished-rename-recovery">
+      {renameBlocked ? (
+        <>
+          <Text style={styles.syncLabel}>Unfinished rename</Text>
+          <Text style={styles.accountNote} accessibilityLabel="Unfinished rename">
+            A routine rename on this device was interrupted and cannot be finished
+            or undone automatically. Until it is cleared, saving routines, changing
+            tracked lifts and syncing are paused. Discarding it stops the unfinished
+            rename; your current notes and tracked lifts stay exactly as they are.
+          </Text>
+          {renameConfirmRaw === null ? (
+            <Button title="Discard unfinished rename" disabled={busy} accessibilityLabel="Discard unfinished rename"
+              onPress={() => { setRenameStatus(''); setRenameConfirmRaw(renameFound.raw); }} />
+          ) : (
+            <>
+              <Text style={styles.phaseDesc} accessibilityLabel="Discard unfinished rename confirmation">
+                Discard the unfinished rename? A private copy of the record is kept
+                on this device only; it is not synced or included in backups.
+              </Text>
+              <Button title="Discard" tone="danger" loadingTitle="Working…" disabled={busy}
+                onPress={handleDiscardRename} accessibilityLabel="Confirm discard unfinished rename" />
+              <Button title="Cancel" disabled={busy} onPress={() => setRenameConfirmRaw(null)}
+                accessibilityLabel="Cancel discard unfinished rename" />
+            </>
+          )}
+        </>
+      ) : null}
+      {renameStatus ? <Text style={styles.accountStatus} accessibilityLabel="Unfinished rename status">{renameStatus}</Text> : null}
+    </View>
+  ) : null;
+
   const denialCode = consent && !consent.allowed ? consent.code : null;
   const deletionPending = denialCode === DENIAL_CODES.HEALTH_DATA_DELETION_PENDING;
   const needsConsent =
@@ -256,6 +306,7 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
           a few minutes. Your data on this device and your Kilo account are unaffected.
           You can turn Cloud Sync back on once the deletion finishes.
         </Text>
+        {renameRecovery}
       </View>
     );
   }
@@ -268,6 +319,7 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
           This version of Kilo can no longer sync health data. Update Kilo to continue
           syncing. Your data on this device is safe and every local feature still works.
         </Text>
+        {renameRecovery}
       </View>
     );
   }
@@ -309,6 +361,8 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
         continue on another device or after reinstalling. Syncing reconciles the
         two — for any item changed in both places, the most recent change wins.
       </Text>
+
+      {renameRecovery}
 
       {needsConsent ? (
         <View style={styles.summaryBlock}>

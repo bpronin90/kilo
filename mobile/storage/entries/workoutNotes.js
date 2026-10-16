@@ -15,6 +15,7 @@ import {
   saveTrackedLiftActivations,
 } from './settings';
 import { withLocalWriteLock } from '../sync/localWriteLock';
+import { quarantineApplyIntent, setUnfinishedRenameBlock } from '../syncRecovery';
 import { planTrackedLiftRenameTransition, reconcileDivergedApplyTracking } from '../../lib/data/workoutAnalyticsActivations';
 
 // ── legacy workout sessions ────────────────────────────────────────────────────
@@ -38,51 +39,27 @@ export async function deleteWorkoutSession(id) {
 // ── single routine note ────────────────────────────────────────────────────────
 
 export async function loadWorkoutNote() {
-  try {
-    const raw = await AsyncStorage.getItem(WORKOUT_NOTE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+  try { const raw = await AsyncStorage.getItem(WORKOUT_NOTE_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+
+async function patchWorkoutNote(patch) {
+  const note = { ...(await loadWorkoutNote()), ...patch, updated_at: new Date().toISOString() };
+  await AsyncStorage.setItem(WORKOUT_NOTE_KEY, JSON.stringify(note));
+  return note;
 }
 
 export async function saveWorkoutNote(raw_text) {
-  const now = new Date().toISOString();
   const existing = await loadWorkoutNote();
-  const note = {
-    ...existing,
+  return patchWorkoutNote({
     raw_text,
-    saved_at: existing ? existing.saved_at : now,
-    updated_at: now,
+    saved_at: existing ? existing.saved_at : new Date().toISOString(),
     tracked_exercises: existing?.tracked_exercises || [],
-  };
-  await AsyncStorage.setItem(WORKOUT_NOTE_KEY, JSON.stringify(note));
-  return note;
+  });
 }
 
-export async function saveTrackedExercises(tracked_exercises) {
-  const now = new Date().toISOString();
-  const existing = await loadWorkoutNote();
-  const note = {
-    ...existing,
-    tracked_exercises,
-    updated_at: now,
-  };
-  await AsyncStorage.setItem(WORKOUT_NOTE_KEY, JSON.stringify(note));
-  return note;
-}
+export const saveTrackedExercises = tracked_exercises => patchWorkoutNote({ tracked_exercises });
 
-export async function saveOneKExercises(one_k_exercises) {
-  const now = new Date().toISOString();
-  const existing = await loadWorkoutNote();
-  const note = {
-    ...existing,
-    one_k_exercises,
-    updated_at: now,
-  };
-  await AsyncStorage.setItem(WORKOUT_NOTE_KEY, JSON.stringify(note));
-  return note;
-}
+export const saveOneKExercises = one_k_exercises => patchWorkoutNote({ one_k_exercises });
 
 export async function clearWorkoutNote() {
   await AsyncStorage.removeItem(WORKOUT_NOTE_KEY);
@@ -90,11 +67,9 @@ export async function clearWorkoutNote() {
 
 // ── multi-note notebook ────────────────────────────────────────────────────────
 
-// Every notebook read and write goes through these two so the persisted
-// notebook can never carry the parser-output cache again (issue #813; see
-// derivedCache.js). Stripping on read keeps a notebook that was written by an
-// older build lean in memory until the one-time purge below rewrites it; both
-// helpers return the list by identity when there is nothing to strip.
+// Every notebook read and write goes through these two so the persisted notebook
+// never carries the parser-output cache (#813; derivedCache.js). Both return the
+// list by identity when there is nothing to strip.
 async function readNotebook() {
   return stripDerivedSectionsFromList(await readList(WORKOUT_NOTES_KEY));
 }
@@ -107,10 +82,8 @@ async function writeNotebook(list) {
 }
 
 export async function loadWorkoutNotes() {
-  // Tombstones are sync metadata, never user-visible notes. Cloud mode has
-  // always filtered them in cloudDomainMethods; local mode must apply the same
-  // visibility contract because consent withdrawal deliberately falls back to
-  // local-only reads while retaining tombstones for later convergence.
+  // Tombstones are sync metadata, never user-visible notes: local mode applies the
+  // same visibility as cloud mode (consent withdrawal falls back to local reads).
   return (await readNotebook()).filter((note) => !note?.deleted_at);
 }
 
@@ -126,23 +99,18 @@ export async function replaceWorkoutNotesRaw(list) {
 
 // #1172: `loadWorkoutNotesRaw` / `replaceWorkoutNotesRaw` are the UNLOCKED
 // primitives for code already inside this lock. Every public notebook
-// read-modify-write (note writers, compare-and-set, sync pass writes, backup
-// restore, migration, derived-cache purge) takes it, so a compare is never split
-// from its write. Not reentrant; the chain survives a rejected step.
+// read-modify-write takes it, so a compare is never split from its write. Not
+// reentrant; the chain survives a rejected step.
 let notebookLock = Promise.resolve();
 //
 // #1395: every holder first settles any unfinished rename (apply intent), so a
 // notebook replace can never erase the landing evidence and strand Track on the
-// old key. The settle runs inside this lock and takes the local-write lock for
-// its Track reads and writes (#1411): they bump the storage write generation the
-// tracked-lift hook adopts from, so they never interleave with another local
-// writer. No local-write holder ever takes this lock: notebook -> local-write is
-// total. The two explicit settle entry points below already hold both. An intent that cannot reach a safe terminal state throws and
-// the caller's fn never runs: the write is refused, nothing is replaced.
-// Skipped while the device key is latched (#1186): the shared store then refuses
-// every encrypting write, so no holder can erase evidence there, and the only
-// writer, a recovery restore into its private overlay, replaces the orphaned
-// intent with everything else; settling would only block that recovery.
+// old key. The settle takes the local-write lock for its Track reads and writes
+// (#1411); notebook -> local-write is total. An intent that cannot reach a safe
+// terminal state throws and the caller's fn never runs (#1402 can discard it).
+// Skipped while the device key is latched (#1186): the shared store refuses every
+// encrypting write, and a recovery restore into its private overlay replaces the
+// orphaned intent; settling would only block that recovery.
 export function withWorkoutNotebookLock(fn) {
   return runInNotebookLock(async () => {
     if (applyIntentMaybePending && !AsyncStorage.isKeyUnavailable?.()) {
@@ -152,7 +120,7 @@ export function withWorkoutNotebookLock(fn) {
   });
 }
 
-// The raw chain, for the two entry points that settle (and report) the intent.
+// The raw chain, for the entry points that settle or recover the intent.
 function runInNotebookLock(fn) {
   const run = notebookLock.then(fn);
   notebookLock = run.catch(() => {});
@@ -163,18 +131,13 @@ export function saveWorkoutNoteItem(note) {
   return withWorkoutNotebookLock(async () => {
     const list = await readNotebook();
     const idx = list.findIndex(n => n.id === note.id);
-    if (idx >= 0) {
-      list[idx] = note;
-    } else {
-      list.push(note);
-    }
+    if (idx >= 0) list[idx] = note; else list.push(note);
     await writeNotebook(list);
   });
 }
 
-// Read-merge-write of one live note under the notebook lock (#1172), so an
-// editor patch is merged into the note as it is at write time rather than a
-// copy read earlier. Returns the updated note, or false when it is missing.
+// Read-merge-write of one live note under the notebook lock (#1172). Returns the
+// updated note, or false when it is missing.
 export function updateWorkoutNoteItem(id, patch) {
   return withWorkoutNotebookLock(async () => {
     const list = await readNotebook();
@@ -187,10 +150,8 @@ export function updateWorkoutNoteItem(id, patch) {
   });
 }
 
-// Batch compare-and-set for a normalization import (#1172). One lock covers
-// the authority check and every target write, so no note writer can interleave.
-// Pure planning helper shared by the local and cloud implementations: returns
-// the per-item plan without touching storage.
+// Batch compare-and-set for a normalization import (#1172): one lock covers the
+// authority check and every write. Pure planner shared by local and cloud.
 export function planWorkoutNoteTextBatch(list, { authority, items }, isLive = n => !n.deleted_at) {
   const byId = new Map(list.filter(n => n && isLive(n)).map(n => [n.id, n]));
   const current = byId.get(authority?.id);
@@ -210,28 +171,23 @@ export function planWorkoutNoteTextBatch(list, { authority, items }, isLive = n 
 
 // ── the batch commit, with its Track transition (#1395) ──────────────────────
 //
-// A rename batch commits the note texts AND the Track flags/activations it moves
-// as one recoverable operation. Separate setItem calls are not atomic, so the
-// commit is journaled: a roll-forward intent (the note texts and both resulting
+// A rename batch commits the note texts AND the Track maps it moves as one
+// recoverable operation: a roll-forward intent (note texts and both resulting
 // Track maps) is written first and removed last. An interrupted commit is
-// finished from that record — at the next apply, Track write, tracked-lift load
-// or sync pass — before anything reads or pushes the mixed state. An in-process
-// failure is rolled back instead, so a failed result means nothing changed; only
-// when the rollback fails too is the record rolled forward, and only when that
-// fails as well is the item reported `landed` (the record still finishes it).
+// finished from it before anything reads or pushes the mixed state. An in-process
+// failure is rolled back; only when that fails too is the record rolled forward,
+// and only when that fails as well is the item reported `landed`.
 //
-// Runs under the notebook lock and then the shared local-write lock (#1393), so
-// note writers, Track toggles and a sync write-back all land wholly before or
-// after it. Neither lock is taken again inside, and no network call is made.
-// `ops` is the adapter: liveness, row stamping and (cloud) the upload enqueue.
+// Runs under the notebook lock then the local-write lock (#1393); neither is
+// retaken inside and no network call is made. `ops` is the adapter: liveness,
+// row stamping and (cloud) the upload enqueue.
 const LOCAL_TEXT_OPS = { isLive: n => !n.deleted_at, prepare: async () => row => row, enqueue: null };
 
-// True until a read shows no unfinished record, and again whenever a failed
-// commit may have left one; makes the common no-record check free.
+// True until a read shows no unfinished record, and again whenever a failed commit
+// may have left one.
 let applyIntentMaybePending = true;
-// The adapter for a settle no caller chose (lock-level, startup), resolved when
-// it runs, so a restart or mode switch never reuses a stale one. storageMode.js
-// registers the mode-aware resolver; local is the default.
+// The adapter for a settle no caller chose, resolved when it runs (never stale);
+// storageMode.js registers the mode-aware resolver, local is the default.
 let resolveSettleOps = () => LOCAL_TEXT_OPS;
 export function setNormalizationApplySettleOps(resolve) {
   resolveSettleOps = () => resolve?.() || LOCAL_TEXT_OPS;
@@ -240,20 +196,53 @@ export function isNormalizationApplyIntentMaybePending() {
   return applyIntentMaybePending;
 }
 
-// Local-only landing evidence for a rename's notebook write (#1395): an apply id
-// stamped onto the rows in that same setItem. Never uploaded: cloud upserts copy
-// only the transport's per-table column whitelist (UPSERT_COLUMNS), so this field
-// is dropped at the wire and needs no backend or schema change.
+// Local-only landing evidence (#1395): an apply id stamped onto the rows in the
+// same setItem. Never uploaded: the transport's column whitelist drops it.
 const APPLY_STAMP_FIELD = 'normalization_apply_id';
+
+// An intent no replay can finish (#1402); a failed read stays a plain, retryable
+// error. `reason`: 'unreadable' | 'invalid' | 'diverged'.
+export class UnfinishedRenameError extends Error {
+  constructor(reason) {
+    super(reason === 'diverged' ? 'An unfinished routine rename could not be reconciled.' : 'An unfinished routine rename could not be read.');
+    this.name = 'UnfinishedRenameError';
+    this.reason = reason;
+  }
+}
+
+function parseApplyIntent(raw) {
+  let intent;
+  try { intent = JSON.parse(raw); } catch { throw new UnfinishedRenameError('unreadable'); }
+  const map = m => !!m && typeof m === 'object' && !Array.isArray(m);
+  const maps = t => map(t) && map(t.lifts) && map(t.activations);
+  const note = n => map(n) && typeof n.id === 'string' && typeof n.expected_raw_text === 'string' && typeof n.next_raw_text === 'string';
+  // `before` is absent only on a pre-journal intent (still reconciled or blocked below).
+  if (intent?.version !== 1 || !Array.isArray(intent.notes) || !intent.notes.every(note) || !maps(intent.tracking)
+    || (intent.before != null && !maps(intent.before))) {
+    throw new UnfinishedRenameError('invalid');
+  }
+  return intent;
+}
 
 async function readApplyIntent() {
   const raw = await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY);
-  if (raw == null) return null;
-  const intent = JSON.parse(raw);
-  if (intent?.version !== 1 || !Array.isArray(intent.notes) || !intent.tracking || typeof intent.tracking !== 'object') {
-    throw new Error('An unfinished routine rename could not be read.');
-  }
-  return intent;
+  return raw == null ? null : parseApplyIntent(raw);
+}
+
+// Each note against the intent, plus (when one diverged) the Track plan; throws
+// UnfinishedRenameError when the recorded Track state matches neither side.
+async function planApplyIntent(intent, current, isLive) {
+  const live = new Map(current.filter(n => n && isLive(n)).map(n => [n.id, n]));
+  const state = intent.notes.map((rec) => {
+    const text = live.get(rec.id)?.raw_text;
+    return text === rec.expected_raw_text ? 'pre' : text === rec.next_raw_text ? 'post' : 'diverged';
+  });
+  if (!state.includes('diverged')) return { state };
+  if (!intent.before || !intent.id) throw new UnfinishedRenameError('diverged');
+  const lifts = await loadTrackedLiftsStrict();
+  const activations = await loadTrackedLiftActivationsStrict();
+  const stamped = state.includes('post') || current.some(n => n?.[APPLY_STAMP_FIELD] === intent.id);
+  try { return { state, ...reconcileDivergedApplyTracking(intent, lifts, activations, stamped) }; } catch { throw new UnfinishedRenameError('diverged'); }
 }
 
 // Idempotent roll-forward. A note already holding its new text is left alone,
@@ -261,14 +250,20 @@ async function readApplyIntent() {
 // throws and keeps the record: an unknown outcome is never treated as done.
 async function finishApplyIntentUnlocked(ops) {
   if (!applyIntentMaybePending) return null;
-  const tracking = await settleApplyIntentUnlocked(ops);
+  let tracking;
+  try {
+    tracking = await settleApplyIntentUnlocked(ops);
+  } catch (error) {
+    if (error instanceof UnfinishedRenameError) setUnfinishedRenameBlock({ reason: error.reason });
+    throw error;
+  }
+  setUnfinishedRenameBlock(null);
   await stripSpentApplyStamps();
   return tracking;
 }
 
-// The stamp is local-only evidence (exported by backup, ignored elsewhere), so it
-// must not outlive its intent. Best effort: a failure leaves a spent stamp that
-// nothing consults and the next ordinary notebook write drops.
+// The stamp is local-only evidence, so it must not outlive its intent. Best effort:
+// a spent stamp nothing consults is dropped by the next ordinary notebook write.
 async function stripSpentApplyStamps() {
   try {
     if (applyIntentMaybePending) return;
@@ -285,26 +280,13 @@ async function settleApplyIntentUnlocked(ops) {
     const now = new Date().toISOString();
     const rows = [];
     const current = await readNotebook();
-    // A target note that is neither pre-apply nor applied changed after the
-    // interruption; it is never overwritten. Track may be half-moved (write
-    // order notebook -> flags -> activations), so whether the notebook write
-    // landed comes from evidence written in that same setItem: the rows carry
-    // the intent's APPLY_STAMP_FIELD, which editors preserve by merging into the
-    // stored row. Landed (stamp, applied text, or a moved Track key): roll the
-    // affected Track keys forward. Not landed: retire untouched. Unknown (a key
-    // matching neither before nor after, unreadable state, pre-journal intent):
-    // keep the intent and throw, so nothing is pushed.
-    const live = new Map(current.filter(n => n && ops.isLive(n)).map(n => [n.id, n]));
-    const state = intent.notes.map((rec) => {
-      const text = live.get(rec.id)?.raw_text;
-      return text === rec.expected_raw_text ? 'pre' : text === rec.next_raw_text ? 'post' : 'diverged';
-    });
+    // A note that is neither pre-apply nor applied changed since; it is never
+    // overwritten. Whether the notebook write landed comes from the stamp written
+    // in that same setItem (or applied text, or a moved Track key): landed rolls
+    // the affected Track keys forward, not landed retires untouched. Unknown (a
+    // key matching neither side, pre-journal intent) keeps the intent and throws.
+    const { state, landed, ...plans } = await planApplyIntent(intent, current, ops.isLive);
     if (state.includes('diverged')) {
-      if (!intent.before || !intent.id) throw new Error('An unfinished routine rename could not be reconciled.');
-      const lifts = await loadTrackedLiftsStrict();
-      const activations = await loadTrackedLiftActivationsStrict();
-      const stamped = state.includes('post') || current.some(n => n?.[APPLY_STAMP_FIELD] === intent.id);
-      const { landed, ...plans } = reconcileDivergedApplyTracking(intent, lifts, activations, stamped);
       if (landed) {
         await saveTrackedLifts(plans.lifts);
         await saveTrackedLiftActivations(plans.activations);
@@ -337,6 +319,69 @@ export function finishNormalizationApplyIntent(ops = resolveSettleOps()) {
   return runInNotebookLock(() => withLocalWriteLock(() => finishApplyIntentUnlocked(ops)));
 }
 
+// Unfinished-rename recovery (#1402): runs under notebook -> local-write but never
+// settles first (the settle is what throws). `blocked` is only a PROVEN
+// unreconcilable record; a failed read throws (transient). `raw` is the identity
+// a confirmation must still match.
+async function classifyApplyIntentUnlocked() {
+  const raw = await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY);
+  if (raw == null) return { status: 'none' };
+  try {
+    await planApplyIntent(parseApplyIntent(raw), await readNotebook(), resolveSettleOps().isLive);
+    return { status: 'pending' };
+  } catch (error) {
+    if (error instanceof UnfinishedRenameError) return { status: 'blocked', reason: error.reason, raw };
+    throw error;
+  }
+}
+
+const recoveryLocks = fn => runInNotebookLock(() => withLocalWriteLock(fn));
+
+// Resolves { status: 'none' | 'pending' | 'blocked' | 'unknown' | 'key-unavailable' }.
+export function inspectUnfinishedRename() {
+  if (AsyncStorage.isKeyUnavailable?.()) return Promise.resolve({ status: 'key-unavailable' });
+  return recoveryLocks(async () => {
+    try {
+      const found = await classifyApplyIntentUnlocked();
+      setUnfinishedRenameBlock(found.status === 'blocked' ? found : null);
+      return found;
+    } catch (error) {
+      return { status: 'unknown', message: error?.message };
+    }
+  });
+}
+
+// Retire a PROVEN unreconcilable intent after preserving its exact raw record,
+// revalidated against `expectedRaw` so a stale confirmation discards nothing.
+// Note text and both Track maps are never written. A failure keeps the active
+// intent for retry/restart. Outcome: 'discarded' | 'gone' | 'stale' |
+// 'not-blocked' | 'key-unavailable' | 'failed' (+ `quarantined` / `unverified`).
+export function discardUnfinishedRename(expectedRaw) {
+  if (AsyncStorage.isKeyUnavailable?.()) return Promise.resolve({ outcome: 'key-unavailable' });
+  return recoveryLocks(async () => {
+    let quarantined = false;
+    try {
+      const found = await classifyApplyIntentUnlocked();
+      if (found.status === 'none') {
+        applyIntentMaybePending = false;
+        setUnfinishedRenameBlock(null);
+        return { outcome: 'gone' };
+      }
+      if (found.status !== 'blocked') return { outcome: 'not-blocked' };
+      if (found.raw !== expectedRaw) return { outcome: 'stale' };
+      await quarantineApplyIntent(found.raw, found.reason);
+      quarantined = true;
+      await AsyncStorage.removeItem(NORMALIZATION_APPLY_INTENT_KEY);
+    } catch (error) {
+      return { outcome: 'failed', quarantined, ...(error?.unverified ? { unverified: true } : {}), message: error?.message };
+    }
+    applyIntentMaybePending = false;
+    setUnfinishedRenameBlock(null);
+    await stripSpentApplyStamps();
+    return { outcome: 'discarded' };
+  });
+}
+
 async function commitTextBatch(updated, intent) {
   if (intent) {
     applyIntentMaybePending = true;
@@ -359,9 +404,7 @@ async function rollBackTextBatch(list, lifts, activations) {
     await AsyncStorage.removeItem(NORMALIZATION_APPLY_INTENT_KEY);
     applyIntentMaybePending = false;
     return true;
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
 async function applyTextBatchUnlocked(request, ops) {
@@ -465,10 +508,8 @@ function defaultImportId() {
   return `import_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
 }
 
-// Writes an already parsed/validated import as brand-new notebook notes. This
-// deliberately never reads the notebook for merge/deduplication and never
-// changes current-routine selection. `writeNote` is injectable for cloud mode
-// and for precise partial-failure reporting in callers/tests.
+// Writes a validated import as brand-new notes: no merge/dedup read, no change to
+// the current routine. `writeNote` is injectable for cloud mode and tests.
 export async function saveFreshImportedWorkoutNotes(noteDrafts, {
   writeNote = saveWorkoutNoteItem,
   idFactory = defaultImportId,
@@ -505,13 +546,7 @@ export async function saveFreshImportedWorkoutNotes(noteDrafts, {
       };
     }
   }
-  return {
-    ok: true,
-    confirmed,
-    unconfirmed: null,
-    remaining: 0,
-    warning: 'Repeat imports create another complete set.',
-  };
+  return { ok: true, confirmed, unconfirmed: null, remaining: 0, warning: 'Repeat imports create another complete set.' };
 }
 
 export async function deleteWorkoutNoteItem(id) {
@@ -519,64 +554,33 @@ export async function deleteWorkoutNoteItem(id) {
     const list = await readNotebook();
     await writeNotebook(list.filter(n => n.id !== id));
   });
-  const currentId = await loadCurrentWorkoutId();
-  if (currentId === id) {
-    await clearCurrentWorkoutId();
-  }
+  if ((await loadCurrentWorkoutId()) === id) await clearCurrentWorkoutId();
 }
 
-// Deletion-outcome probe for the recovery operation journal (#696).
-//
-// Answers one question from persisted state: is this note gone? Local mode hard
-// -removes, so "absent" is the whole answer and there is no sync queue to keep
-// intent in. `requiresQueue: false` tells the reconciler not to look for one.
-//
-// Deliberately reads the RAW list: a tombstone written by a previous cloud
-// session that this device is now reading in local mode still counts as gone,
-// and must never be mistaken for a live note the journal should re-delete.
+// Deletion-outcome probe for the recovery operation journal (#696): is this note
+// gone? Local mode hard-removes and has no sync queue (`requiresQueue: false`).
+// Reads the RAW list: a tombstone from a past cloud session still counts as gone.
 export async function loadWorkoutNoteDeletionState(id) {
   const list = await readNotebook();
   const note = list.find(n => n?.id === id);
-  return {
-    exists: !!note,
-    deleted: !note || !!note.deleted_at,
-    requiresQueue: false,
-    queued: false,
-  };
+  return { exists: !!note, deleted: !note || !!note.deleted_at, requiresQueue: false, queued: false };
 }
 
-// Presence probe for the recovery operation journal's "create a new note and
-// attach it as the next week" operation (#696).
-//
-// The mirror image of loadWorkoutNoteDeletionState above: that one asks "is this
-// note gone?", this one asks "is this note LIVE, and durably so?". Existence
-// alone is not the answer — a tombstoned row exists, and a live membership
-// pointing at a tombstoned note is exactly the dangling state the protocol
-// forbids. Local mode has no upload queue, so `requiresQueue` is false.
+// Presence probe for the recovery journal's new-note operation (#696): is the note
+// LIVE (a tombstone exists but is not live)? No upload queue locally.
 export async function loadWorkoutNotePresenceState(id) {
   const list = await readNotebook();
   const note = list.find(n => n?.id === id);
-  return {
-    exists: !!note,
-    deleted: !!note?.deleted_at,
-    requiresQueue: false,
-    queued: false,
-  };
+  return { exists: !!note, deleted: !!note?.deleted_at, requiresQueue: false, queued: false };
 }
 
 // ── current workout selection ──────────────────────────────────────────────────
 
 export async function loadCurrentWorkoutId() {
-  try {
-    const raw = await AsyncStorage.getItem(CURRENT_WORKOUT_ID_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+  try { const raw = await AsyncStorage.getItem(CURRENT_WORKOUT_ID_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
 }
 
-// Current-id writers hold the local-write lock (#1399); Unlocked twins are for
-// a holder (sync applyMerged). A notebook holder takes it second.
+// Current-id writers hold the local-write lock (#1399); Unlocked twins are for a holder.
 export const saveCurrentWorkoutIdUnlocked = id => AsyncStorage.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(id));
 export const clearCurrentWorkoutIdUnlocked = () => AsyncStorage.removeItem(CURRENT_WORKOUT_ID_KEY);
 export const saveCurrentWorkoutId = id => withLocalWriteLock(() => saveCurrentWorkoutIdUnlocked(id));
@@ -588,12 +592,7 @@ export const clearCurrentWorkoutId = () => withLocalWriteLock(clearCurrentWorkou
 export function setCurrentWorkoutNote(id) {
   return withWorkoutNotebookLock(async () => {
     const list = await readNotebook();
-    const updated = list.map(n => {
-      if (n.id === id) {
-        return { ...n, isCurrent: true };
-      }
-      return { ...n, isCurrent: false };
-    });
+    const updated = list.map(n => ({ ...n, isCurrent: n.id === id }));
     await writeNotebook(updated);
     await saveCurrentWorkoutId(id);
   });

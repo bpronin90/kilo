@@ -9,7 +9,7 @@ import { safeNotify } from './shared';
 import { finishNormalizationApplyIntent, maybeSyncCloud, setNormalizationApplyGate } from './storageMode';
 import { markStartupPhase } from '../../storage/entries/startupTiming';
 import { withLocalWriteLock } from '../../storage/sync/localWriteLock';
-import { isNormalizationApplyIntentMaybePending, withWorkoutNotebookLock } from '../../storage/entries/workoutNotes';
+import { discardUnfinishedRename, isNormalizationApplyIntentMaybePending, withWorkoutNotebookLock } from '../../storage/entries/workoutNotes';
 import {
   getTrackedLiftWriteGeneration,
   setTrackedLiftWriteListener,
@@ -126,8 +126,9 @@ let trackedLiftsGeneration = 0;
 // in one local-write section, external writes are adopted and `work` derives
 // and writes; it resolves `{ value, wrote }`. Broadcast and the sync request
 // follow the release. `locked: false` is the apply, whose storage call takes
-// both locks itself; it adopts in its own section afterwards.
-function enqueueTrackedLiftWrite(work, { locked = true } = {}) {
+// both locks itself; it adopts in its own section afterwards. `settle: false`
+// (the #1402 discard only) skips the roll-forward, which throws on that intent.
+function enqueueTrackedLiftWrite(work, { locked = true, settle = true } = {}) {
   pendingTrackedLiftWrites += 1;
   const run = trackedLiftsPromise.then(async () => {
     trackedLiftsGeneration += 1;
@@ -137,7 +138,7 @@ function enqueueTrackedLiftWrite(work, { locked = true } = {}) {
       // adopts them next, and a roll-forward failing every time cannot loop.
       rollingForwardInQueue = true;
       try {
-        if (isNormalizationApplyIntentMaybePending()) await finishNormalizationApplyIntent();
+        if (settle && isNormalizationApplyIntentMaybePending()) await finishNormalizationApplyIntent();
       } finally {
         rollingForwardInQueue = false;
       }
@@ -240,6 +241,22 @@ export function runNormalizationApplyWithTracking(apply) {
     }
     return result;
   }, { locked: false }));
+}
+
+// Discard a PROVEN unreconcilable rename intent (#1402), in the apply's order:
+// recovery guard, then this queue (so no toggle interleaves), then the storage
+// call's notebook -> local-write. It never settles first. The Track maps are not
+// written, but persisted tracking is adopted through the same guarded path.
+export function discardUnfinishedRenameWithTracking(expectedRaw) {
+  return withExclusiveRecoveryAccess(() => enqueueTrackedLiftWrite(async () => {
+    const result = await discardUnfinishedRename(expectedRaw);
+    if (result.outcome === 'discarded') {
+      try {
+        if (await withLocalWriteLock(adoptExternalTrackedLiftWrites)) notifyTrackedLifts();
+      } catch { /* the stale generation makes the next queued write re-read */ }
+    }
+    return result;
+  }, { locked: false, settle: false }));
 }
 
 // Collapse a stored flag map onto canonical keys (#892 contract revision 3, §4).

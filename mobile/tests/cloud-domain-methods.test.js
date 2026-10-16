@@ -648,3 +648,252 @@ describe('settling a pending apply intent honours the local-write lock (#1411)',
     expect((await byId('extra')).raw_text).toBe('Friday');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #1402: an unreconcilable apply intent blocks writers until the user discards it
+// ─────────────────────────────────────────────────────────────────────────────
+
+const QUARANTINE_PREFIX = 'kilo_normalization_apply_quarantine_v1_';
+const quarantineKeys = async () => (await AsyncStorage.getAllKeys()).filter(k => k.startsWith(QUARANTINE_PREFIX)).sort();
+const validIntent = (over = {}) => ({
+  version: 1,
+  id: 'intent-1',
+  notes: [{ id: 'rt', expected_raw_text: RT.raw_text, next_raw_text: RT_NEXT }],
+  tracking: { lifts: { row: true, [DST]: true }, activations: { row: ROW_RECORD, [DST]: DST_RECORD } },
+  before: { lifts: { [SRC]: true, row: true }, activations: { [SRC]: sourceRecord(), row: ROW_RECORD } },
+  ...over,
+});
+const DIVERGED_RECORD = { anchor: 0, at: '2026-09-02T00:00:00.000Z', witness: null };
+const DST_RECORD = { anchor: 3, at: AT, witness: { headings: ['Monday'], sessions: '[[1,8,60,"lb"]]' } };
+
+// A restart: a fresh module registry over the same device store, so the
+// "intent may be pending" flag is true again exactly as after a cold launch.
+function coldStart() {
+  const m = {};
+  jest.isolateModules(() => {
+    jest.doMock('@react-native-async-storage/async-storage', () => AsyncStorage);
+    /* eslint-disable global-require */
+    m.notes = require('../storage/entries/workoutNotes');
+    m.recovery = require('../storage/syncRecovery');
+    m.secure = require('../storage/secureStorage').secureStorage;
+    require('../hooks/entries/storageMode');
+    /* eslint-enable global-require */
+  });
+  return m;
+}
+
+const FIXTURES = {
+  'corrupt JSON': { plant: () => '{not json', reason: 'unreadable' },
+  'structurally invalid': { plant: () => JSON.stringify({ version: 2, notes: [] }), reason: 'invalid' },
+  'missing activation map': { plant: () => JSON.stringify({ version: 1, notes: [], tracking: { lifts: {} } }), reason: 'invalid' },
+  'null note entry': { plant: () => JSON.stringify({ ...validIntent(), notes: [null] }), reason: 'invalid' },
+  'malformed before maps': { plant: () => JSON.stringify({ ...validIntent(), before: { lifts: [] } }), reason: 'invalid' },
+  // The note matches neither side AND a recorded Track key matches neither its
+  // before nor its after value: nothing can say which state was wanted.
+  'diverged note with a Track key matching neither recorded value': {
+    plant: async () => {
+      await Storage.saveTrackedLiftActivations({ [SRC]: DIVERGED_RECORD, row: ROW_RECORD });
+      await LocalNotes.saveWorkoutNoteItem({ ...RT, raw_text: `${RT.raw_text}\n60 9` });
+      return JSON.stringify(validIntent());
+    },
+    reason: 'diverged',
+  },
+};
+
+async function plantFixture(name) {
+  await seedRename(LocalNotes);
+  const raw = await FIXTURES[name].plant();
+  await AsyncStorage.setItem(NORMALIZATION_APPLY_INTENT_KEY, raw);
+  return raw;
+}
+
+describe.each(Object.keys(FIXTURES))('unreconcilable intent: %s (#1402)', (name) => {
+  test('blocks note writes, Track writes and the sync gate; discard unblocks all, preserving state', async () => {
+    const raw = await plantFixture(name);
+    const before = await tuple();
+    const m = coldStart();
+
+    // The blockade: an ordinary note save refuses, and publishes the state.
+    await expect(m.notes.saveWorkoutNoteItem({ id: 'new', title: 'N', raw_text: 'Monday\n-Row 3x5' })).rejects.toThrow('unfinished routine rename');
+    expect(m.recovery.getUnfinishedRenameBlock()).toEqual({ reason: FIXTURES[name].reason });
+    await expect(m.notes.finishNormalizationApplyIntent()).rejects.toThrow('unfinished routine rename');
+    expect(await tuple()).toEqual(before);
+
+    const found = await m.notes.inspectUnfinishedRename();
+    expect(found).toEqual({ status: 'blocked', reason: FIXTURES[name].reason, raw });
+
+    expect(await m.notes.discardUnfinishedRename(raw)).toEqual({ outcome: 'discarded' });
+
+    // Exact raw record preserved device-locally; active key retired.
+    const slots = await quarantineKeys();
+    expect(slots).toHaveLength(1);
+    expect(JSON.parse(await AsyncStorage.getItem(slots[0]))).toEqual(expect.objectContaining({ version: 1, reason: FIXTURES[name].reason, raw }));
+    // Note text, unrelated notes and both Track maps are exactly as they were.
+    expect(await tuple()).toEqual({ ...before, intent: null });
+    expect(m.recovery.getUnfinishedRenameBlock()).toBeNull();
+    expect(await m.notes.inspectUnfinishedRename()).toEqual({ status: 'none' });
+
+    // Resumes: writers and the sync gate proceed without replaying the quarantined op.
+    await m.notes.saveWorkoutNoteItem({ id: 'new', title: 'N', raw_text: 'Monday\n-Row 3x5' });
+    expect((await byId('new')).raw_text).toBe('Monday\n-Row 3x5');
+    await expect(m.notes.finishNormalizationApplyIntent()).resolves.toBeNull();
+    expect((await tuple()).lifts).toEqual(before.lifts);
+    expect((await tuple()).activations).toEqual(before.activations);
+  });
+
+  test('the condition is discoverable after a restart without any writer failing first', async () => {
+    const raw = await plantFixture(name);
+    const m = coldStart();
+    expect(m.recovery.getUnfinishedRenameBlock()).toBeNull();
+    expect(await m.notes.inspectUnfinishedRename()).toEqual(expect.objectContaining({ status: 'blocked', raw }));
+    expect(m.recovery.getUnfinishedRenameBlock()).toEqual({ reason: FIXTURES[name].reason });
+  });
+});
+
+describe('discard guardrails (#1402)', () => {
+  const planted = async () => {
+    const raw = await plantFixture('corrupt JSON');
+    return { raw, m: coldStart(), before: await tuple() };
+  };
+
+  test('a reconcilable intent is never offered for discard and still replays', async () => {
+    await seedRename(LocalNotes);
+    const intent = JSON.stringify(validIntent());
+    await AsyncStorage.setItem(NORMALIZATION_APPLY_INTENT_KEY, intent);
+    const m = coldStart();
+    expect(await m.notes.inspectUnfinishedRename()).toEqual({ status: 'pending' });
+    expect(await m.notes.discardUnfinishedRename(intent)).toEqual({ outcome: 'not-blocked' });
+    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).toBe(intent);
+    expect(await quarantineKeys()).toEqual([]);
+    await m.notes.saveWorkoutNoteItem({ id: 'x', title: 'X', raw_text: 'Friday' });
+    expect(await tuple()).toEqual({ text: RT_NEXT, lifts: { row: true, [DST]: true }, activations: { row: ROW_RECORD, [DST]: DST_RECORD }, intent: null });
+  });
+
+  test('a stale confirmation (the record was replaced) discards nothing', async () => {
+    const { raw, m } = await planted();
+    const replacement = '{also not json';
+    await AsyncStorage.setItem(NORMALIZATION_APPLY_INTENT_KEY, replacement);
+    expect(await m.notes.discardUnfinishedRename(raw)).toEqual({ outcome: 'stale' });
+    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).toBe(replacement);
+    expect(await quarantineKeys()).toEqual([]);
+  });
+
+  test('a confirmation after the record became reconcilable discards nothing', async () => {
+    const { raw, m } = await planted();
+    await AsyncStorage.setItem(NORMALIZATION_APPLY_INTENT_KEY, JSON.stringify(validIntent()));
+    expect(await m.notes.discardUnfinishedRename(raw)).toEqual({ outcome: 'not-blocked' });
+    expect(await quarantineKeys()).toEqual([]);
+  });
+
+  test('nothing to discard reports gone and unblocks the in-memory state', async () => {
+    const { raw, m } = await planted();
+    await expect(m.notes.saveWorkoutNoteItem({ id: 'n', title: 'N', raw_text: 'x' })).rejects.toThrow();
+    await AsyncStorage.removeItem(NORMALIZATION_APPLY_INTENT_KEY);
+    expect(await m.notes.discardUnfinishedRename(raw)).toEqual({ outcome: 'gone' });
+    expect(m.recovery.getUnfinishedRenameBlock()).toBeNull();
+  });
+
+  test('a transient read failure is not classified as unreconcilable and offers no discard', async () => {
+    const { raw, m } = await planted();
+    const realGet = AsyncStorage.getItem.getMockImplementation();
+    AsyncStorage.getItem.mockImplementation(key => (key === NORMALIZATION_APPLY_INTENT_KEY ? Promise.reject(new Error('io')) : realGet(key)));
+    expect(await m.notes.inspectUnfinishedRename()).toEqual(expect.objectContaining({ status: 'unknown' }));
+    expect(await m.notes.discardUnfinishedRename(raw)).toEqual(expect.objectContaining({ outcome: 'failed', quarantined: false }));
+    expect(m.recovery.getUnfinishedRenameBlock()).toBeNull();
+    AsyncStorage.getItem.mockImplementation(realGet);
+    expect(await m.notes.inspectUnfinishedRename()).toEqual(expect.objectContaining({ status: 'blocked' }));
+    expect(await quarantineKeys()).toEqual([]);
+  });
+
+  test('a quarantine write failure keeps the intent, reports failure and never unblocks; retry succeeds', async () => {
+    const { raw, m, before } = await planted();
+    await m.notes.inspectUnfinishedRename();
+    const restore = failStore((kind, key) => kind === 'set' && key.startsWith(QUARANTINE_PREFIX));
+    const failed = await m.notes.discardUnfinishedRename(raw);
+    restore();
+    expect(failed).toEqual(expect.objectContaining({ outcome: 'failed', quarantined: false }));
+    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).toBe(raw);
+    expect(m.recovery.getUnfinishedRenameBlock()).toEqual({ reason: 'unreadable' });
+    await expect(m.notes.saveWorkoutNoteItem({ id: 'n', title: 'N', raw_text: 'x' })).rejects.toThrow('unfinished routine rename');
+    expect(await m.notes.discardUnfinishedRename(raw)).toEqual({ outcome: 'discarded' });
+    expect(await quarantineKeys()).toHaveLength(1);
+    expect(await tuple()).toEqual({ ...before, intent: null });
+  });
+
+  test('a quarantine copy written but not verifiable is reported as uncertain, keeps the intent, and a retry reuses the slot', async () => {
+    const { raw, m } = await planted();
+    const realGet = AsyncStorage.getItem.getMockImplementation();
+    let armed = false;
+    const realSet = AsyncStorage.setItem.getMockImplementation();
+    AsyncStorage.setItem.mockImplementation((key, value) => { if (key.startsWith(QUARANTINE_PREFIX)) armed = true; return realSet(key, value); });
+    AsyncStorage.getItem.mockImplementation(key => (armed && key.startsWith(QUARANTINE_PREFIX) ? Promise.reject(new Error('io')) : realGet(key)));
+    const failed = await m.notes.discardUnfinishedRename(raw);
+    armed = false;
+    AsyncStorage.setItem.mockImplementation(realSet);
+    AsyncStorage.getItem.mockImplementation(realGet);
+    expect(failed).toEqual(expect.objectContaining({ outcome: 'failed', quarantined: false, unverified: true }));
+    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).toBe(raw);
+    expect(await quarantineKeys()).toHaveLength(1);
+    expect(await m.notes.discardUnfinishedRename(raw)).toEqual({ outcome: 'discarded' });
+    expect(await quarantineKeys()).toHaveLength(1);
+  });
+
+  test('interrupted between quarantine write and removal: retry and restart reuse the one copy', async () => {
+    const { raw, m } = await planted();
+    const restore = failStore((kind, key) => kind === 'remove' && key === NORMALIZATION_APPLY_INTENT_KEY);
+    const failed = await m.notes.discardUnfinishedRename(raw);
+    restore();
+    expect(failed).toEqual(expect.objectContaining({ outcome: 'failed', quarantined: true }));
+    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).toBe(raw);
+    expect(await quarantineKeys()).toHaveLength(1);
+    // Restart, then retry: the intent is found again, still blocking and discardable.
+    const restarted = coldStart();
+    await expect(restarted.notes.saveWorkoutNoteItem({ id: 'n', title: 'N', raw_text: 'x' })).rejects.toThrow('unfinished routine rename');
+    expect(await restarted.notes.discardUnfinishedRename(raw)).toEqual({ outcome: 'discarded' });
+    expect(await quarantineKeys()).toHaveLength(1);
+    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).toBeNull();
+  });
+
+  test('earlier quarantined evidence is never overwritten', async () => {
+    const { raw, m } = await planted();
+    await AsyncStorage.setItem(`${QUARANTINE_PREFIX}1`, 'earlier evidence');
+    expect(await m.notes.discardUnfinishedRename(raw)).toEqual({ outcome: 'discarded' });
+    expect(await AsyncStorage.getItem(`${QUARANTINE_PREFIX}1`)).toBe('earlier evidence');
+    expect(JSON.parse(await AsyncStorage.getItem(`${QUARANTINE_PREFIX}2`)).raw).toBe(raw);
+  });
+
+  test('a latched device key blocks inspection and discard writes entirely', async () => {
+    const { raw, m } = await planted();
+    const latched = jest.spyOn(m.secure, 'isKeyUnavailable').mockReturnValue(true);
+    const writes = jest.spyOn(m.secure, 'setItem');
+    const removals = jest.spyOn(m.secure, 'removeItem');
+    expect(await m.notes.inspectUnfinishedRename()).toEqual({ status: 'key-unavailable' });
+    expect(await m.notes.discardUnfinishedRename(raw)).toEqual({ outcome: 'key-unavailable' });
+    expect(writes).not.toHaveBeenCalled();
+    expect(removals).not.toHaveBeenCalled();
+    latched.mockRestore();
+    writes.mockRestore();
+    removals.mockRestore();
+    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).toBe(raw);
+  });
+
+  test('spent apply stamps are cleaned after a discard; note text stays', async () => {
+    await seedRename(LocalNotes);
+    await LocalNotes.replaceWorkoutNotesRaw((await LocalNotes.loadWorkoutNotesRaw()).map(n => (n.id === 'rt' ? { ...n, normalization_apply_id: 'intent-1', raw_text: `${RT.raw_text}\n60 9` } : n)));
+    const raw = '{not json';
+    await AsyncStorage.setItem(NORMALIZATION_APPLY_INTENT_KEY, raw);
+    const m = coldStart();
+    expect(await m.notes.discardUnfinishedRename(raw)).toEqual({ outcome: 'discarded' });
+    const rt = await byId('rt');
+    expect(rt.normalization_apply_id).toBeUndefined();
+    expect(rt.raw_text).toBe(`${RT.raw_text}\n60 9`);
+  });
+
+  test('the quarantine is not part of a backup export', async () => {
+    const { raw, m } = await planted();
+    await m.notes.discardUnfinishedRename(raw);
+    // eslint-disable-next-line global-require
+    const { exportBackup } = require('../storage/entries/backupExport');
+    expect(JSON.stringify(await exportBackup())).not.toContain('not json');
+  });
+});

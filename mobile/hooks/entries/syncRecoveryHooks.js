@@ -9,7 +9,10 @@ import {
   runPhase,
   markComplete,
   resetPhase,
+  subscribeUnfinishedRename,
 } from '../../storage/syncRecovery';
+import { inspectUnfinishedRename } from '../../storage/entries/workoutNotes';
+import { discardUnfinishedRenameWithTracking } from './trackedLiftHooks';
 import {
   OWNER_UNCLAIMED,
   getLocalDataOwner,
@@ -207,6 +210,60 @@ export function useSyncRecovery(user = null) {
     runSync,
     retrySync: runSync,
   };
+}
+
+const RENAME_DISCARD_STATUS = {
+  discarded: 'Unfinished rename discarded. A private copy was kept on this device and your notes and tracked lifts were not changed. Cloud Sync has not run; sync again to continue.',
+  gone: 'The unfinished rename was already cleared. Nothing was changed.',
+  stale: 'The unfinished rename changed, so nothing was discarded.',
+  'not-blocked': 'The unfinished rename changed, so nothing was discarded.',
+  'key-unavailable': 'This device\u2019s data key is unavailable, so nothing was discarded.',
+  partial: 'A private copy was saved, but the unfinished rename could not be cleared. Nothing else changed. Try again.',
+  uncertain: 'A private copy may have been saved, but the unfinished rename was not cleared; nothing else was changed. Try again.',
+  failed: 'Could not discard the unfinished rename. Nothing was changed. Try again.',
+};
+
+// Unfinished-rename recovery (#1402). `found` is the read-only inspection of the
+// active apply intent: only `status: 'blocked'` (a PROVEN unreconcilable record,
+// carrying the `raw` identity a confirmation must still match) may be discarded.
+// It re-inspects on mount (so it is found after a restart) and whenever any settle
+// publishes or clears the block (a failed note save, toggle or sync pass).
+// `discard` resolves the storage outcome and re-inspects; it never marks a sync
+// phase complete, so it cannot claim the cloud is in sync.
+export function useUnfinishedRename() {
+  const [found, setFound] = useState({ status: 'none' });
+  const mounted = useRef(true);
+
+  const refresh = useCallback(async () => {
+    const next = await inspectUnfinishedRename();
+    if (mounted.current) setFound(next);
+    return next;
+  }, []);
+
+  useEffect(() => {
+    mounted.current = true;
+    refresh();
+    const unsubscribe = subscribeUnfinishedRename(() => { refresh(); });
+    return () => {
+      mounted.current = false;
+      unsubscribe();
+    };
+  }, [refresh]);
+
+  const discard = useCallback(async (expectedRaw) => {
+    let result;
+    try {
+      result = await discardUnfinishedRenameWithTracking(expectedRaw);
+    } catch (e) {
+      result = { outcome: 'failed', quarantined: false, message: e?.message };
+    }
+    await refresh();
+    const { outcome, quarantined, unverified } = result;
+    const key = outcome !== 'failed' ? outcome : quarantined ? 'partial' : unverified ? 'uncertain' : 'failed';
+    return { ...result, message: RENAME_DISCARD_STATUS[key] || RENAME_DISCARD_STATUS.failed };
+  }, [refresh]);
+
+  return { found, refresh, discard };
 }
 
 // Automatic cloud sync on sign-in (#432), ownership-gated (#450).
