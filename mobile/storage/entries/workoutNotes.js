@@ -133,10 +133,11 @@ let notebookLock = Promise.resolve();
 //
 // #1395: every holder first settles any unfinished rename (apply intent), so a
 // notebook replace can never erase the landing evidence and strand Track on the
-// old key. The settle runs under THIS lock only and never waits on another, and
-// no local-write holder ever takes this lock: the order notebook -> local-write
-// is total. Its Track writes bump the storage write generation the tracked-lift
-// hook adopts from. An intent that cannot reach a safe terminal state throws and
+// old key. The settle runs inside this lock and takes the local-write lock for
+// its Track reads and writes (#1411): they bump the storage write generation the
+// tracked-lift hook adopts from, so they never interleave with another local
+// writer. No local-write holder ever takes this lock: notebook -> local-write is
+// total. The two explicit settle entry points below already hold both. An intent that cannot reach a safe terminal state throws and
 // the caller's fn never runs: the write is refused, nothing is replaced.
 // Skipped while the device key is latched (#1186): the shared store then refuses
 // every encrypting write, so no holder can erase evidence there, and the only
@@ -144,7 +145,9 @@ let notebookLock = Promise.resolve();
 // intent with everything else; settling would only block that recovery.
 export function withWorkoutNotebookLock(fn) {
   return runInNotebookLock(async () => {
-    if (applyIntentMaybePending && !AsyncStorage.isKeyUnavailable?.()) await finishApplyIntentUnlocked(resolveSettleOps());
+    if (applyIntentMaybePending && !AsyncStorage.isKeyUnavailable?.()) {
+      await withLocalWriteLock(() => finishApplyIntentUnlocked(resolveSettleOps()));
+    }
     return fn();
   });
 }
