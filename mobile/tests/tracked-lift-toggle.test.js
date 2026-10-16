@@ -1075,6 +1075,39 @@ describe('Track-on mints from the current notebook (#1403)', () => {
     expect((await Storage.loadTrackedLiftActivations()).bench.anchor).toBe(5);
   });
 
+  test('a plain note save between the read and the Track write waits for the write', async () => {
+    await Storage.saveWorkoutNoteItem(BENCH);
+    const ref = await mounted();
+    const reached = deferred();
+    const held = deferred();
+    let armed = true;
+    const realSetItem = secureStorage.setItem.bind(secureStorage);
+    jest.spyOn(secureStorage, 'setItem').mockImplementation(async (key, value) => {
+      if (armed && key === 'kilo_tracked_lifts') {
+        armed = false;
+        reached.resolve();
+        await held.promise;
+      }
+      return realSetItem(key, value);
+    });
+    let toggling;
+    let saving;
+    let saved = false;
+    await act(async () => { toggling = ref.current.toggle('bench', benchSections()); });
+    await act(async () => { await reached.promise; });
+    // The notebook was read; the Track write is in flight.
+    await act(async () => { saving = Storage.saveWorkoutNoteItem({ ...BENCH, raw_text: MORE }).then(() => { saved = true; }); });
+    await settle(8);
+    expect(saved).toBe(false);
+    expect((await Storage.loadWorkoutNotesRaw())[0].raw_text).toBe(BENCH.raw_text);
+    held.resolve();
+    await act(async () => { await toggling; await saving; });
+    await settle();
+    expect(saved).toBe(true);
+    expect((await Storage.loadTrackedLiftActivations()).bench.anchor).toBe(3);
+    expect((await Storage.loadWorkoutNotesRaw())[0].raw_text).toBe(MORE);
+  });
+
   test('a current render keeps the anchor and witness, and unsaved editor text still counts', async () => {
     await Storage.saveWorkoutNoteItem(BENCH);
     const ref = await mounted();

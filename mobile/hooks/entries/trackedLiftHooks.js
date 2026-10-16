@@ -9,7 +9,7 @@ import { safeNotify } from './shared';
 import { finishNormalizationApplyIntent, maybeSyncCloud, setNormalizationApplyGate } from './storageMode';
 import { markStartupPhase } from '../../storage/entries/startupTiming';
 import { withLocalWriteLock } from '../../storage/sync/localWriteLock';
-import { isNormalizationApplyIntentMaybePending } from '../../storage/entries/workoutNotes';
+import { isNormalizationApplyIntentMaybePending, withWorkoutNotebookLock } from '../../storage/entries/workoutNotes';
 import {
   getTrackedLiftWriteGeneration,
   setTrackedLiftWriteListener,
@@ -144,11 +144,17 @@ function enqueueTrackedLiftWrite(work, { locked = true } = {}) {
       if (!locked) return await work();
       let adopted = false;
       let out;
+      const section = notebookHeld => withLocalWriteLock(async () => {
+        if (await adoptExternalTrackedLiftWrites()) adopted = true;
+        return work({ notebookHeld });
+      });
       try {
-        out = await withLocalWriteLock(async () => {
-          adopted = await adoptExternalTrackedLiftWrites();
-          return work();
-        });
+        out = await section(false);
+        // A step that must read the durable notebook (Track-on, #1403) returns
+        // `needsNotebook` BEFORE changing anything. It is then re-run in this
+        // same queue slot (order kept) as notebook -> local-write, so a plain
+        // note save cannot land between its read and its Track write.
+        if (out?.needsNotebook) out = await withWorkoutNotebookLock(() => section(true));
       } finally {
         if (adopted || out?.wrote) notifyTrackedLifts();
       }
@@ -313,7 +319,7 @@ export function useTrackedLifts() {
   // caller that omits it (a test, or a surface with no parse in hand) still gets
   // the shipped boolean behavior, with no record and therefore full history.
   const toggle = useCallback(async (name, sections = null) => {
-    return enqueueTrackedLiftWrite(async () => {
+    return enqueueTrackedLiftWrite(async ({ notebookHeld } = {}) => {
       const key = normalizeExerciseKey(name) || name;
       const nextLifts = canonicalizeTrackedLifts(currentTrackedLifts);
       const nextActivations = { ...currentActivations };
@@ -325,6 +331,8 @@ export function useTrackedLifts() {
         delete nextLifts[key];
         delete nextActivations[key];
       } else {
+        // Untrack and the no-sections path never take the notebook lock.
+        if (sections && !notebookHeld) return { value: undefined, wrote: false, needsNotebook: true };
         // Minted BEFORE any optimistic state, so a failed population read
         // rejects with module state, storage and the queue all untouched.
         const record = sections ? await mintFromCurrentPopulation(sections, name) : null;
@@ -385,9 +393,10 @@ export async function reconcileTrackedLiftActivationsAtSave(sections) {
 // Track-on mint (#1403). `sections` is the caller's render, which can predate a
 // notebook change (a normalization apply, a sync pull, a restore, a note write),
 // and no Track-map generation covers a notebook-only change. So the durable
-// notebook is read here, inside the queue's local-write section: after adoption,
-// and in the same section as the Track write that follows. An apply holds the
-// notebook lock and then this lock, so it is wholly before or after this read.
+// notebook is read here, under the notebook lock AND the local-write lock (taken
+// in that order, like every other holder): after adoption, and in the same
+// section as the Track write that follows. An apply or a plain note save holds
+// the notebook lock, so each is wholly before or after this read-and-write.
 //
 // The population is the UNFILTERED live notebook (recovery-excluded weeks count;
 // deleted notes do not), the same one the Log caller and the save-boundary
