@@ -1,4 +1,5 @@
 import * as Storage from '../entries';
+import * as TrackedRaw from '../entries/settings';
 import { mergeUserProfile } from '../entries/profileStorage';
 import {
   loadDeloadNote,
@@ -225,9 +226,75 @@ async function buildUserHealthProfileRecords() {
   ];
 }
 
+// Flags + records land as one unit or not at all (#1398): a half pair would be
+// uploaded over the other device's good row. Roll back to the RAW stored strings
+// (corrupt values restore byte-for-byte) and rethrow, so the pass fails
+// retryably. A raw snapshot read error throws BEFORE any mutation.
+async function applyTrackedLiftsFromRow(row) {
+  const before = await TrackedRaw.readTrackedLiftRaw();
+  // NO storage read after the snapshot: a tolerant read returns {} on error, which
+  // can fake "equal" and skip a write or drive a destructive prune. Compare and
+  // prune against the parsed snapshot and the values just applied; unparseable
+  // counts as different (written over) and is never pruned from.
+  let { flags, records } = TrackedRaw.parseTrackedLiftRaw(before);
+  try {
+    if (
+      row.tracked_lifts &&
+      typeof row.tracked_lifts === 'object' &&
+      !Array.isArray(row.tracked_lifts)
+    ) {
+      if (flags === null || stableStringify(flags) !== stableStringify(row.tracked_lifts)) {
+        await Storage.saveTrackedLifts(row.tracked_lifts);
+      }
+      flags = row.tracked_lifts;
+    }
+
+    // #893. Applied independently of the flags above rather than nested under
+    // them: a server predating the column serves the pulled winner with no such
+    // field, so `undefined` here means "this row cannot speak to the records" and
+    // must leave the local ones alone — not clear them. A present-but-empty object
+    // IS a real value (every activation retired or untracked) and is applied.
+    // Normalized on the way in, because this crossed a trust boundary.
+    //
+    // The prune below runs UNCONDITIONALLY, against the flags this device now
+    // holds: an older build's upsert names `tracked_lifts` but not this column, so
+    // the server PRESERVES records across its untrack and the pulled row carries a
+    // record for an untracked key. Dropping it stops a later retrack resuming the
+    // abandoned span with every gap session inside it.
+    if (
+      row.tracked_lift_activations &&
+      typeof row.tracked_lift_activations === 'object' &&
+      !Array.isArray(row.tracked_lift_activations)
+    ) {
+      const next = Storage.normalizeTrackedLiftActivations(row.tracked_lift_activations);
+      if (records === null || stableStringify(records) !== stableStringify(next)) {
+        await Storage.saveTrackedLiftActivations(next);
+      }
+      records = next;
+    }
+
+    if (flags && records) {
+      const pruned = Storage.pruneTrackedLiftActivations(flags, records);
+      if (stableStringify(pruned) !== stableStringify(records)) {
+        await Storage.saveTrackedLiftActivations(pruned);
+      }
+    }
+  } catch (err) {
+    try {
+      await TrackedRaw.restoreTrackedLiftRaw(before);
+    } catch {
+      // Storage is failing; the original error is the one to surface.
+    }
+    throw err;
+  }
+}
+
 async function applyUserHealthProfile(mergedList) {
   const row = singletonRow(mergedList);
   if (!row || isTombstone(row)) return;
+
+  // First: a failure rolls back before any other field of this row is applied.
+  await applyTrackedLiftsFromRow(row);
 
   const nextCurrent = row.current_workout_note_id ?? null;
   const localCurrent = (await Storage.loadCurrentWorkoutId()) ?? null;
@@ -240,51 +307,6 @@ async function applyUserHealthProfile(mergedList) {
     const next = Number(row.fatigue_multiplier);
     const local = Number(await Storage.loadFatigueMultiplier());
     if (local !== next) await Storage.saveFatigueMultiplier(next);
-  }
-
-  if (
-    row.tracked_lifts &&
-    typeof row.tracked_lifts === 'object' &&
-    !Array.isArray(row.tracked_lifts)
-  ) {
-    const local = await Storage.loadTrackedLifts();
-    if (stableStringify(local) !== stableStringify(row.tracked_lifts)) {
-      await Storage.saveTrackedLifts(row.tracked_lifts);
-    }
-  }
-
-  // #893. Applied independently of the flags above rather than nested under
-  // them: a server predating the column serves the pulled winner with no such
-  // field, so `undefined` here means "this row cannot speak to the records" and
-  // must leave the local ones alone — not clear them. A present-but-empty object
-  // IS a real value (every activation retired or untracked) and is applied.
-  // Normalized on the way in, because this crossed a trust boundary.
-  //
-  // The prune below then runs UNCONDITIONALLY, against whatever flags this
-  // device now holds. That is the half an older build cannot do for itself: its
-  // upsert names `tracked_lifts` and not this column, so Postgres PRESERVES the
-  // stored records across its untrack and the pulled row comes back carrying a
-  // record for a key that is no longer tracked. Dropping it here is what stops a
-  // later retrack from resuming the abandoned span with every gap session inside
-  // it. A watermark-aware writer never trips this: it deletes flag and record
-  // together, so there is nothing orphaned to drop.
-  if (
-    row.tracked_lift_activations &&
-    typeof row.tracked_lift_activations === 'object' &&
-    !Array.isArray(row.tracked_lift_activations)
-  ) {
-    const next = Storage.normalizeTrackedLiftActivations(row.tracked_lift_activations);
-    const local = await Storage.loadTrackedLiftActivations();
-    if (stableStringify(local) !== stableStringify(next)) {
-      await Storage.saveTrackedLiftActivations(next);
-    }
-  }
-
-  const flags = await Storage.loadTrackedLifts();
-  const records = await Storage.loadTrackedLiftActivations();
-  const pruned = Storage.pruneTrackedLiftActivations(flags, records);
-  if (stableStringify(pruned) !== stableStringify(records)) {
-    await Storage.saveTrackedLiftActivations(pruned);
   }
 
   // Active deload (issue #498). A null raw_text is a cleared deload; removing the

@@ -156,6 +156,46 @@ export async function loadTrackedLiftActivationsStrict() {
   return normalizeTrackedLiftActivations(await _readObjectStrict(TRACKED_LIFT_ACTIVATIONS_KEY));
 }
 
+// Raw snapshot/restore of the two Track keys for a multi-write applier that must
+// roll back (#1398). Raw = the exact stored string (or absence) through the same
+// store the savers use, so it works on a corrupt value and restores it
+// byte-for-byte. A read I/O error throws, before the caller mutates anything.
+export async function readTrackedLiftRaw(store = AsyncStorage) {
+  return {
+    flags: await store.getItem(TRACKED_LIFTS_KEY),
+    records: await store.getItem(TRACKED_LIFT_ACTIVATIONS_KEY),
+  };
+}
+
+// Parse a snapshot WITHOUT touching storage: an absent key is the empty map, an
+// unparseable or non-object value is `null` (callers treat it as "different").
+export function parseTrackedLiftRaw(snapshot) {
+  const parse = (raw) => {
+    if (raw == null) return {};
+    try {
+      const value = JSON.parse(raw);
+      return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+    } catch {
+      return null;
+    }
+  };
+  const records = parse(snapshot.records);
+  return { flags: parse(snapshot.flags), records: records && normalizeTrackedLiftActivations(records) };
+}
+
+export async function restoreTrackedLiftRaw(snapshot, store = AsyncStorage) {
+  const entries = [[TRACKED_LIFTS_KEY, snapshot.flags], [TRACKED_LIFT_ACTIVATIONS_KEY, snapshot.records]];
+  for (const [key, want] of entries) {
+    // eslint-disable-next-line no-await-in-loop
+    if ((await store.getItem(key)) === want) continue;
+    // eslint-disable-next-line no-await-in-loop
+    if (want == null) await store.removeItem(key);
+    // eslint-disable-next-line no-await-in-loop
+    else await store.setItem(key, want);
+    noteTrackedLiftWrite();
+  }
+}
+
 export async function saveTrackedLiftActivations(map, store = AsyncStorage) {
   await store.setItem(
     TRACKED_LIFT_ACTIVATIONS_KEY,
