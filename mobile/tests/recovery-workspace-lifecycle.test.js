@@ -106,3 +106,31 @@ describe('Manage block grouping', () => {
     expect(c.root.findAll(n => n.props && n.props.accessibilityLabel === 'Reason for this recovery block')[0].props.value).toBe('knee');
   });
 });
+
+describe('End confirmation target binding', () => {
+  const { RecoveryBlockEndModal } = require('../components/RecoveryBlockEndModal');
+  const modal = (b, onConfirmComplete) => (
+    <RecoveryBlockEndModal visible block={b} weeks={[]} onConfirmComplete={onConfirmComplete} onSetInclusion={jest.fn()} onClose={jest.fn()} />
+  );
+
+  test('replacing the active block while the modal is open cannot end the replacement', async () => {
+    const onConfirmComplete = jest.fn().mockResolvedValue({ ok: true });
+    let c;
+    act(() => { c = render.create(modal(block({ id: 'rbA' }), onConfirmComplete)); });
+    act(() => { c.update(modal(block({ id: 'rbB' }), onConfirmComplete)); });
+    const end = c.root.findAll(n => n.props && n.props.accessibilityLabel === 'End block' && n.props.onPress)[0];
+    expect(end.props.accessibilityState.disabled).toBe(true);
+    await act(async () => { await end.props.onPress(); });
+    expect(onConfirmComplete).not.toHaveBeenCalled();
+    expect(texts(c.root)).toContain('The active recovery block changed. Close this and choose End recovery block again.');
+  });
+
+  test('the opened block still ends normally', async () => {
+    const onConfirmComplete = jest.fn().mockResolvedValue({ ok: true });
+    let c;
+    act(() => { c = render.create(modal(block({ id: 'rbA' }), onConfirmComplete)); });
+    const end = c.root.findAll(n => n.props && n.props.accessibilityLabel === 'End block' && n.props.onPress)[0];
+    await act(async () => { await end.props.onPress(); });
+    expect(onConfirmComplete).toHaveBeenCalledWith({ blockId: 'rbA' });
+  });
+});
