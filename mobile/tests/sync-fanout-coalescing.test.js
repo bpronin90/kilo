@@ -884,6 +884,36 @@ describe('a pulled Track change is adopted by a mounted hook (#1398)', () => {
     act(() => tree.unmount());
   });
 
+  it('a flags read error after the activation write never prunes the records to nothing', async () => {
+    const cloud = makeXidFakeCloud();
+    const { ref, tree } = await deviceA(cloud);
+    await deviceBWrites(cloud, squatAdded);
+    const realSetItem = secureStorage.setItem.bind(secureStorage);
+    const realGetItem = secureStorage.getItem.bind(secureStorage);
+    let armed = false;
+    let rejected = 0;
+    jest.spyOn(secureStorage, 'setItem').mockImplementation(async (key, value) => {
+      const out = await realSetItem(key, value);
+      if (key === 'kilo_tracked_lift_activations') armed = true;
+      return out;
+    });
+    jest.spyOn(secureStorage, 'getItem').mockImplementation(async (key) => {
+      if (armed && rejected === 0 && key === 'kilo_tracked_lifts') {
+        rejected += 1;
+        throw new Error('transient read');
+      }
+      return realGetItem(key);
+    });
+    await act(async () => { await maybeSyncCloud().catch(() => {}); });
+    await flushAsync(8);
+    armed = false;
+    expect(Object.keys(await Storage.loadTrackedLiftActivations()).sort()).toEqual(['bench', 'squat']);
+    expect(await Storage.loadTrackedLifts()).toEqual({ bench: true, squat: true });
+    expect(Object.keys(healthRow(cloud).tracked_lift_activations).sort()).toEqual(['bench', 'squat']);
+    expect(Object.keys(ref.current.activations).sort()).toEqual(['bench', 'squat']);
+    act(() => tree.unmount());
+  });
+
   it('an unreadable rollback snapshot aborts the apply untouched; the pass is retryable and the next applies', async () => {
     const cloud = makeXidFakeCloud();
     const { ref, tree } = await deviceA(cloud);

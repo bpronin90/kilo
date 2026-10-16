@@ -1,5 +1,5 @@
 import * as Storage from '../entries';
-import { readTrackedLiftRaw, restoreTrackedLiftRaw } from '../entries/settings';
+import * as TrackedRaw from '../entries/settings';
 import { mergeUserProfile } from '../entries/profileStorage';
 import {
   loadDeloadNote,
@@ -226,20 +226,21 @@ async function buildUserHealthProfileRecords() {
   ];
 }
 
-// Flags + records land as one unit or not at all (#1398): a failure between the
-// two writes would leave a half pair that the next pass uploads over the other
-// device's good row. Roll back (best effort) and rethrow, so the pass fails
-// retryably and re-applies. The snapshot is the RAW stored strings, so a corrupt
-// value restores byte-for-byte (or is healed by a successful apply); a raw read
-// I/O error throws BEFORE any mutation.
+// Flags + records land as one unit or not at all (#1398): a half pair would be
+// uploaded over the other device's good row. Roll back to the RAW stored strings
+// (corrupt values restore byte-for-byte) and rethrow, so the pass fails
+// retryably. A raw snapshot read error throws BEFORE any mutation.
 async function applyTrackedLiftsFromRow(row) {
-  const before = await readTrackedLiftRaw();
+  const before = await TrackedRaw.readTrackedLiftRaw();
+  let rowFlags = null;
+  let rowRecords = null;
   try {
     if (
       row.tracked_lifts &&
       typeof row.tracked_lifts === 'object' &&
       !Array.isArray(row.tracked_lifts)
     ) {
+      rowFlags = row.tracked_lifts;
       const local = await Storage.loadTrackedLifts();
       if (stableStringify(local) !== stableStringify(row.tracked_lifts)) {
         await Storage.saveTrackedLifts(row.tracked_lifts);
@@ -253,35 +254,43 @@ async function applyTrackedLiftsFromRow(row) {
     // IS a real value (every activation retired or untracked) and is applied.
     // Normalized on the way in, because this crossed a trust boundary.
     //
-    // The prune below then runs UNCONDITIONALLY, against whatever flags this
-    // device now holds. That is the half an older build cannot do for itself: its
-    // upsert names `tracked_lifts` and not this column, so Postgres PRESERVES the
-    // stored records across its untrack and the pulled row comes back carrying a
-    // record for a key that is no longer tracked. Dropping it here is what stops a
-    // later retrack from resuming the abandoned span with every gap session inside
-    // it. A watermark-aware writer never trips this: it deletes flag and record
-    // together, so there is nothing orphaned to drop.
+    // The prune below runs UNCONDITIONALLY, against the flags this device now
+    // holds: an older build's upsert names `tracked_lifts` but not this column, so
+    // the server PRESERVES records across its untrack and the pulled row carries a
+    // record for an untracked key. Dropping it stops a later retrack resuming the
+    // abandoned span with every gap session inside it.
     if (
       row.tracked_lift_activations &&
       typeof row.tracked_lift_activations === 'object' &&
       !Array.isArray(row.tracked_lift_activations)
     ) {
       const next = Storage.normalizeTrackedLiftActivations(row.tracked_lift_activations);
+      rowRecords = next;
       const local = await Storage.loadTrackedLiftActivations();
       if (stableStringify(local) !== stableStringify(next)) {
         await Storage.saveTrackedLiftActivations(next);
       }
     }
 
-    const flags = await Storage.loadTrackedLifts();
-    const records = await Storage.loadTrackedLiftActivations();
-    const pruned = Storage.pruneTrackedLiftActivations(flags, records);
-    if (stableStringify(pruned) !== stableStringify(records)) {
-      await Storage.saveTrackedLiftActivations(pruned);
+    // Prune from the values just applied; a side the row did not speak to is read
+    // strictly (a tolerant {} would prune records away). Unreadable: skip.
+    let flags = rowFlags;
+    let records = rowRecords;
+    try {
+      flags ??= await TrackedRaw.loadTrackedLiftsStrict();
+      records ??= await TrackedRaw.loadTrackedLiftActivationsStrict();
+    } catch {
+      flags = null;
+    }
+    if (flags && records) {
+      const pruned = Storage.pruneTrackedLiftActivations(flags, records);
+      if (stableStringify(pruned) !== stableStringify(records)) {
+        await Storage.saveTrackedLiftActivations(pruned);
+      }
     }
   } catch (err) {
     try {
-      await restoreTrackedLiftRaw(before);
+      await TrackedRaw.restoreTrackedLiftRaw(before);
     } catch {
       // Storage is failing; the original error is the one to surface.
     }
