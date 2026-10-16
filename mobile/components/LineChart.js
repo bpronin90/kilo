@@ -31,6 +31,11 @@ export function LineChart({
   // so whatever the labels claim is exactly what the data spans, and what the
   // accessibilityLabel below says too.
   showScale = false,
+  // Opt-in plot framing (#1427): hairlines at the top and bottom of the plotted
+  // domain (where the scale labels sit) plus a midline. Default off, so the Home
+  // sparkline is unchanged. A flat series gets only the centered line it is
+  // drawn on, so the frame never implies a range the data does not have.
+  showGrid = false,
   emptyMessage = 'Not enough data',
   seriesLabel,
 }) {
@@ -261,6 +266,19 @@ export function LineChart({
         <Svg testID="line-chart-svg" width={plotWidth || '100%'} height={height}>
           {plotWidth > 0 && (
             <>
+              {showGrid && (range === 0 ? [height / 2] : [effPaddingVertical, height / 2, height - effPaddingVertical]).map((y, i) => (
+                <Line
+                  key={`grid-${i}`}
+                  testID="line-chart-grid-line"
+                  x1={effPaddingHorizontal}
+                  y1={y}
+                  x2={plotWidth - effPaddingHorizontal}
+                  y2={y}
+                  stroke={kua ? kua.surfaceBorder : colors.cardBorder}
+                  strokeWidth={1}
+                  opacity={i === 1 && range !== 0 ? 0.5 : 1}
+                />
+              ))}
               <Polyline
                 points={points}
                 fill="none"
