@@ -3,21 +3,14 @@ import React, { useMemo } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Alert } from '../lib/platformAlert';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Card, Button, createInputStyle } from './UI';
+import { Card, Button } from './UI';
+import { createWeightFormStyles, webDateInputStyle } from '../screens/weight/weightFormStyles';
 import { useTheme } from '../theme/ThemeContext';
 import { useKuaTypography, TYPOGRAPHY, TYPOGRAPHY_FALLBACK } from '../theme/typography';
 import { formatDate } from '../lib/format';
 import { localDateToday } from '../lib/WeightScreenHelpers';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, formatGoalWeightValue } from '../lib/units';
-
-// DOM (react-native-web) equivalent of a mono role: letterSpacing needs a px string.
-const domMonoRole = (role) => ({
-  fontFamily: TYPOGRAPHY[role].fontFamily,
-  fontSize: TYPOGRAPHY[role].fontSize,
-  letterSpacing: `${TYPOGRAPHY[role].letterSpacing}px`,
-  fontVariantNumeric: 'tabular-nums',
-});
 
 // Web-safe goal target date input. The native @react-native-community/datetimepicker
 // has no usable rendering on web, so on web we render a real DOM <input type="date">
@@ -35,20 +28,7 @@ function WebGoalDateInput({ value, onChangeDate, accessibilityLabel }) {
       const next = e?.target?.value;
       if (next) onChangeDate(next);
     },
-    style: {
-      backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
-      borderRadius: GEOMETRY['radius-2xl'],
-      borderWidth: 1,
-      borderStyle: 'solid',
-      borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
-      padding: 14,
-      minHeight: 48,
-      ...(kua ? domMonoRole('label-lg') : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontFamily: 'inherit' }),
-      colorScheme: colors.scheme,
-      color: kua ? kua.onSurface : colors.text,
-      width: '100%',
-      boxSizing: 'border-box',
-    },
+    style: webDateInputStyle(colors, kua),
   });
 }
 
@@ -320,29 +300,7 @@ export function WeightGoalCard({
 const monoRole = (typo, role) => (typo || TYPOGRAPHY_FALLBACK)[role];
 
 export const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
-  inputLabel: {
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
-    fontWeight: '700',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  input: {
-    ...createInputStyle(colors, kua),
-    borderRadius: GEOMETRY['radius-2xl'],
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    minHeight: 48,
-    justifyContent: 'center',
-  },
-  // Matches the Weight entry panel's numeric field (17pt JetBrains Mono).
-  numericInput: {
-    ...createInputStyle(colors, kua),
-    ...monoRole(typo, 'label-lg'),
-    borderRadius: GEOMETRY['radius-2xl'],
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    minHeight: 48,
-    justifyContent: 'center',
-  },
+  ...createWeightFormStyles(colors, kua, typo),
   goalCard: {
     gap: 8,
     backgroundColor: kua ? kua.surfaceCard : undefined,
@@ -423,10 +381,6 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     padding: 4,
-  },
-  pickerText: {
-    ...monoRole(typo, 'label-lg'),
-    color: kua ? kua.onSurface : colors.text,
   },
   pickerTextPlaceholder: {
     color: kua ? kua.onSurfaceVariant : colors.textMuted,

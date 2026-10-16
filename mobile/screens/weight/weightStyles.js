@@ -1,6 +1,7 @@
 import { GEOMETRY } from '../../theme/spacing';
 import { TYPOGRAPHY, TYPOGRAPHY_FALLBACK } from '../../theme/typography';
 import { StyleSheet } from 'react-native';
+import { createWeightFormStyles } from './weightFormStyles';
 
 // Full JetBrains Mono role (family, tracking, tabular-nums); weight is encoded in the family.
 const monoRole = (typo, role) => (typo || TYPOGRAPHY_FALLBACK)[role];
@@ -63,37 +64,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     fontWeight: '600',
     marginBottom: 8,
   },
-  inputLabel: {
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
-    fontWeight: '700',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  input: {
-    backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
-    borderRadius: GEOMETRY['radius-2xl'],
-    borderWidth: 1,
-    borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    minHeight: 48,
-    ...monoRole(typo, 'label-lg'),
-    color: kua ? kua.onSurface : colors.text,
-    justifyContent: 'center',
-    textAlignVertical: 'center',
-  },
-  numericInput: {
-    backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
-    borderRadius: GEOMETRY['radius-2xl'],
-    borderWidth: 1,
-    borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    minHeight: 48,
-    ...monoRole(typo, 'label-lg'),
-    color: kua ? kua.onSurface : colors.text,
-    justifyContent: 'center',
-    textAlignVertical: 'center',
-  },
+  ...createWeightFormStyles(colors, kua, typo),
   entryCard: {
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,
@@ -129,10 +100,6 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     minWidth: 44,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  pickerText: {
-    ...monoRole(typo, 'label-lg'),
-    color: kua ? kua.onSurface : colors.text,
   },
   trendsCardMerged: {
     padding: 0,
