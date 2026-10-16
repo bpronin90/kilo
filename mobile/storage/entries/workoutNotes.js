@@ -234,7 +234,29 @@ async function finishApplyIntentUnlocked(ops) {
     const byId = new Map(intent.notes.map(n => [n.id, n]));
     const now = new Date().toISOString();
     const rows = [];
-    const updated = (await readNotebook()).map(n => {
+    const current = await readNotebook();
+    // Roll forward only a recorded operation that can still complete as a
+    // whole: every target note must hold its pre-apply or its already-applied
+    // text. Otherwise something else changed a target (a user edit, a delete, a
+    // sync write) after the interruption, the recorded Track maps no longer
+    // describe the notebook, and applying them would persist and push a mixed
+    // note/flag/activation tuple. Such an intent can never complete, and
+    // keeping it would block sync forever, so it is retired with the notes and
+    // Track state left exactly as found (the old, consistent Track state; the
+    // user's newer note text is never overwritten or reverted). A note write
+    // is a single whole-notebook setItem, so the notes are all-pre or
+    // all-applied after a crash: divergence is always post-crash drift.
+    const live = new Map(current.filter(n => n && ops.isLive(n)).map(n => [n.id, n]));
+    const aborted = intent.notes.some((rec) => {
+      const text = live.get(rec.id)?.raw_text;
+      return text !== rec.expected_raw_text && text !== rec.next_raw_text;
+    });
+    if (aborted) {
+      await AsyncStorage.removeItem(NORMALIZATION_APPLY_INTENT_KEY);
+      applyIntentMaybePending = false;
+      return null;
+    }
+    const updated = current.map(n => {
       const rec = n && ops.isLive(n) ? byId.get(n.id) : null;
       if (!rec || n.raw_text !== rec.expected_raw_text) return n;
       const row = stamp({ ...n, raw_text: rec.next_raw_text, updated_at: now });

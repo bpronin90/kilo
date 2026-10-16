@@ -778,7 +778,8 @@ nothing and are never re-attached. The note texts and both Track maps commit in 
 batch under the notebook and local-write locks, journaled by a roll-forward intent
 (`kilo_normalization_apply_intent_v1`): an in-process failure rolls back, and an
 interrupted commit is finished before the next apply, Track write, tracked-lift load, or
-sync pass. The hook runs the apply as one tracked-lift queue entry under the recovery
+sync pass; a replay whose target note changed after the interruption is retired with notes
+and Track left untouched. The hook runs the apply as one tracked-lift queue entry under the recovery
 guard every sync pass holds, so toggles and passes see it wholly or not at all.
 
 ## Parse-to-Persistence Flow

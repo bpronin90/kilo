@@ -396,6 +396,48 @@ describe('an interrupted commit is finished on restart (#1395)', () => {
   });
 });
 
+// The user edits a target note after the crash and before the replay: the
+// recorded Track maps describe a rename that can no longer complete, so the
+// replay must not write them (no mixed note/flag/activation tuple) and must
+// retire the record so sync is not blocked forever.
+test('replay with a changed target note retires the intent and leaves Track untouched (#1395)', async () => {
+  await seedRename(LocalNotes);
+  const realSet = AsyncStorage.setItem.getMockImplementation();
+  let reached;
+  const hit = new Promise((r) => { reached = r; });
+  let die;
+  AsyncStorage.setItem.mockImplementation((key, value) => {
+    if (key !== WORKOUT_NOTES_KEY) return realSet(key, value);
+    reached();
+    return new Promise((_, reject) => { die = reject; });
+  });
+  const crashed = LocalNotes.applyWorkoutNoteTextBatchIfUnchanged(renameRequest());
+  await hit;
+  AsyncStorage.setItem.mockImplementation(realSet);
+  expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).not.toBeNull();
+
+  const EDITED = `${RT.raw_text}\n60 9`;
+  let fresh;
+  let finish;
+  jest.isolateModules(() => {
+    jest.doMock('@react-native-async-storage/async-storage', () => AsyncStorage);
+    // eslint-disable-next-line global-require
+    fresh = require('../storage/entries');
+    // eslint-disable-next-line global-require
+    ({ finishNormalizationApplyIntent: finish } = require('../storage/entries/workoutNotes'));
+  });
+  await fresh.saveWorkoutNoteItem({ ...RT, raw_text: EDITED });
+  await finish();
+
+  expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).toBeNull();
+  expect((await fresh.loadWorkoutNotesRaw()).find(n => n.id === 'rt').raw_text).toBe(EDITED);
+  expect(await fresh.loadTrackedLifts()).toEqual({ [SRC]: true, row: true });
+  expect(await fresh.loadTrackedLiftActivations()).toEqual({ [SRC]: sourceRecord(), row: ROW_RECORD });
+
+  die(new Error('process gone'));
+  await crashed.catch(() => {});
+});
+
 test('both adapters expose the batch and CAS', () => {
   for (const adapter of [localAdapter, cloudAdapter]) {
     expect(typeof adapter.applyWorkoutNoteTextBatchIfUnchanged).toBe('function');
