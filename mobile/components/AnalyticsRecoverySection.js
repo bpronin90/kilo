@@ -131,6 +131,11 @@ export function AnalyticsRecoverySection({
     if (weekSelection.blockId && weekSelection.blockId !== effectiveFocusId) {
       setWeekSelection({ blockId: null, weekId: null });
     }
+    // The same boundary drops an open ended disclosure that does not belong to the
+    // block now shown (store replacement, unverified read, removed block).
+    if (openKey && (effectiveFocusId === null || !openKey.startsWith(`${effectiveFocusId}:`))) {
+      setOpenKey(null);
+    }
   }
 
   // Unverified state is not "this user has never recovered" (#716). Rendering

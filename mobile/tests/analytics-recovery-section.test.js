@@ -3217,6 +3217,20 @@ describe('AnalyticsRecoverySection — ended block starts collapsed (#1425)', ()
     expect(hostById(c.root, 'recovery-footer-row')).toHaveLength(0);
   });
 
+  test('an unverified read between two verified ones does not restore an open disclosure', () => {
+    require('../lib/data/recoverySnapshot')._resetRecoverySnapshotStore();
+    const weeks = [week(1, 'note-w1', { block_id: 'rb-done' })];
+    const notes = [note('note-w1', BASELINE_TEXT)];
+    const mk = (ready) => <AnalyticsRecoverySection blocks={[done()]} weeks={weeks} notes={notes} stateReady={ready} stateLoading={!ready} />;
+    let c;
+    act(() => { c = render.create(mk(true)); });
+    expandEnded(c.root);
+    act(() => { c.update(mk(false)); });
+    act(() => { c.update(mk(true)); });
+    expect(byLabel(c.root, /^Expand ended recovery block/)).toBeDefined();
+    expect(hostById(c.root, 'recovery-footer-row')).toHaveLength(0);
+  });
+
   test('picking a history row opens that block only; the previous block returns collapsed', () => {
     require('../lib/data/recoverySnapshot')._resetRecoverySnapshotStore();
     const a = done();
