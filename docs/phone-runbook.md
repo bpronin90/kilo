@@ -99,7 +99,7 @@ See [Standalone iOS Build Via EAS](mobile-builds.md#standalone-ios-build-via-eas
 
 ### Prerequisites
 
-See [Prerequisites](mobile-builds.md#prerequisites).
+See [Prerequisites](mobile-builds.md#prerequisites-1).
 
 ### Build For iOS Simulator
 
@@ -115,11 +115,11 @@ See [Install On iPhone Or iPad](mobile-builds.md#install-on-iphone-or-ipad).
 
 ### Updating The App Later
 
-See [Updating The App Later](mobile-builds.md#updating-the-app-later).
+See [Updating The App Later](mobile-builds.md#updating-the-app-later-1).
 
 ### Checking Build Status
 
-See [Checking Build Status](mobile-builds.md#checking-build-status).
+See [Checking Build Status](mobile-builds.md#checking-build-status-1).
 
 ### Known Blockers
 
