@@ -1192,6 +1192,30 @@ describe('a pulled Track change is adopted by a mounted hook (#1398)', () => {
       act(() => tree.unmount());
     });
 
+    it('a failed Track flags restore does not stop the activations restore (per-key best-effort)', async () => {
+      const { cloud, tree } = await setup(DELOAD_BEFORE);
+      await deviceBWrites(cloud, allChanged);
+      const before = await rawKeys();
+      const realSet = secureStorage.setItem.bind(secureStorage);
+      const realRemove = secureStorage.removeItem.bind(secureStorage);
+      let applying = true;
+      // The apply writes the new flags fine, then the deload write fails; during
+      // the rollback only the flags restore (back to the old string) fails.
+      jest.spyOn(secureStorage, 'setItem').mockImplementation(async (k, v) => {
+        if (k === WORKOUT_DELOAD_NOTE_KEY) { applying = false; throw new Error('disk full'); }
+        if (!applying && k === TRACKED_LIFTS_KEY) throw new Error('flags restore failed');
+        return realSet(k, v);
+      });
+      jest.spyOn(secureStorage, 'removeItem').mockImplementation(realRemove);
+      await pass();
+      expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.FAILED);
+      const after = await rawKeys();
+      expect(after[TRACKED_LIFTS_KEY]).not.toBe(before[TRACKED_LIFTS_KEY]);
+      expect(after[TRACKED_LIFT_ACTIVATIONS_KEY]).toBe(before[TRACKED_LIFT_ACTIVATIONS_KEY]);
+      expect(after[WORKOUT_DELOAD_NOTE_KEY]).toBe(before[WORKOUT_DELOAD_NOTE_KEY]);
+      act(() => tree.unmount());
+    });
+
     // Documented non-goal: when the rollback ITSELF cannot write, the partial
     // state stays. The pass still fails (never reported as success); nothing here
     // is durable across process death, and a later pass may upload the mixed

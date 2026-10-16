@@ -196,17 +196,25 @@ export function parseTrackedLiftRaw(snapshot) {
   return { flags: parse(snapshot.flags), records: records && normalizeTrackedLiftActivations(records) };
 }
 
+// Best-effort per key: a failure on the flags key must not skip the records key.
+// Every key is attempted, then the first error throws.
 export async function restoreTrackedLiftRaw(snapshot, store = AsyncStorage) {
   const entries = [[TRACKED_LIFTS_KEY, snapshot.flags], [TRACKED_LIFT_ACTIVATIONS_KEY, snapshot.records]];
+  const errors = [];
   for (const [key, want] of entries) {
-    // eslint-disable-next-line no-await-in-loop
-    if ((await store.getItem(key)) === want) continue;
-    // eslint-disable-next-line no-await-in-loop
-    if (want == null) await store.removeItem(key);
-    // eslint-disable-next-line no-await-in-loop
-    else await store.setItem(key, want);
-    noteTrackedLiftWrite();
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      if ((await store.getItem(key)) === want) continue;
+      // eslint-disable-next-line no-await-in-loop
+      if (want == null) await store.removeItem(key);
+      // eslint-disable-next-line no-await-in-loop
+      else await store.setItem(key, want);
+      noteTrackedLiftWrite();
+    } catch (err) {
+      errors.push(err);
+    }
   }
+  if (errors.length) throw errors[0];
 }
 
 // Raw snapshot of every key a pulled user_health_profile row writes (#1405):
@@ -257,7 +265,7 @@ export async function restoreHealthRowRaw(snapshot, store = AsyncStorage) {
       else await store.setItem(key, want);
     });
   }
-  if (errors.length) throw errors[0];
+  if (errors.length) throw errors.length === 1 ? errors[0] : new AggregateError(errors, 'rollback failed');
 }
 
 export async function saveTrackedLiftActivations(map, store = AsyncStorage) {
