@@ -480,6 +480,9 @@ export function LogRecoverySection({
               onCompleteWeek={handleCompleteWeek}
               onOpenAddWeek={onOpenAddWeek}
               onUndoCompleteWeek={handleUndoCompleteWeek}
+              canEndBlock
+              endDisabled={actionsLocked || stateStale}
+              onOpenEndBlockModal={onOpenEndBlockModal}
               editingTitle={editingTitle}
               onChangeEditingTitle={onChangeEditingTitle}
               editingText={editingText}

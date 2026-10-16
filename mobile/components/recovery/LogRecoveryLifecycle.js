@@ -2,9 +2,10 @@
 // the ONE maintenance surface for a block, active or completed. Every block that
 // has been focused keeps its own mounted card (hidden unless focused), so drafts,
 // in-flight writes and rejected-write errors survive collapse AND switching
-// blocks, and never leak onto another block. Rows: the optional reason, the
-// inclusion control, then (active only) Unlink current week and End recovery
-// block, then the relocated maintenance rows (LogRecoveryManageBlock).
+// blocks, and never leak onto another block. Sections (#1424): Block settings
+// (reason, inclusion), Maintenance (the relocated rows, LogRecoveryManageBlock),
+// then (active only) Week actions (Unlink current week). End recovery block is
+// not here: it is a lifecycle action in the active card (LogRecoveryWeeks).
 //
 // Opening or closing the disclosure writes nothing and the trigger is never
 // disabled, so a locked user can open it and read why each control is
@@ -40,7 +41,6 @@ export function LogRecoveryLifecycle({
   scrollRef = null,
   onRevealConsumed,
   onUnlinkWeek,
-  onOpenEndBlockModal,
   onSaveReason,
   // { busy, error, locked, onToggle } — serialized across blocks by the stack.
   inclusion,
@@ -111,6 +111,8 @@ export function LogRecoveryLifecycle({
   };
   const reasonLocked = actionsLocked || reasonBusy;
   const reasonErrorFor = () => reasonError;
+  // Unlink needs the live active target and a current, verified snapshot (#1424).
+  const unlinkDisabled = actionsLocked || stale;
   const title = block.baseline_note_title || 'Untitled Routine';
 
   return (
@@ -162,6 +164,7 @@ export function LogRecoveryLifecycle({
               fatigue record, or analytics result — only this one field —
               so it sits above the controls that do move lifecycle state.
           */}
+          <Text style={styles.manageSectionHeading} accessibilityRole="header">Block settings</Text>
           <View style={[styles.manageRow, styles.manageRowDivider]}>
             {reasonEditing ? (
               <View style={styles.reasonEditor}>
@@ -293,21 +296,24 @@ export function LogRecoveryLifecycle({
             ) : null}
           </View>
 
+          <Text style={styles.manageSectionHeading} accessibilityRole="header">Maintenance</Text>
           <LogRecoveryMaintenance
             block={block} weeks={weeks} notes={notes} unit={unit}
             locked={actionsLocked} stale={stale} writes={writes} groupEditing={groupEditing} reopen={reopen}
           />
 
           {isActive && currentWeek ? (
-            // Always names the concrete current week, open or just completed, so
-            // Unlink is never a context-free button.
+            <>
+            <Text style={styles.manageSectionHeading} accessibilityRole="header">Week actions</Text>
+            {/* Always names the concrete current week, open or just completed, so
+                Unlink is never a context-free button. */}
             <Pressable
               onPress={() => onUnlinkWeek(currentWeek)}
-              disabled={actionsLocked}
-              style={[styles.manageRow, styles.manageRowDivider, styles.manageRowMain, actionsLocked && styles.manageRowDisabled]}
+              disabled={unlinkDisabled}
+              style={[styles.manageRow, styles.manageRowDivider, styles.manageRowMain, unlinkDisabled && styles.manageRowDisabled]}
               accessibilityRole="button"
               accessibilityLabel={`Unlink Week ${currentWeek.week_number}`}
-              accessibilityState={{ disabled: actionsLocked }}
+              accessibilityState={{ disabled: unlinkDisabled }}
             >
               <View style={styles.manageRowInfo}>
                 <Text style={styles.manageRowTitle}>
@@ -319,25 +325,7 @@ export function LogRecoveryLifecycle({
               </View>
               <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
             </Pressable>
-          ) : null}
-
-          {isActive ? (
-            <Pressable
-              onPress={() => onOpenEndBlockModal?.()}
-              disabled={actionsLocked}
-              style={[styles.manageRow, styles.manageRowMain, actionsLocked && styles.manageRowDisabled]}
-              accessibilityRole="button"
-              accessibilityLabel="End recovery block"
-              accessibilityState={{ disabled: actionsLocked }}
-            >
-              <View style={styles.manageRowInfo}>
-                <Text style={styles.manageRowTitleError}>End recovery block</Text>
-                <Text style={styles.manageRowSubtitle}>
-                  Completes this block and asks how these weeks should count in analytics.
-                </Text>
-              </View>
-              <MaterialIcons name="chevron-right" size={20} color={kua ? kua.errorText : colors.error} accessible={false} />
-            </Pressable>
+            </>
           ) : null}
         </View>
       )}

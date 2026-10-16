@@ -297,6 +297,29 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
+  // `End recovery block` in the active card's action zone (#1424): terminal, so
+  // error ink, but a quiet text button beneath the week actions, not a second primary.
+  endButton: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingVertical: 6,
+  },
+  endButtonText: {
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
+    fontWeight: '700',
+    color: kua ? kua.errorText : colors.error,
+  },
+  manageSectionHeading: {
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 2,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
   manageCard: {
     padding: 0,
     overflow: 'hidden',

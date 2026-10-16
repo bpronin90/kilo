@@ -151,10 +151,11 @@ describe('completed blocks expose the maintenance controls under their gates', (
     expect(host(withActive.root, 'recovery-reopen-rb-new')).toHaveLength(0);
   });
 
-  test('the active block keeps Unlink and End', () => {
+  test('the active block shows End in its card, not inside Manage block', () => {
     const c = mount({ blocks: [block()], weeks: [] });
-    press(c.root, 'recovery-manage-trigger-rb1');
     expect(byLabel(c.root, 'End recovery block')).toBeDefined();
+    press(c.root, 'recovery-manage-trigger-rb1');
+    expect(c.root.findAll(n => n.props && n.props.accessibilityLabel === 'End recovery block' && n.props.onPress)).toHaveLength(1);
   });
 
   test.each([
