@@ -366,3 +366,16 @@ TypeScript and SQL: drift between them is silent in production — the database
 raises, the Edge Function swallows it as best-effort, and the event simply never
 arrives — so the test suite asserts the two lists are identical rather than
 trusting review to notice.
+
+## Security Event Monitor
+
+The workflow reads `kilo.security_event_monitor_snapshot(interval)` (migration
+`20260908120000_security_event_log.sql`). Its result contains windowed counts
+by event name, severity and outcome, a distinct-subject count per event, and
+retention health. It returns aggregates only: no subject digest, context or row
+identity. This accessor is the monitor role's only database grant; the direct
+`service_role` investigation path is described under [Access](#access-and-least-privilege).
+
+The schedule/window, failure exits, production secret name and setup, alert
+thresholds, and investigation steps are owned by the sections above. For the
+separate erasure queue, use [Health-Deletion Operations](health-deletion-operations.md).

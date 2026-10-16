@@ -136,20 +136,9 @@ release status and [Beta Tester Guide](tester-guide.md) for participant steps.
 
 ## Document Ownership
 
-| Topic | Authoritative document |
-|-------|------------------------|
-| Runtime boundaries and data flow | [Architecture](architecture.md) |
-| Repository layout | [Repo Structure](repo-structure.md) |
-| Tests, CI, and manual QA | [Testing and QA](testing-and-qa.md) |
-| Calculations and derived values | [Calculations Reference](calculations-reference.md) |
-| UI rules and current visual implementation | [UI Design Rules](ui-design-rules.md) and [Design System Map](design-system-map.md) |
-| Supabase schema policy | [Backend Schema](backend-schema.md) |
-| Supabase and Auth operations | [Backend Activation](backend-activation.md) |
-| Production security monitoring and audit trail | [Security Monitoring](security-monitoring.md) |
-| Health-data consent | [Health-Data Consent](health-data-consent.md) |
-| Optional product measurement | [Product Measurement](product-measurement.md) |
-| Build and device procedures | [Phone Runbook](phone-runbook.md) |
-| Release checklist | [Play Store Readiness](play-store-readiness.md) |
+Use the task-oriented [Documentation Index](README.md) to find each topic's
+authoritative guide. This snapshot owns shipped-product state and externally
+unverified release boundaries; detailed contracts belong to those linked guides.
 
 Issue-by-issue delivery history belongs in the changelog, GitHub, and
 [`docs/archive/`](archive/), not in this snapshot.

@@ -1,4 +1,10 @@
 # Kilo Visual Language & System Rules (v0.125 Refined Production Baseline)
+
+> **Retired design record.** Preserved for provenance; the authority statements,
+> approval checkboxes, "current-main" inventories and proposed cards below refer
+> to the historical Analog Iron handoff. They do not govern current implementation.
+> Use the [KUA package](../kinetic-utilitarian-athletic/README.md) and the
+> [current UI map](../../design-system-map.md).
 **Direction:** Analog Iron & Newsprint (Identity & Tactility) + Utilitarian Restraint (Human Ergonomics)
 **Product Philosophy:** Kilo looks distinctive, fast, and physical without needing to *talk* like an industrial control system. The tool-first personality lives in bold typography, sharp geometry, mechanical hairline rules, and tactile controls—not novelty copy or sci-fi jargon.
 

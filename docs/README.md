@@ -1,64 +1,62 @@
 # Documentation
 
-This directory contains Kilo's current product, engineering, privacy, operations,
-and testing documentation. Each living document owns one topic; follow its links
-instead of copying the same contract into several files.
+Choose the question you need to answer. Each linked guide owns its task; indexes
+point to focused contracts instead of repeating them. Active code, manifests,
+migrations and executable tests settle implementation facts; unresolved policy
+conflicts are called out where the affected contract lives.
 
-## Start Here
+## Understand or change the app
 
-| Document | Owns |
-|----------|------|
-| [Current State](current-state.md) | Concise shipped-product state and externally unverified release boundaries. |
-| [Architecture](architecture.md) | Runtime boundaries, data flows, persistence, sync, and analytics ownership. |
-| [Repo Structure](repo-structure.md) | Maintainable directory-level ownership map. |
-| [Testing and QA](testing-and-qa.md) | Test commands, CI gates, coverage inventory, and manual verification. |
+| Reader task | Authoritative guide |
+|---|---|
+| What has shipped, and what is externally unverified? | [Current State](current-state.md) |
+| Where does a module live? | [Repo Structure](repo-structure.md) |
+| Which runtime, storage, sync, or security contract applies? | [Architecture index](architecture.md) |
+| Which layer produces or persists an analytics field? | [Workout Analytics Ownership](workout-analytics-ownership.md) |
+| How is a displayed number calculated? | [Calculations Reference](calculations-reference.md) — cohesive formula/configuration reference |
+| What layout, copy, interaction and accessibility rules must a change follow? | [UI Design Rules](ui-design-rules.md) |
+| Where is a screen or shared visual pattern implemented? | [Design System Map](design-system-map.md) — screen and foundation index |
+| What is the approved visual language? | [KUA design package](design/kinetic-utilitarian-athletic/README.md) — foundation, tokens, components and surfaces |
+| What redesign work is planned? | [Post-Launch Redesign Roadmap](post-launch-redesign-roadmap.md) — planning, not shipped-state authority |
 
-## Product and UI Reference
+## Verify a change
 
-| Document | Owns |
-|----------|------|
-| [Post-Launch Redesign Roadmap](post-launch-redesign-roadmap.md) | Active phased plan for structural preparation and the Analog Iron redesign. |
-| [Zero-Friction and Active Context Roadmap](archive/zero-friction-roadmap.md) | Completed historical product-delivery roadmap; preserved for provenance, not current planning. |
-| [Calculations Reference](calculations-reference.md) | Workout, weight, goal, and recovery calculations in plain language. |
-| [UI Design Rules](ui-design-rules.md) | Adopted layout, component, interaction, appearance, and copy rules. |
-| [Design System Map](design-system-map.md) | Current visual tokens, shared components, and screen-level implementation map. |
+| Reader task | Authoritative guide |
+|---|---|
+| Which verification guide do I need? | [Testing and QA index](testing-and-qa.md) |
+| Run targeted tests or avoid Jest isolation leaks | [Automated Tests](automated-tests.md) |
+| Assess coverage, gaps and measured performance evidence | [Test Coverage](test-coverage.md) |
+| Diagnose a required merge check | [CI Gates](ci-gates.md) |
+| Check installed native behavior or exported browser boot | [Manual QA](manual-qa.md) |
+| Measure the work needed to log a workout | [Logging-Speed Benchmark](logging-speed-benchmark.md) |
+| Determine whether a change needs security sign-off | [Security-critical Review](security-review.md) |
 
-## Backend, Privacy, and Data
+## Operate builds and services
 
-| Document | Owns |
-|----------|------|
-| [Backend Schema](backend-schema.md) | Supabase `kilo` schema ownership, source-of-truth, naming, RLS, and consent boundaries. |
-| [Backend Activation](backend-activation.md) | Migration deployment, API exposure, Auth-provider configuration, and operational verification. |
-| [Health-Data Consent](health-data-consent.md) | Current consent wording, health-data boundary, enforcement, withdrawal, evidence, and re-consent contract. |
-| [Product Measurement](product-measurement.md) | Privacy and deletion constraints for optional product-measurement events. |
+| Reader task | Authoritative guide |
+|---|---|
+| Choose device iteration or native distribution | [Phone Runbook index](phone-runbook.md) |
+| Connect Kilo Dev to Metro, including WSL troubleshooting | [Expo Development](expo-development.md) |
+| Build Android/iOS artifacts or choose update/runtime compatibility | [Mobile Builds](mobile-builds.md) |
+| Complete Play Console, listing, closed-testing and release checks | [Play Store Readiness](play-store-readiness.md) |
+| Join the beta and send feedback (participants) | [Beta Tester Guide](tester-guide.md) |
+| Deploy migrations/functions and expose the owned schema | [Backend Activation](backend-activation.md) — includes the unresolved production deployment instruction |
+| Configure public signup, CAPTCHA, SMTP and OAuth | [Auth Activation](auth-activation.md) |
+| Respond to a stuck consent-erasure job | [Health-Deletion Operations](health-deletion-operations.md) |
+| Configure security-event monitoring or investigate an alert | [Security Monitoring](security-monitoring.md) |
+| Triage a vulnerability or manage an incident | [Security Incident Response](security-incident-response.md) |
 
-## Builds, Testing, and Release Readiness
+## Protect data and preserve provenance
 
-| Document | Owns |
-|----------|------|
-| [Security Monitoring](security-monitoring.md) | Production security-event logging, redaction, retention, access, alerting, and the investigation runbook. |
-| [Security Incident Response](security-incident-response.md) | Vulnerability intake, triage, containment, recovery, security-fix release, and post-incident review. |
-| [Logging-Speed Benchmark](logging-speed-benchmark.md) | Living, repeatable benchmark for the work required to log representative gym sessions. |
-| [Phone Runbook](phone-runbook.md) | WSL/Expo development, EAS builds, device installation, and runtime policy. |
-| [Play Store Readiness](play-store-readiness.md) | Operator-owned Play Console, closed-testing, listing, and Android release status. |
-| [Beta Tester Guide](tester-guide.md) | Non-technical installation, test, and feedback instructions. |
+| Reader task | Authoritative guide |
+|---|---|
+| Design owned tables, naming and isolation | [Backend Schema](backend-schema.md) — includes the unresolved authored/derived-field wording |
+| Understand cloud health consent, exact wording, evidence and withdrawal | [Health-Data Consent](health-data-consent.md) |
+| Understand optional measurement, allowed payloads and opt-out deletion | [Product Measurement](product-measurement.md) |
+| Find completed roadmaps or retired source/specifications | [Archive Index](archive/README.md) |
+| Interpret the retired Analog Iron handoff | [Historical design package](design/analog-iron-v0.125/README.md) — retained URLs and provenance only |
 
-Contributor workflow lives in the root [Contributing guide](../CONTRIBUTING.md).
-
-## Historical Material
-
-[Archive Index](archive/README.md) groups completed roadmaps, superseded
-specifications, delivery and implementation evidence, and the retired browser
-prototype. Archived files preserve provenance but do not define current product
-behavior.
-
-## Maintenance Rules
-
-- Put current behavior in the one living document that owns the topic.
-- Put delivery chronology in the changelog, GitHub issue, or archive—not in
-  `current-state.md`.
-- Prefer stable directories, modules, and commands over exhaustive file lists or
-  line numbers.
-- Link to another document's contract rather than restating it.
-- Treat package manifests, migrations, tests, and active code as the final check
-  when prose and implementation disagree.
+Contributor setup and process live in [CONTRIBUTING.md](../CONTRIBUTING.md).
+Delivery chronology belongs in GitHub, the changelog and archives. Update the one
+living owner when its truth changes, then repair affected navigation. Keep
+compatibility entry URLs when immutable historical material still refers to them.

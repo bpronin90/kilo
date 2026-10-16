@@ -40,6 +40,13 @@ Do not introduce a `raw/canonical/serving/ops` layer model into Kilo.
 
 ## Source-Of-Truth Rule
 
+> **Unresolved contract wording:** the retained rule below calls `session_checkins`
+> regenerated parser output, whereas [Workout Analytics Ownership](workout-analytics-ownership.md#session-check-in-fatigue-flow)
+> records authored responses, reasons and `responded_at` written by the modal.
+> `one_k_exercises` and tracked selections are also user-set in that ownership
+> matrix. Do not use the blanket cache/recompute wording to discard these values.
+> A scoped owner decision must reconcile this conflict before changing merge policy.
+
 `workout_notes.raw_text` is **canonical**. Everything else derived from a note is a **projection** of that canonical text and can be regenerated from it.
 
 - The derived `jsonb` snapshot columns on `workout_notes` (`tracked_exercises`, `one_k_exercises`, `skip_markers`, `attendance_flags`, `exercise_classifications`, `session_checkins`) are parser output cached for rendering, sync, and export. They are not an independent source of truth; on conflict, recompute from `raw_text` rather than treating derived drift as a user edit.

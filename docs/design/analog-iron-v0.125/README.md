@@ -1,5 +1,11 @@
 # Analog Iron & Newsprint v0.125
 
+> **Retired design record.** Preserved for provenance; the authority statements,
+> approval checkboxes, "current-main" inventories and proposed cards below refer
+> to the historical Analog Iron handoff. They do not govern current implementation.
+> Use the [KUA package](../kinetic-utilitarian-athletic/README.md) and the
+> [current UI map](../../design-system-map.md).
+
 This directory is the authoritative visual handoff for the Analog Iron &
 Newsprint migration. The existing Kilo application remains authoritative for
 functionality, behavior, state, navigation, data, and workflows.

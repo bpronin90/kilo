@@ -1,5 +1,11 @@
 # Analog Iron migration audit and child issue drafts
 
+> **Retired design record.** Preserved for provenance; the authority statements,
+> approval checkboxes, "current-main" inventories and proposed cards below refer
+> to the historical Analog Iron handoff. They do not govern current implementation.
+> Use the [KUA package](../kinetic-utilitarian-athletic/README.md) and the
+> [current UI map](../../design-system-map.md).
+
 Planning contract: [#978](https://github.com/bpronin90/kilo/issues/978).
 Audited main: `44ab230ae3c6b8fb2e391f54b77e1a5bc8b0d8d3` (2026-09-15).
 This document reports the shipped application after Phase 1 and proposes future

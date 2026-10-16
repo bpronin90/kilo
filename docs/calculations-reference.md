@@ -586,7 +586,7 @@ Maps each of the three 1k slots (bench, squat, deadlift) to a specific exercise 
 | I re-tracked an exercise and my trend disappeared. Did I lose my history? | No. Nothing is deleted. Only the trend comparison restarts; it comes back as soon as you log a second session in the new span. |
 | Why did my trend reset after I renamed an exercise? | A rename ends the tracked span, because Kilo cannot tell a renamed exercise from a different one you swapped in. Turn Track on for the new name to start a fresh span. Your logged history stays where it is. |
 | Why does my classification say Steady when I feel like I'm progressing? | Classifications compare total reps at your top weight between your two most recent logged sessions. If you increased reps on some sets but decreased on others such that the total stayed the same, it reads as Steady. |
-| What triggers a session check-in? | Saving a session where tracked exercises show a rough pattern: unusually many skips, a whole skipped day, sets losing 3+ reps vs your last session at the same weight, or an intra-session rep collapse at your heaviest weight. The app highlights the affected exercises and asks how the session went. |
+| What triggers a session check-in? | See [Session Check-In](#session-check-in) for the prompting detectors, evidence-only detectors, and conditions that withhold a prompt. |
 | How is my 1k total calculated? | It sums the estimated 1-rep max (Epley formula) of your three selected compound lifts. If any of the three has no logged data, the total shows as "—". |
 | How is estimated 1RM derived? | Using the Epley formula: weight × (1 + reps / 30). It estimates the maximum weight you could lift for a single rep based on a multi-rep set. |
 | What does Kilo Max measure? | It averages all your working-set Epley 1RM estimates for an exercise, then multiplies by a fatigue multiplier (default 1.07). It's a fatigue-adjusted strength estimate, not a true max. |
@@ -613,6 +613,9 @@ Maps each of the three 1k slots (bench, squat, deadlift) to a specific exercise 
 
 ## Maintenance Notes
 
-- Each section should be updated at closeout time when its calculation is stabilized.
+- Update the affected section in the implementation PR when its calculation changes.
+- Keep this cohesive reference together: the reader task is understanding displayed
+  numbers, including the configuration and lifecycle that explain them. Field
+  producer/persistence ownership belongs to [Workout Analytics Ownership](workout-analytics-ownership.md).
 - Keep language non-technical; link to source files only in developer docs.
 - Structure is designed to map onto future in-app help or tooltip surfaces.
