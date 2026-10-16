@@ -355,7 +355,7 @@ export function inspectUnfinishedRename() {
 // revalidated against `expectedRaw` so a stale confirmation discards nothing.
 // Note text and both Track maps are never written. A failure keeps the active
 // intent for retry/restart. Outcome: 'discarded' | 'gone' | 'stale' |
-// 'not-blocked' | 'key-unavailable' | 'failed' (+ `quarantined`).
+// 'not-blocked' | 'key-unavailable' | 'failed' (+ `quarantined` / `unverified`).
 export function discardUnfinishedRename(expectedRaw) {
   if (AsyncStorage.isKeyUnavailable?.()) return Promise.resolve({ outcome: 'key-unavailable' });
   return recoveryLocks(async () => {
@@ -373,7 +373,7 @@ export function discardUnfinishedRename(expectedRaw) {
       quarantined = true;
       await AsyncStorage.removeItem(NORMALIZATION_APPLY_INTENT_KEY);
     } catch (error) {
-      return { outcome: 'failed', quarantined, message: error?.message };
+      return { outcome: 'failed', quarantined, ...(error?.unverified ? { unverified: true } : {}), message: error?.message };
     }
     applyIntentMaybePending = false;
     setUnfinishedRenameBlock(null);

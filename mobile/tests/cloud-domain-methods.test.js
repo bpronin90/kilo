@@ -820,6 +820,24 @@ describe('discard guardrails (#1402)', () => {
     expect(await tuple()).toEqual({ ...before, intent: null });
   });
 
+  test('a quarantine copy written but not verifiable is reported as uncertain, keeps the intent, and a retry reuses the slot', async () => {
+    const { raw, m } = await planted();
+    const realGet = AsyncStorage.getItem.getMockImplementation();
+    let armed = false;
+    const realSet = AsyncStorage.setItem.getMockImplementation();
+    AsyncStorage.setItem.mockImplementation((key, value) => { if (key.startsWith(QUARANTINE_PREFIX)) armed = true; return realSet(key, value); });
+    AsyncStorage.getItem.mockImplementation(key => (armed && key.startsWith(QUARANTINE_PREFIX) ? Promise.reject(new Error('io')) : realGet(key)));
+    const failed = await m.notes.discardUnfinishedRename(raw);
+    armed = false;
+    AsyncStorage.setItem.mockImplementation(realSet);
+    AsyncStorage.getItem.mockImplementation(realGet);
+    expect(failed).toEqual(expect.objectContaining({ outcome: 'failed', quarantined: false, unverified: true }));
+    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).toBe(raw);
+    expect(await quarantineKeys()).toHaveLength(1);
+    expect(await m.notes.discardUnfinishedRename(raw)).toEqual({ outcome: 'discarded' });
+    expect(await quarantineKeys()).toHaveLength(1);
+  });
+
   test('interrupted between quarantine write and removal: retry and restart reuse the one copy', async () => {
     const { raw, m } = await planted();
     const restore = failStore((kind, key) => kind === 'remove' && key === NORMALIZATION_APPLY_INTENT_KEY);

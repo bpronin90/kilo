@@ -1206,6 +1206,25 @@ describe('CloudSyncRecovery: unfinished rename recovery (#1402)', () => {
     expect(await quarantined()).toHaveLength(1);
   });
 
+  test('an unverifiable quarantine copy is reported as uncertain, not as unchanged or saved', async () => {
+    await AsyncStorage.setItem(INTENT_KEY, CORRUPT);
+    const tree = renderPanel();
+    await flush();
+    await flush();
+    await press(tree, DISCARD);
+    const realGet = AsyncStorage.getItem.getMockImplementation();
+    const realSet = AsyncStorage.setItem.getMockImplementation();
+    let armed = false;
+    AsyncStorage.setItem.mockImplementation((key, value) => { if (key.startsWith(QUARANTINE)) armed = true; return realSet(key, value); });
+    AsyncStorage.getItem.mockImplementation(key => (armed && key.startsWith(QUARANTINE) ? Promise.reject(new Error('io')) : realGet(key)));
+    await press(tree, 'Discard');
+    AsyncStorage.setItem.mockImplementation(realSet);
+    AsyncStorage.getItem.mockImplementation(realGet);
+    expect(status(tree)).toMatch(/private copy may have been saved/);
+    expect(status(tree)).not.toMatch(/Nothing was changed/);
+    expect(await AsyncStorage.getItem(INTENT_KEY)).toBe(CORRUPT);
+  });
+
   test('stays reachable while a cloud deletion is pending', async () => {
     fetchConsentStatus.mockResolvedValue({ allowed: false, code: DENIAL_CODES.HEALTH_DATA_DELETION_PENDING });
     await AsyncStorage.setItem(INTENT_KEY, CORRUPT);

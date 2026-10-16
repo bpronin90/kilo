@@ -295,7 +295,7 @@ const quarantinedRaw = (held) => {
 // Preserve the exact raw intent under the first free `<prefix><n>`; an existing
 // slot is never overwritten. A slot already holding this exact raw (an earlier
 // attempt interrupted before the active key was removed) is reused, so a retry
-// leaves one copy. Verified by read-back: a write that cannot be read is a failure.
+// leaves one copy. Verified by read-back; an unconfirmed write throws `unverified`.
 export async function quarantineApplyIntent(raw, reason) {
   for (let n = 1; n < 1000; n += 1) {
     const key = `${NORMALIZATION_APPLY_QUARANTINE_PREFIX}${n}`;
@@ -305,7 +305,11 @@ export async function quarantineApplyIntent(raw, reason) {
       continue;
     }
     await AsyncStorage.setItem(key, JSON.stringify({ version: 1, quarantined_at: new Date().toISOString(), reason, raw }));
-    if (quarantinedRaw(await AsyncStorage.getItem(key)) !== raw) throw new Error('The unfinished rename could not be preserved.');
+    // Written but not confirmed (the read failed or came back different): the copy
+    // may exist, so this is neither "nothing written" nor "saved".
+    let confirmed = false;
+    try { confirmed = quarantinedRaw(await AsyncStorage.getItem(key)) === raw; } catch { /* unverified */ }
+    if (!confirmed) throw Object.assign(new Error('The unfinished rename copy could not be verified.'), { unverified: true });
     return key;
   }
   throw new Error('Too many preserved unfinished renames.');

@@ -219,6 +219,7 @@ const RENAME_DISCARD_STATUS = {
   'not-blocked': 'The unfinished rename changed, so nothing was discarded.',
   'key-unavailable': 'This device\u2019s data key is unavailable, so nothing was discarded.',
   partial: 'A private copy was saved, but the unfinished rename could not be cleared. Nothing else changed. Try again.',
+  uncertain: 'A private copy may have been saved, but the unfinished rename was not cleared; nothing else was changed. Try again.',
   failed: 'Could not discard the unfinished rename. Nothing was changed. Try again.',
 };
 
@@ -257,8 +258,8 @@ export function useUnfinishedRename() {
       result = { outcome: 'failed', quarantined: false, message: e?.message };
     }
     await refresh();
-    const { outcome, quarantined } = result;
-    const key = outcome === 'failed' && quarantined ? 'partial' : outcome;
+    const { outcome, quarantined, unverified } = result;
+    const key = outcome !== 'failed' ? outcome : quarantined ? 'partial' : unverified ? 'uncertain' : 'failed';
     return { ...result, message: RENAME_DISCARD_STATUS[key] || RENAME_DISCARD_STATUS.failed };
   }, [refresh]);
 
