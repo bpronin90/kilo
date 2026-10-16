@@ -396,46 +396,68 @@ describe('an interrupted commit is finished on restart (#1395)', () => {
   });
 });
 
-// The user edits a target note after the crash and before the replay: the
-// recorded Track maps describe a rename that can no longer complete, so the
-// replay must not write them (no mixed note/flag/activation tuple) and must
-// retire the record so sync is not blocked forever.
-test('replay with a changed target note retires the intent and leaves Track untouched (#1395)', async () => {
-  await seedRename(LocalNotes);
-  const realSet = AsyncStorage.setItem.getMockImplementation();
-  let reached;
-  const hit = new Promise((r) => { reached = r; });
-  let die;
-  AsyncStorage.setItem.mockImplementation((key, value) => {
-    if (key !== WORKOUT_NOTES_KEY) return realSet(key, value);
-    reached();
-    return new Promise((_, reject) => { die = reject; });
+// The user edits a target note after the crash and before the replay. Durable
+// write order is notebook -> flags -> activations, so the crash boundary decides
+// what already landed: replay must classify the real Track state, never assume
+// it is all old, and never leave or push a mixed note/flag/activation tuple.
+describe('replay with a changed target note (#1395)', () => {
+  async function crashAt(hangAt) {
+    await seedRename(LocalNotes);
+    const realSet = AsyncStorage.setItem.getMockImplementation();
+    let reached;
+    const hit = new Promise((r) => { reached = r; });
+    let die;
+    AsyncStorage.setItem.mockImplementation((key, value) => {
+      if (key !== hangAt) return realSet(key, value);
+      reached();
+      return new Promise((_, reject) => { die = reject; });
+    });
+    const crashed = LocalNotes.applyWorkoutNoteTextBatchIfUnchanged(renameRequest());
+    await hit;
+    AsyncStorage.setItem.mockImplementation(realSet);
+    let fresh;
+    let finish;
+    jest.isolateModules(() => {
+      jest.doMock('@react-native-async-storage/async-storage', () => AsyncStorage);
+      // eslint-disable-next-line global-require
+      fresh = require('../storage/entries');
+      // eslint-disable-next-line global-require
+      ({ finishNormalizationApplyIntent: finish } = require('../storage/entries/workoutNotes'));
+    });
+    return { fresh, finish, end: async () => { die(new Error('process gone')); await crashed.catch(() => {}); } };
+  }
+
+  test.each([
+    ['intent written, notebook not', WORKOUT_NOTES_KEY, RT.raw_text, false],
+    // Indistinguishable from the first row once every target note is edited (no
+    // Track key has moved), so it is retired untouched: the old, consistent Track state.
+    ['notebook written, flags not', TRACKED_LIFTS_KEY, RT_NEXT, false],
+    ['notebook and flags written, activations not', TRACKED_LIFT_ACTIVATIONS_KEY, RT_NEXT, true],
+  ])('%s', async (_name, hangAt, base, applied) => {
+    const { fresh, finish, end } = await crashAt(hangAt);
+    const EDITED = `${base}\n60 9`;
+    await fresh.saveWorkoutNoteItem({ ...RT, raw_text: EDITED });
+    await finish();
+    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).toBeNull();
+    expect((await fresh.loadWorkoutNotesRaw()).find(n => n.id === 'rt').raw_text).toBe(EDITED);
+    if (applied) {
+      expect(await fresh.loadTrackedLifts()).toEqual(AFTER().lifts);
+      expect(await fresh.loadTrackedLiftActivations()).toEqual(AFTER().activations);
+    } else {
+      expect(await fresh.loadTrackedLifts()).toEqual({ [SRC]: true, row: true });
+      expect(await fresh.loadTrackedLiftActivations()).toEqual({ [SRC]: sourceRecord(), row: ROW_RECORD });
+    }
+    await end();
   });
-  const crashed = LocalNotes.applyWorkoutNoteTextBatchIfUnchanged(renameRequest());
-  await hit;
-  AsyncStorage.setItem.mockImplementation(realSet);
-  expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).not.toBeNull();
 
-  const EDITED = `${RT.raw_text}\n60 9`;
-  let fresh;
-  let finish;
-  jest.isolateModules(() => {
-    jest.doMock('@react-native-async-storage/async-storage', () => AsyncStorage);
-    // eslint-disable-next-line global-require
-    fresh = require('../storage/entries');
-    // eslint-disable-next-line global-require
-    ({ finishNormalizationApplyIntent: finish } = require('../storage/entries/workoutNotes'));
+  test('a Track key that matches neither the recorded before nor after keeps the intent', async () => {
+    const { fresh, finish, end } = await crashAt(TRACKED_LIFT_ACTIVATIONS_KEY);
+    await fresh.saveWorkoutNoteItem({ ...RT, raw_text: `${RT_NEXT}\n60 9` });
+    await fresh.saveTrackedLiftActivations({ ...AFTER().activations, [SRC]: { ...sourceRecord(), at: '2026-09-02T00:00:00.000Z' } });
+    await expect(finish()).rejects.toThrow();
+    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).not.toBeNull();
+    await end();
   });
-  await fresh.saveWorkoutNoteItem({ ...RT, raw_text: EDITED });
-  await finish();
-
-  expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).toBeNull();
-  expect((await fresh.loadWorkoutNotesRaw()).find(n => n.id === 'rt').raw_text).toBe(EDITED);
-  expect(await fresh.loadTrackedLifts()).toEqual({ [SRC]: true, row: true });
-  expect(await fresh.loadTrackedLiftActivations()).toEqual({ [SRC]: sourceRecord(), row: ROW_RECORD });
-
-  die(new Error('process gone'));
-  await crashed.catch(() => {});
 });
 
 test('both adapters expose the batch and CAS', () => {
