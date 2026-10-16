@@ -65,7 +65,7 @@ jest.mock('../storage/cloud/consent', () => {
 
 jest.mock('../hooks/useEntries', () => ({
   useSyncRecovery: () => mockSyncRecovery,
-  useCloudExport: () => ({ exportCloud: jest.fn() }),
+  useCloudExport: () => ({ exportCloud: (...args) => mockExportCloud(...args) }),
 }));
 
 jest.mock('../storage/cloud/syncAdapter', () => ({
@@ -99,6 +99,7 @@ import { CloudSyncRecovery } from '../screens/more/CloudSyncRecovery';
 import { MoreScreen } from '../screens/MoreScreen';
 
 let mockSyncRecovery;
+let mockExportCloud = jest.fn();
 let mockPendingSyncIntent;
 
 function makeSyncRecovery({ bootstrapStatus = 'idle', syncStatus = 'idle' } = {}) {
@@ -127,6 +128,7 @@ beforeEach(() => {
     lastAlert = { title, message, buttons };
   });
   mockSyncRecovery = makeSyncRecovery();
+  mockExportCloud = jest.fn();
   mockPendingSyncIntent = jest.fn().mockResolvedValue({ hasPending: false });
   mockScreenScrollTo.mockClear();
   mockLoadWorkoutNotes.mockReset().mockResolvedValue([]);
@@ -972,5 +974,40 @@ describe('BackupScreen unfinished rename recovery when signed out (#1417)', () =
     await settle();
     expect(tree.root.findAllByProps({ title: DISCARD })).toHaveLength(1);
     expect(tree.root.findAllByType(CloudSyncRecovery).length).toBe(1);
+  });
+
+  // The block shares the cloud panel's busy interlock when hosted there (#1402).
+  test('signed in: Discard is disabled while a cloud action is in flight', async () => {
+    await AsyncStorage.setItem(INTENT_KEY, CORRUPT);
+    let release;
+    mockExportCloud = jest.fn(() => new Promise((resolve) => { release = resolve; }));
+    const tree = renderScreen({ auth: SIGNED_IN });
+    await settle();
+    expect(tree.root.findByProps({ title: DISCARD }).props.disabled).toBe(false);
+    act(() => { tree.root.findByProps({ title: 'Export Cloud Copy' }).props.onPress(); });
+    expect(tree.root.findByProps({ title: DISCARD }).props.disabled).toBe(true);
+    await act(async () => { release({ ok: false, error: 'x' }); });
+    await settle();
+    expect(tree.root.findByProps({ title: DISCARD }).props.disabled).toBe(false);
+  });
+
+  test('signed in: cloud controls are disabled while a discard is in flight', async () => {
+    await AsyncStorage.setItem(INTENT_KEY, CORRUPT);
+    const tree = renderScreen({ auth: SIGNED_IN });
+    await settle();
+    await press(tree, DISCARD);
+    const realSet = AsyncStorage.setItem.getMockImplementation();
+    let release;
+    AsyncStorage.setItem.mockImplementation((key, value) => (key.startsWith(QUARANTINE)
+      ? new Promise((resolve) => { release = () => resolve(realSet(key, value)); })
+      : realSet(key, value)));
+    act(() => { tree.root.findByProps({ title: 'Discard' }).props.onPress(); });
+    await flush();
+    expect(tree.root.findByProps({ title: 'Export Cloud Copy' }).props.disabled).toBe(true);
+    expect(tree.root.findByProps({ title: 'Turn Off Cloud Sync' }).props.disabled).toBe(true);
+    await act(async () => { release(); });
+    AsyncStorage.setItem.mockImplementation(realSet);
+    await settle();
+    expect(tree.root.findByProps({ title: 'Export Cloud Copy' }).props.disabled).toBe(false);
   });
 });

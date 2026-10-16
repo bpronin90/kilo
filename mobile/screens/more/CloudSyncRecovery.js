@@ -20,15 +20,18 @@ import {
 import appConfig from '../../app.json';
 import { TYPOGRAPHY, useKuaTypography } from '../../theme/typography';
 
-// Local unfinished-rename recovery (#1402, #1417): needs no account or consent,
-// so CloudSyncRecovery (outside its gate) and signed-out BackupScreen share it.
-export function UnfinishedRenameRecovery() {
+// Local unfinished-rename recovery (#1402, #1417): no account or consent needed.
+// Hosted in the cloud panel it shares that panel's busy interlock; standalone
+// (signed-out BackupScreen) it keeps its own.
+export function UnfinishedRenameRecovery({ busy: sharedBusy, setBusy: setSharedBusy }) {
   const styles = useThemedStyles(createStyles);
   const { found: renameFound, discard: discardRename } = useUnfinishedRename();
   // The record shown when the confirmation opened; discard revalidates it.
   const [renameConfirmRaw, setRenameConfirmRaw] = useState(null);
   const [renameStatus, setRenameStatus] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [localBusy, setLocalBusy] = useState(false);
+  const busy = sharedBusy ?? localBusy;
+  const setBusy = setSharedBusy ?? setLocalBusy;
 
   const handleDiscardRename = async () => {
     setBusy(true);
@@ -215,11 +218,10 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
     }
   };
 
-  // Withdrawal. The server blocks access and queues the purge atomically, then the
-  // worker is kicked so the delete happens now rather than at the next cron tick.
-  // A failed kick is not a failed withdrawal: the durable job is already queued and
-  // cron retries it, so the user is told deletion is in progress, never that it
-  // failed and never that it finished when it has not.
+  // Withdrawal: the server blocks access and queues the purge atomically, then
+  // the worker is kicked. A failed kick is not a failed withdrawal (cron retries
+  // the durable job), so the user is told deletion is in progress, never failed
+  // and never finished early.
   const handleWithdraw = async () => {
     setBusy(true);
     setStatus('');
@@ -242,15 +244,11 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
     }
   };
 
-  // The server grant is already durable when this callback begins. Only then
-  // select the operation that safely activates this device:
-  //
+  // The server grant is already durable here. Select the safe activation:
   //   own history                -> ordinary sync (or #538's signalled rebuild)
   //   unclaimed / foreign history -> keep local mode for the ownership choice
-  //
-  // A failed phase remains retryable in the shared recovery state and never
-  // clears local data. The success copy is deliberately withheld until every
-  // required phase for this device has completed.
+  // A failed phase stays retryable and never clears local data; success copy is
+  // withheld until every required phase has completed.
   const handleConsentGranted = async () => {
     setShowingConsent(false);
     setBusy(true);
@@ -309,7 +307,7 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
           a few minutes. Your data on this device and your Kilo account are unaffected.
           You can turn Cloud Sync back on once the deletion finishes.
         </Text>
-        <UnfinishedRenameRecovery />
+        <UnfinishedRenameRecovery busy={busy} setBusy={setBusy} />
       </View>
     );
   }
@@ -322,7 +320,7 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
           This version of Kilo can no longer sync health data. Update Kilo to continue
           syncing. Your data on this device is safe and every local feature still works.
         </Text>
-        <UnfinishedRenameRecovery />
+        <UnfinishedRenameRecovery busy={busy} setBusy={setBusy} />
       </View>
     );
   }
@@ -364,7 +362,7 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
         two — for any item changed in both places, the most recent change wins.
       </Text>
 
-      <UnfinishedRenameRecovery />
+      <UnfinishedRenameRecovery busy={busy} setBusy={setBusy} />
 
       {needsConsent ? (
         <View style={styles.summaryBlock}>
