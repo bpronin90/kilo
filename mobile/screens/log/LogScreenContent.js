@@ -35,8 +35,10 @@ export function LogScreenContent(props) {
   } = props;
   const { colors, kuaPalette: kua } = useTheme();
   const styles = React.useMemo(() => createStyles(colors, kua), [colors, kua]);
-  // Once the management screen has opened, its section stays mounted (hidden)
-  // off-screen so Back never discards a block's reason draft or write error.
+  // Once the inactive management screen has opened, its section stays mounted
+  // (hidden) off-screen so Back never discards a block's reason draft or write
+  // error. The ACTIVE Recovery tab is deliberately unchanged (#1423): it has always
+  // remounted on a tab switch, and retaining it would be a separate behavior change.
   const [recoveryMounted, setRecoveryMounted] = React.useState(false);
   React.useEffect(() => { if (effectiveTabView === 'manage') setRecoveryMounted(true); }, [effectiveTabView]);
   const headerRight = !otherEditor.editingNoteId && hasContent && currentEditor.mode === 'edit' && (
