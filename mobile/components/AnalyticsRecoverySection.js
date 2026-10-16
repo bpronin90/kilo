@@ -4,8 +4,9 @@
 // recomputes, gates, or claims medical recovery. The hero is the average % of
 // baseline strength (#1305), never a completion gate. Every maintenance control
 // (reason, inclusion, reopen, baseline rebuild/name matching/tidy, movement-group
-// overrides) lives in Log's Manage block; this section offers at most one quiet
-// `Manage in Log` link for the focused block. The strength week rows are the sole
+// overrides) lives in Log's Manage block; this section offers no edit or Manage
+// navigation (#1425). A completed block starts collapsed behind a header carrying
+// the canonical compact summary (#1378). The strength week rows are the sole
 // week selector, and the numbers come from the single Recovery snapshot.
 
 import React, { useMemo, useRef, useState } from 'react';
@@ -15,7 +16,8 @@ import { SectionTitle } from './UI';
 import { useTheme } from '../theme/ThemeContext';
 import { useWeightUnit } from '../lib/unitPreference';
 import { formatDate } from '../lib/format';
-import { findActiveBlock, isLiveRecord } from '../lib/data/recoveryBlocks';
+import { findActiveBlock, isLiveRecord, orderedLiveWeeks } from '../lib/data/recoveryBlocks';
+import { getRecoverySnapshot, compactRecoverySummary } from '../lib/data/recoverySnapshot';
 import { compareRecoveryBlocksNewestCompletedFirst } from '../storage/entries/recoveryStorage';
 import {
   RECOVERY_LOADING_MESSAGE,
@@ -26,9 +28,31 @@ import { BlockEvidence } from './recovery/RecoveryEvidence';
 import { WeekIndexRow } from './recovery/RecoveryWeekIndex';
 import { createStyles } from './recovery/analyticsRecoveryStyles';
 
-function _noteTitle(notesById, noteId) {
-  const note = notesById.get(noteId);
-  return note?.title || 'Untitled Routine';
+const NOTES_UNREAD = 'Workout notes couldn’t be loaded, so there is no total to show.';
+
+// Picking a block or week from the history list is an explicit request for its
+// evidence (the row says so), so it opens that block.
+// Disclosure identity (#1425): the block id AND its completion stamp, so a block
+// that is reopened and completed again starts collapsed rather than inheriting
+// the earlier open state, and one block's open state never reaches another.
+const _blockKey = (b) => `${b.id}:${b.completed_at || 'active'}`;
+
+// The collapsed header's canonical summary for a completed block: the shared
+// compact summary (never a second percentage), a missing/failed notes read is
+// "no total" rather than a zero, and a stale read stays qualified.
+function _endedSummary(block, weeks, notes, stale, notesError) {
+  const live = orderedLiveWeeks(weeks, block.id);
+  const weekLabel = live.length ? `Week ${live[live.length - 1].week_number}` : null;
+  let summary;
+  if (notesError && notes.length === 0) {
+    summary = { text: NOTES_UNREAD, weekLabel: null, qualifiers: [], a11y: NOTES_UNREAD };
+  } else {
+    summary = compactRecoverySummary(
+      getRecoverySnapshot({ block, weeks, notes, stale: stale || !!notesError })
+    );
+  }
+  const text = !summary.weekLabel && weekLabel ? `${weekLabel}: ${summary.text}` : summary.text;
+  return { ...summary, text, weeks: live.length };
 }
 
 export function AnalyticsRecoverySection({
@@ -59,6 +83,8 @@ export function AnalyticsRecoverySection({
   // names the latest, which is the whole answer for most visits.
   const [historyCollapsed, setHistoryCollapsed] = useState(true);
   const [focusedBlockId, setFocusedBlockId] = useState(null);
+  // Which completed block's evidence is open (#1425): local view state only.
+  const [openKey, setOpenKey] = useState(null);
   // Selected week, scoped to ONE block (#1307): a selection made on another block
   // is ignored, so switching blocks always starts at the latest week.
   const [weekSelection, setWeekSelection] = useState({ blockId: null, weekId: null });
@@ -87,6 +113,13 @@ export function AnalyticsRecoverySection({
     activeBlock ||
     completedBlocks[0] || null;
 
+  const endedSummary = useMemo(
+    () => (stateReady && focusedBlock && focusedBlock.completed_at
+      ? _endedSummary(focusedBlock, weeks, notes, stateStale, notesError)
+      : null),
+    [stateReady, focusedBlock, weeks, notes, stateStale, notesError]
+  );
+
   // The EFFECTIVE focused block id (null when nothing is shown: unverified state
   // or no blocks). It can change through data, not only taps, and it is resolved
   // before every early return so a transition to or from "nothing shown" also
@@ -97,6 +130,11 @@ export function AnalyticsRecoverySection({
     lastFocusedRef.current = effectiveFocusId;
     if (weekSelection.blockId && weekSelection.blockId !== effectiveFocusId) {
       setWeekSelection({ blockId: null, weekId: null });
+    }
+    // The same boundary drops an open ended disclosure that does not belong to the
+    // block now shown (store replacement, unverified read, removed block).
+    if (openKey && (effectiveFocusId === null || !openKey.startsWith(`${effectiveFocusId}:`))) {
+      setOpenKey(null);
     }
   }
 
@@ -169,6 +207,8 @@ export function AnalyticsRecoverySection({
 
 
   const notesById = new Map(notes.map(n => [n.id, n]));
+  const ended = !!focusedBlock.completed_at;
+  const expanded = !ended || openKey === _blockKey(focusedBlock);
 
   return (
     <View style={styles.container}>
@@ -189,19 +229,47 @@ export function AnalyticsRecoverySection({
         </Pressable>
       )}
 
-      <BlockEvidence
-        key={focusedBlock.id}
-        block={focusedBlock}
-        weeks={weeks}
-        notes={notes}
-        unit={unit}
-        stateStale={stateStale}
-        selectedWeekId={weekSelection.blockId === focusedBlock.id ? weekSelection.weekId : null}
-        onSelectWeek={(weekId) => setWeekSelection({ blockId: focusedBlock.id, weekId })}
-        notesError={notesError}
-        oneKSelections={oneKSelections}
-        onManageInLog={onNavigate ? () => onNavigate('Log', { kind: 'recovery-manage', blockId: focusedBlock.id }) : null}
-      />
+      {ended && (
+        <View testID="recovery-ended-panel" style={styles.endedPanel}>
+          <Pressable
+            testID="recovery-ended-header"
+            onPress={() => setOpenKey(expanded ? null : _blockKey(focusedBlock))}
+            style={[styles.historyHeader, expanded && styles.historyHeaderBordered]}
+            accessibilityRole="button"
+            accessibilityLabel={`${expanded ? 'Collapse' : 'Expand'} ended recovery block. ${endedSummary.a11y}`}
+            accessibilityState={{ expanded }}
+          >
+            <View style={styles.historyHeaderContent}>
+              <Text style={styles.endedSummary}>{`Ended · ${endedSummary.text}`}</Text>
+              {endedSummary.qualifiers.map(q => <Text key={q} style={styles.endedMeta}>{q}</Text>)}
+              <Text style={styles.endedMeta}>
+                {`${endedSummary.weeks} ${endedSummary.weeks === 1 ? 'week' : 'weeks'} · ${formatDate(focusedBlock.started_at)} to ${formatDate(focusedBlock.completed_at)} · ${focusedBlock.baseline_note_title || 'Untitled Routine'}`}
+              </Text>
+            </View>
+            <MaterialIcons
+              name={expanded ? 'expand-less' : 'expand-more'}
+              size={18}
+              color={kua ? kua.onSurfaceVariant : colors.textMuted}
+              accessible={false}
+            />
+          </Pressable>
+        </View>
+      )}
+
+      {expanded && (
+        <BlockEvidence
+          key={_blockKey(focusedBlock)}
+          block={focusedBlock}
+          weeks={weeks}
+          notes={notes}
+          unit={unit}
+          stateStale={stateStale}
+          selectedWeekId={weekSelection.blockId === focusedBlock.id ? weekSelection.weekId : null}
+          onSelectWeek={(weekId) => setWeekSelection({ blockId: focusedBlock.id, weekId })}
+          notesError={notesError}
+          oneKSelections={oneKSelections}
+        />
+      )}
 
       {completedBlocks.length > 0 && (
         <View style={styles.historyPanel}>
@@ -247,7 +315,7 @@ export function AnalyticsRecoverySection({
             return (
               <View key={block.id} style={[styles.historyBlockGroup, !isLast && styles.historyBlockGroupBorder]}>
                 <Pressable
-                  onPress={() => focusBlock(block.id)}
+                  onPress={() => { focusBlock(block.id); setOpenKey(_blockKey(block)); }}
                   style={[styles.historyRow, selected && styles.historyRowSelected]}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
@@ -275,7 +343,7 @@ export function AnalyticsRecoverySection({
                     week={w}
                     notesById={notesById}
                     selected={selected && w.id === effectiveWeekId}
-                    onFocusWeek={(blockId, weekId) => { setFocusedBlockId(blockId); setWeekSelection({ blockId, weekId }); }}
+                    onFocusWeek={(blockId, weekId) => { setFocusedBlockId(blockId); setOpenKey(_blockKey(block)); setWeekSelection({ blockId, weekId }); }}
                     onNavigate={onNavigate}
                   />
                 ))}
