@@ -427,27 +427,44 @@ describe('replay with a changed target note (#1395)', () => {
     return { fresh, finish, end: async () => { die(new Error('process gone')); await crashed.catch(() => {}); } };
   }
 
+  // The notebook rows carry the apply id from the same setItem as the text, so
+  // landing is known even when no Track key has moved and every note is edited.
+  // `toggle`: an unrelated Track key changed after the crash must survive.
   test.each([
     ['intent written, notebook not', WORKOUT_NOTES_KEY, RT.raw_text, false],
-    // Indistinguishable from the first row once every target note is edited (no
-    // Track key has moved), so it is retired untouched: the old, consistent Track state.
-    ['notebook written, flags not', TRACKED_LIFTS_KEY, RT_NEXT, false],
+    ['notebook written, flags not', TRACKED_LIFTS_KEY, RT_NEXT, true],
     ['notebook and flags written, activations not', TRACKED_LIFT_ACTIVATIONS_KEY, RT_NEXT, true],
-  ])('%s', async (_name, hangAt, base, applied) => {
+  ].flatMap(row => [[`${row[0]}`, ...row.slice(1), false], [`${row[0]} + later toggle`, ...row.slice(1), true]]))('%s', async (_name, hangAt, base, applied, toggle) => {
     const { fresh, finish, end } = await crashAt(hangAt);
     const EDITED = `${base}\n60 9`;
-    await fresh.saveWorkoutNoteItem({ ...RT, raw_text: EDITED });
+    const stored = (await fresh.loadWorkoutNotesRaw()).find(n => n.id === 'rt');
+    // An ordinary editor save merges into the stored row.
+    await fresh.saveWorkoutNoteItem({ ...stored, raw_text: EDITED });
+    if (toggle) await fresh.saveTrackedLifts({ ...(await fresh.loadTrackedLifts()), extra: true });
+    const extra = toggle ? { extra: true } : {};
     await finish();
     expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).toBeNull();
     expect((await fresh.loadWorkoutNotesRaw()).find(n => n.id === 'rt').raw_text).toBe(EDITED);
     if (applied) {
-      expect(await fresh.loadTrackedLifts()).toEqual(AFTER().lifts);
+      expect(await fresh.loadTrackedLifts()).toEqual({ ...AFTER().lifts, ...extra });
       expect(await fresh.loadTrackedLiftActivations()).toEqual(AFTER().activations);
     } else {
-      expect(await fresh.loadTrackedLifts()).toEqual({ [SRC]: true, row: true });
+      expect(await fresh.loadTrackedLifts()).toEqual({ [SRC]: true, row: true, ...extra });
       expect(await fresh.loadTrackedLiftActivations()).toEqual({ [SRC]: sourceRecord(), row: ROW_RECORD });
     }
     await end();
+  });
+
+  test('the apply id is never uploaded and is dropped by the next ordinary write', async () => {
+    await seedRename(LocalNotes);
+    await LocalNotes.applyWorkoutNoteTextBatchIfUnchanged(renameRequest());
+    const stored = (await LocalNotes.loadWorkoutNotesRaw()).find(n => n.id === 'rt');
+    expect(stored.normalization_apply_id).toEqual(expect.any(String));
+    // The wire row copies only the per-table column whitelist.
+    // eslint-disable-next-line global-require
+    expect(require('fs').readFileSync(require('path').join(__dirname, '../storage/cloud/transport.js'), 'utf8')).not.toContain('normalization_apply_id');
+    await LocalNotes.updateWorkoutNoteItem('rt', { raw_text: `${RT_NEXT}\n60 9` });
+    expect((await LocalNotes.loadWorkoutNotesRaw()).find(n => n.id === 'rt').normalization_apply_id).toBeUndefined();
   });
 
   test('a Track key that matches neither the recorded before nor after keeps the intent', async () => {

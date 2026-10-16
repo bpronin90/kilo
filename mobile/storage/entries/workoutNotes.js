@@ -100,7 +100,10 @@ async function readNotebook() {
 }
 
 async function writeNotebook(list) {
-  await writeList(WORKOUT_NOTES_KEY, stripDerivedSectionsFromList(list));
+  const out = stripDerivedSectionsFromList(list);
+  // Spent evidence is dropped by the next ordinary write once no apply record
+  // is pending (the commit itself runs with the flag set, so it keeps it).
+  await writeList(WORKOUT_NOTES_KEY, applyIntentMaybePending || !out.some(n => n?.[APPLY_STAMP_FIELD]) ? out : out.map(({ [APPLY_STAMP_FIELD]: _spent, ...n }) => n));
 }
 
 export async function loadWorkoutNotes() {
@@ -213,6 +216,12 @@ export function isNormalizationApplyIntentMaybePending() {
   return applyIntentMaybePending;
 }
 
+// Local-only landing evidence for a rename's notebook write (#1395): an apply id
+// stamped onto the rows in that same setItem. Never uploaded: cloud upserts copy
+// only the transport's per-table column whitelist (UPSERT_COLUMNS), so this field
+// is dropped at the wire and needs no backend or schema change.
+const APPLY_STAMP_FIELD = 'normalization_apply_id';
+
 function stableJson(value) {
   if (value === undefined) return 'undefined';
   return JSON.stringify(value, (_k, v) => (v && typeof v === 'object' && !Array.isArray(v)
@@ -244,18 +253,19 @@ async function finishApplyIntentUnlocked(ops) {
     // A target note that is neither pre-apply nor applied was changed after the
     // interruption. Never overwrite it, and never trust Track to be all-old: the
     // durable write order is notebook -> flags -> activations, so a crash can
-    // leave Track half-moved. The intent's recorded before/after maps classify
-    // the affected keys (only those: a later toggle on any other key is kept).
-    //  - any Track key already moved, or any note already applied: the notebook
-    //    write completed, so Track is rolled forward to the recorded result;
-    //  - nothing moved and no note applied: the rename never took effect, so
-    //    the intent is retired with notes and Track untouched;
-    //  - a key matching neither its before nor after value (e.g. a toggle
-    //    landed first), unreadable Track, or a pre-journal intent: unknown, so
-    //    the intent is kept and the read throws (fail safe, nothing is pushed).
-    // All notes diverged with Track still all-old is indistinguishable from a
-    // rename that never landed; it is retired untouched (the old consistent
-    // Track state, never a mixed tuple).
+    // leave Track half-moved. Whether the notebook write landed is decided by
+    // durable evidence written in that same single setItem: every row the apply
+    // writes carries the intent's `normalization_apply_id` (local-only, see
+    // APPLY_STAMP_FIELD), and it survives later edits because editors merge into
+    // the stored row. Landed = a stamped row, an applied text, or a moved Track
+    // key. Then, over the intent's affected keys only (a later toggle on any
+    // other key is kept):
+    //  - landed: Track is rolled forward to the recorded result;
+    //  - not landed: the rename never took effect, so the intent is retired with
+    //    notes and Track untouched;
+    //  - a key matching neither its before nor after value (a toggle landed
+    //    first), unreadable state, or a pre-journal intent: unknown, so the
+    //    intent is kept and the read throws (fail safe, nothing is pushed).
     const live = new Map(current.filter(n => n && ops.isLive(n)).map(n => [n.id, n]));
     const state = intent.notes.map((rec) => {
       const text = live.get(rec.id)?.raw_text;
@@ -263,36 +273,35 @@ async function finishApplyIntentUnlocked(ops) {
     });
     if (state.includes('diverged')) {
       const unknown = () => new Error('An unfinished routine rename could not be reconciled.');
-      if (!intent.before || (state.includes('pre') && state.includes('post'))) throw unknown();
+      if (!intent.before || !intent.id) throw unknown();
       const lifts = await loadTrackedLiftsStrict();
       const activations = await loadTrackedLiftActivationsStrict();
       const same = (x, y) => stableJson(x) === stableJson(y);
-      let moved = state.includes('post');
+      let landed = state.includes('post') || current.some(n => n?.[APPLY_STAMP_FIELD] === intent.id);
       const plans = [['lifts', lifts], ['activations', activations]].map(([name, cur]) => {
         const next = { ...cur };
         for (const key of new Set([...Object.keys(intent.before[name]), ...Object.keys(intent.tracking[name])])) {
           const was = intent.before[name][key];
           const will = intent.tracking[name][key];
           if (same(was, will)) continue;
-          if (same(cur[key], will)) moved = true;
+          if (same(cur[key], will)) landed = true;
           else if (!same(cur[key], was)) throw unknown();
           if (will === undefined) delete next[key]; else next[key] = will;
         }
         return next;
       });
-      if (moved && state.includes('pre')) throw unknown();
-      if (moved) {
+      if (landed) {
         await saveTrackedLifts(plans[0]);
         await saveTrackedLiftActivations(plans[1]);
       }
       await AsyncStorage.removeItem(NORMALIZATION_APPLY_INTENT_KEY);
       applyIntentMaybePending = false;
-      return moved ? { lifts: plans[0], activations: plans[1] } : null;
+      return landed ? { lifts: plans[0], activations: plans[1] } : null;
     }
     const updated = current.map(n => {
       const rec = n && ops.isLive(n) ? byId.get(n.id) : null;
       if (!rec || n.raw_text !== rec.expected_raw_text) return n;
-      const row = stamp({ ...n, raw_text: rec.next_raw_text, updated_at: now });
+      const row = stamp({ ...n, raw_text: rec.next_raw_text, updated_at: now, [APPLY_STAMP_FIELD]: intent.id });
       rows.push(row);
       return row;
     });
@@ -368,6 +377,7 @@ async function applyTextBatchUnlocked(request, ops) {
   let tracking = transition.changed ? { lifts: transition.lifts, activations: transition.activations } : null;
   const intent = tracking && {
     version: 1,
+    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
     notes: plan.writes.map(w => ({ id: w.id, expected_raw_text: list.find(n => n?.id === w.id).raw_text, next_raw_text: w.next_raw_text })),
     tracking,
     before: { lifts, activations },
@@ -378,7 +388,7 @@ async function applyTextBatchUnlocked(request, ops) {
   const rowById = new Map();
   const updated = list.map((n) => {
     if (!nextById.has(n?.id) || !ops.isLive(n)) return n;
-    const row = stamp({ ...n, raw_text: nextById.get(n.id), updated_at: now });
+    const row = stamp({ ...n, raw_text: nextById.get(n.id), updated_at: now, ...(intent ? { [APPLY_STAMP_FIELD]: intent.id } : {}) });
     rowById.set(row.id, row);
     return row;
   });
