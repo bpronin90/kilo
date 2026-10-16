@@ -175,6 +175,7 @@ export function AnalyticsWeightTrendsCard({
                 height={100}
                 hideHeader
                 showScale
+                showGrid
                 color={kua ? kua.primary : undefined}
                 seriesLabel={`${activeWindow.label} bodyweight`}
                 onSelect={handleSelect}
