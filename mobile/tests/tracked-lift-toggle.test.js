@@ -21,6 +21,7 @@ import { withLocalWriteLock } from '../storage/sync/localWriteLock';
 import { secureStorage } from '../storage/secureStorage';
 import { SINGLETON_SYNC_ID, SYNC_TABLES, resetClientIdCacheForTests, resetStampClockForTests } from '../storage/syncQueue';
 import { cloudAdapter, setCloudTransport } from '../storage/cloudAdapter';
+import { getTrackedLiftWriteGeneration } from '../storage/entries/settings';
 import { importBackup } from '../storage/entries/backupImport';
 import { makeXidFakeCloud } from './mocks/xidFakeCloud';
 import { computeSaveClassifications } from '../screens/log/currentRoutineSave';
@@ -950,8 +951,18 @@ describe('a normalization apply carries Track (#1395)', () => {
       expect(await AsyncStorage.getItem('kilo_normalization_apply_intent_v1')).not.toBeNull();
       AsyncStorage.setItem.mockImplementation(realSetItem);
 
+      // Contention: with the local-write lock held, nothing of the restore (nor
+      // the intent settlement it triggers) may write a Track map.
+      const held = deferred();
+      const holder = withLocalWriteLock(() => held.promise);
+      const generation = getTrackedLiftWriteGeneration();
+      let restoring;
+      await act(async () => { restoring = importBackup(restorePayload(version, SQUAT_CLOUD), 'replace', { mode }); });
+      await settle(8);
+      expect(getTrackedLiftWriteGeneration()).toBe(generation);
+      held.resolve();
       let result;
-      await act(async () => { result = await importBackup(restorePayload(version, SQUAT_CLOUD), 'replace', { mode }); });
+      await act(async () => { await holder; result = await restoring; });
       expect(result.ok).toBe(true);
       await settle(8);
       expect(await AsyncStorage.getItem('kilo_normalization_apply_intent_v1')).toBeNull();
