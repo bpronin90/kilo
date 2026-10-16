@@ -13,7 +13,8 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 
 import * as Storage from '../storage/entries';
-import { WORKOUT_NOTES_KEY, WEIGHT_KEY } from '../storage/entries/keys';
+import { WORKOUT_NOTES_KEY, WEIGHT_KEY, CURRENT_WORKOUT_ID_KEY } from '../storage/entries/keys';
+import { secureStorage } from '../storage/secureStorage';
 import {
   SYNC_PHASE,
   SYNC_STATUS,
@@ -475,6 +476,70 @@ describe('Track toggles upload through the shared pass (#1393)', () => {
     expect(await Storage.loadTrackedLifts()).toEqual({});
 
     gate.resolve();
+    await flushAsync(16);
+
+    expect(await Storage.loadTrackedLifts()).toEqual({});
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({});
+    expect(healthRow(cloud).tracked_lifts).toEqual({});
+    expect(healthRow(cloud).tracked_lift_activations).toEqual({});
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    act(() => tree.unmount());
+  });
+
+  // Codex FEEDBACK 2 on PR #1397: the untrack lands while the ack write-back is
+  // INSIDE its own storage operations (after its re-read), not during a network
+  // wait. Only a shared local-write lock between the write-back and the Track
+  // write queue keeps the two from interleaving.
+  it('an untrack landing during the ack write-back storage ops is neither reverted nor lost', async () => {
+    const cloud = makeXidFakeCloud();
+    await signedInDevice(cloud);
+    const { ref, tree } = mountTracked();
+    await flushAsync(8);
+
+    // Arm once the health-row push has been acknowledged; the first
+    // current-workout-id read after that is the guard's re-read, the second is
+    // applyUserHealthProfile's, which this holds.
+    let armed = false;
+    let readsAfterAck = 0;
+    let readGate = null;
+    const realPush = cloud.transport.push;
+    cloud.transport.push = jest.fn(async (table, records) => {
+      const acks = await realPush(table, records);
+      if (table === SYNC_TABLES.USER_HEALTH_PROFILE && readGate === null) armed = true;
+      return acks;
+    });
+    const realGetItem = secureStorage.getItem.bind(secureStorage);
+    jest.spyOn(secureStorage, 'getItem').mockImplementation(async (key) => {
+      if (armed && key === CURRENT_WORKOUT_ID_KEY) {
+        readsAfterAck += 1;
+        if (readsAfterAck === 2) {
+          armed = false;
+          readGate = deferred();
+          await readGate.promise;
+        }
+      }
+      return realGetItem(key);
+    });
+
+    await act(async () => { await ref.current.toggle('bench', HISTORY); });
+    await flushAsync(8);
+    expect(readGate).not.toBeNull();
+
+    // Untrack while the ack application is parked mid-storage-op. Not awaited
+    // here: with the lock it must wait for the write-back to finish.
+    let untrack;
+    let untrackSettled = false;
+    await act(async () => {
+      untrack = ref.current.toggle('bench', HISTORY);
+      untrack.then(() => { untrackSettled = true; });
+    });
+    await flushAsync(4);
+    // The untrack is queued behind the write-back's locked section, not
+    // interleaved inside it.
+    expect(untrackSettled).toBe(false);
+
+    readGate.resolve();
+    await act(async () => { await untrack; });
     await flushAsync(16);
 
     expect(await Storage.loadTrackedLifts()).toEqual({});

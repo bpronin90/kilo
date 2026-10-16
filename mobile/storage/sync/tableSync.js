@@ -17,6 +17,7 @@ import {
   advanceCursorFromServerEvidence,
 } from './cursors';
 import { getSyncSnapshot, setSyncSnapshot } from './snapshots';
+import { withLocalWriteLock } from './localWriteLock';
 import { reconcileAgainstRemote, diffAgainstBaseline } from './reconciliation';
 
 // ── sync loop ──────────────────────────────────────────────────────────────────
@@ -297,6 +298,19 @@ export async function syncTable({
 // the write a no-op for that row. A row removed locally during the pass is left
 // out. The caller still snapshots the merged/acked rows, so the next pass sees
 // the newer local value as dirty and pushes it. Unchanged rows apply as before.
+//
+// The re-read and the apply run as ONE locked section (localWriteLock.js): the
+// apply itself awaits storage operations, so without the lock a write landing
+// after the re-read could still be overwritten. Writers on that lock (the
+// tracked-lift write queue) land wholly before the section, and are kept, or
+// wholly after it, and are pushed by the next pass. Local storage only, never
+// across a network call.
+function writeBackKeepingLocalWrites(mergedList, applyMerged, liveWrite) {
+  return withLocalWriteLock(async () => {
+    await applyMerged(await keepLocalWritesSinceRead(mergedList, liveWrite));
+  });
+}
+
 async function keepLocalWritesSinceRead(mergedList, { current, buildLocal, payloadFields, fieldKinds }) {
   const before = new Map();
   for (const rec of current) if (rec && rec.id != null) before.set(rec.id, rec);
@@ -347,7 +361,10 @@ export async function syncDiffTable({
   //    local state that already agrees with the cloud is not misread as a fresh
   //    local edit — that would re-stamp it at `now` and let a clean install that
   //    merely hydrated the cloud clobber another device's real data.
-  const current = (await buildLocal()) || [];
+  //    Read under the local-write lock (local storage only) so the pass never
+  //    sees a lock-holding writer half-way, e.g. a Track flag without its
+  //    activation record (#1393).
+  const current = (await withLocalWriteLock(() => buildLocal())) || [];
   const persisted = await getSyncSnapshot(table);
   const seeded = persisted == null;
   const { localList, dirty } = diffAgainstBaseline({
@@ -394,7 +411,7 @@ export async function syncDiffTable({
   const merged = mergeRecords(localList, contested, { table });
   let mergedList = Array.from(merged.values());
   const liveWrite = { current, buildLocal, payloadFields, fieldKinds };
-  await applyMerged(await keepLocalWritesSinceRead(mergedList, liveWrite));
+  await writeBackKeepingLocalWrites(mergedList, applyMerged, liveWrite);
   await setSyncSnapshot(table, mergedList);
 
   // 5. Push the pending edits. merged.get() now returns the local record for
@@ -415,7 +432,7 @@ export async function syncDiffTable({
     if (recovered.replacesLocal) applyPushAcknowledgements(merged, acknowledged);
     if (recovered.replacesLocal && acknowledged.length > 0) {
       mergedList = Array.from(merged.values());
-      await applyMerged(await keepLocalWritesSinceRead(mergedList, liveWrite));
+      await writeBackKeepingLocalWrites(mergedList, applyMerged, liveWrite);
       await setSyncSnapshot(table, mergedList);
     }
   }

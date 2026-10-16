@@ -8,6 +8,7 @@ import {
 import { safeNotify } from './shared';
 import { maybeSyncCloud } from './storageMode';
 import { markStartupPhase } from '../../storage/entries/startupTiming';
+import { withLocalWriteLock } from '../../storage/sync/localWriteLock';
 
 let trackedLiftsListeners = [];
 const notifyTrackedLifts = () => safeNotify(trackedLiftsListeners);
@@ -23,6 +24,20 @@ function requestTrackedLiftSync() {
   Promise.resolve()
     .then(maybeSyncCloud)
     .catch(() => {});
+}
+
+// Every storage write of a queued change runs inside the shared local-write lock
+// (#1393), which a sync pass's local read and write-back also take. A pass then
+// sees the pair wholly before or wholly after this write, and cannot write a
+// stale ack back over it. Only local storage happens inside the lock: the sync
+// request is made after it is released and never awaited, so the queue never
+// waits on the network and no holder waits on the other's queue (no deadlock).
+// `lifts === null` writes the activation records alone (the note-save reconcile).
+function writeTrackedLiftStorage(lifts, activations) {
+  return withLocalWriteLock(async () => {
+    if (lifts !== null) await Storage.saveTrackedLifts(lifts);
+    await Storage.saveTrackedLiftActivations(activations);
+  });
 }
 
 // Bumped when a queued write starts and again when it settles, so refresh() can
@@ -129,8 +144,7 @@ export function useTrackedLifts() {
       currentActivations = nextActivations;
       setTrackedLifts(nextTrackedLifts);
       setActivations(nextActivations);
-      await Storage.saveTrackedLifts(nextTrackedLifts);
-      await Storage.saveTrackedLiftActivations(nextActivations);
+      await writeTrackedLiftStorage(nextTrackedLifts, nextActivations);
       notifyTrackedLifts();
       requestTrackedLiftSync();
       return nextTrackedLifts;
@@ -163,8 +177,7 @@ export function useTrackedLifts() {
       currentActivations = nextActivations;
       setTrackedLifts(nextLifts);
       setActivations(nextActivations);
-      await Storage.saveTrackedLifts(nextLifts);
-      await Storage.saveTrackedLiftActivations(nextActivations);
+      await writeTrackedLiftStorage(nextLifts, nextActivations);
       notifyTrackedLifts();
       requestTrackedLiftSync();
       return nextLifts;
@@ -195,7 +208,7 @@ export async function reconcileTrackedLiftActivationsAtSave(sections) {
     // No change, no write — and no redundant cloud pass.
     if (!changed) return currentTrackedLifts;
     currentActivations = next;
-    await Storage.saveTrackedLiftActivations(next);
+    await writeTrackedLiftStorage(null, next);
     notifyTrackedLifts();
     requestTrackedLiftSync();
     return currentTrackedLifts;

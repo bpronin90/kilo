@@ -51,6 +51,7 @@ import React from 'react';
 import TestRenderer from 'react-test-renderer';
 import { useWeightEntries, useDeloadHistory } from '../hooks/useEntries';
 import { getSupabaseClient } from '../lib/supabaseClient';
+import { withLocalWriteLock, __resetLocalWriteLockForTests } from '../storage/sync/localWriteLock';
 
 // Mock the Supabase client module so the user_id-stamping test can drive the
 // REAL transport without a network. Every other test injects its own fake
@@ -3594,5 +3595,104 @@ describe('syncDiffTable keeps a local write made while the pass is in flight (#1
       expect.objectContaining({ id: 'a', raw_text: 'v2', updated_at: h.server.get('a').updated_at }),
     ]);
     expect(h.local.get('a')).toBe('v2');
+  });
+});
+
+// ── the shared local-write lock (#1393) ─────────────────────────────────────
+describe('localWriteLock', () => {
+  beforeEach(() => __resetLocalWriteLockForTests());
+
+  const tick = () => new Promise((r) => setImmediate(r));
+
+  it('runs holders one at a time, in arrival order', async () => {
+    const order = [];
+    let releaseFirst;
+    const first = withLocalWriteLock(async () => {
+      order.push('first:start');
+      await new Promise((r) => { releaseFirst = r; });
+      order.push('first:end');
+      return 1;
+    });
+    const second = withLocalWriteLock(async () => { order.push('second'); return 2; });
+    await tick();
+    expect(order).toEqual(['first:start']);
+    releaseFirst();
+    await expect(Promise.all([first, second])).resolves.toEqual([1, 2]);
+    expect(order).toEqual(['first:start', 'first:end', 'second']);
+  });
+
+  it('a holder that throws rejects only its own caller and does not poison the chain', async () => {
+    const failed = withLocalWriteLock(async () => { throw new Error('disk full'); });
+    const next = withLocalWriteLock(async () => 'ran');
+    await expect(failed).rejects.toThrow('disk full');
+    await expect(next).resolves.toBe('ran');
+  });
+
+  it('a diff pass does not hold the lock across its network push', async () => {
+    let local = [{ id: 'a', raw_text: 'v1' }];
+    let releasePush;
+    let pushing = false;
+    const transport = {
+      async pull() { return []; },
+      async push(_t, records) {
+        pushing = true;
+        await new Promise((r) => { releasePush = r; });
+        return records.map((r) => ({ ...r, updated_at: '2026-09-01T00:00:00.000Z' }));
+      },
+    };
+    const pass = syncDiffTable({
+      table: SYNC_TABLES.DELOAD_HISTORY,
+      transport,
+      async buildLocal() { return local; },
+      async applyMerged(records) { local = records.map(({ id, raw_text }) => ({ id, raw_text })); },
+      payloadFields: ['raw_text'],
+      allowDelete: true,
+    });
+    while (!pushing) await tick(); // eslint-disable-line no-await-in-loop
+
+    // While the push is on the wire, a local writer gets the lock at once.
+    let acquired = false;
+    await withLocalWriteLock(async () => { acquired = true; });
+    expect(acquired).toBe(true);
+
+    releasePush();
+    await pass;
+  });
+
+  it('a write-back holding the lock delays a local writer until the apply finishes', async () => {
+    const local = new Map([['a', 'v1']]);
+    let releaseApply;
+    let applying = false;
+    const transport = {
+      async pull() { return []; },
+      async push(_t, records) {
+        return records.map((r) => ({ ...r, updated_at: '2026-09-01T00:00:00.000Z' }));
+      },
+    };
+    const pass = syncDiffTable({
+      table: SYNC_TABLES.DELOAD_HISTORY,
+      transport,
+      async buildLocal() { return [...local].map(([id, raw_text]) => ({ id, raw_text })); },
+      async applyMerged(records) {
+        if (!applying) {
+          applying = true;
+          await new Promise((r) => { releaseApply = r; });
+        }
+        for (const r of records) local.set(r.id, r.raw_text);
+      },
+      payloadFields: ['raw_text'],
+      allowDelete: true,
+    });
+    while (!applying) await tick(); // eslint-disable-line no-await-in-loop
+
+    let wrote = false;
+    const writer = withLocalWriteLock(async () => { local.set('a', 'v2'); wrote = true; });
+    await tick();
+    expect(wrote).toBe(false);
+    releaseApply();
+    await writer;
+    await pass;
+    // The writer landed wholly after the write-back, so its value stands.
+    expect(local.get('a')).toBe('v2');
   });
 });
