@@ -36,6 +36,8 @@ import {
   getDirtyRecords,
   enqueueDirty,
   getClientId,
+  getSyncSnapshot,
+  syncDiffTable,
   SYNC_TABLES,
   SINGLETON_SYNC_ID,
 } from '../storage/syncQueue';
@@ -49,6 +51,7 @@ import React from 'react';
 import TestRenderer from 'react-test-renderer';
 import { useWeightEntries, useDeloadHistory } from '../hooks/useEntries';
 import { getSupabaseClient } from '../lib/supabaseClient';
+import { withLocalWriteLock, __resetLocalWriteLockForTests } from '../storage/sync/localWriteLock';
 
 // Mock the Supabase client module so the user_id-stamping test can drive the
 // REAL transport without a network. Every other test injects its own fake
@@ -3418,5 +3421,278 @@ describe('real Supabase transport: recovery collections (issue #693)', () => {
     for (const forbidden of ['updated_at', 'client_id', 'sync_xid', 'local_only_field']) {
       expect(week).not.toHaveProperty(forbidden);
     }
+  });
+});
+
+// ── a local write during a diff pass survives that pass's write-back (#1393) ──
+//
+// syncDiffTable reads local state, then waits on the network before applying
+// the merged rows and the push acks. A write that lands in that window used to
+// be overwritten by the write-back and then hidden from the next diff by the
+// snapshot. These drive the engine directly with a controllable transport.
+describe('syncDiffTable keeps a local write made while the pass is in flight (#1393)', () => {
+  const TABLE = SYNC_TABLES.DELOAD_HISTORY;
+  const SERVER_AT = '2026-09-01T00:00:00.000Z';
+
+  function gate() {
+    let resolve;
+    const promise = new Promise((res) => { resolve = res; });
+    return { promise, resolve };
+  }
+
+  // A device whose live state is `local` (id -> raw_text) and a server that
+  // keeps the last pushed row per id. `pausePull`/`pausePush` hold the next
+  // call until the test releases it.
+  function harness() {
+    const local = new Map();
+    const server = new Map();
+    let serverMs = Date.parse(SERVER_AT);
+    const holds = { pull: null, push: null };
+    const hooks = { afterRead: null };
+    const pushes = [];
+    const applied = [];
+    const transport = {
+      async pull() {
+        if (holds.pull) { const h = holds.pull; holds.pull = null; await h.promise; }
+        return [...server.values()];
+      },
+      async push(_table, records) {
+        pushes.push(records.map((r) => ({ ...r })));
+        if (holds.push) { const h = holds.push; holds.push = null; await h.promise; }
+        return records.map((rec) => {
+          serverMs += 1000;
+          const { client_id: _c, ...row } = rec; // eslint-disable-line no-unused-vars
+          const stored = { ...row, updated_at: new Date(serverMs).toISOString() };
+          server.set(rec.id, stored);
+          return { ...stored };
+        });
+      },
+    };
+    const run = () => syncDiffTable({
+      table: TABLE,
+      transport,
+      async buildLocal() {
+        const rows = [...local.entries()].map(([id, raw_text]) => ({ id, raw_text }));
+        // A write that lands right after the pass's step-2 read.
+        if (hooks.afterRead) { const fn = hooks.afterRead; hooks.afterRead = null; fn(); }
+        return rows;
+      },
+      async applyMerged(records) {
+        applied.push(records.map((r) => ({ ...r })));
+        for (const r of records) {
+          if (isTombstone(r)) local.delete(r.id);
+          else local.set(r.id, r.raw_text);
+        }
+      },
+      payloadFields: ['raw_text'],
+      allowDelete: true,
+    });
+    return {
+      local, server, pushes, applied, run,
+      pausePull() { holds.pull = gate(); return holds.pull; },
+      pausePush() { holds.push = gate(); return holds.push; },
+      afterRead(fn) { hooks.afterRead = fn; },
+    };
+  }
+
+  const tick = () => new Promise((r) => setImmediate(r));
+
+  it('an edit made while the push is in flight is not reverted by the ack, and the next pass pushes it', async () => {
+    const h = harness();
+    h.local.set('a', 'v1');
+    h.local.set('b', 'b1');
+    await h.run();
+
+    h.local.set('a', 'v2');
+    h.local.set('b', 'b2');
+    const held = h.pausePush();
+    const pass = h.run();
+    await tick();
+    expect(h.pushes).toHaveLength(2);
+    // The user edits `a` again while the v2 push is on the wire; `b` is untouched.
+    h.local.set('a', 'v3');
+    held.resolve();
+    await pass;
+
+    expect(h.local.get('a')).toBe('v3');
+    // The untouched row still takes its server ack (server-stamped updated_at).
+    const lastApply = h.applied[h.applied.length - 1];
+    expect(lastApply.find((r) => r.id === 'b')).toMatchObject({ raw_text: 'b2', updated_at: h.server.get('b').updated_at });
+    // The snapshot records what the server acknowledged, so v3 is a diff.
+    expect((await getSyncSnapshot(TABLE)).find((r) => r.id === 'a').raw_text).toBe('v2');
+
+    await h.run();
+    expect(h.pushes[h.pushes.length - 1].map((r) => [r.id, r.raw_text])).toEqual([['a', 'v3']]);
+    expect(h.server.get('a').raw_text).toBe('v3');
+    expect(h.local.get('a')).toBe('v3');
+  });
+
+  it('a row removed locally while the push is in flight is not resurrected by the ack', async () => {
+    const h = harness();
+    h.local.set('a', 'v1');
+    await h.run();
+
+    h.local.set('a', 'v2');
+    const held = h.pausePush();
+    const pass = h.run();
+    await tick();
+    h.local.delete('a');
+    held.resolve();
+    await pass;
+    expect(h.local.has('a')).toBe(false);
+
+    await h.run();
+    expect(isTombstone(h.server.get('a'))).toBe(true);
+    expect(h.local.has('a')).toBe(false);
+  });
+
+  it('an edit landing after the pass read local state is not overwritten by the merged remote row', async () => {
+    const h = harness();
+    h.local.set('a', 'v1');
+    await h.run();
+
+    // Another device writes `a`; this device edits `a` just after the pass's
+    // step-2 read, so the step-4 merge would otherwise apply `remote` over it.
+    h.server.set('a', { ...h.server.get('a'), raw_text: 'remote', updated_at: '2026-12-01T00:00:00.000Z' });
+    h.afterRead(() => h.local.set('a', 'mine'));
+    await h.run();
+    expect(h.local.get('a')).toBe('mine');
+    expect((await getSyncSnapshot(TABLE)).find((r) => r.id === 'a').raw_text).toBe('remote');
+
+    await h.run();
+    expect(h.server.get('a').raw_text).toBe('mine');
+    expect(h.local.get('a')).toBe('mine');
+  });
+
+  it('negative: with the local row untouched, a remote change from another device still applies', async () => {
+    const h = harness();
+    h.local.set('a', 'v1');
+    h.local.set('b', 'b1');
+    await h.run();
+
+    h.server.set('a', { ...h.server.get('a'), raw_text: 'remote', updated_at: '2026-12-01T00:00:00.000Z' });
+    const held = h.pausePull();
+    const pass = h.run();
+    await tick();
+    held.resolve();
+    await pass;
+
+    expect(h.local.get('a')).toBe('remote');
+    expect(h.local.get('b')).toBe('b1');
+    const lastApply = h.applied[h.applied.length - 1];
+    expect(lastApply.find((r) => r.id === 'a')).toMatchObject({ raw_text: 'remote', updated_at: '2026-12-01T00:00:00.000Z' });
+  });
+
+  it('negative: an unchanged row still has the merged/acked value written back', async () => {
+    const h = harness();
+    h.local.set('a', 'v1');
+    await h.run();
+    h.local.set('a', 'v2');
+    await h.run();
+
+    const lastApply = h.applied[h.applied.length - 1];
+    expect(lastApply).toEqual([
+      expect.objectContaining({ id: 'a', raw_text: 'v2', updated_at: h.server.get('a').updated_at }),
+    ]);
+    expect(h.local.get('a')).toBe('v2');
+  });
+});
+
+// ── the shared local-write lock (#1393) ─────────────────────────────────────
+describe('localWriteLock', () => {
+  beforeEach(() => __resetLocalWriteLockForTests());
+
+  const tick = () => new Promise((r) => setImmediate(r));
+
+  it('runs holders one at a time, in arrival order', async () => {
+    const order = [];
+    let releaseFirst;
+    const first = withLocalWriteLock(async () => {
+      order.push('first:start');
+      await new Promise((r) => { releaseFirst = r; });
+      order.push('first:end');
+      return 1;
+    });
+    const second = withLocalWriteLock(async () => { order.push('second'); return 2; });
+    await tick();
+    expect(order).toEqual(['first:start']);
+    releaseFirst();
+    await expect(Promise.all([first, second])).resolves.toEqual([1, 2]);
+    expect(order).toEqual(['first:start', 'first:end', 'second']);
+  });
+
+  it('a holder that throws rejects only its own caller and does not poison the chain', async () => {
+    const failed = withLocalWriteLock(async () => { throw new Error('disk full'); });
+    const next = withLocalWriteLock(async () => 'ran');
+    await expect(failed).rejects.toThrow('disk full');
+    await expect(next).resolves.toBe('ran');
+  });
+
+  it('a diff pass does not hold the lock across its network push', async () => {
+    let local = [{ id: 'a', raw_text: 'v1' }];
+    let releasePush;
+    let pushing = false;
+    const transport = {
+      async pull() { return []; },
+      async push(_t, records) {
+        pushing = true;
+        await new Promise((r) => { releasePush = r; });
+        return records.map((r) => ({ ...r, updated_at: '2026-09-01T00:00:00.000Z' }));
+      },
+    };
+    const pass = syncDiffTable({
+      table: SYNC_TABLES.DELOAD_HISTORY,
+      transport,
+      async buildLocal() { return local; },
+      async applyMerged(records) { local = records.map(({ id, raw_text }) => ({ id, raw_text })); },
+      payloadFields: ['raw_text'],
+      allowDelete: true,
+    });
+    while (!pushing) await tick(); // eslint-disable-line no-await-in-loop
+
+    // While the push is on the wire, a local writer gets the lock at once.
+    let acquired = false;
+    await withLocalWriteLock(async () => { acquired = true; });
+    expect(acquired).toBe(true);
+
+    releasePush();
+    await pass;
+  });
+
+  it('a write-back holding the lock delays a local writer until the apply finishes', async () => {
+    const local = new Map([['a', 'v1']]);
+    let releaseApply;
+    let applying = false;
+    const transport = {
+      async pull() { return []; },
+      async push(_t, records) {
+        return records.map((r) => ({ ...r, updated_at: '2026-09-01T00:00:00.000Z' }));
+      },
+    };
+    const pass = syncDiffTable({
+      table: SYNC_TABLES.DELOAD_HISTORY,
+      transport,
+      async buildLocal() { return [...local].map(([id, raw_text]) => ({ id, raw_text })); },
+      async applyMerged(records) {
+        if (!applying) {
+          applying = true;
+          await new Promise((r) => { releaseApply = r; });
+        }
+        for (const r of records) local.set(r.id, r.raw_text);
+      },
+      payloadFields: ['raw_text'],
+      allowDelete: true,
+    });
+    while (!applying) await tick(); // eslint-disable-line no-await-in-loop
+
+    let wrote = false;
+    const writer = withLocalWriteLock(async () => { local.set('a', 'v2'); wrote = true; });
+    await tick();
+    expect(wrote).toBe(false);
+    releaseApply();
+    await writer;
+    await pass;
+    // The writer landed wholly after the write-back, so its value stands.
+    expect(local.get('a')).toBe('v2');
   });
 });

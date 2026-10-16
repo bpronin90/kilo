@@ -6,10 +6,80 @@ import {
   reconcileTrackedLiftActivations,
 } from '../../lib/data/workoutAnalytics';
 import { safeNotify } from './shared';
+import { maybeSyncCloud } from './storageMode';
 import { markStartupPhase } from '../../storage/entries/startupTiming';
+import { withLocalWriteLock } from '../../storage/sync/localWriteLock';
 
 let trackedLiftsListeners = [];
 const notifyTrackedLifts = () => safeNotify(trackedLiftsListeners);
+
+// Ask for a cloud pass once a flag/record change is DURABLE (#1393). Called only
+// after every storage write of the change has resolved, so a write failure never
+// starts a pass over an incomplete pair. Fire-and-forget on purpose: the write
+// queue must not wait on the network, or a burst of toggles would serialize on
+// round trips instead of coalescing. maybeSyncCloud() supplies the rest — no-op
+// outside cloud mode, one shared pending pass plus one trailing pass for writes
+// that land while a pass runs, and failed/retryable phase reporting.
+function requestTrackedLiftSync() {
+  Promise.resolve()
+    .then(maybeSyncCloud)
+    .catch(() => {});
+}
+
+// Every storage write of a queued change runs inside the shared local-write lock
+// (#1393), which a sync pass's local read and write-back also take. A pass then
+// sees the pair wholly before or wholly after this write, and cannot write a
+// stale ack back over it. Only local storage happens inside the lock: the sync
+// request is made after it is released and never awaited, so the queue never
+// waits on the network and no holder waits on the other's queue (no deadlock).
+// `lifts === null` writes the activation records alone (the note-save reconcile).
+function writeTrackedLiftStorage(lifts, activations) {
+  return withLocalWriteLock(async () => {
+    if (lifts !== null) await Storage.saveTrackedLifts(lifts);
+    await Storage.saveTrackedLiftActivations(activations);
+  });
+}
+
+// What refresh() needs in order to tell a storage read that may be older than the
+// module state from one that is not. A queued write sets module state optimistically
+// and only later (behind the queue and the shared lock) makes it durable, so
+// storage can trail the module for the whole time a write is pending.
+//   * `pendingTrackedLiftWrites` counts writes from ENQUEUE (synchronously) to
+//     settle, so one still waiting on the queue or the lock counts too;
+//   * `trackedLiftsGeneration` is bumped when a write starts and when it settles,
+//     so a read that began and ended around a whole write is also caught.
+let pendingTrackedLiftWrites = 0;
+let trackedLiftsGeneration = 0;
+
+// Keep the shared write queue alive after a failed write: the caller still sees
+// the rejection, but the next toggle/save/reconcile runs instead of inheriting it.
+// Every path that sets module state optimistically (toggle, save, reconcile) goes
+// through here, so it is counted as pending before it can touch that state.
+function enqueueTrackedLiftWrite(work) {
+  pendingTrackedLiftWrites += 1;
+  const run = trackedLiftsPromise.then(async () => {
+    trackedLiftsGeneration += 1;
+    try {
+      return await work();
+    } finally {
+      trackedLiftsGeneration += 1;
+      pendingTrackedLiftWrites -= 1;
+    }
+  });
+  trackedLiftsPromise = run.catch(() => {});
+  return run;
+}
+
+// A read may replace module state only if no write was pending when it started
+// or when it finished, and none ran in between. Otherwise module state is newer;
+// the pending write's own broadcast reads storage again once it is durable.
+function beginTrackedLiftRead() {
+  const pendingAtStart = pendingTrackedLiftWrites;
+  const generation = trackedLiftsGeneration;
+  return () => pendingAtStart === 0
+    && pendingTrackedLiftWrites === 0
+    && generation === trackedLiftsGeneration;
+}
 
 let currentTrackedLifts = {};
 // Tracked-span activation records (#893). Held beside the flags rather than
@@ -54,9 +124,19 @@ export function useTrackedLifts() {
   // set for the life of the hook and a consumer's banner could never come down,
   // even after a retry succeeded. Clearing it on success — and only on success —
   // fixes that without reintroducing the mid-retry verified-empty window.
+  //
+  // Every write broadcasts to this, so a read can overlap a pending write (queued,
+  // waiting for the lock, or running). Such a read may be older than module state
+  // (#1393): adopting it would roll the module back and the next toggle would
+  // derive from it, losing the user's latest intent. It shows the module state
+  // instead; see beginTrackedLiftRead.
   const refresh = useCallback(() => {
+    const isFresh = beginTrackedLiftRead();
     Promise.all([Storage.loadTrackedLifts(), Storage.loadTrackedLiftActivations()])
-      .then(([lifts, records]) => {
+      .then(([loadedLifts, loadedRecords]) => {
+        const fresh = isFresh();
+        const lifts = fresh ? loadedLifts : currentTrackedLifts;
+        const records = fresh ? loadedRecords : currentActivations;
         currentTrackedLifts = lifts;
         currentActivations = records;
         setTrackedLifts(lifts);
@@ -80,18 +160,17 @@ export function useTrackedLifts() {
   // drops loses its record in the same write, so no record can outlive the flag
   // it belongs to and be inherited by a later retrack.
   const save = useCallback(async (nextTrackedLifts) => {
-    trackedLiftsPromise = trackedLiftsPromise.then(async () => {
+    return enqueueTrackedLiftWrite(async () => {
       const nextActivations = Storage.pruneTrackedLiftActivations(nextTrackedLifts, currentActivations);
       currentTrackedLifts = nextTrackedLifts;
       currentActivations = nextActivations;
       setTrackedLifts(nextTrackedLifts);
       setActivations(nextActivations);
-      await Storage.saveTrackedLifts(nextTrackedLifts);
-      await Storage.saveTrackedLiftActivations(nextActivations);
+      await writeTrackedLiftStorage(nextTrackedLifts, nextActivations);
       notifyTrackedLifts();
+      requestTrackedLiftSync();
       return nextTrackedLifts;
     });
-    return trackedLiftsPromise;
   }, []);
 
   // `sections` is the parsed routine population the user was looking at when
@@ -99,7 +178,7 @@ export function useTrackedLifts() {
   // caller that omits it (a test, or a surface with no parse in hand) still gets
   // the shipped boolean behavior, with no record and therefore full history.
   const toggle = useCallback(async (name, sections = null) => {
-    trackedLiftsPromise = trackedLiftsPromise.then(async () => {
+    return enqueueTrackedLiftWrite(async () => {
       const key = normalizeExerciseKey(name) || name;
       const nextLifts = canonicalizeTrackedLifts(currentTrackedLifts);
       const nextActivations = { ...currentActivations };
@@ -120,12 +199,11 @@ export function useTrackedLifts() {
       currentActivations = nextActivations;
       setTrackedLifts(nextLifts);
       setActivations(nextActivations);
-      await Storage.saveTrackedLifts(nextLifts);
-      await Storage.saveTrackedLiftActivations(nextActivations);
+      await writeTrackedLiftStorage(nextLifts, nextActivations);
       notifyTrackedLifts();
+      requestTrackedLiftSync();
       return nextLifts;
     });
-    return trackedLiftsPromise;
   }, []);
 
   return { trackedLifts, activations, loading, error, save, toggle, refresh, reconcileActivations: reconcileTrackedLiftActivationsAtSave };
@@ -147,13 +225,14 @@ export function useTrackedLifts() {
 // Retirement never touches `tracked_lifts`. The exercise stays tracked; it just
 // falls back to legacy full-history progression.
 export async function reconcileTrackedLiftActivationsAtSave(sections) {
-  trackedLiftsPromise = trackedLiftsPromise.then(async () => {
+  return enqueueTrackedLiftWrite(async () => {
     const { next, changed } = reconcileTrackedLiftActivations(sections, currentActivations);
+    // No change, no write — and no redundant cloud pass.
     if (!changed) return currentTrackedLifts;
     currentActivations = next;
-    await Storage.saveTrackedLiftActivations(next);
+    await writeTrackedLiftStorage(null, next);
     notifyTrackedLifts();
+    requestTrackedLiftSync();
     return currentTrackedLifts;
   });
-  return trackedLiftsPromise;
 }

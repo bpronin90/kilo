@@ -13,7 +13,8 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 
 import * as Storage from '../storage/entries';
-import { WORKOUT_NOTES_KEY, WEIGHT_KEY } from '../storage/entries/keys';
+import { WORKOUT_NOTES_KEY, WEIGHT_KEY, CURRENT_WORKOUT_ID_KEY } from '../storage/entries/keys';
+import { secureStorage } from '../storage/secureStorage';
 import {
   SYNC_PHASE,
   SYNC_STATUS,
@@ -23,7 +24,14 @@ import {
   runPhase,
   __resetSyncQueue,
 } from '../storage/syncRecovery';
-import { SYNC_TABLES, resetClientIdCacheForTests, resetStampClockForTests } from '../storage/syncQueue';
+import {
+  SINGLETON_SYNC_ID,
+  SYNC_TABLES,
+  resetClientIdCacheForTests,
+  resetStampClockForTests,
+} from '../storage/syncQueue';
+import { useTrackedLifts } from '../hooks/entries/trackedLiftHooks';
+import { parseWorkoutNote } from '../lib/parser';
 import { cloudAdapter, setCloudTransport } from '../storage/cloudAdapter';
 import { maybeSyncCloud, __resetMaybeSyncCloudForTests } from '../hooks/entries/storageMode';
 import { useWeightEntries, useWorkoutNotes } from '../hooks/useEntries';
@@ -386,6 +394,274 @@ describe('entry hooks read on-device storage once at mount unless a pass ran (#8
     await flushAsync();
     expect(sync).toHaveBeenCalledTimes(1);
     expect(refs.every((r) => r.notes[0].raw_text === '-Bench\n140 5,5')).toBe(true);
+    act(() => tree.unmount());
+  });
+});
+
+// A Track toggle is a write too (#1393). Before this it requested no pass at
+// all, so the health row stayed stale until some unrelated note/weight save,
+// launch, or refresh happened to run one — while the indicator kept showing the
+// last successful pass. Real cloud adapter and engine, xid-faithful transport.
+describe('Track toggles upload through the shared pass (#1393)', () => {
+  const HISTORY = parseWorkoutNote('Monday\n-Bench\n225 5\n235 5\n245 5').sections;
+
+  function mountTracked() {
+    const ref = { current: null };
+    function Probe() {
+      ref.current = useTrackedLifts();
+      return null;
+    }
+    let tree;
+    act(() => { tree = TestRenderer.create(React.createElement(Probe)); });
+    return { ref, tree };
+  }
+
+  const healthRow = (cloud) => cloud.remoteRow(SYNC_TABLES.USER_HEALTH_PROFILE, SINGLETON_SYNC_ID);
+
+  async function signedInDevice(cloud) {
+    setCloudTransport(cloud.transport);
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    await cloudAdapter.sync({ ownedDevice: false });
+  }
+
+  it('Track and untrack each reach kilo.user_health_profile with no other trigger', async () => {
+    const cloud = makeXidFakeCloud();
+    await signedInDevice(cloud);
+    const passSpy = jest.spyOn(cloudAdapter, 'sync');
+    const { ref, tree } = mountTracked();
+    await flushAsync(8);
+    expect(passSpy).not.toHaveBeenCalled();
+
+    await act(async () => { await ref.current.toggle('bench', HISTORY); });
+    await flushAsync(8);
+    expect(passSpy).toHaveBeenCalledTimes(1);
+    expect(healthRow(cloud).tracked_lifts).toEqual({ bench: true });
+    expect(healthRow(cloud).tracked_lift_activations.bench).toEqual(
+      expect.objectContaining({ anchor: 3, witness: expect.objectContaining({ headings: ['Monday'] }) }),
+    );
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+
+    await act(async () => { await ref.current.toggle('bench', HISTORY); });
+    await flushAsync(8);
+    expect(passSpy).toHaveBeenCalledTimes(2);
+    expect(healthRow(cloud).tracked_lifts).toEqual({});
+    expect(healthRow(cloud).tracked_lift_activations).toEqual({});
+    act(() => tree.unmount());
+  });
+
+  it('an untrack made while the health-row push is in flight survives that push ack', async () => {
+    const cloud = makeXidFakeCloud();
+    await signedInDevice(cloud);
+    const { ref, tree } = mountTracked();
+    await flushAsync(8);
+
+    const realPush = cloud.transport.push;
+    let gate = null;
+    let paused = false;
+    cloud.transport.push = jest.fn(async (table, records) => {
+      if (table === SYNC_TABLES.USER_HEALTH_PROFILE && !paused) {
+        paused = true;
+        gate = deferred();
+        await gate.promise;
+      }
+      return realPush(table, records);
+    });
+
+    await act(async () => { await ref.current.toggle('bench', HISTORY); });
+    await flushAsync(8);
+    expect(gate).not.toBeNull();
+
+    await act(async () => { await ref.current.toggle('bench', HISTORY); });
+    await flushAsync(2);
+    expect(await Storage.loadTrackedLifts()).toEqual({});
+
+    gate.resolve();
+    await flushAsync(16);
+
+    expect(await Storage.loadTrackedLifts()).toEqual({});
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({});
+    expect(healthRow(cloud).tracked_lifts).toEqual({});
+    expect(healthRow(cloud).tracked_lift_activations).toEqual({});
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    act(() => tree.unmount());
+  });
+
+  // Codex FEEDBACK 2 on PR #1397: the untrack lands while the ack write-back is
+  // INSIDE its own storage operations (after its re-read), not during a network
+  // wait. Only a shared local-write lock between the write-back and the Track
+  // write queue keeps the two from interleaving.
+  it('an untrack landing during the ack write-back storage ops is neither reverted nor lost', async () => {
+    const cloud = makeXidFakeCloud();
+    await signedInDevice(cloud);
+    const { ref, tree } = mountTracked();
+    await flushAsync(8);
+
+    // Arm once the health-row push has been acknowledged; the first
+    // current-workout-id read after that is the guard's re-read, the second is
+    // applyUserHealthProfile's, which this holds.
+    let armed = false;
+    let readsAfterAck = 0;
+    let readGate = null;
+    const realPush = cloud.transport.push;
+    cloud.transport.push = jest.fn(async (table, records) => {
+      const acks = await realPush(table, records);
+      if (table === SYNC_TABLES.USER_HEALTH_PROFILE && readGate === null) armed = true;
+      return acks;
+    });
+    const realGetItem = secureStorage.getItem.bind(secureStorage);
+    jest.spyOn(secureStorage, 'getItem').mockImplementation(async (key) => {
+      if (armed && key === CURRENT_WORKOUT_ID_KEY) {
+        readsAfterAck += 1;
+        if (readsAfterAck === 2) {
+          armed = false;
+          readGate = deferred();
+          await readGate.promise;
+        }
+      }
+      return realGetItem(key);
+    });
+
+    await act(async () => { await ref.current.toggle('bench', HISTORY); });
+    await flushAsync(8);
+    expect(readGate).not.toBeNull();
+
+    // Untrack while the ack application is parked mid-storage-op. Not awaited
+    // here: with the lock it must wait for the write-back to finish.
+    let untrack;
+    let untrackSettled = false;
+    await act(async () => {
+      untrack = ref.current.toggle('bench', HISTORY);
+      untrack.then(() => { untrackSettled = true; });
+    });
+    await flushAsync(4);
+    // The untrack is queued behind the write-back's locked section, not
+    // interleaved inside it.
+    expect(untrackSettled).toBe(false);
+
+    readGate.resolve();
+    await act(async () => { await untrack; });
+    await flushAsync(16);
+
+    expect(await Storage.loadTrackedLifts()).toEqual({});
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({});
+    expect(healthRow(cloud).tracked_lifts).toEqual({});
+    expect(healthRow(cloud).tracked_lift_activations).toEqual({});
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    act(() => tree.unmount());
+  });
+
+  // Codex FEEDBACK 3 on PR #1397: a refresh that starts AND finishes while a
+  // queued write is waiting for the lock must not adopt the older durable state
+  // over that write's optimistic module state, or the next toggle derives from
+  // the stale value.
+  it('a refresh while a write waits for the lock does not roll back the queued intent', async () => {
+    const cloud = makeXidFakeCloud();
+    await signedInDevice(cloud);
+    const { ref, tree } = mountTracked();
+    await flushAsync(8);
+
+    let armed = false;
+    let readsAfterAck = 0;
+    let readGate = null;
+    const realPush = cloud.transport.push;
+    cloud.transport.push = jest.fn(async (table, records) => {
+      const acks = await realPush(table, records);
+      if (table === SYNC_TABLES.USER_HEALTH_PROFILE && readGate === null) armed = true;
+      return acks;
+    });
+    const realGetItem = secureStorage.getItem.bind(secureStorage);
+    jest.spyOn(secureStorage, 'getItem').mockImplementation(async (key) => {
+      if (armed && key === CURRENT_WORKOUT_ID_KEY) {
+        readsAfterAck += 1;
+        if (readsAfterAck === 2) {
+          armed = false;
+          readGate = deferred();
+          await readGate.promise;
+        }
+      }
+      return realGetItem(key);
+    });
+
+    await act(async () => { await ref.current.toggle('bench', HISTORY); });
+    await flushAsync(8);
+    expect(readGate).not.toBeNull();
+
+    // Untrack queues behind the held write-back; module state is already {}.
+    let untrack;
+    await act(async () => { untrack = ref.current.toggle('bench', HISTORY); });
+    await flushAsync(4);
+    // A refresh starts and finishes during that wait (durable is still bench).
+    await act(async () => { ref.current.refresh(); });
+    await flushAsync(8);
+    // Retrack, queued behind the untrack: must derive from {} and track again.
+    let retrack;
+    await act(async () => { retrack = ref.current.toggle('bench', HISTORY); });
+
+    readGate.resolve();
+    await act(async () => { await untrack; await retrack; });
+    await flushAsync(16);
+
+    expect(await Storage.loadTrackedLifts()).toEqual({ bench: true });
+    expect((await Storage.loadTrackedLiftActivations()).bench).toEqual(expect.objectContaining({ anchor: 3 }));
+    expect(healthRow(cloud).tracked_lifts).toEqual({ bench: true });
+    expect(healthRow(cloud).tracked_lift_activations.bench).toEqual(expect.objectContaining({ anchor: 3 }));
+    expect(ref.current.trackedLifts).toEqual({ bench: true });
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    act(() => tree.unmount());
+  });
+
+  it('negative: a refresh with no write pending adopts a value a pass pulled from another device', async () => {
+    const cloud = makeXidFakeCloud();
+    await signedInDevice(cloud);
+    const { ref, tree } = mountTracked();
+    await flushAsync(8);
+    await act(async () => { await ref.current.toggle('bench', HISTORY); });
+    await flushAsync(8);
+    expect(healthRow(cloud).tracked_lifts).toEqual({ bench: true });
+
+    // Another device replaces the health row's tracked lifts.
+    const { __xid: _x, updated_at: _u, ...row } = healthRow(cloud); // eslint-disable-line no-unused-vars
+    await cloud.transport.push(SYNC_TABLES.USER_HEALTH_PROFILE, [{
+      ...row, tracked_lifts: { squat: true }, tracked_lift_activations: {},
+    }]);
+    await act(async () => { await maybeSyncCloud(); });
+    await flushAsync(8);
+    expect(await Storage.loadTrackedLifts()).toEqual({ squat: true });
+
+    await act(async () => { ref.current.refresh(); });
+    await flushAsync(8);
+    expect(ref.current.trackedLifts).toEqual({ squat: true });
+
+    // And the next toggle derives from the adopted value, not the old one.
+    await act(async () => { await ref.current.toggle('deadlift', HISTORY); });
+    await flushAsync(8);
+    expect(await Storage.loadTrackedLifts()).toEqual({ squat: true, deadlift: true });
+    act(() => tree.unmount());
+  });
+
+  it('offline: the toggle stays local, the phase fails retryably, and a retry uploads it', async () => {
+    const cloud = makeXidFakeCloud();
+    await signedInDevice(cloud);
+    const { ref, tree } = mountTracked();
+    await flushAsync(8);
+
+    const realPush = cloud.transport.push;
+    cloud.transport.push = jest.fn(() => Promise.reject(new Error('Network request failed')));
+    await act(async () => { await ref.current.toggle('squat', HISTORY); });
+    await flushAsync(8);
+
+    const failed = getSyncState()[SYNC_PHASE.SYNC];
+    expect(failed.status).toBe(SYNC_STATUS.FAILED);
+    expect(failed.retryable).toBe(true);
+    expect(healthRow(cloud)?.tracked_lifts?.squat).toBeUndefined();
+    expect(await Storage.loadTrackedLifts()).toEqual({ squat: true });
+
+    cloud.transport.push = realPush;
+    await act(async () => { await maybeSyncCloud(); });
+    await flushAsync(8);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    expect(healthRow(cloud).tracked_lifts).toEqual({ squat: true });
+    expect(healthRow(cloud).tracked_lift_activations.squat).toEqual(expect.objectContaining({ anchor: 0 }));
     act(() => tree.unmount());
   });
 });
