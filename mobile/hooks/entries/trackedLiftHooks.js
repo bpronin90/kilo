@@ -9,7 +9,7 @@ import { safeNotify } from './shared';
 import { finishNormalizationApplyIntent, maybeSyncCloud, setNormalizationApplyGate } from './storageMode';
 import { markStartupPhase } from '../../storage/entries/startupTiming';
 import { withLocalWriteLock } from '../../storage/sync/localWriteLock';
-import { isNormalizationApplyIntentMaybePending } from '../../storage/entries/workoutNotes';
+import { isNormalizationApplyIntentMaybePending, withWorkoutNotebookLock } from '../../storage/entries/workoutNotes';
 import {
   getTrackedLiftWriteGeneration,
   setTrackedLiftWriteListener,
@@ -144,11 +144,17 @@ function enqueueTrackedLiftWrite(work, { locked = true } = {}) {
       if (!locked) return await work();
       let adopted = false;
       let out;
+      const section = notebookHeld => withLocalWriteLock(async () => {
+        if (await adoptExternalTrackedLiftWrites()) adopted = true;
+        return work({ notebookHeld });
+      });
       try {
-        out = await withLocalWriteLock(async () => {
-          adopted = await adoptExternalTrackedLiftWrites();
-          return work();
-        });
+        out = await section(false);
+        // A step that must read the durable notebook (Track-on, #1403) returns
+        // `needsNotebook` BEFORE changing anything. It is then re-run in this
+        // same queue slot (order kept) as notebook -> local-write, so a plain
+        // note save cannot land between its read and its Track write.
+        if (out?.needsNotebook) out = await withWorkoutNotebookLock(() => section(true));
       } finally {
         if (adopted || out?.wrote) notifyTrackedLifts();
       }
@@ -313,7 +319,7 @@ export function useTrackedLifts() {
   // caller that omits it (a test, or a surface with no parse in hand) still gets
   // the shipped boolean behavior, with no record and therefore full history.
   const toggle = useCallback(async (name, sections = null) => {
-    return enqueueTrackedLiftWrite(async () => {
+    return enqueueTrackedLiftWrite(async ({ notebookHeld } = {}) => {
       const key = normalizeExerciseKey(name) || name;
       const nextLifts = canonicalizeTrackedLifts(currentTrackedLifts);
       const nextActivations = { ...currentActivations };
@@ -325,8 +331,13 @@ export function useTrackedLifts() {
         delete nextLifts[key];
         delete nextActivations[key];
       } else {
+        // Untrack and the no-sections path never take the notebook lock.
+        if (sections && !notebookHeld) return { value: undefined, wrote: false, needsNotebook: true };
+        // Minted BEFORE any optimistic state, so a failed population read
+        // rejects with module state, storage and the queue all untouched.
+        const record = sections ? await mintFromCurrentPopulation(sections, name) : null;
         nextLifts[key] = true;
-        if (sections) nextActivations[key] = buildTrackedLiftActivation(sections, name);
+        if (record) nextActivations[key] = record;
         else delete nextActivations[key];
       }
 
@@ -377,6 +388,33 @@ export async function reconcileTrackedLiftActivationsAtSave(sections) {
     await writeTrackedLiftStorage(null, next);
     return { value: currentTrackedLifts, wrote: true };
   });
+}
+
+// Track-on mint (#1403). `sections` is the caller's render, which can predate a
+// notebook change (a normalization apply, a sync pull, a restore, a note write),
+// and no Track-map generation covers a notebook-only change. So the durable
+// notebook is read here, under the notebook lock AND the local-write lock (taken
+// in that order, like every other holder): after adoption, and in the same
+// section as the Track write that follows. An apply or a plain note save holds
+// the notebook lock, so each is wholly before or after this read-and-write.
+//
+// The population is the UNFILTERED live notebook (recovery-excluded weeks count;
+// deleted notes do not), the same one the Log caller and the save-boundary
+// reconcile use. The caller's render can legitimately hold MORE than storage
+// (the editor's unsaved text, a brand-new routine), never fewer unless it is
+// stale, so the larger count wins and a tie keeps the caller's render. A stale
+// render therefore cannot under-count; the one thing storage cannot reveal is a
+// stale render that is merely LONGER than storage (sessions removed since), which
+// looks like unsaved text and is later clamped by the save-boundary reconcile.
+// An unreadable notebook is unknown, not empty: the toggle rejects, writes
+// nothing, and a retry reads again. No network, no other lock.
+async function mintFromCurrentPopulation(sections, name) {
+  const notes = (await Storage.loadWorkoutNotesRaw()).filter(n => n && !n.deleted_at);
+  const durable = notes.flatMap(n => (n.raw_text ? parseWorkoutNote(n.raw_text).sections : []));
+  const now = new Date();
+  const fromCaller = buildTrackedLiftActivation(sections, name, now);
+  const fromDurable = buildTrackedLiftActivation(durable, name, now);
+  return fromDurable.anchor > fromCaller.anchor ? fromDurable : fromCaller;
 }
 
 // Inside the reconcile's locked section. An unreadable notebook is unknown, so

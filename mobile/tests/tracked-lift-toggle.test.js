@@ -26,6 +26,8 @@ import { importBackup } from '../storage/entries/backupImport';
 import { makeXidFakeCloud } from './mocks/xidFakeCloud';
 import { computeSaveClassifications } from '../screens/log/currentRoutineSave';
 import * as DeloadStorage from '../storage/entries/deloadStorage';
+import { buildTrackedLiftActivation } from '../lib/data/workoutAnalytics';
+import { deriveRecoveryExcludedNoteIds } from '../lib/data/recoveryAnalyticsFilter';
 
 jest.mock('../lib/reminderScheduler', () => ({ reconcileWorkoutReminder: () => Promise.resolve() }));
 jest.mock('../lib/supabaseClient', () => ({ getSupabaseClient: jest.fn() }));
@@ -999,5 +1001,185 @@ describe('a normalization apply carries Track (#1395)', () => {
     } finally {
       setCloudTransport(null);
     }
+  });
+});
+
+// #1403: Track-on mints from a population consistent with the durable notebook,
+// not from a render that a notebook change has since outdated.
+describe('Track-on mints from the current notebook (#1403)', () => {
+  const AUTH = { id: 'ra', title: 'Auth', raw_text: 'Monday\n-DB Bench Press 3x6-8\n60 8' };
+  const TARGET = { id: 'rt', title: 'Upper', raw_text: 'Monday\n-DB Bench Press 3x6-8, step up\n60 8\n60 8' };
+  const NEXT = 'Monday\n-DB Bench Press 3x6-8\n60 8\n60 8\n-- step up';
+  const DST = 'db bench press';
+  const notebook = () => parseWorkoutNote(`${AUTH.raw_text}\n---\n${TARGET.raw_text}`).sections;
+  const request = () => ({
+    authority: { id: 'ra', expected_raw_text: AUTH.raw_text, accepted_raw_texts: [] },
+    items: [{ id: 'rt', expected_raw_text: TARGET.raw_text, next_raw_text: NEXT }],
+  });
+  const BENCH = { id: 'nb', title: 'Bench', raw_text: 'Monday\n-Bench\n225 5\n235 5\n245 5' };
+  const MORE = 'Monday\n-Bench\n225 5\n235 5\n245 5\n255 5\n265 5';
+  const benchSections = () => parseWorkoutNote(BENCH.raw_text).sections;
+
+  async function mounted() {
+    const ref = renderHook();
+    await settle();
+    return ref;
+  }
+
+  test('a render captured before a normalization apply mints anchor 3, not 1', async () => {
+    await Storage.saveWorkoutNoteItem(AUTH);
+    await Storage.saveWorkoutNoteItem(TARGET);
+    const ref = await mounted();
+    const stale = notebook();
+    expect(buildTrackedLiftActivation(stale, DST).anchor).toBe(1);
+
+    await act(async () => { await applyWorkoutNoteTextBatch(request()); });
+    await settle();
+    await act(async () => { await ref.current.toggle(DST, stale); });
+    await settle();
+
+    const record = (await Storage.loadTrackedLiftActivations())[DST];
+    expect(record.anchor).toBe(3);
+    // The witness describes the selected (durable) population: three sessions.
+    expect(record.witness.sessions.split('|')).toHaveLength(3);
+    expect(await Storage.loadTrackedLifts()).toEqual({ [DST]: true });
+  });
+
+  test('a notebook-only change with no Track-map bump is not minted from the stale count', async () => {
+    await Storage.saveWorkoutNoteItem(BENCH);
+    const ref = await mounted();
+    const stale = benchSections();
+    const before = getTrackedLiftWriteGeneration();
+    await Storage.saveWorkoutNoteItem({ ...BENCH, raw_text: MORE });
+    expect(getTrackedLiftWriteGeneration()).toBe(before);
+
+    await act(async () => { await ref.current.toggle('bench', stale); });
+    await settle();
+    expect((await Storage.loadTrackedLiftActivations()).bench.anchor).toBe(5);
+  });
+
+  test('a note save landing while the toggle waits for the lock is seen, not missed', async () => {
+    await Storage.saveWorkoutNoteItem(BENCH);
+    const ref = await mounted();
+    const stale = benchSections();
+    const held = deferred();
+    let holder;
+    let toggling;
+    await act(async () => { holder = withLocalWriteLock(() => held.promise); });
+    await act(async () => { toggling = ref.current.toggle('bench', stale); });
+    await settle();
+    await Storage.saveWorkoutNoteItem({ ...BENCH, raw_text: MORE });
+    held.resolve();
+    await act(async () => { await holder; await toggling; });
+    await settle();
+    expect((await Storage.loadTrackedLiftActivations()).bench.anchor).toBe(5);
+  });
+
+  test('a plain note save between the read and the Track write waits for the write', async () => {
+    await Storage.saveWorkoutNoteItem(BENCH);
+    const ref = await mounted();
+    const reached = deferred();
+    const held = deferred();
+    let armed = true;
+    const realSetItem = secureStorage.setItem.bind(secureStorage);
+    jest.spyOn(secureStorage, 'setItem').mockImplementation(async (key, value) => {
+      if (armed && key === 'kilo_tracked_lifts') {
+        armed = false;
+        reached.resolve();
+        await held.promise;
+      }
+      return realSetItem(key, value);
+    });
+    let toggling;
+    let saving;
+    let saved = false;
+    await act(async () => { toggling = ref.current.toggle('bench', benchSections()); });
+    await act(async () => { await reached.promise; });
+    // The notebook was read; the Track write is in flight.
+    await act(async () => { saving = Storage.saveWorkoutNoteItem({ ...BENCH, raw_text: MORE }).then(() => { saved = true; }); });
+    await settle(8);
+    expect(saved).toBe(false);
+    expect((await Storage.loadWorkoutNotesRaw())[0].raw_text).toBe(BENCH.raw_text);
+    held.resolve();
+    await act(async () => { await toggling; await saving; });
+    await settle();
+    expect(saved).toBe(true);
+    expect((await Storage.loadTrackedLiftActivations()).bench.anchor).toBe(3);
+    expect((await Storage.loadWorkoutNotesRaw())[0].raw_text).toBe(MORE);
+  });
+
+  test('a current render keeps the anchor and witness, and unsaved editor text still counts', async () => {
+    await Storage.saveWorkoutNoteItem(BENCH);
+    const ref = await mounted();
+    await act(async () => { await ref.current.toggle('bench', benchSections()); });
+    await settle();
+    const current = (await Storage.loadTrackedLiftActivations()).bench;
+    expect(current.anchor).toBe(3);
+    expect(current.witness.headings).toEqual(['Monday']);
+
+    await act(async () => { await ref.current.toggle('bench', benchSections()); });
+    await settle();
+    // Unsaved text: the render holds two sessions storage does not have yet.
+    await act(async () => { await ref.current.toggle('bench', parseWorkoutNote(MORE).sections); });
+    await settle();
+    expect((await Storage.loadTrackedLiftActivations()).bench.anchor).toBe(5);
+  });
+
+  test('untrack removes the flag and record together and never needs the notebook', async () => {
+    await Storage.saveWorkoutNoteItem(BENCH);
+    const ref = await mounted();
+    await act(async () => { await ref.current.toggle('bench', benchSections()); });
+    await settle();
+    await AsyncStorage.setItem('kilo_workout_notes', '{not json');
+    await act(async () => { await ref.current.toggle('bench', benchSections()); });
+    await settle();
+    expect(await Storage.loadTrackedLifts()).toEqual({});
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({});
+  });
+
+  test('recovery-excluded weeks count in the population', async () => {
+    const REC = { id: 'rec', title: 'Rehab week', raw_text: 'Monday\n-Bench\n135 5\n145 5\n155 5\n165 5' };
+    await Storage.saveWorkoutNoteItem(BENCH);
+    await Storage.saveWorkoutNoteItem(REC);
+    const weeks = [{ id: 'w1', block_id: 'b1', note_id: 'rec' }];
+    await AsyncStorage.setItem('kilo_recovery_block_weeks', JSON.stringify(weeks));
+    // Ordinary-analytics filtering WOULD drop this note.
+    expect(deriveRecoveryExcludedNoteIds([], weeks).has('rec')).toBe(true);
+    const ref = await mounted();
+    await act(async () => { await ref.current.toggle('bench', benchSections()); });
+    await settle();
+    expect((await Storage.loadTrackedLiftActivations()).bench.anchor).toBe(7);
+  });
+
+  test('deleted notes do not contribute', async () => {
+    await Storage.saveWorkoutNoteItem(BENCH);
+    const raw = await Storage.loadWorkoutNotesRaw();
+    const tombstone = { id: 'gone', title: 'Gone', raw_text: MORE, deleted_at: '2026-01-01T00:00:00.000Z' };
+    await AsyncStorage.setItem('kilo_workout_notes', JSON.stringify([...raw, tombstone]));
+    const ref = await mounted();
+    await act(async () => { await ref.current.toggle('bench', benchSections()); });
+    await settle();
+    expect((await Storage.loadTrackedLiftActivations()).bench.anchor).toBe(3);
+  });
+
+  test('an unreadable notebook rejects the Track-on, writes nothing, and a retry mints', async () => {
+    await Storage.saveWorkoutNoteItem(BENCH);
+    const ref = await mounted();
+    const goodBytes = await AsyncStorage.getItem('kilo_workout_notes');
+    await AsyncStorage.setItem('kilo_workout_notes', '{not json');
+    const sections = benchSections();
+    let failure = null;
+    await act(async () => { await ref.current.toggle('bench', sections).catch((e) => { failure = e; }); });
+    await settle();
+    expect(failure).toBeTruthy();
+    expect(await Storage.loadTrackedLifts()).toEqual({});
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({});
+    expect(ref.current.trackedLifts).toEqual({});
+
+    await AsyncStorage.setItem('kilo_workout_notes', goodBytes);
+    await act(async () => { await ref.current.toggle('bench', sections); });
+    await settle();
+    expect(await Storage.loadTrackedLifts()).toEqual({ bench: true });
+    expect((await Storage.loadTrackedLiftActivations()).bench.anchor).toBe(3);
   });
 });
