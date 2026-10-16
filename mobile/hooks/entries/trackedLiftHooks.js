@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../../storage/entries';
-import { normalizeExerciseKey } from '../../lib/parser';
+import { normalizeExerciseKey, parseWorkoutNote } from '../../lib/parser';
 import {
   buildTrackedLiftActivation,
   reconcileTrackedLiftActivations,
@@ -48,6 +48,7 @@ async function writeTrackedLiftStorage(lifts, activations) {
   try {
     if (lifts !== null) await Storage.saveTrackedLifts(lifts);
     await Storage.saveTrackedLiftActivations(activations);
+    if (adoptedGeneration === getTrackedLiftWriteGeneration()) adoptedActivations = Storage.normalizeTrackedLiftActivations(activations);
   } finally {
     ownWriteInFlight = false;
   }
@@ -67,6 +68,11 @@ async function writeTrackedLiftStorage(lifts, activations) {
 // toggle (an unmounted one reads storage when it mounts; #818's single cold-start
 // read is kept). Both run in the queue, so #1393's refresh() gating still holds.
 let adoptedGeneration = getTrackedLiftWriteGeneration();
+// The records as of `adoptedGeneration`, and the keys whose record a writer
+// outside this queue changed since a save last agreed with the durable notebook
+// about them (see reconcileTrackedLiftActivationsAtSave).
+let adoptedActivations = {};
+const externallyChangedKeys = new Set();
 let ownWriteInFlight = false;
 let adoptionQueued = false;
 let rollingForwardInQueue = false;
@@ -88,8 +94,12 @@ async function adoptExternalTrackedLiftWrites() {
   if (generation === adoptedGeneration) return false;
   const lifts = await loadTrackedLiftsStrict();
   const activations = await loadTrackedLiftActivationsStrict();
+  for (const key of new Set([...Object.keys(adoptedActivations), ...Object.keys(activations)])) {
+    if (stableJson(adoptedActivations[key]) !== stableJson(activations[key])) externallyChangedKeys.add(key);
+  }
   currentTrackedLifts = lifts;
   currentActivations = activations;
+  adoptedActivations = activations;
   adoptedGeneration = generation;
   return true;
 }
@@ -185,6 +195,7 @@ let trackedLiftsPromise = Promise.resolve()
     ]).then(([lifts, activations]) => {
       currentTrackedLifts = lifts;
       currentActivations = activations;
+      adoptedActivations = activations;
       adoptedGeneration = generation;
       if (replayed) notifyTrackedLifts();
     });
@@ -346,13 +357,52 @@ export function useTrackedLifts() {
 //
 // Retirement never touches `tracked_lifts`. The exercise stays tracked; it just
 // falls back to legacy full-history progression.
+//
+// #1395: `sections` is the caller's snapshot, taken before its own async reads,
+// so a rename (or any external Track write) can commit after it. Retiring or
+// clamping from it would shorten a span the newer notebook still supports. A
+// stale snapshot and a not-yet-saved edit look the same from here, so a record
+// changed outside this queue since a save last agreed about it is changed only
+// when the durable notebook independently gives the same result; otherwise it
+// is left for the next save (by then the edit is durable and the two agree).
+// Every other record reconciles exactly as before, in this same save.
 export async function reconcileTrackedLiftActivationsAtSave(sections) {
   return enqueueTrackedLiftWrite(async () => {
-    const { next, changed } = reconcileTrackedLiftActivations(sections, currentActivations);
+    const caller = reconcileTrackedLiftActivations(sections, currentActivations);
+    if (!caller.changed && externallyChangedKeys.size === 0) return { value: currentTrackedLifts, wrote: false };
+    const next = externallyChangedKeys.size ? await agreeWithDurableNotebook(caller.next) : caller.next;
     // No change, no write — and no redundant cloud pass.
-    if (!changed) return { value: currentTrackedLifts, wrote: false };
+    if (stableJson(next) === stableJson(currentActivations)) return { value: currentTrackedLifts, wrote: false };
     currentActivations = next;
     await writeTrackedLiftStorage(null, next);
     return { value: currentTrackedLifts, wrote: true };
   });
+}
+
+// Inside the reconcile's locked section. An unreadable notebook is unknown, so
+// every externally changed record is kept as it is.
+async function agreeWithDurableNotebook(fromCaller) {
+  let durable = null;
+  try {
+    const notes = (await Storage.loadWorkoutNotesRaw()).filter(n => n && !n.deleted_at);
+    const population = notes.flatMap(n => (n.raw_text ? parseWorkoutNote(n.raw_text).sections : []));
+    durable = reconcileTrackedLiftActivations(population, currentActivations).next;
+  } catch { /* unknown */ }
+  const next = { ...fromCaller };
+  for (const key of [...externallyChangedKeys]) {
+    if (durable && stableJson(fromCaller[key]) === stableJson(durable[key])) {
+      externallyChangedKeys.delete(key);
+    } else if (currentActivations[key] === undefined) {
+      delete next[key];
+    } else {
+      next[key] = currentActivations[key];
+    }
+  }
+  return next;
+}
+
+function stableJson(value) {
+  if (value === undefined) return 'undefined';
+  return JSON.stringify(value, (_k, v) => (v && typeof v === 'object' && !Array.isArray(v)
+    ? Object.fromEntries(Object.keys(v).sort().map(k => [k, v[k]])) : v));
 }

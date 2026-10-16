@@ -797,6 +797,9 @@ write re-read storage before it derives, while an adoption-only queue step re-re
 broadcasts to mounted consumers. That adoption, the derivation and both writes of one
 queued change run in a single local-write-lock section (any pending intent is rolled
 forward just before it), so a sync write-back can never land between derive and write.
+A save's reconcile population is the caller's snapshot and can predate a rename, so a
+record changed by an external writer is retired or clamped only when the durable notebook
+gives the same result (else it waits for the next save); other records reconcile as before.
 
 ## Parse-to-Persistence Flow
 

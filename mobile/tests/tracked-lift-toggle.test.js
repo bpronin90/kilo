@@ -22,6 +22,8 @@ import { secureStorage } from '../storage/secureStorage';
 import { SINGLETON_SYNC_ID, SYNC_TABLES, resetClientIdCacheForTests, resetStampClockForTests } from '../storage/syncQueue';
 import { cloudAdapter, setCloudTransport } from '../storage/cloudAdapter';
 import { makeXidFakeCloud } from './mocks/xidFakeCloud';
+import { computeSaveClassifications } from '../screens/log/currentRoutineSave';
+import * as DeloadStorage from '../storage/entries/deloadStorage';
 
 jest.mock('../lib/reminderScheduler', () => ({ reconcileWorkoutReminder: () => Promise.resolve() }));
 jest.mock('../lib/supabaseClient', () => ({ getSupabaseClient: jest.fn() }));
@@ -809,5 +811,81 @@ describe('a normalization apply carries Track (#1395)', () => {
     } finally {
       setCloudTransport(null);
     }
+  });
+
+  // Review round 6: an ordinary save builds its reconcile population from the
+  // notes it rendered. A rename that commits while that save is in flight must
+  // not have its translated span shortened from the pre-rename population.
+  async function saveWithPausedRead(ref, args) {
+    const held = deferred();
+    const reached = deferred();
+    const real = DeloadStorage.loadDeloadHistory;
+    jest.spyOn(DeloadStorage, 'loadDeloadHistory').mockImplementationOnce(async () => {
+      reached.resolve();
+      await held.promise;
+      return real();
+    });
+    const saving = computeSaveClassifications({
+      trackedLifts: ref.current.trackedLifts,
+      trackedLiftActivations: ref.current.activations,
+      reconcileTrackedLiftActivations: ref.current.reconcileActivations,
+      ...args,
+    });
+    await act(async () => { await reached.promise; });
+    return { saving, release: held.resolve };
+  }
+
+  test('a save in flight across a rename never shortens the translated span from its stale notes', async () => {
+    await seedNotes();
+    const ref = renderHook();
+    await settle();
+    await trackSource(ref);
+    const notes = await Storage.loadWorkoutNotes();
+    const { saving, release } = await saveWithPausedRead(ref, { textToSave: AUTH.raw_text, currentId: 'ra', notes });
+    await act(async () => { await applyWorkoutNoteTextBatch(request()); });
+    await settle();
+    expect((await Storage.loadTrackedLiftActivations())[DST].anchor).toBe(3);
+    release();
+    await act(async () => { await saving; });
+    await settle();
+    expect(await Storage.loadTrackedLifts()).toEqual({ [DST]: true });
+    expect((await Storage.loadTrackedLiftActivations())[DST].anchor).toBe(3);
+
+    // A later save over the current notebook agrees with it and leaves it.
+    const fresh = await Storage.loadWorkoutNotes();
+    const later = await saveWithPausedRead(ref, { textToSave: AUTH.raw_text, currentId: 'ra', notes: fresh });
+    later.release();
+    await act(async () => { await later.saving; });
+    await settle();
+    expect((await Storage.loadTrackedLiftActivations())[DST].anchor).toBe(3);
+
+    // Once the notebook itself loses the moved sessions, the repair is applied.
+    await Storage.saveWorkoutNoteItem({ ...TARGET, raw_text: 'Monday\n-Row\n50 8' });
+    const shortened = await saveWithPausedRead(ref, { textToSave: AUTH.raw_text, currentId: 'ra', notes: await Storage.loadWorkoutNotes() });
+    shortened.release();
+    await act(async () => { await shortened.saving; });
+    await settle();
+    expect((await Storage.loadTrackedLiftActivations())[DST].anchor).toBe(1);
+  });
+
+  test('negative: with no rename in between, a save still clamps and retires in that same save', async () => {
+    await seedNotes();
+    const ref = renderHook();
+    await settle();
+    await trackSource(ref);
+    const notes = await Storage.loadWorkoutNotes();
+    const shorter = 'Monday\n-DB Bench Press 3x6-8, step up\n60 8';
+    let pending = await saveWithPausedRead(ref, { textToSave: shorter, currentId: 'rt', notes });
+    pending.release();
+    await act(async () => { await pending.saving; });
+    await settle();
+    expect((await Storage.loadTrackedLiftActivations())[SRC].anchor).toBe(1);
+
+    pending = await saveWithPausedRead(ref, { textToSave: 'Monday\n-Row\n50 8', currentId: 'rt', notes });
+    pending.release();
+    await act(async () => { await pending.saving; });
+    await settle();
+    expect(await Storage.loadTrackedLifts()).toEqual({ [SRC]: true });
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({});
   });
 });
