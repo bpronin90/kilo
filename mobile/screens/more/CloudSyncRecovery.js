@@ -20,6 +20,61 @@ import {
 import appConfig from '../../app.json';
 import { TYPOGRAPHY, useKuaTypography } from '../../theme/typography';
 
+// Local unfinished-rename recovery (#1402, #1417): needs no account or consent,
+// so CloudSyncRecovery (outside its gate) and signed-out BackupScreen share it.
+export function UnfinishedRenameRecovery() {
+  const styles = useThemedStyles(createStyles);
+  const { found: renameFound, discard: discardRename } = useUnfinishedRename();
+  // The record shown when the confirmation opened; discard revalidates it.
+  const [renameConfirmRaw, setRenameConfirmRaw] = useState(null);
+  const [renameStatus, setRenameStatus] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const handleDiscardRename = async () => {
+    setBusy(true);
+    try {
+      const { message } = await discardRename(renameConfirmRaw);
+      setRenameConfirmRaw(null);
+      setRenameStatus(message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const renameBlocked = renameFound.status === 'blocked';
+  return renameBlocked || renameStatus ? (
+    <View style={styles.summaryBlock} testID="unfinished-rename-recovery">
+      {renameBlocked ? (
+        <>
+          <Text style={styles.syncLabel}>Unfinished rename</Text>
+          <Text style={styles.accountNote} accessibilityLabel="Unfinished rename">
+            A routine rename on this device was interrupted and cannot be finished
+            or undone automatically. Until it is cleared, saving routines, changing
+            tracked lifts and syncing are paused. Discarding it stops the unfinished
+            rename; your current notes and tracked lifts stay exactly as they are.
+          </Text>
+          {renameConfirmRaw === null ? (
+            <Button title="Discard unfinished rename" disabled={busy} accessibilityLabel="Discard unfinished rename"
+              onPress={() => { setRenameStatus(''); setRenameConfirmRaw(renameFound.raw); }} />
+          ) : (
+            <>
+              <Text style={styles.phaseDesc} accessibilityLabel="Discard unfinished rename confirmation">
+                Discard the unfinished rename? A private copy of the record is kept
+                on this device only; it is not synced or included in backups.
+              </Text>
+              <Button title="Discard" tone="danger" loadingTitle="Working…" disabled={busy}
+                onPress={handleDiscardRename} accessibilityLabel="Confirm discard unfinished rename" />
+              <Button title="Cancel" disabled={busy} onPress={() => setRenameConfirmRaw(null)}
+                accessibilityLabel="Cancel discard unfinished rename" />
+            </>
+          )}
+        </>
+      ) : null}
+      {renameStatus ? <Text style={styles.accountStatus} accessibilityLabel="Unfinished rename status">{renameStatus}</Text> : null}
+    </View>
+  ) : null;
+}
+
 // User-facing cloud bootstrap/sync recovery panel (Phase 4 / Task 12).
 //
 // Shows whether each phase is idle/running/failed/complete and offers a
@@ -31,10 +86,6 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
   const { bootstrap, sync, runBootstrap, runSync, retryBootstrap, retrySync } =
     useSyncRecovery(user);
   const { exportCloud } = useCloudExport();
-  const { found: renameFound, discard: discardRename } = useUnfinishedRename();
-  // The exact record shown when the confirmation opened; the discard revalidates it.
-  const [renameConfirmRaw, setRenameConfirmRaw] = useState(null);
-  const [renameStatus, setRenameStatus] = useState('');
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [confirmingForeignUpload, setConfirmingForeignUpload] = useState(false);
@@ -46,8 +97,7 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
       const next = await getPendingSyncIntent();
       if (pendingIntentMounted.current) setPendingIntent({ known: true, ...next });
     } catch {
-      // A status read must never turn an unknown local cache into a cloud
-      // claim. Leave the display in its conservative local-cache state.
+      // An unknown local cache must never become a cloud claim; stay conservative.
       if (pendingIntentMounted.current) setPendingIntent({ known: false, hasPending: false });
     }
   }, []);
@@ -126,11 +176,9 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
     }
   };
 
-  // Ownership gate for the manual upload (#450): when the local history
-  // belongs to a different account (or an unidentifiable one), require an
-  // explicit confirmation instead of silently pushing someone else's data
-  // into this account. Unclaimed or own data uploads directly — pressing the
-  // button is the consent in those cases.
+  // Ownership gate for the manual upload (#450): foreign or unidentifiable
+  // local history needs explicit confirmation; unclaimed or own data uploads
+  // directly (pressing the button is the consent).
   const handleBootstrapPress = async () => {
     const owner = await getLocalDataOwner();
     if (owner !== OWNER_UNCLAIMED && owner !== user?.id) {
@@ -242,51 +290,6 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
     }
   };
 
-  const handleDiscardRename = async () => {
-    setBusy(true);
-    try {
-      const { message } = await discardRename(renameConfirmRaw);
-      setRenameConfirmRaw(null);
-      setRenameStatus(message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Outside the consent gate: recovering a local rename needs no cloud grant.
-  const renameBlocked = renameFound.status === 'blocked';
-  const renameRecovery = renameBlocked || renameStatus ? (
-    <View style={styles.summaryBlock} testID="unfinished-rename-recovery">
-      {renameBlocked ? (
-        <>
-          <Text style={styles.syncLabel}>Unfinished rename</Text>
-          <Text style={styles.accountNote} accessibilityLabel="Unfinished rename">
-            A routine rename on this device was interrupted and cannot be finished
-            or undone automatically. Until it is cleared, saving routines, changing
-            tracked lifts and syncing are paused. Discarding it stops the unfinished
-            rename; your current notes and tracked lifts stay exactly as they are.
-          </Text>
-          {renameConfirmRaw === null ? (
-            <Button title="Discard unfinished rename" disabled={busy} accessibilityLabel="Discard unfinished rename"
-              onPress={() => { setRenameStatus(''); setRenameConfirmRaw(renameFound.raw); }} />
-          ) : (
-            <>
-              <Text style={styles.phaseDesc} accessibilityLabel="Discard unfinished rename confirmation">
-                Discard the unfinished rename? A private copy of the record is kept
-                on this device only; it is not synced or included in backups.
-              </Text>
-              <Button title="Discard" tone="danger" loadingTitle="Working…" disabled={busy}
-                onPress={handleDiscardRename} accessibilityLabel="Confirm discard unfinished rename" />
-              <Button title="Cancel" disabled={busy} onPress={() => setRenameConfirmRaw(null)}
-                accessibilityLabel="Cancel discard unfinished rename" />
-            </>
-          )}
-        </>
-      ) : null}
-      {renameStatus ? <Text style={styles.accountStatus} accessibilityLabel="Unfinished rename status">{renameStatus}</Text> : null}
-    </View>
-  ) : null;
-
   const denialCode = consent && !consent.allowed ? consent.code : null;
   const deletionPending = denialCode === DENIAL_CODES.HEALTH_DATA_DELETION_PENDING;
   const needsConsent =
@@ -306,7 +309,7 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
           a few minutes. Your data on this device and your Kilo account are unaffected.
           You can turn Cloud Sync back on once the deletion finishes.
         </Text>
-        {renameRecovery}
+        <UnfinishedRenameRecovery />
       </View>
     );
   }
@@ -319,7 +322,7 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
           This version of Kilo can no longer sync health data. Update Kilo to continue
           syncing. Your data on this device is safe and every local feature still works.
         </Text>
-        {renameRecovery}
+        <UnfinishedRenameRecovery />
       </View>
     );
   }
@@ -348,9 +351,8 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
     <View
       style={styles.accountBlock}
       testID="cloud-sync-recovery-panel"
-      // App.js keeps inactive tabs mounted with display:none. Layout runs again
-      // when this panel becomes visible, catching settings/history writes that
-      // are intentionally diff-tracked rather than dirty-queue writes.
+      // Inactive tabs stay mounted (display:none); re-read when visible so
+      // diff-tracked settings/history writes are caught.
       onLayout={refreshPendingIntent}
     >
       <SectionTitle>Cloud Sync</SectionTitle>
@@ -362,7 +364,7 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
         two — for any item changed in both places, the most recent change wins.
       </Text>
 
-      {renameRecovery}
+      <UnfinishedRenameRecovery />
 
       {needsConsent ? (
         <View style={styles.summaryBlock}>
@@ -552,10 +554,8 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
   );
 }
 
-// Under the production KUA gate (`kua` supplied) the recovery panel's copy and
-// status ink resolve through the selected court palette; outside the gate (`kua`
-// null — isolated sync-recovery tests) they keep the legacy palette. Sync,
-// consent, and withdrawal semantics are untouched — only text colors move.
+// Under the production KUA gate (`kua` supplied) text ink resolves through the
+// selected court palette; with `kua` null (isolated tests) the legacy palette.
 export const createStyles = (colors, kua = null) => StyleSheet.create({
   accountBlock: {
     gap: 12,

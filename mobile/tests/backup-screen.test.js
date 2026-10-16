@@ -18,6 +18,7 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 import { AccessibilityInfo, Alert, Platform, Share } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BackupScreen } from '../components/BackupScreen';
 
 // BackupScreen requires this lazily (a static import that failed to resolve
@@ -874,5 +875,102 @@ describe('MoreScreen forwards the Cloud Sync anchor (#903)', () => {
     layoutCloudSyncPanel(tree);
 
     expect(mockScreenScrollTo).not.toHaveBeenCalled();
+  });
+});
+
+// Signed-out recovery (#1417): the unfinished-rename block from #1402 must be
+// reachable without an account or cloud consent. Real shared block, real
+// storage (AsyncStorage mock); only the signed-in cloud hooks are mocked.
+describe('BackupScreen unfinished rename recovery when signed out (#1417)', () => {
+  const INTENT_KEY = 'kilo_normalization_apply_intent_v1';
+  const QUARANTINE = 'kilo_normalization_apply_quarantine_v1_';
+  const CORRUPT = '{not json';
+  const DISCARD = 'Discard unfinished rename';
+  const SIGNED_OUT = { configured: true, loading: false, signedIn: false, user: null };
+  const SIGNED_IN = { configured: true, loading: false, signedIn: true, user: { id: 'u1', email: 'a@test.com' } };
+  const has = (tree, title) => tree.root.findAllByProps({ title }).length > 0;
+  const press = async (tree, title) => {
+    await act(async () => { await tree.root.findByProps({ title }).props.onPress(); });
+    await flush();
+  };
+  const settle = async () => { await flush(); await flush(); };
+  const quarantined = async () => (await AsyncStorage.getAllKeys()).filter(k => k.startsWith(QUARANTINE));
+  const status = (tree) => tree.root.findByProps({ accessibilityLabel: 'Unfinished rename status' }).props.children;
+
+  beforeEach(async () => { await AsyncStorage.clear(); });
+
+  test('shows the block and discards it with no sign-in or consent', async () => {
+    await AsyncStorage.setItem(INTENT_KEY, CORRUPT);
+    const tree = renderScreen({ auth: SIGNED_OUT });
+    await settle();
+    expect(has(tree, DISCARD)).toBe(true);
+    expect(tree.root.findAllByType(CloudSyncRecovery).length).toBe(0);
+    expect(has(tree, 'Sync Now')).toBe(false);
+    expect(has(tree, 'Review and enable Cloud Sync')).toBe(false);
+
+    await press(tree, DISCARD);
+    await press(tree, 'Cancel');
+    expect(await AsyncStorage.getItem(INTENT_KEY)).toBe(CORRUPT);
+    expect(has(tree, DISCARD)).toBe(true);
+
+    await press(tree, DISCARD);
+    await press(tree, 'Discard');
+    await settle();
+    expect(await AsyncStorage.getItem(INTENT_KEY)).toBeNull();
+    expect(await quarantined()).toHaveLength(1);
+    expect(status(tree)).toMatch(/discarded/);
+    expect(has(tree, DISCARD)).toBe(false);
+  });
+
+  test('also reachable in a build without cloud accounts', async () => {
+    await AsyncStorage.setItem(INTENT_KEY, CORRUPT);
+    const tree = renderScreen({ auth: DEFAULT_AUTH });
+    await settle();
+    expect(has(tree, DISCARD)).toBe(true);
+  });
+
+  test('a failed discard stays visible and retryable', async () => {
+    await AsyncStorage.setItem(INTENT_KEY, CORRUPT);
+    const tree = renderScreen({ auth: SIGNED_OUT });
+    await settle();
+    await press(tree, DISCARD);
+    const realSet = AsyncStorage.setItem.getMockImplementation();
+    AsyncStorage.setItem.mockImplementation((key, value) => (key.startsWith(QUARANTINE)
+      ? Promise.reject(new Error('disk full'))
+      : realSet(key, value)));
+    await press(tree, 'Discard');
+    AsyncStorage.setItem.mockImplementation(realSet);
+    expect(status(tree)).toMatch(/Could not discard/);
+    expect(await AsyncStorage.getItem(INTENT_KEY)).toBe(CORRUPT);
+    expect(has(tree, DISCARD)).toBe(true);
+  });
+
+  test('no block means no new panel, and reconcilable or unreadable intents are not offered', async () => {
+    let tree = renderScreen({ auth: SIGNED_OUT });
+    await settle();
+    expect(tree.root.findAllByProps({ testID: 'unfinished-rename-recovery' }).length).toBe(0);
+
+    await AsyncStorage.setItem(INTENT_KEY, JSON.stringify({
+      version: 1, id: 'i1', notes: [], tracking: { lifts: {}, activations: {} }, before: { lifts: {}, activations: {} },
+    }));
+    tree = renderScreen({ auth: SIGNED_OUT });
+    await settle();
+    expect(has(tree, DISCARD)).toBe(false);
+
+    await AsyncStorage.setItem(INTENT_KEY, CORRUPT);
+    const realGet = AsyncStorage.getItem.getMockImplementation();
+    AsyncStorage.getItem.mockImplementation(key => (key === INTENT_KEY ? Promise.reject(new Error('io')) : realGet(key)));
+    tree = renderScreen({ auth: SIGNED_OUT });
+    await settle();
+    AsyncStorage.getItem.mockImplementation(realGet);
+    expect(has(tree, DISCARD)).toBe(false);
+  });
+
+  test('signed in still shows exactly one recovery block, inside the cloud panel', async () => {
+    await AsyncStorage.setItem(INTENT_KEY, CORRUPT);
+    const tree = renderScreen({ auth: SIGNED_IN });
+    await settle();
+    expect(tree.root.findAllByProps({ title: DISCARD })).toHaveLength(1);
+    expect(tree.root.findAllByType(CloudSyncRecovery).length).toBe(1);
   });
 });

@@ -6,7 +6,7 @@ import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button } from './UI';
 import { useTheme } from '../theme/ThemeContext';
 import { useKuaTypography } from '../theme/typography';
-import { CloudSyncRecovery } from '../screens/more/CloudSyncRecovery';
+import { CloudSyncRecovery, UnfinishedRenameRecovery } from '../screens/more/CloudSyncRecovery';
 import { loadWorkoutNotes, loadWeightEntriesRaw } from '../storage/entries';
 import { exportWorkoutsCsv, exportWeightCsv } from '../lib/interoperability/kiloCsv';
 import { createStyles } from './backup/backupStyles';
@@ -471,6 +471,9 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
           </View>
         </>
       )}
+      {/* Local recovery needs no account or consent (#1417): signed-out users
+          reach the same unfinished-rename block the signed-in panel shows. */}
+      {!auth?.signedIn && !auth?.loading ? <UnfinishedRenameRecovery /> : null}
 
       <View style={styles.dangerZone}>
         <View style={styles.dangerZoneHeading}>
