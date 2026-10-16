@@ -232,19 +232,21 @@ async function buildUserHealthProfileRecords() {
 // retryably. A raw snapshot read error throws BEFORE any mutation.
 async function applyTrackedLiftsFromRow(row) {
   const before = await TrackedRaw.readTrackedLiftRaw();
-  let rowFlags = null;
-  let rowRecords = null;
+  // NO storage read after the snapshot: a tolerant read returns {} on error, which
+  // can fake "equal" and skip a write or drive a destructive prune. Compare and
+  // prune against the parsed snapshot and the values just applied; unparseable
+  // counts as different (written over) and is never pruned from.
+  let { flags, records } = TrackedRaw.parseTrackedLiftRaw(before);
   try {
     if (
       row.tracked_lifts &&
       typeof row.tracked_lifts === 'object' &&
       !Array.isArray(row.tracked_lifts)
     ) {
-      rowFlags = row.tracked_lifts;
-      const local = await Storage.loadTrackedLifts();
-      if (stableStringify(local) !== stableStringify(row.tracked_lifts)) {
+      if (flags === null || stableStringify(flags) !== stableStringify(row.tracked_lifts)) {
         await Storage.saveTrackedLifts(row.tracked_lifts);
       }
+      flags = row.tracked_lifts;
     }
 
     // #893. Applied independently of the flags above rather than nested under
@@ -265,23 +267,12 @@ async function applyTrackedLiftsFromRow(row) {
       !Array.isArray(row.tracked_lift_activations)
     ) {
       const next = Storage.normalizeTrackedLiftActivations(row.tracked_lift_activations);
-      rowRecords = next;
-      const local = await Storage.loadTrackedLiftActivations();
-      if (stableStringify(local) !== stableStringify(next)) {
+      if (records === null || stableStringify(records) !== stableStringify(next)) {
         await Storage.saveTrackedLiftActivations(next);
       }
+      records = next;
     }
 
-    // Prune from the values just applied; a side the row did not speak to is read
-    // strictly (a tolerant {} would prune records away). Unreadable: skip.
-    let flags = rowFlags;
-    let records = rowRecords;
-    try {
-      flags ??= await TrackedRaw.loadTrackedLiftsStrict();
-      records ??= await TrackedRaw.loadTrackedLiftActivationsStrict();
-    } catch {
-      flags = null;
-    }
     if (flags && records) {
       const pruned = Storage.pruneTrackedLiftActivations(flags, records);
       if (stableStringify(pruned) !== stableStringify(records)) {

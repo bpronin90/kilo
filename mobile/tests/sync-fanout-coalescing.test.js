@@ -914,6 +914,53 @@ describe('a pulled Track change is adopted by a mounted hook (#1398)', () => {
     act(() => tree.unmount());
   });
 
+  // After the raw snapshot the apply performs no storage read, so a read error
+  // there cannot make a tolerant {} look equal to an incoming {} and skip a write.
+  async function pullWithReadErrorAfterSnapshot(cloud, failKey) {
+    const settings = jest.requireActual('../storage/entries/settings');
+    const realSnapshot = settings.readTrackedLiftRaw;
+    const realGetItem = secureStorage.getItem.bind(secureStorage);
+    let armed = false;
+    let rejected = 0;
+    jest.spyOn(settings, 'readTrackedLiftRaw').mockImplementation(async (...args) => {
+      const out = await realSnapshot(...args);
+      armed = true;
+      return out;
+    });
+    jest.spyOn(secureStorage, 'getItem').mockImplementation(async (key) => {
+      if (armed && rejected === 0 && key === failKey) {
+        rejected += 1;
+        throw new Error('transient read');
+      }
+      return realGetItem(key);
+    });
+    await act(async () => { await maybeSyncCloud().catch(() => {}); });
+    await flushAsync(8);
+    armed = false;
+    return rejected;
+  }
+
+  it('remote clear + flags comparison read error: both maps end cleared, not half applied', async () => {
+    const cloud = makeXidFakeCloud();
+    const { ref, tree } = await deviceA(cloud);
+    await deviceBWrites(cloud, { tracked_lifts: {}, tracked_lift_activations: {} });
+    await pullWithReadErrorAfterSnapshot(cloud, 'kilo_tracked_lifts');
+    expect(await Storage.loadTrackedLifts()).toEqual({});
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({});
+    expect(ref.current.trackedLifts).toEqual({});
+    act(() => tree.unmount());
+  });
+
+  it('remote clear of records + activations comparison read error: the records are cleared', async () => {
+    const cloud = makeXidFakeCloud();
+    const { tree } = await deviceA(cloud);
+    await deviceBWrites(cloud, { tracked_lifts: { bench: true }, tracked_lift_activations: {} });
+    await pullWithReadErrorAfterSnapshot(cloud, 'kilo_tracked_lift_activations');
+    expect(await Storage.loadTrackedLifts()).toEqual({ bench: true });
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({});
+    act(() => tree.unmount());
+  });
+
   it('an unreadable rollback snapshot aborts the apply untouched; the pass is retryable and the next applies', async () => {
     const cloud = makeXidFakeCloud();
     const { ref, tree } = await deviceA(cloud);

@@ -167,6 +167,22 @@ export async function readTrackedLiftRaw(store = AsyncStorage) {
   };
 }
 
+// Parse a snapshot WITHOUT touching storage: an absent key is the empty map, an
+// unparseable or non-object value is `null` (callers treat it as "different").
+export function parseTrackedLiftRaw(snapshot) {
+  const parse = (raw) => {
+    if (raw == null) return {};
+    try {
+      const value = JSON.parse(raw);
+      return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+    } catch {
+      return null;
+    }
+  };
+  const records = parse(snapshot.records);
+  return { flags: parse(snapshot.flags), records: records && normalizeTrackedLiftActivations(records) };
+}
+
 export async function restoreTrackedLiftRaw(snapshot, store = AsyncStorage) {
   const entries = [[TRACKED_LIFTS_KEY, snapshot.flags], [TRACKED_LIFT_ACTIVATIONS_KEY, snapshot.records]];
   for (const [key, want] of entries) {
