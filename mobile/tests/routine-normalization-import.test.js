@@ -14,6 +14,8 @@ import { applyHeaderEdits, insertionIndex, planHeaderEdit } from '../lib/interop
 import { applyWorkoutNoteTextBatchIfUnchanged, compareAndSetWorkoutNoteText as saveWorkoutNoteTextIfUnchanged } from '../storage/entries/workoutNotes';
 import * as Storage from '../storage/entries';
 import { canPickTextFile, pickTextFile } from '../lib/platformFilePicker';
+import { buildTrackedLiftActivation, reconcileTrackedLiftActivations } from '../lib/data/workoutAnalytics';
+import { normalizeExerciseKey, parseWorkoutNote } from '../lib/parser';
 
 jest.mock('../lib/reminderScheduler', () => ({ reconcileWorkoutReminder: () => Promise.resolve() }));
 
@@ -798,6 +800,44 @@ describe('owner descriptor examples apply through the batch write (#1383, compac
     // Retrying the same request lands the same text once: no duplicate comment.
     await applyWorkoutNoteTextBatchIfUnchanged(request);
     expect((await Storage.loadWorkoutNotes()).find(n => n.id === 'b1383').raw_text).toBe(RESULT);
+  });
+
+  // #1395: the same apply carries Track from the descriptor keys to the
+  // canonical ones, in the one batch commit; a deselected occurrence keeps the
+  // old movement tracked. A preview alone changes nothing.
+  test('the audited headers carry their Track flags and activations through the batch write', async () => {
+    const sectionsOf = list => list.flatMap(n => parseWorkoutNote(n.raw_text).sections);
+    const OLD = ['DB Bench Press 3x6-8, step up', 'Lat Pulldown 2x10-12 (pack shoulder down on eccentric)', 'Deadlift — trial sets, slow and controlled'];
+    const seedTracking = async () => {
+      for (const note of notes) await Storage.saveWorkoutNoteItem(note);
+      await Storage.saveTrackedLifts(Object.fromEntries([...OLD.map(n => [normalizeExerciseKey(n), true]), ['plank', true]]));
+      await Storage.saveTrackedLiftActivations(Object.fromEntries(OLD.map(n => [normalizeExerciseKey(n), buildTrackedLiftActivation(sectionsOf(notes), n, new Date('2026-09-01T00:00:00Z'))])));
+    };
+    await seedTracking();
+    const p = full();
+    expect(await Storage.loadTrackedLifts()).toEqual(expect.objectContaining({ [normalizeExerciseKey(OLD[0])]: true }));
+    const authority = { id: AUTHORITY.id, expected_raw_text: AUTHORITY.raw_text, accepted_raw_texts: [] };
+    const items = p.entries.map(entry => ({ id: entry.id, expected_raw_text: entry.snapshot, next_raw_text: applySelectedChanges(entry) }));
+    const result = await applyWorkoutNoteTextBatchIfUnchanged({ authority, items });
+    expect(result.saved.map(r => r.id)).toEqual(['b1383', 'c1383']);
+    expect(await Storage.loadTrackedLifts()).toEqual({ plank: true, 'db bench press': true, 'lat pulldown': true, deadlift: true });
+    const records = await Storage.loadTrackedLiftActivations();
+    expect(Object.keys(records).sort()).toEqual(['db bench press', 'deadlift', 'lat pulldown']);
+    expect(records['lat pulldown'].anchor).toBe(0);
+    // The authority logs none of these, so every moved session was excluded.
+    const before = OLD.map(n => buildTrackedLiftActivation(sectionsOf(notes), n).anchor);
+    expect([records['db bench press'].anchor, records.deadlift.anchor]).toEqual([before[0], before[2]]);
+    const after = sectionsOf(await Storage.loadWorkoutNotes());
+    expect(reconcileTrackedLiftActivations(after, records).changed).toBe(false);
+
+    // Deselecting the twin's occurrence leaves the old movement in use: it stays tracked.
+    await Storage.replaceWorkoutNotesRaw([]);
+    await seedTracking();
+    const onlyTarget = [{ id: 'b1383', expected_raw_text: ORIG, next_raw_text: RESULT }];
+    await applyWorkoutNoteTextBatchIfUnchanged({ authority, items: onlyTarget });
+    expect(await Storage.loadTrackedLifts()).toEqual(expect.objectContaining({ [normalizeExerciseKey(OLD[0])]: true, 'db bench press': true }));
+    await Storage.saveTrackedLifts({});
+    await Storage.saveTrackedLiftActivations({});
   });
 
   test('repeated headers keep separate write locations; one mapping or one occurrence can be deselected', () => {

@@ -8,6 +8,7 @@ import { markStartupPhase } from '../../storage/entries/startupTiming';
 import { clearWorkoutNoteDraftsForNote } from '../../storage/entries/workoutNoteDrafts';
 import { applyWorkoutNoteTextBatchIfUnchanged, updateWorkoutNoteItem } from '../../storage/entries/workoutNotes';
 import { claimWorkoutNoteCreationAttemptId } from '../../storage/entries/workoutNoteCreationAttempts';
+import { runNormalizationApplyWithTracking } from './trackedLiftHooks';
 
 // NOTE (#880 revised body): pending-cloud-convergence state deliberately
 // lives in each editor hook (useLogCurrentRoutineEditor.js /
@@ -191,8 +192,15 @@ export function useWorkoutNotes() {
 // #1172: batch compare-and-set for a normalization import. Storage checks the
 // authority and writes every target under one notebook lock (cloud mode also
 // enqueues); see applyWorkoutNoteTextBatchIfUnchanged for the result shape.
+// #1395: the same commit carries Track flags/activations to the renamed keys,
+// serialized with Track toggles and sync passes by the tracked-lift hook.
 export async function applyWorkoutNoteTextBatch(request) {
-  const result = await writeVia('applyWorkoutNoteTextBatchIfUnchanged', applyWorkoutNoteTextBatchIfUnchanged, request);
+  const result = await runNormalizationApplyWithTracking(
+    () => writeVia('applyWorkoutNoteTextBatchIfUnchanged', applyWorkoutNoteTextBatchIfUnchanged, request),
+  );
+  // The Track transition is durable now. Requested in the same tick as the note
+  // broadcast below, whose refreshes join this one pass (#1393 coalescing).
+  if (result?.tracking) maybeSyncCloud().catch(() => {});
   if (result?.saved?.length || result?.failed?.some(row => row.landed)) notifyWorkoutNotes();
   return result;
 }

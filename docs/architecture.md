@@ -766,6 +766,41 @@ uncovered path, documented and bounded, is a same-save substitution whose openin
 and headings are byte-identical; the boundary then still lands inside the substitute's own
 history, so no cross-movement comparison is possible, and the next untrack clears it.
 
+Since #1395, a Normalize exercise names apply is the one place a tracked span moves to a
+different key. `planTrackedLiftRenameTransition` (`lib/data/workoutAnalyticsActivations.js`)
+matches each renamed header's sessions before/after by provenance (note order, section,
+exercise slot, position — never set values or spelling). A tracked source makes its
+destination tracked; a source keeps its flag while any live header still produces it.
+Each valid activation's excluded sessions are located in the resulting key and the
+boundary becomes the shortest prefix holding them, maximum over every contributor, with
+the witness rebuilt over the result; boolean-only and unverifiable records contribute
+nothing and are never re-attached. The note texts and both Track maps commit in the one
+batch under the notebook and local-write locks, journaled by a roll-forward intent
+(`kilo_normalization_apply_intent_v1`): an in-process failure rolls back, and an
+interrupted commit is finished before the next apply, Track write, tracked-lift load, or
+sync pass; a replay whose target note changed after the interruption decides whether the notebook
+write landed from a local-only apply id stamped on the rows in that same write (never
+uploaded; the cloud column whitelist drops it): landed rolls the intent's affected Track
+keys forward, not landed retires it untouched, and a key matching neither its before nor
+after value keeps the intent and fails safe. Every notebook-lock holder (note writers,
+backup restore, sync write-back, migration, purge) settles a pending intent first, through
+the adapter of the storage mode current at that moment, refusing its own write if the
+intent cannot be reconciled (skipped while the device key is latched, so a #1186 recovery
+restore can still replace everything); the stamp is stripped once the intent completes.
+Lock order is recovery guard → tracked-lift queue → notebook → local-write, and no
+local-write holder takes the notebook lock. The hook runs the apply as one tracked-lift
+queue entry under the recovery guard every sync pass holds, so toggles and passes see it
+wholly or not at all. Every write of either Track map bumps a storage write generation
+(`settings.js`); the hook claims its own bumps, and any other writer (an apply or replay
+from any entry point, a lock-level settle, a sync pull, a restore) makes the next queued
+write re-read storage before it derives, while an adoption-only queue step re-reads and
+broadcasts to mounted consumers. That adoption, the derivation and both writes of one
+queued change run in a single local-write-lock section (any pending intent is rolled
+forward just before it), so a sync write-back can never land between derive and write.
+A save's reconcile population is the caller's snapshot and can predate a rename, so a
+record changed by an external writer is retired or clamped only when the durable notebook
+gives the same result (else it waits for the next save); other records reconcile as before.
+
 ## Parse-to-Persistence Flow
 
 ```
@@ -966,6 +1001,7 @@ chip is gone; nothing in the active path produces or reads `rep_drop_off_flags`.
 | `kilo_workout_reminder` | Optional local workout-day nudge settings (`enabled`, `hour`, `minute`, `fallbackWeekdays`) |
 | `kilo_tracked_lifts` | JSON object keyed by canonical exercise key for global Track toggles. Keys are canonicalized at an exercise's next toggle, so a legacy alias key stays readable until then |
 | `kilo_tracked_lift_activations` | JSON object keyed by canonical exercise key holding the tracked-span activation record for each currently tracked exercise (`anchor`, `at`, `witness`). A sibling of `kilo_tracked_lifts`, never folded into it; a record never outlives the flag it belongs to, and a flag with no record is legacy boolean-only state that keeps full-history progression |
+| `kilo_normalization_apply_intent_v1` | Present only while a normalization apply's commit is unfinished (#1395): the renamed note ids with their expected/next texts and the resulting `tracked_lifts` / activation maps. Rolled forward before the next apply, Track write, tracked-lift load, or sync pass, then removed. Device-local; not synced or backed up |
 | `kilo_user_profile` | Optional native calorie-profile object with `height_cm`, `date_of_birth`, `sex`, `activity_level`, and `saved_at` |
 | `kilo_workout_sessions` | Legacy JSON array of native structured workout sessions, retained only as a migration source |
 | `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises`, `one_k_exercises`, `exercise_classifications`, `skip_markers`, `attendance_flags`, and `session_checkins` fields; legacy entries may still carry stale `rep_drop_off_flags`. Never carries parser output: a `derived_sections` field is stripped on every write and purged once from older notebooks (#813) |

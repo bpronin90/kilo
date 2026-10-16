@@ -1,14 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../../storage/entries';
-import { normalizeExerciseKey } from '../../lib/parser';
+import { normalizeExerciseKey, parseWorkoutNote } from '../../lib/parser';
 import {
   buildTrackedLiftActivation,
   reconcileTrackedLiftActivations,
 } from '../../lib/data/workoutAnalytics';
 import { safeNotify } from './shared';
-import { maybeSyncCloud } from './storageMode';
+import { finishNormalizationApplyIntent, maybeSyncCloud, setNormalizationApplyGate } from './storageMode';
 import { markStartupPhase } from '../../storage/entries/startupTiming';
 import { withLocalWriteLock } from '../../storage/sync/localWriteLock';
+import { isNormalizationApplyIntentMaybePending } from '../../storage/entries/workoutNotes';
+import {
+  getTrackedLiftWriteGeneration,
+  setTrackedLiftWriteListener,
+  loadTrackedLiftsStrict,
+  loadTrackedLiftActivationsStrict,
+} from '../../storage/entries/settings';
+import { withExclusiveRecoveryAccess } from '../../storage/entries/recoveryOperationJournal';
 
 let trackedLiftsListeners = [];
 const notifyTrackedLifts = () => safeNotify(trackedLiftsListeners);
@@ -26,18 +34,74 @@ function requestTrackedLiftSync() {
     .catch(() => {});
 }
 
-// Every storage write of a queued change runs inside the shared local-write lock
-// (#1393), which a sync pass's local read and write-back also take. A pass then
-// sees the pair wholly before or wholly after this write, and cannot write a
-// stale ack back over it. Only local storage happens inside the lock: the sync
-// request is made after it is released and never awaited, so the queue never
+// Each queued change runs as ONE section of the shared local-write lock (#1393),
+// which a sync pass's local read and write-back also take: adoption of external
+// writes, derivation from module state, and both storage writes (#1395 round 5).
+// A pass then sees the pair wholly before or after the change, and no writer
+// holding the lock can land maps between the derivation and the write. Only
+// local storage happens inside it, and nothing inside takes the notebook lock;
+// the sync request is made after release and never awaited, so the queue never
 // waits on the network and no holder waits on the other's queue (no deadlock).
-// `lifts === null` writes the activation records alone (the note-save reconcile).
-function writeTrackedLiftStorage(lifts, activations) {
-  return withLocalWriteLock(async () => {
+// Inside that section only. `lifts === null` writes the records alone.
+async function writeTrackedLiftStorage(lifts, activations) {
+  ownWriteInFlight = true;
+  try {
     if (lifts !== null) await Storage.saveTrackedLifts(lifts);
     await Storage.saveTrackedLiftActivations(activations);
-  });
+    if (adoptedGeneration === getTrackedLiftWriteGeneration()) adoptedActivations = Storage.normalizeTrackedLiftActivations(activations);
+  } finally {
+    ownWriteInFlight = false;
+  }
+}
+
+// ── adopting writes made outside this queue (#1395) ──────────────────────────
+//
+// Invariant: a queued write derives only from module state that matches durable
+// storage, apart from this queue's own optimistic (possibly failed) writes. Every
+// Track-map write bumps a storage write generation (settings.js). The hook claims
+// a bump as its own, synchronously, when it lands during its own write and is the
+// very next one; any other bump (an apply commit/rollback/replay from any entry
+// point, a note writer's lock-level settle, a sync pull, a backup restore) leaves
+// `adoptedGeneration` behind. Each queued write then re-reads storage before it
+// derives, and, while any consumer is mounted, an adoption-only queued step
+// re-reads and broadcasts so it shows the external change without waiting for a
+// toggle (an unmounted one reads storage when it mounts; #818's single cold-start
+// read is kept). Both run in the queue, so #1393's refresh() gating still holds.
+let adoptedGeneration = getTrackedLiftWriteGeneration();
+// The records as of `adoptedGeneration`, and the keys whose record a writer
+// outside this queue changed since a save last agreed with the durable notebook
+// about them (see reconcileTrackedLiftActivationsAtSave).
+let adoptedActivations = {};
+const externallyChangedKeys = new Set();
+let ownWriteInFlight = false;
+let adoptionQueued = false;
+let rollingForwardInQueue = false;
+setTrackedLiftWriteListener((generation) => {
+  if (ownWriteInFlight && generation === adoptedGeneration + 1) {
+    adoptedGeneration = generation;
+    return;
+  }
+  if (adoptionQueued || rollingForwardInQueue || trackedLiftsListeners.length === 0) return;
+  adoptionQueued = true;
+  enqueueTrackedLiftWrite(ADOPT_ONLY).catch(() => {});
+});
+
+// Inside the queue AND the local-write lock only, so a sync write-back is never
+// seen half-way. Strict reads: an unreadable map is unknown, never empty, so the
+// queued change is rejected instead of deriving from a guess. True if adopted.
+async function adoptExternalTrackedLiftWrites() {
+  const generation = getTrackedLiftWriteGeneration();
+  if (generation === adoptedGeneration) return false;
+  const lifts = await loadTrackedLiftsStrict();
+  const activations = await loadTrackedLiftActivationsStrict();
+  for (const key of new Set([...Object.keys(adoptedActivations), ...Object.keys(activations)])) {
+    if (stableJson(adoptedActivations[key]) !== stableJson(activations[key])) externallyChangedKeys.add(key);
+  }
+  currentTrackedLifts = lifts;
+  currentActivations = activations;
+  adoptedActivations = activations;
+  adoptedGeneration = generation;
+  return true;
 }
 
 // What refresh() needs in order to tell a storage read that may be older than the
@@ -55,12 +119,41 @@ let trackedLiftsGeneration = 0;
 // the rejection, but the next toggle/save/reconcile runs instead of inheriting it.
 // Every path that sets module state optimistically (toggle, save, reconcile) goes
 // through here, so it is counted as pending before it can touch that state.
-function enqueueTrackedLiftWrite(work) {
+//
+// An unfinished normalization apply (#1395) is rolled forward first (it takes
+// notebook -> local-write itself, so it runs before this step's lock section),
+// so no write can land over its record or derive from the mixed state. Then,
+// in one local-write section, external writes are adopted and `work` derives
+// and writes; it resolves `{ value, wrote }`. Broadcast and the sync request
+// follow the release. `locked: false` is the apply, whose storage call takes
+// both locks itself; it adopts in its own section afterwards.
+function enqueueTrackedLiftWrite(work, { locked = true } = {}) {
   pendingTrackedLiftWrites += 1;
   const run = trackedLiftsPromise.then(async () => {
     trackedLiftsGeneration += 1;
+    adoptionQueued = false;
     try {
-      return await work();
+      // Bumps made while this step rolls forward queue nothing more: this step
+      // adopts them next, and a roll-forward failing every time cannot loop.
+      rollingForwardInQueue = true;
+      try {
+        if (isNormalizationApplyIntentMaybePending()) await finishNormalizationApplyIntent();
+      } finally {
+        rollingForwardInQueue = false;
+      }
+      if (!locked) return await work();
+      let adopted = false;
+      let out;
+      try {
+        out = await withLocalWriteLock(async () => {
+          adopted = await adoptExternalTrackedLiftWrites();
+          return work();
+        });
+      } finally {
+        if (adopted || out?.wrote) notifyTrackedLifts();
+      }
+      if (out.wrote) requestTrackedLiftSync();
+      return out.value;
     } finally {
       trackedLiftsGeneration += 1;
       pendingTrackedLiftWrites -= 1;
@@ -88,16 +181,60 @@ let currentTrackedLifts = {};
 // an invariant rather than a convention.
 let currentActivations = {};
 // Seed the write queue with the initial load so toggle/save always derive from
-// real storage, not the empty module-scope default.
-let trackedLiftsPromise = Promise.all([
-  Storage.loadTrackedLifts(),
-  Storage.loadTrackedLiftActivations(),
-])
-  .then(([lifts, activations]) => {
-    currentTrackedLifts = lifts;
-    currentActivations = activations;
+// real storage, not the empty module-scope default. An apply interrupted by a
+// crash is finished first, so the seed never loads its mixed state; a read that
+// overlapped that roll-forward is discarded by the generation bump.
+let trackedLiftsPromise = Promise.resolve()
+  .then(() => finishNormalizationApplyIntent())
+  .then((replayed) => { if (replayed) trackedLiftsGeneration += 1; return replayed; }, () => null)
+  .then((replayed) => {
+    const generation = getTrackedLiftWriteGeneration();
+    return Promise.all([
+      Storage.loadTrackedLifts(),
+      Storage.loadTrackedLiftActivations(),
+    ]).then(([lifts, activations]) => {
+      currentTrackedLifts = lifts;
+      currentActivations = activations;
+      adoptedActivations = activations;
+      adoptedGeneration = generation;
+      if (replayed) notifyTrackedLifts();
+    });
   })
   .catch(() => {});
+
+// Sync passes finish an unfinished apply through this queue (#1395).
+const ADOPT_ONLY = async () => ({ value: undefined, wrote: false });
+setNormalizationApplyGate(() => (isNormalizationApplyIntentMaybePending()
+  ? enqueueTrackedLiftWrite(ADOPT_ONLY)
+  : Promise.resolve()));
+
+// The normalization apply (#1395): notes and their Track transition commit in
+// one storage operation, run as ONE queued tracked-lift write so toggles land
+// wholly before or after it and never derive from pre-apply module state. The
+// recovery-access guard around it is the one every sync pass holds, so no pass
+// reads half of the transition; it is taken before the queue (no queued write
+// ever waits on a pass). The caller requests the cloud pass once this resolves,
+// in the same tick as its note broadcast, so both share one coalesced pass.
+//
+// Its storage writes (commit, rollback, roll-forward) are external to this hook,
+// so they are adopted like any other. A failed re-read must not turn a committed
+// apply into a reported failure: it falls back to the committed maps, and the
+// stale generation makes the next queued write retry the read.
+export function runNormalizationApplyWithTracking(apply) {
+  return withExclusiveRecoveryAccess(() => enqueueTrackedLiftWrite(async () => {
+    const result = await apply();
+    try {
+      if (await withLocalWriteLock(adoptExternalTrackedLiftWrites)) notifyTrackedLifts();
+    } catch {
+      if (result?.tracking) {
+        currentTrackedLifts = result.tracking.lifts;
+        currentActivations = Storage.normalizeTrackedLiftActivations(result.tracking.activations);
+        notifyTrackedLifts();
+      }
+    }
+    return result;
+  }, { locked: false }));
+}
 
 // Collapse a stored flag map onto canonical keys (#892 contract revision 3, §4).
 // A no-op for every name outside the 8-entry alias table, so a legacy non-alias
@@ -167,9 +304,7 @@ export function useTrackedLifts() {
       setTrackedLifts(nextTrackedLifts);
       setActivations(nextActivations);
       await writeTrackedLiftStorage(nextTrackedLifts, nextActivations);
-      notifyTrackedLifts();
-      requestTrackedLiftSync();
-      return nextTrackedLifts;
+      return { value: nextTrackedLifts, wrote: true };
     });
   }, []);
 
@@ -200,9 +335,7 @@ export function useTrackedLifts() {
       setTrackedLifts(nextLifts);
       setActivations(nextActivations);
       await writeTrackedLiftStorage(nextLifts, nextActivations);
-      notifyTrackedLifts();
-      requestTrackedLiftSync();
-      return nextLifts;
+      return { value: nextLifts, wrote: true };
     });
   }, []);
 
@@ -224,15 +357,52 @@ export function useTrackedLifts() {
 //
 // Retirement never touches `tracked_lifts`. The exercise stays tracked; it just
 // falls back to legacy full-history progression.
+//
+// #1395: `sections` is the caller's snapshot, taken before its own async reads,
+// so a rename (or any external Track write) can commit after it. Retiring or
+// clamping from it would shorten a span the newer notebook still supports. A
+// stale snapshot and a not-yet-saved edit look the same from here, so a record
+// changed outside this queue since a save last agreed about it is changed only
+// when the durable notebook independently gives the same result; otherwise it
+// is left for the next save (by then the edit is durable and the two agree).
+// Every other record reconciles exactly as before, in this same save.
 export async function reconcileTrackedLiftActivationsAtSave(sections) {
   return enqueueTrackedLiftWrite(async () => {
-    const { next, changed } = reconcileTrackedLiftActivations(sections, currentActivations);
+    const caller = reconcileTrackedLiftActivations(sections, currentActivations);
+    if (!caller.changed && externallyChangedKeys.size === 0) return { value: currentTrackedLifts, wrote: false };
+    const next = externallyChangedKeys.size ? await agreeWithDurableNotebook(caller.next) : caller.next;
     // No change, no write — and no redundant cloud pass.
-    if (!changed) return currentTrackedLifts;
+    if (stableJson(next) === stableJson(currentActivations)) return { value: currentTrackedLifts, wrote: false };
     currentActivations = next;
     await writeTrackedLiftStorage(null, next);
-    notifyTrackedLifts();
-    requestTrackedLiftSync();
-    return currentTrackedLifts;
+    return { value: currentTrackedLifts, wrote: true };
   });
+}
+
+// Inside the reconcile's locked section. An unreadable notebook is unknown, so
+// every externally changed record is kept as it is.
+async function agreeWithDurableNotebook(fromCaller) {
+  let durable = null;
+  try {
+    const notes = (await Storage.loadWorkoutNotesRaw()).filter(n => n && !n.deleted_at);
+    const population = notes.flatMap(n => (n.raw_text ? parseWorkoutNote(n.raw_text).sections : []));
+    durable = reconcileTrackedLiftActivations(population, currentActivations).next;
+  } catch { /* unknown */ }
+  const next = { ...fromCaller };
+  for (const key of [...externallyChangedKeys]) {
+    if (durable && stableJson(fromCaller[key]) === stableJson(durable[key])) {
+      externallyChangedKeys.delete(key);
+    } else if (currentActivations[key] === undefined) {
+      delete next[key];
+    } else {
+      next[key] = currentActivations[key];
+    }
+  }
+  return next;
+}
+
+function stableJson(value) {
+  if (value === undefined) return 'undefined';
+  return JSON.stringify(value, (_k, v) => (v && typeof v === 'object' && !Array.isArray(v)
+    ? Object.fromEntries(Object.keys(v).sort().map(k => [k, v[k]])) : v));
 }

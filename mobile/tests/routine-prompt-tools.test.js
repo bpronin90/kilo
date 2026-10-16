@@ -912,13 +912,39 @@ describe('RoutinePromptToolsScreen', () => {
         expect(text(tree.root)).toContain('-DB Bench Press 3x6-8, step up → DB Bench Press');
         expect(text(tree.root)).toContain('Moves to a note: step up');
         expect(text(tree.root)).toContain('2 occurrences in 2 routines');
-        await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+        await act(async () => { await button(tree.root, 'Apply normalized names').props.onPress(); });
         expect(applyBatch.mock.calls[0][0].items).toEqual([
           { id: 'target', expected_raw_text: ORIG, next_raw_text: `${OUT}\n` },
           { id: 'twin', expected_raw_text: TWIN.raw_text, next_raw_text: TWIN_OUT },
         ]);
         expect(await stored('target')).toBe(`${OUT}\n`);
         expect(await stored('twin')).toBe(TWIN_OUT);
+      });
+
+      // #1395: the screen's own apply carries Track in the same commit, and an
+      // unreadable Track state is reported as a failed save with nothing written.
+      test('the default apply carries Track to the canonical keys; unknown Track state saves nothing', async () => {
+        const BENCH = 'db bench press 3x6-8, step up';
+        const LIFT = 'deadlift — trial sets, slow and controlled';
+        await Storage.saveTrackedLiftActivations({});
+        await Storage.saveTrackedLifts({ [BENCH]: true, [LIFT]: true });
+        const tree = await start({});
+        await paste(tree, DESCRIPTOR_REPLY);
+        await act(async () => { await button(tree.root, 'Apply normalized names').props.onPress(); });
+        await act(async () => {});
+        expect(text(tree.root)).toContain('Updated Target routine 1: Upper.');
+        expect(await Storage.loadTrackedLifts()).toEqual({ 'db bench press': true, deadlift: true });
+        act(() => tree.unmount());
+
+        await AsyncStorage.setItem('kilo_tracked_lifts', '[broken');
+        const second = await start({});
+        await paste(second, DESCRIPTOR_REPLY);
+        await act(async () => { await button(second.root, 'Apply normalized names').props.onPress(); });
+        await act(async () => {});
+        expect(text(second.root)).toContain('Couldn’t save Target routine 1: Upper.');
+        expect(await stored('target')).toBe(ORIG);
+        act(() => second.unmount());
+        await Storage.saveTrackedLifts({});
       });
 
       test('a reply that drops a descriptor is shown as not applied and writes nothing for it', async () => {
@@ -932,7 +958,7 @@ describe('RoutinePromptToolsScreen', () => {
         expect(await stored('target')).toBe(ORIG);
         // The independent valid mapping still applies; the rejected one never does.
         await paste(tree, 'H1 => DB Bench Press\nH2 => Deadlift | trial sets, slow and controlled');
-        await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+        await act(async () => { await button(tree.root, 'Apply normalized names').props.onPress(); });
         expect(await stored('target')).toBe(ORIG.replace('-Deadlift — trial sets, slow and controlled\n', '-Deadlift\n-- trial sets, slow and controlled\n'));
         expect(await stored('twin')).toBe(TWIN_OUT);
       });
@@ -942,7 +968,7 @@ describe('RoutinePromptToolsScreen', () => {
         const tree = await start({ applyBatch });
         await paste(tree, DESCRIPTOR_REPLY);
         await Storage.saveWorkoutNoteItem({ ...TWIN, raw_text: 'Monday\n-edited meanwhile' });
-        await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+        await act(async () => { await button(tree.root, 'Apply normalized names').props.onPress(); });
         expect(text(tree.root)).toContain('Updated Target routine 1: Upper.');
         expect(text(tree.root)).toContain('Not updated Target routine 2: Upper: it was edited or removed after the prompt was generated.');
         expect(await stored('target')).toBe(`${OUT}\n`);
@@ -954,7 +980,7 @@ describe('RoutinePromptToolsScreen', () => {
         const tree = await start({ applyBatch });
         await paste(tree, DESCRIPTOR_REPLY);
         await Storage.saveWorkoutNoteItem({ ...AUTH, raw_text: `${AUTH.raw_text}\n-Row` });
-        await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+        await act(async () => { await button(tree.root, 'Apply normalized names').props.onPress(); });
         expect(text(tree.root)).toContain('Nothing was written');
         expect(await stored('target')).toBe(ORIG);
         expect(await stored('twin')).toBe(TWIN.raw_text);
@@ -968,10 +994,10 @@ describe('RoutinePromptToolsScreen', () => {
         });
         const tree = await start({ saveText: saveOne });
         await paste(tree, DESCRIPTOR_REPLY);
-        await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+        await act(async () => { await button(tree.root, 'Apply normalized names').props.onPress(); });
         expect(text(tree.root)).toContain('Couldn’t save Target routine 2');
         expect(await stored('twin')).toBe(TWIN.raw_text);
-        await act(async () => { button(tree.root, 'Retry failed routines').props.onPress(); });
+        await act(async () => { await button(tree.root, 'Retry failed routines').props.onPress(); });
         expect(saveOne.mock.calls.map(c => c[0])).toEqual(['target', 'twin', 'twin']);
         expect(await stored('target')).toBe(`${OUT}\n`);
         expect(await stored('twin')).toBe(TWIN_OUT);
