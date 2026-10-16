@@ -30,7 +30,7 @@ import {
   isTombstone,
   enqueueDirty,
 } from '../syncQueue';
-import { saveUserProfile } from './profileStorage';
+import { saveUserProfile, noteIntentWrite } from './profileStorage';
 import { withLocalWriteLock } from '../sync/localWriteLock';
 import {
   saveFatigueMultiplierUnlocked,
@@ -484,11 +484,11 @@ function restoreValidatedBackup(payload, strategy, mode, store) {
 }
 
 async function restoreNotebookState(payload, target, store) {
-  if (payload.current_workout_id != null) {
-    await target.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(payload.current_workout_id));
-  } else {
-    await target.removeItem(CURRENT_WORKOUT_ID_KEY);
-  }
+  await (payload.current_workout_id != null
+    ? target.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(payload.current_workout_id))
+    : target.removeItem(CURRENT_WORKOUT_ID_KEY));
+  // #1421: a landed write or removal is local intent even when the bytes match.
+  noteIntentWrite(CURRENT_WORKOUT_ID_KEY);
   if ('weight_goal' in payload) {
     if (payload.weight_goal != null) {
       await target.setItem(WEIGHT_GOAL_KEY, JSON.stringify(payload.weight_goal));
