@@ -44,6 +44,7 @@ import {
   loadRecoveryBlockWeeksRaw,
 } from './recoveryStorage';
 import { BACKUP_VERSION, validateFatigueMultiplier } from './backupValidation';
+import { withLocalWriteLock } from '../sync/localWriteLock';
 
 const CLOUD_EXPORT_FORMAT = 'cloud-1';
 
@@ -232,30 +233,40 @@ export async function hydrateProfileFromCloud(profileRow, featureTogglesRow) {
         await saveFatigueMultiplier(profileRow.fatigue_multiplier);
       }
     }
-    if (
-      profileRow.tracked_lifts &&
-      typeof profileRow.tracked_lifts === 'object' &&
-      !Array.isArray(profileRow.tracked_lifts)
-    ) {
-      await saveTrackedLifts(profileRow.tracked_lifts);
-    }
-    // #893: pruned to the flags restored just above, so a downloaded row whose
-    // records outlived their Track flags cannot seed a boundary onto this
-    // device. (This path only runs on a clean/empty device, so there is nothing
-    // local to lose either way — it is paired for the same reason the backup
-    // path is: a flag map and its records are one fact.)
-    if (
-      profileRow.tracked_lift_activations &&
-      typeof profileRow.tracked_lift_activations === 'object' &&
-      !Array.isArray(profileRow.tracked_lift_activations)
-    ) {
-      await saveTrackedLiftActivations(
-        pruneTrackedLiftActivations(
-          await loadTrackedLifts(),
-          normalizeTrackedLiftActivations(profileRow.tracked_lift_activations),
-        ),
-      );
-    }
+    // Flags and records are one fact, and the prune below READS the flags it
+    // just wrote, so the whole pair is one local-write section (#1409). The raw
+    // savers are unlocked, so without it a Track toggle (which holds this lock
+    // for its own pair) could land between the read and the records write and
+    // have its new record overwritten by a set pruned against the old flags.
+    // Local storage only inside; no call here takes the lock again (it is not
+    // re-entrant) or the notebook lock. The other fields stay on their own
+    // locked setters: nothing reads one to write another.
+    await withLocalWriteLock(async () => {
+      if (
+        profileRow.tracked_lifts &&
+        typeof profileRow.tracked_lifts === 'object' &&
+        !Array.isArray(profileRow.tracked_lifts)
+      ) {
+        await saveTrackedLifts(profileRow.tracked_lifts);
+      }
+      // #893: pruned to the flags restored just above, so a downloaded row whose
+      // records outlived their Track flags cannot seed a boundary onto this
+      // device. (This path only runs on a clean/empty device, so there is nothing
+      // local to lose either way — it is paired for the same reason the backup
+      // path is: a flag map and its records are one fact.)
+      if (
+        profileRow.tracked_lift_activations &&
+        typeof profileRow.tracked_lift_activations === 'object' &&
+        !Array.isArray(profileRow.tracked_lift_activations)
+      ) {
+        await saveTrackedLiftActivations(
+          pruneTrackedLiftActivations(
+            await loadTrackedLifts(),
+            normalizeTrackedLiftActivations(profileRow.tracked_lift_activations),
+          ),
+        );
+      }
+    });
     if (profileRow.ui_state && typeof profileRow.ui_state === 'object') {
       await saveWorkoutCollapsed(!!profileRow.ui_state.log_current_collapsed);
     }
