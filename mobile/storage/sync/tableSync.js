@@ -1,6 +1,7 @@
 import {
   getClientId,
   mergeRecords,
+  samePayload,
   SyncReconciliationConflictError,
 } from './records';
 import {
@@ -287,6 +288,34 @@ export async function syncTable({
   };
 }
 
+// A local write can land while a diff pass is in flight: the pass read local
+// state at step 2, then waits on the network before writing merged rows and push
+// acks back. Applying those over the newer write would revert it, and recording
+// them as the snapshot would hide it from the next diff, so the edit was lost
+// (#1393). So re-read live state just before each write-back. Any row whose
+// payload moved since step 2 goes to applyMerged as its LIVE value, which makes
+// the write a no-op for that row. A row removed locally during the pass is left
+// out. The caller still snapshots the merged/acked rows, so the next pass sees
+// the newer local value as dirty and pushes it. Unchanged rows apply as before.
+async function keepLocalWritesSinceRead(mergedList, { current, buildLocal, payloadFields, fieldKinds }) {
+  const before = new Map();
+  for (const rec of current) if (rec && rec.id != null) before.set(rec.id, rec);
+  const live = new Map();
+  for (const rec of (await buildLocal()) || []) if (rec && rec.id != null) live.set(rec.id, rec);
+
+  const changed = new Set();
+  for (const [id, rec] of live) {
+    const prev = before.get(id);
+    if (!prev || !samePayload(rec, prev, payloadFields, fieldKinds)) changed.add(id);
+  }
+  for (const id of before.keys()) if (!live.has(id)) changed.add(id);
+  if (changed.size === 0) return mergedList;
+
+  const out = mergedList.filter((row) => !row || !changed.has(row.id));
+  for (const id of changed) if (live.has(id)) out.push(live.get(id));
+  return out;
+}
+
 // One full sync pass for a diff-tracked table. Same loop shape as `syncTable`
 // (pull -> merge -> push dirty -> advance cursor only after a successful push)
 // and the same LWW primitives; the only difference is where "dirty" comes from.
@@ -364,7 +393,8 @@ export async function syncDiffTable({
   const contested = remote.filter((r) => !pendingIds.has(r.id));
   const merged = mergeRecords(localList, contested, { table });
   let mergedList = Array.from(merged.values());
-  await applyMerged(mergedList);
+  const liveWrite = { current, buildLocal, payloadFields, fieldKinds };
+  await applyMerged(await keepLocalWritesSinceRead(mergedList, liveWrite));
   await setSyncSnapshot(table, mergedList);
 
   // 5. Push the pending edits. merged.get() now returns the local record for
@@ -385,7 +415,7 @@ export async function syncDiffTable({
     if (recovered.replacesLocal) applyPushAcknowledgements(merged, acknowledged);
     if (recovered.replacesLocal && acknowledged.length > 0) {
       mergedList = Array.from(merged.values());
-      await applyMerged(mergedList);
+      await applyMerged(await keepLocalWritesSinceRead(mergedList, liveWrite));
       await setSyncSnapshot(table, mergedList);
     }
   }

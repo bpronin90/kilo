@@ -448,6 +448,43 @@ describe('Track toggles upload through the shared pass (#1393)', () => {
     act(() => tree.unmount());
   });
 
+  it('an untrack made while the health-row push is in flight survives that push ack', async () => {
+    const cloud = makeXidFakeCloud();
+    await signedInDevice(cloud);
+    const { ref, tree } = mountTracked();
+    await flushAsync(8);
+
+    const realPush = cloud.transport.push;
+    let gate = null;
+    let paused = false;
+    cloud.transport.push = jest.fn(async (table, records) => {
+      if (table === SYNC_TABLES.USER_HEALTH_PROFILE && !paused) {
+        paused = true;
+        gate = deferred();
+        await gate.promise;
+      }
+      return realPush(table, records);
+    });
+
+    await act(async () => { await ref.current.toggle('bench', HISTORY); });
+    await flushAsync(8);
+    expect(gate).not.toBeNull();
+
+    await act(async () => { await ref.current.toggle('bench', HISTORY); });
+    await flushAsync(2);
+    expect(await Storage.loadTrackedLifts()).toEqual({});
+
+    gate.resolve();
+    await flushAsync(16);
+
+    expect(await Storage.loadTrackedLifts()).toEqual({});
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({});
+    expect(healthRow(cloud).tracked_lifts).toEqual({});
+    expect(healthRow(cloud).tracked_lift_activations).toEqual({});
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    act(() => tree.unmount());
+  });
+
   it('offline: the toggle stays local, the phase fails retryably, and a retry uploads it', async () => {
     const cloud = makeXidFakeCloud();
     await signedInDevice(cloud);
