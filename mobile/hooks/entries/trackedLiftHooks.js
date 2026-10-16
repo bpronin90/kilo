@@ -325,8 +325,11 @@ export function useTrackedLifts() {
         delete nextLifts[key];
         delete nextActivations[key];
       } else {
+        // Minted BEFORE any optimistic state, so a failed population read
+        // rejects with module state, storage and the queue all untouched.
+        const record = sections ? await mintFromCurrentPopulation(sections, name) : null;
         nextLifts[key] = true;
-        if (sections) nextActivations[key] = buildTrackedLiftActivation(sections, name);
+        if (record) nextActivations[key] = record;
         else delete nextActivations[key];
       }
 
@@ -377,6 +380,32 @@ export async function reconcileTrackedLiftActivationsAtSave(sections) {
     await writeTrackedLiftStorage(null, next);
     return { value: currentTrackedLifts, wrote: true };
   });
+}
+
+// Track-on mint (#1403). `sections` is the caller's render, which can predate a
+// notebook change (a normalization apply, a sync pull, a restore, a note write),
+// and no Track-map generation covers a notebook-only change. So the durable
+// notebook is read here, inside the queue's local-write section: after adoption,
+// and in the same section as the Track write that follows. An apply holds the
+// notebook lock and then this lock, so it is wholly before or after this read.
+//
+// The population is the UNFILTERED live notebook (recovery-excluded weeks count;
+// deleted notes do not), the same one the Log caller and the save-boundary
+// reconcile use. The caller's render can legitimately hold MORE than storage
+// (the editor's unsaved text, a brand-new routine), never fewer unless it is
+// stale, so the larger count wins and a tie keeps the caller's render. A stale
+// render therefore cannot under-count; the one thing storage cannot reveal is a
+// stale render that is merely LONGER than storage (sessions removed since), which
+// looks like unsaved text and is later clamped by the save-boundary reconcile.
+// An unreadable notebook is unknown, not empty: the toggle rejects, writes
+// nothing, and a retry reads again. No network, no other lock.
+async function mintFromCurrentPopulation(sections, name) {
+  const notes = (await Storage.loadWorkoutNotesRaw()).filter(n => n && !n.deleted_at);
+  const durable = notes.flatMap(n => (n.raw_text ? parseWorkoutNote(n.raw_text).sections : []));
+  const now = new Date();
+  const fromCaller = buildTrackedLiftActivation(sections, name, now);
+  const fromDurable = buildTrackedLiftActivation(durable, name, now);
+  return fromDurable.anchor > fromCaller.anchor ? fromDurable : fromCaller;
 }
 
 // Inside the reconcile's locked section. An unreadable notebook is unknown, so
