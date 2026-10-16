@@ -550,3 +550,101 @@ test('both adapters expose the batch and CAS', () => {
     expect(typeof adapter.updateWorkoutNoteItem).toBe('function');
   }
 });
+
+// #1411: settling a pending apply intent writes the Track pair, so it runs under
+// the shared local-write lock (nested in the notebook lock) like every other
+// Track writer. A holder of that lock must see no Track write, and no write
+// generation bump, from the notebook-lock preamble until it releases.
+describe('settling a pending apply intent honours the local-write lock (#1411)', () => {
+  // eslint-disable-next-line global-require
+  const { withLocalWriteLock, __resetLocalWriteLockForTests } = require('../storage/sync/localWriteLock');
+  // A failed assertion must not leave its holder blocking the next test.
+  afterEach(() => { __resetLocalWriteLockForTests(); });
+  // eslint-disable-next-line global-require
+  const { getTrackedLiftWriteGeneration } = require('../storage/entries/settings');
+  const flush = async () => { for (let i = 0; i < 10; i += 1) await new Promise(r => setImmediate(r)); };
+  const raw = async () => [await AsyncStorage.getItem(TRACKED_LIFTS_KEY), await AsyncStorage.getItem(TRACKED_LIFT_ACTIVATIONS_KEY)];
+  const BACKUP = (version, extra = {}) => ({ version, exported_at: '2026-07-10T00:00:00.000Z', weight_entries: [], current_workout_id: null, weight_goal: null, fatigue_multiplier: 1, deload_history: [], ...extra });
+  const NB = [{ ...RA }, { ...RT, raw_text: `${RT_NEXT}\n60 9` }];
+
+  // A durable pending intent: the note and flags landed, the activation write
+  // failed, and so did the rollback's.
+  async function pend() {
+    await seedRename(LocalNotes);
+    const restore = failStore((kind, key) => kind === 'set' && key === TRACKED_LIFT_ACTIVATIONS_KEY);
+    await LocalNotes.applyWorkoutNoteTextBatchIfUnchanged(renameRequest());
+    restore();
+    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).not.toBeNull();
+  }
+
+  async function holdWhile(start, { diverge = false } = {}) {
+    await pend();
+    if (diverge) {
+      await LocalNotes.replaceWorkoutNotesRaw((await LocalNotes.loadWorkoutNotesRaw()).map(n => (n.id === 'rt' ? { ...n, raw_text: `${RT_NEXT}\n60 9` } : n)));
+    }
+    let release;
+    let held;
+    const holder = withLocalWriteLock(() => new Promise((r) => { held = true; release = r; }));
+    await flush();
+    expect(held).toBe(true);
+    const generation = getTrackedLiftWriteGeneration();
+    const before = await raw();
+    const op = start();
+    await flush();
+    expect(getTrackedLiftWriteGeneration()).toBe(generation);
+    expect(await raw()).toEqual(before);
+    release();
+    await holder;
+    await op;
+    expect(getTrackedLiftWriteGeneration()).toBeGreaterThan(generation);
+    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).toBeNull();
+    expect(await Storage.loadTrackedLifts()).toEqual(AFTER().lifts);
+    expect(await Storage.loadTrackedLiftActivations()).toEqual(AFTER().activations);
+  }
+
+  const ordinary = () => LocalNotes.saveWorkoutNoteItem({ id: 'extra', title: 'Extra', raw_text: 'Friday' });
+  const local = () => importBackup(BACKUP('3', { workout_notes: NB }), 'replace', { mode: IMPORT_MODES.LOCAL });
+  const cloudNb = () => importBackup(BACKUP('3', { workout_notes: NB }), 'replace', { mode: IMPORT_MODES.CLOUD });
+  const WRITERS = [
+    ['an ordinary note write', ordinary],
+    ['a v2 local restore', local],
+    ['a v2 cloud restore', cloudNb],
+  ];
+
+  test.each(WRITERS)('%s', async (_name, start) => { await holdWhile(start); });
+
+  test.each(WRITERS)('diverged reconciliation: %s', async (_name, start) => { await holdWhile(start, { diverge: true }); });
+
+  // v1 carries no notebook, so no notebook-lock holder runs and the intent is
+  // left alone; the restore still never touches the Track pair under the holder.
+  test('a v1 cloud restore never writes Track under the holder', async () => {
+    await pend();
+    let release;
+    const holder = withLocalWriteLock(() => new Promise((r) => { release = r; }));
+    await flush();
+    const generation = getTrackedLiftWriteGeneration();
+    const before = await raw();
+    const op = importBackup(BACKUP('1'), 'replace', { mode: IMPORT_MODES.CLOUD });
+    await flush();
+    expect(getTrackedLiftWriteGeneration()).toBe(generation);
+    expect(await raw()).toEqual(before);
+    release();
+    await holder;
+    expect((await op).ok).toBe(true);
+    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).not.toBeNull();
+  });
+
+  test('a rejected holder does not wedge the settle, and nothing deadlocks', async () => {
+    await pend();
+    let fail;
+    const holder = withLocalWriteLock(() => new Promise((_, reject) => { fail = reject; }));
+    await flush();
+    const op = ordinary();
+    await flush();
+    fail(new Error('holder failed'));
+    await expect(holder).rejects.toThrow('holder failed');
+    await op;
+    expect(await tuple()).toEqual({ ...AFTER(), text: RT_NEXT });
+    expect((await byId('extra')).raw_text).toBe('Friday');
+  });
+});
