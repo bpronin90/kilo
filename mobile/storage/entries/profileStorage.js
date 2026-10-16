@@ -2,6 +2,20 @@ import { secureStorage as AsyncStorage } from '../secureStorage';
 import { USER_PROFILE_KEY } from './keys';
 import { withLocalWriteLock } from '../sync/localWriteLock';
 
+// Per-key write generations for the local-intent keys clean-bootstrap hydration
+// may overwrite (#1415). Every writer of such a key calls noteIntentWrite after
+// its write lands, so a counter moves on ANY write, including one that stores the
+// value already there or writes back a default, which a value comparison cannot
+// see. In memory only: a baseline is taken and consumed inside one bootstrap
+// call and never outlives it. (The Track pair has its own generation in settings.)
+const intentGenerations = new Map();
+export function noteIntentWrite(key) {
+  intentGenerations.set(key, (intentGenerations.get(key) || 0) + 1);
+}
+export function getIntentGeneration(key) {
+  return intentGenerations.get(key) || 0;
+}
+
 // Writers run under the shared local-write lock (#1399; see settings.js). The
 // `...Unlocked` merge is for a sync applyMerged that already holds it.
 
@@ -18,6 +32,7 @@ export function saveUserProfile(profile, store = AsyncStorage) {
   return withLocalWriteLock(async () => {
     const record = { ...profile, saved_at: new Date().toISOString() };
     await store.setItem(USER_PROFILE_KEY, JSON.stringify(record));
+    noteIntentWrite(USER_PROFILE_KEY);
     return record;
   });
 }
@@ -40,6 +55,7 @@ export async function mergeUserProfileUnlocked(patch) {
     saved_at: new Date().toISOString(),
   };
   await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify(record));
+  noteIntentWrite(USER_PROFILE_KEY);
   return record;
 }
 
@@ -48,5 +64,8 @@ export function mergeUserProfile(patch) {
 }
 
 export function clearUserProfile() {
-  return withLocalWriteLock(() => AsyncStorage.removeItem(USER_PROFILE_KEY));
+  return withLocalWriteLock(async () => {
+    await AsyncStorage.removeItem(USER_PROFILE_KEY);
+    noteIntentWrite(USER_PROFILE_KEY);
+  });
 }

@@ -12,23 +12,35 @@ import {
   WEIGHT_KEY,
   WORKOUT_NOTES_KEY,
   WORKOUT_DELOAD_HISTORY_KEY,
+  CURRENT_WORKOUT_ID_KEY,
+  FATIGUE_MULTIPLIER_KEY,
+  WEIGHT_DATE_EDIT_KEY,
+  DELOAD_DATE_EDIT_KEY,
+  FATIGUE_TRACKING_KEY,
+  DELOAD_MODE_KEY,
+  TRACKED_LIFTS_KEY,
+  TRACKED_LIFT_ACTIVATIONS_KEY,
+  COLLAPSED_STATE_KEY,
+  USER_PROFILE_KEY,
 } from './keys';
+import { secureStorage as AsyncStorage } from '../secureStorage';
 import { readList } from './jsonStorage';
 import { stripDerivedSectionsFromList } from './derivedCache';
-import { loadCurrentWorkoutId, saveCurrentWorkoutId } from './workoutNotes';
+import { loadCurrentWorkoutId, saveCurrentWorkoutIdUnlocked } from './workoutNotes';
 import { loadWeightGoal } from './weightGoal';
-import { loadUserProfile, saveUserProfile } from './profileStorage';
+import { loadUserProfile, mergeUserProfileUnlocked, getIntentGeneration } from './profileStorage';
 import {
   loadFatigueMultiplier,
-  saveFatigueMultiplier,
+  saveFatigueMultiplierUnlocked,
   loadWeightDateEditEnabled,
-  saveWeightDateEditEnabled,
+  saveWeightDateEditEnabledUnlocked,
   loadDeloadDateEditEnabled,
-  saveDeloadDateEditEnabled,
+  saveDeloadDateEditEnabledUnlocked,
   loadFatigueTrackingEnabled,
-  saveFatigueTrackingEnabled,
+  saveFatigueTrackingEnabledUnlocked,
   loadDeloadModeEnabled,
-  saveDeloadModeEnabled,
+  saveDeloadModeEnabledUnlocked,
+  getTrackedLiftWriteGeneration,
   loadTrackedLifts,
   saveTrackedLifts,
   loadTrackedLiftActivations,
@@ -36,7 +48,7 @@ import {
   normalizeTrackedLiftActivations,
   pruneTrackedLiftActivations,
   loadWorkoutCollapsed,
-  saveWorkoutCollapsed,
+  saveWorkoutCollapsedUnlocked,
 } from './settings';
 import { loadDeloadNote } from './deloadStorage';
 import {
@@ -219,79 +231,142 @@ export async function buildCloudExport({ account = null, includeEmail = false } 
 // push a NaN/absurd value into local fatigue calculations.
 //
 // Caller contract: mobile/storage/cloud/bootstrap.js only invokes this when
-// the local device's snapshot is already clean/empty (a fresh install or a
-// device that has never held any profile/routine/tracked-lift state), so this
-// function's writes can never clobber a device's real existing local data.
-export async function hydrateProfileFromCloud(profileRow, featureTogglesRow) {
-  if (profileRow && typeof profileRow === 'object') {
-    if (profileRow.current_workout_note_id != null) {
-      await saveCurrentWorkoutId(profileRow.current_workout_note_id);
-    }
-    if (profileRow.fatigue_multiplier != null) {
-      const check = validateFatigueMultiplier(profileRow.fatigue_multiplier);
-      if (check.ok) {
-        await saveFatigueMultiplier(profileRow.fatigue_multiplier);
-      }
-    }
-    // Flags and records are one fact, and the prune below READS the flags it
-    // just wrote, so the whole pair is one local-write section (#1409). The raw
-    // savers are unlocked, so without it a Track toggle (which holds this lock
-    // for its own pair) could land between the read and the records write and
-    // have its new record overwritten by a set pruned against the old flags.
-    // Local storage only inside; no call here takes the lock again (it is not
-    // re-entrant) or the notebook lock. The other fields stay on their own
-    // locked setters: nothing reads one to write another.
-    await withLocalWriteLock(async () => {
-      if (
-        profileRow.tracked_lifts &&
-        typeof profileRow.tracked_lifts === 'object' &&
-        !Array.isArray(profileRow.tracked_lifts)
-      ) {
-        await saveTrackedLifts(profileRow.tracked_lifts);
-      }
-      // #893: pruned to the flags restored just above, so a downloaded row whose
-      // records outlived their Track flags cannot seed a boundary onto this
-      // device. (This path only runs on a clean/empty device, so there is nothing
-      // local to lose either way — it is paired for the same reason the backup
-      // path is: a flag map and its records are one fact.)
-      if (
-        profileRow.tracked_lift_activations &&
-        typeof profileRow.tracked_lift_activations === 'object' &&
-        !Array.isArray(profileRow.tracked_lift_activations)
-      ) {
-        await saveTrackedLiftActivations(
-          pruneTrackedLiftActivations(
-            await loadTrackedLifts(),
-            normalizeTrackedLiftActivations(profileRow.tracked_lift_activations),
-          ),
-        );
-      }
-    });
-    if (profileRow.ui_state && typeof profileRow.ui_state === 'object') {
-      await saveWorkoutCollapsed(!!profileRow.ui_state.log_current_collapsed);
-    }
-    if (profileRow.display_name != null || profileRow.unit_system != null) {
-      await saveUserProfile({
-        display_name: profileRow.display_name ?? null,
-        unit_system: profileRow.unit_system ?? null,
-      });
-    }
-  }
+// the device's snapshot was clean at the start of bootstrap, and passes the
+// `baseline` it captured then (#1415). Local intent written AFTER that check
+// wins: each unit below whose keys changed since the baseline is skipped whole,
+// and every untouched unit still hydrates. Skip units:
+//   * current_workout_note_id      -> the current-id key
+//   * fatigue_multiplier           -> the fatigue key
+//   * tracked_lifts + activations  -> ONE unit (a flag map and its records are
+//                                     one fact; no sub-record merging)
+//   * ui_state                     -> the collapsed key
+//   * display_name + unit_system   -> the whole profile record
+//   * each feature toggle          -> its own key
+// Without a baseline (a direct caller that guarantees an empty device) nothing
+// is skipped.
 
-  if (featureTogglesRow && typeof featureTogglesRow === 'object') {
-    if (typeof featureTogglesRow.weight_date_edit_enabled === 'boolean') {
-      await saveWeightDateEditEnabled(featureTogglesRow.weight_date_edit_enabled);
-    }
-    if (typeof featureTogglesRow.deload_date_edit_enabled === 'boolean') {
-      await saveDeloadDateEditEnabled(featureTogglesRow.deload_date_edit_enabled);
-    }
-    if (typeof featureTogglesRow.fatigue_tracking_enabled === 'boolean') {
-      await saveFatigueTrackingEnabled(featureTogglesRow.fatigue_tracking_enabled);
-    }
-    if (typeof featureTogglesRow.deload_mode_enabled === 'boolean') {
-      await saveDeloadModeEnabled(featureTogglesRow.deload_mode_enabled);
-    }
+// Every key hydration may write, grouped by skip unit.
+const UNIT_KEYS = {
+  currentId: [CURRENT_WORKOUT_ID_KEY],
+  fatigue: [FATIGUE_MULTIPLIER_KEY],
+  track: [TRACKED_LIFTS_KEY, TRACKED_LIFT_ACTIVATIONS_KEY],
+  collapsed: [COLLAPSED_STATE_KEY],
+  profile: [USER_PROFILE_KEY],
+  weightDate: [WEIGHT_DATE_EDIT_KEY],
+  deloadDate: [DELOAD_DATE_EDIT_KEY],
+  fatigueTracking: [FATIGUE_TRACKING_KEY],
+  deloadMode: [DELOAD_MODE_KEY],
+};
+const ALL_KEYS = Object.values(UNIT_KEYS).flat();
+
+const isTrackKey = (key) => key === TRACKED_LIFTS_KEY || key === TRACKED_LIFT_ACTIVATIONS_KEY;
+const generationOf = (key) =>
+  (isTrackKey(key) ? getTrackedLiftWriteGeneration() : getIntentGeneration(key));
+
+// Synchronous: call before the first await of the bootstrap that owns it, so any
+// writer completing afterwards shows up as a generation change.
+export function captureHydrationGenerations() {
+  return Object.fromEntries(ALL_KEYS.map((key) => [key, generationOf(key)]));
+}
+
+// Pair the generations with the exact stored strings (or absence). The read is
+// STRICT: a storage failure throws, so an unreadable baseline can never stand in
+// for proof that overwriting is safe. It lives and dies with one bootstrap call.
+export async function captureHydrationBaseline(generations) {
+  const raw = {};
+  for (const key of ALL_KEYS) {
+    // eslint-disable-next-line no-await-in-loop
+    raw[key] = await AsyncStorage.getItem(key);
   }
+  return { generations, raw };
+}
+
+export async function hydrateProfileFromCloud(profileRow, featureTogglesRow, baseline = null) {
+  // One local-write section for the whole hydration: the change check and the
+  // apply are indivisible relative to ordinary writers, and the Track read-prune-
+  // write (#1409) is covered too. Local storage only inside (no download, upload
+  // or other queue); every call below is an unlocked internal since the lock is
+  // not re-entrant. The check reads strictly and runs before the first write, so
+  // an unreadable check aborts with nothing applied.
+  await withLocalWriteLock(async () => {
+    const changed = {};
+    for (const [unit, keys] of Object.entries(UNIT_KEYS)) {
+      changed[unit] = false;
+      if (!baseline) continue;
+      for (const key of keys) {
+        // eslint-disable-next-line no-await-in-loop
+        const now = await AsyncStorage.getItem(key);
+        if (generationOf(key) !== baseline.generations[key] || now !== baseline.raw[key]) {
+          changed[unit] = true;
+        }
+      }
+    }
+
+    if (profileRow && typeof profileRow === 'object') {
+      if (profileRow.current_workout_note_id != null && !changed.currentId) {
+        await saveCurrentWorkoutIdUnlocked(profileRow.current_workout_note_id);
+      }
+      if (profileRow.fatigue_multiplier != null && !changed.fatigue) {
+        const check = validateFatigueMultiplier(profileRow.fatigue_multiplier);
+        if (check.ok) {
+          await saveFatigueMultiplierUnlocked(profileRow.fatigue_multiplier);
+        }
+      }
+      if (!changed.track) {
+        if (
+          profileRow.tracked_lifts &&
+          typeof profileRow.tracked_lifts === 'object' &&
+          !Array.isArray(profileRow.tracked_lifts)
+        ) {
+          await saveTrackedLifts(profileRow.tracked_lifts);
+        }
+        // #893: pruned to the flags restored just above, so a downloaded row
+        // whose records outlived their Track flags cannot seed a boundary onto
+        // this device.
+        if (
+          profileRow.tracked_lift_activations &&
+          typeof profileRow.tracked_lift_activations === 'object' &&
+          !Array.isArray(profileRow.tracked_lift_activations)
+        ) {
+          await saveTrackedLiftActivations(
+            pruneTrackedLiftActivations(
+              await loadTrackedLifts(),
+              normalizeTrackedLiftActivations(profileRow.tracked_lift_activations),
+            ),
+          );
+        }
+      }
+      if (profileRow.ui_state && typeof profileRow.ui_state === 'object' && !changed.collapsed) {
+        await saveWorkoutCollapsedUnlocked(!!profileRow.ui_state.log_current_collapsed);
+      }
+      if (
+        (profileRow.display_name != null || profileRow.unit_system != null) &&
+        !changed.profile
+      ) {
+        // Merge, not replace: an unchanged profile is the baseline (absent on a
+        // clean device), and a merge keeps any device-local field regardless.
+        await mergeUserProfileUnlocked({
+          display_name: profileRow.display_name ?? null,
+          unit_system: profileRow.unit_system ?? null,
+        });
+      }
+    }
+
+    if (featureTogglesRow && typeof featureTogglesRow === 'object') {
+      const toggles = [
+        ['weight_date_edit_enabled', 'weightDate', saveWeightDateEditEnabledUnlocked],
+        ['deload_date_edit_enabled', 'deloadDate', saveDeloadDateEditEnabledUnlocked],
+        ['fatigue_tracking_enabled', 'fatigueTracking', saveFatigueTrackingEnabledUnlocked],
+        ['deload_mode_enabled', 'deloadMode', saveDeloadModeEnabledUnlocked],
+      ];
+      for (const [field, unit, save] of toggles) {
+        if (typeof featureTogglesRow[field] === 'boolean' && !changed[unit]) {
+          // eslint-disable-next-line no-await-in-loop
+          await save(featureTogglesRow[field]);
+        }
+      }
+    }
+  });
 
   return { ok: true };
 }

@@ -23,6 +23,7 @@ import {
 import { normalizePlateCalculatorProfile } from '../../lib/plateMath';
 import { normalizeRestTimerRecord } from '../../lib/restTimer';
 import { withLocalWriteLock } from '../sync/localWriteLock';
+import { noteIntentWrite } from './profileStorage';
 
 // Diff-synced setting writers (#1399). Each public saver runs inside the shared
 // local-write lock, so a sync write-back (which also applies under that lock)
@@ -287,6 +288,7 @@ export async function loadWorkoutCollapsed() {
 
 export async function saveWorkoutCollapsedUnlocked(isCollapsed, store = AsyncStorage) {
   await store.setItem(COLLAPSED_STATE_KEY, JSON.stringify(isCollapsed));
+  noteIntentWrite(COLLAPSED_STATE_KEY);
 }
 export const saveWorkoutCollapsed = locked(saveWorkoutCollapsedUnlocked);
 
@@ -301,6 +303,7 @@ export async function loadFatigueMultiplier() {
 
 export async function saveFatigueMultiplierUnlocked(multiplier, store = AsyncStorage) {
   await store.setItem(FATIGUE_MULTIPLIER_KEY, JSON.stringify(multiplier));
+  noteIntentWrite(FATIGUE_MULTIPLIER_KEY);
 }
 export const saveFatigueMultiplier = locked(saveFatigueMultiplierUnlocked);
 
@@ -315,6 +318,7 @@ export async function loadWeightDateEditEnabled() {
 
 export async function saveWeightDateEditEnabledUnlocked(enabled, store = AsyncStorage) {
   await store.setItem(WEIGHT_DATE_EDIT_KEY, JSON.stringify(enabled));
+  noteIntentWrite(WEIGHT_DATE_EDIT_KEY);
 }
 export const saveWeightDateEditEnabled = locked(saveWeightDateEditEnabledUnlocked);
 
@@ -329,6 +333,7 @@ export async function loadDeloadDateEditEnabled() {
 
 export async function saveDeloadDateEditEnabledUnlocked(enabled, store = AsyncStorage) {
   await store.setItem(DELOAD_DATE_EDIT_KEY, JSON.stringify(enabled));
+  noteIntentWrite(DELOAD_DATE_EDIT_KEY);
 }
 export const saveDeloadDateEditEnabled = locked(saveDeloadDateEditEnabledUnlocked);
 
@@ -343,6 +348,7 @@ export async function loadFatigueTrackingEnabled() {
 
 export async function saveFatigueTrackingEnabledUnlocked(enabled, store = AsyncStorage) {
   await store.setItem(FATIGUE_TRACKING_KEY, JSON.stringify(enabled));
+  noteIntentWrite(FATIGUE_TRACKING_KEY);
 }
 export const saveFatigueTrackingEnabled = locked(saveFatigueTrackingEnabledUnlocked);
 
@@ -386,6 +392,7 @@ export async function loadDeloadModeEnabled() {
 
 export async function saveDeloadModeEnabledUnlocked(enabled, store = AsyncStorage) {
   await store.setItem(DELOAD_MODE_KEY, JSON.stringify(enabled));
+  noteIntentWrite(DELOAD_MODE_KEY);
 }
 export const saveDeloadModeEnabled = locked(saveDeloadModeEnabledUnlocked);
 

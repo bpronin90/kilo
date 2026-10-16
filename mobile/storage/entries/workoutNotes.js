@@ -15,6 +15,7 @@ import {
   saveTrackedLiftActivations,
 } from './settings';
 import { withLocalWriteLock } from '../sync/localWriteLock';
+import { noteIntentWrite } from './profileStorage';
 import { quarantineApplyIntent, setUnfinishedRenameBlock } from '../syncRecovery';
 import { planTrackedLiftRenameTransition, reconcileDivergedApplyTracking } from '../../lib/data/workoutAnalyticsActivations';
 
@@ -581,8 +582,8 @@ export async function loadCurrentWorkoutId() {
 }
 
 // Current-id writers hold the local-write lock (#1399); Unlocked twins are for a holder.
-export const saveCurrentWorkoutIdUnlocked = id => AsyncStorage.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(id));
-export const clearCurrentWorkoutIdUnlocked = () => AsyncStorage.removeItem(CURRENT_WORKOUT_ID_KEY);
+export const saveCurrentWorkoutIdUnlocked = async id => { await AsyncStorage.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(id)); noteIntentWrite(CURRENT_WORKOUT_ID_KEY); };
+export const clearCurrentWorkoutIdUnlocked = async () => { await AsyncStorage.removeItem(CURRENT_WORKOUT_ID_KEY); noteIntentWrite(CURRENT_WORKOUT_ID_KEY); };
 export const saveCurrentWorkoutId = id => withLocalWriteLock(() => saveCurrentWorkoutIdUnlocked(id));
 export const clearCurrentWorkoutId = () => withLocalWriteLock(clearCurrentWorkoutIdUnlocked);
 

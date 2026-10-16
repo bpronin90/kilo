@@ -1917,3 +1917,267 @@ describe('current-id migration ordering (#1409)', () => {
     expect(notes[0].isCurrent).toBe(false);
   });
 });
+
+// #1415. Clean-bootstrap hydration must not overwrite local intent written after
+// the clean check. Driven through the REAL bootstrap path (cloudAdapter
+// .bootstrapFromLocal) with a fake Supabase client whose profile read can be
+// paused, then through the real adapter's next sync pass against the fake
+// transport. Writers are paused or queued at the two interleavings the issue
+// names: during the download, and during an earlier hydration write.
+describe('clean-bootstrap hydration keeps local intent written after the clean check (#1415)', () => {
+  const UID = '22222222-2222-2222-2222-222222222222';
+  const REC = { anchor: 0, at: '2026-06-20T10:00:00.000Z', witness: null };
+  const REMOTE_PROFILE = {
+    user_id: UID,
+    current_workout_note_id: 'wn_remote',
+    fatigue_multiplier: 1.12,
+    tracked_lifts: { squat: true },
+    tracked_lift_activations: { squat: REC },
+    ui_state: { log_current_collapsed: true },
+    display_name: 'Remote Name',
+    unit_system: 'metric',
+  };
+  const REMOTE_TOGGLES = {
+    user_id: UID,
+    weight_date_edit_enabled: true,
+    deload_date_edit_enabled: true,
+    fatigue_tracking_enabled: true,
+    deload_mode_enabled: true,
+  };
+  const tick = async (n = 6) => {
+    for (let i = 0; i < n; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  };
+  const readJson = async (k) => {
+    const raw = await secureStorage.getItem(k);
+    return raw == null ? undefined : JSON.parse(raw);
+  };
+  // Fails the test instead of hanging it if an ordinary writer is blocked.
+  const bounded = (promise) => Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('writer blocked')), 1500)),
+  ]);
+
+  function makeClient({ profile = REMOTE_PROFILE, toggles = REMOTE_TOGGLES, gate = null, failProfile = false } = {}) {
+    const upserts = {};
+    const reached = deferred();
+    const client = {
+      schema: () => ({
+        from: (table) => ({
+          async upsert(rows) {
+            (upserts[table] = upserts[table] || []).push(...rows);
+            return { data: rows, error: null };
+          },
+          select: () => ({
+            eq: () => ({
+              async maybeSingle() {
+                if (table === 'user_profile' && gate) {
+                  reached.resolve();
+                  await gate.promise;
+                }
+                if (table === 'user_profile' && failProfile) return { data: null, error: { message: 'down' } };
+                return { data: table === 'user_profile' ? profile : toggles, error: null };
+              },
+            }),
+          }),
+        }),
+      }),
+    };
+    return { client, upserts, reached };
+  }
+
+  // when 'download': the writer completes while the profile read is paused.
+  // when 'hydration': the writer is issued while hydration's first write (the
+  // current-id key) is paused, so it lands before the affected field applies.
+  async function run(write, when, clientOpts = {}) {
+    const gate = deferred();
+    if (when === 'download') {
+      const { client, upserts, reached } = makeClient({ ...clientOpts, gate });
+      const boot = cloudAdapter.bootstrapFromLocal(UID, client);
+      await reached.promise;
+      await bounded(write());
+      gate.resolve();
+      await boot;
+      return { upserts };
+    }
+    const { client, upserts } = makeClient(clientOpts);
+    const realSet = secureStorage.setItem.bind(secureStorage);
+    let paused = false;
+    jest.spyOn(secureStorage, 'setItem').mockImplementation(async (k, v) => {
+      if (k === CURRENT_WORKOUT_ID_KEY && !paused) {
+        paused = true;
+        await gate.promise;
+      }
+      return realSet(k, v);
+    });
+    const boot = cloudAdapter.bootstrapFromLocal(UID, client);
+    for (let i = 0; i < 40 && !paused; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await tick(1);
+    }
+    expect(paused).toBe(true);
+    const writer = write();
+    await tick(6);
+    gate.resolve();
+    await Promise.all([boot, writer]);
+    jest.restoreAllMocks();
+    return { upserts };
+  }
+
+  async function nextUpload() {
+    const cloud = makeXidFakeCloud();
+    setCloudTransport(cloud.transport);
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    await cloudAdapter.sync({ ownedDevice: false });
+    const row = (table) => cloud.remoteRow(table, SINGLETON_SYNC_ID);
+    return {
+      health: row(SYNC_TABLES.USER_HEALTH_PROFILE),
+      profile: row(SYNC_TABLES.USER_PROFILE),
+      toggles: row(SYNC_TABLES.FEATURE_TOGGLES),
+    };
+  }
+
+  describe.each(['download', 'hydration'])('local write during %s', (when) => {
+    it('a Track change keeps the coherent pair; every other remote field hydrates', async () => {
+      await run(() => withLocalWriteLock(async () => {
+        await Storage.saveTrackedLifts({ bench: true });
+        await Storage.saveTrackedLiftActivations({ bench: REC });
+      }), when);
+      expect(await readJson(TRACKED_LIFTS_KEY)).toEqual({ bench: true });
+      expect(await readJson(TRACKED_LIFT_ACTIVATIONS_KEY)).toEqual({ bench: REC });
+      expect(await readJson(CURRENT_WORKOUT_ID_KEY)).toBe('wn_remote');
+      expect(await readJson(FATIGUE_MULTIPLIER_KEY)).toBe(1.12);
+      expect(await readJson(WEIGHT_DATE_EDIT_KEY)).toBe(true);
+      const up = await nextUpload();
+      expect(up.health.tracked_lifts).toEqual({ bench: true });
+      expect(Object.keys(up.health.tracked_lift_activations)).toEqual(['bench']);
+      expect(up.health.fatigue_multiplier).toBe(1.12);
+    });
+
+    it('a fatigue write back to the DEFAULT value is intent and survives', async () => {
+      await run(() => Storage.saveFatigueMultiplier(1.07), when);
+      expect(await secureStorage.getItem(FATIGUE_MULTIPLIER_KEY)).toBe('1.07');
+      expect(await readJson(CURRENT_WORKOUT_ID_KEY)).toBe('wn_remote');
+      expect(await readJson(TRACKED_LIFTS_KEY)).toEqual({ squat: true });
+      expect((await nextUpload()).health.fatigue_multiplier).toBe(1.07);
+    });
+
+    it('a feature toggle written to its default (false) survives; the other toggles hydrate', async () => {
+      await run(() => Storage.saveWeightDateEditEnabled(false), when);
+      expect(await secureStorage.getItem(WEIGHT_DATE_EDIT_KEY)).toBe('false');
+      expect(await readJson(DELOAD_DATE_EDIT_KEY)).toBe(true);
+      expect(await readJson(DELOAD_MODE_KEY)).toBe(true);
+      const up = await nextUpload();
+      expect(up.toggles.weight_date_edit_enabled).toBe(false);
+      expect(up.toggles.deload_date_edit_enabled).toBe(true);
+    });
+
+    it('a toggle rewritten to the value it already held (A to B to A) still counts', async () => {
+      await Storage.saveFatigueTrackingEnabled(false);
+      await run(async () => {
+        await Storage.saveFatigueTrackingEnabled(true);
+        await Storage.saveFatigueTrackingEnabled(false);
+      }, when);
+      expect(await secureStorage.getItem(FATIGUE_TRACKING_KEY)).toBe('false');
+      expect(await readJson(DELOAD_MODE_KEY)).toBe(true);
+    });
+
+    it('a profile write keeps its device-local fields and the whole record', async () => {
+      await run(() => Storage.saveUserProfile({ display_name: 'Local Name', date_of_birth: '1990-01-01' }), when);
+      const stored = await readJson(USER_PROFILE_KEY);
+      expect(stored.display_name).toBe('Local Name');
+      expect(stored.date_of_birth).toBe('1990-01-01');
+      expect(stored.unit_system).toBeUndefined();
+      expect(await readJson(FATIGUE_MULTIPLIER_KEY)).toBe(1.12);
+      expect((await nextUpload()).profile.display_name).toBe('Local Name');
+    });
+
+    it('a current-workout selection and a default collapsed write survive', async () => {
+      await run(async () => {
+        await Storage.saveCurrentWorkoutId('wn_local');
+        await Storage.saveWorkoutCollapsed(false);
+      }, when);
+      expect(await readJson(CURRENT_WORKOUT_ID_KEY)).toBe('wn_local');
+      expect(await secureStorage.getItem(COLLAPSED_STATE_KEY)).toBe('false');
+      expect(await readJson(FATIGUE_MULTIPLIER_KEY)).toBe(1.12);
+      const up = await nextUpload();
+      expect(up.health.current_workout_note_id).toBe('wn_local');
+      expect(up.profile.ui_state.log_current_collapsed).toBe(false);
+    });
+  });
+
+  it('with no local change every remote field hydrates', async () => {
+    await run(async () => {}, 'download');
+    expect(await readJson(TRACKED_LIFTS_KEY)).toEqual({ squat: true });
+    expect(await readJson(CURRENT_WORKOUT_ID_KEY)).toBe('wn_remote');
+    expect(await readJson(COLLAPSED_STATE_KEY)).toBe(true);
+    expect((await readJson(USER_PROFILE_KEY)).unit_system).toBe('metric');
+    expect(await readJson(DELOAD_MODE_KEY)).toBe(true);
+  });
+
+  it('absent remote rows: a write during the download reaches the bootstrap upload', async () => {
+    const { upserts } = await run(() => Storage.saveFatigueMultiplier(0.9), 'download', { profile: null, toggles: null });
+    expect(upserts.user_health_profile[0].fatigue_multiplier).toBe(0.9);
+  });
+
+  it('a failed download hydrates nothing, keeps the local write, and a retry succeeds', async () => {
+    const gate = deferred();
+    const { client, reached } = makeClient({ gate, failProfile: true });
+    const boot = cloudAdapter.bootstrapFromLocal(UID, client);
+    const failed = expect(boot).rejects.toThrow(/user_profile/);
+    await reached.promise;
+    await Storage.saveFatigueMultiplier(0.9);
+    gate.resolve();
+    await failed;
+    expect(await readJson(CURRENT_WORKOUT_ID_KEY)).toBeUndefined();
+    expect(await readJson(FATIGUE_MULTIPLIER_KEY)).toBe(0.9);
+    await cloudAdapter.bootstrapFromLocal(UID, makeClient().client);
+    expect(await readJson(CURRENT_WORKOUT_ID_KEY)).toBe('wn_remote');
+  });
+
+  it('an unreadable baseline aborts with a retryable error instead of hydrating', async () => {
+    const realGet = secureStorage.getItem.bind(secureStorage);
+    jest.spyOn(secureStorage, 'getItem').mockImplementation(async (k) => {
+      if (k === TRACKED_LIFT_ACTIVATIONS_KEY) throw new Error('read failed');
+      return realGet(k);
+    });
+    // The snapshot loaders swallow read errors (clean), the strict baseline does not.
+    await expect(cloudAdapter.bootstrapFromLocal(UID, makeClient().client))
+      .rejects.toMatchObject({ step: 'restore:baseline' });
+    jest.restoreAllMocks();
+    expect(await readJson(CURRENT_WORKOUT_ID_KEY)).toBeUndefined();
+    await cloudAdapter.bootstrapFromLocal(UID, makeClient().client);
+    expect(await readJson(CURRENT_WORKOUT_ID_KEY)).toBe('wn_remote');
+  });
+
+  it('an unreadable change check applies nothing and does not wedge the lock', async () => {
+    const realGet = secureStorage.getItem.bind(secureStorage);
+    let reads = 0;
+    jest.spyOn(secureStorage, 'getItem').mockImplementation(async (k) => {
+      if (k === COLLAPSED_STATE_KEY) {
+        reads += 1;
+        // 1 snapshot, 2 baseline, 3 the check under the lock.
+        if (reads === 3) throw new Error('read failed');
+      }
+      return realGet(k);
+    });
+    await expect(cloudAdapter.bootstrapFromLocal(UID, makeClient().client)).rejects.toThrow('read failed');
+    jest.restoreAllMocks();
+    expect(await readJson(CURRENT_WORKOUT_ID_KEY)).toBeUndefined();
+    expect(await readJson(FATIGUE_MULTIPLIER_KEY)).toBeUndefined();
+    await bounded(Storage.saveFatigueMultiplier(0.9));
+    expect(await readJson(FATIGUE_MULTIPLIER_KEY)).toBe(0.9);
+  });
+
+  it('a failed local holder during the download does not stall hydration or later writers', async () => {
+    await run(async () => {
+      await expect(withLocalWriteLock(async () => { throw new Error('holder failed'); })).rejects.toThrow('holder failed');
+      await Storage.saveDeloadModeEnabled(false);
+    }, 'download');
+    expect(await secureStorage.getItem(DELOAD_MODE_KEY)).toBe('false');
+    expect(await readJson(CURRENT_WORKOUT_ID_KEY)).toBe('wn_remote');
+    await bounded(Storage.saveFatigueMultiplier(0.8));
+  });
+});

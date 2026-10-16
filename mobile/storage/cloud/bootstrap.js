@@ -5,6 +5,7 @@ import { BootstrapError } from './errors';
 import { buildBootstrapPlan } from './bootstrapPlan';
 import { loadArchivedWeightGoalsRaw } from '../entries/weightGoal';
 import { SYNC_TABLES, getDirtyRecords } from '../syncQueue';
+import { captureHydrationGenerations, captureHydrationBaseline } from '../entries/backupExport';
 
 const SCHEMA = 'kilo';
 
@@ -302,6 +303,9 @@ export async function bootstrapFromLocal(userId, client = getSupabaseClient()) {
   // and, authoritatively, by the server's RLS gate: the user_health_profile upsert
   // below simply fails for a user without an active grant. This function stays a
   // pure upload plan so it remains drivable with an injected client.
+  // Local-write generations are captured synchronously, before the first await,
+  // so any writer that completes after this point is seen as a change (#1415).
+  const hydrationGenerations = captureHydrationGenerations();
   const snapshot = await readLocalSnapshot();
   const db = client.schema(SCHEMA);
 
@@ -315,11 +319,28 @@ export async function bootstrapFromLocal(userId, client = getSupabaseClient()) {
   // them changes nothing.
   let snapshotForPlan = snapshot;
   if (isCleanLocalState(snapshot)) {
+    // Local intent written after the clean check above (including during the
+    // download) wins per field or coherent unit (#1415). The baseline is local to
+    // this call: it is discarded on return or throw, so a retry re-baselines and
+    // a stale one can never authorize a later hydration. No lock is held across
+    // the download; hydrateProfileFromCloud re-checks under the local-write lock.
+    // An unreadable baseline aborts (retryable) rather than assuming it is safe.
+    let baseline;
+    try {
+      baseline = await captureHydrationBaseline(hydrationGenerations);
+    } catch (cause) {
+      throw new BootstrapError(
+        `Bootstrap restore could not read local state: ${cause?.message || cause}`,
+        { step: 'restore:baseline', cause }
+      );
+    }
     const { profile, toggles } = await downloadProfileAndToggles(db, userId);
     if (profile || toggles) {
-      await Storage.hydrateProfileFromCloud(profile, toggles);
-      snapshotForPlan = await readLocalSnapshot();
+      await Storage.hydrateProfileFromCloud(profile, toggles, baseline);
     }
+    // Re-read even with nothing downloaded: a write during the download must
+    // reach the upload plan below, not only the next sync pass.
+    snapshotForPlan = await readLocalSnapshot();
   }
 
   const plan = buildBootstrapPlan(snapshotForPlan, userId);
