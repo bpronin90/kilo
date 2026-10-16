@@ -2,7 +2,7 @@
 
 Status: **Adopted.** This document owns durable UI behavior and composition
 rules. Update this rule owner and the affected screen/component reference linked from
-[Design System Map](design-system-map.md) when an intentional UI change alters
+[Design System Map](../design-system-map.md) when an intentional UI change alters
 an established pattern.
 
 Scope: mobile app (`mobile/`). Companion reference: `docs/design-system-map.md`

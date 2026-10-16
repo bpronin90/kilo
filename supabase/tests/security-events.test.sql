@@ -286,7 +286,7 @@ select ok(
   not has_table_privilege('anon', 'kilo.security_events', 'select'),
   'anon cannot read the security log'
 );
--- The documented investigation path in docs/security-monitoring.md queries this
+-- The documented investigation path in docs/security/security-monitoring.md queries this
 -- table directly as service_role. BYPASSRLS bypasses row policies, not table
 -- privileges, and the custom kilo schema has no default-privilege grant, so
 -- without an explicit grant those runbook queries fail with permission denied.

@@ -1,6 +1,6 @@
 # Account and Restore Trust Boundaries
 
-For maintainers assessing authentication, restore credential lifecycle, session issuance, and abuse boundaries. Operator setup belongs to [Auth Activation](auth-activation.md).
+For maintainers assessing authentication, restore credential lifecycle, session issuance, and abuse boundaries. Operator setup belongs to [Auth Activation](../operations/auth-activation.md).
 
 ## Android Restore Credentials Trust Boundary
 

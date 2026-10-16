@@ -114,4 +114,4 @@ to move in the same change.
 `docs/archive/backend-roadmap.md` preserves the completed implementation
 sequence and original contract intent. It is historical. For current behavior,
 use the migrations and tests; for current policy, use this document; for
-deployment and provider operations, use `docs/backend-activation.md`.
+deployment and provider operations, use `docs/operations/backend-activation.md`.

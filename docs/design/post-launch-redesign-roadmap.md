@@ -3,7 +3,7 @@
 **Status: KUA foundations and screen migrations complete. Phase 5 theme selection UI is next.**
 
 This roadmap begins only after Kilo's production launch is externally verified. See
-[`docs/play-store-readiness.md`](play-store-readiness.md) for the launch checklist.
+[`docs/operations/play-store-readiness.md`](../operations/play-store-readiness.md) for the launch checklist.
 Once that checklist is complete, this roadmap starts with shared foundation work,
 then delivers all three themes and both modes without changing product behavior.
 
@@ -15,7 +15,7 @@ then delivers all three themes and both modes without changing product behavior.
 ## Design specification
 
 The implementation-ready design package lives at
-[`docs/design/kinetic-utilitarian-athletic/`](design/kinetic-utilitarian-athletic/).
+[`docs/design/kinetic-utilitarian-athletic/`](kinetic-utilitarian-athletic/).
 
 | File | Contents |
 |---|---|

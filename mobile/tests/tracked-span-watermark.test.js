@@ -269,7 +269,7 @@ describe('watermark semantics', () => {
   test("a catalog default the user never toggled keeps full history", () => {
     // Catalog `po: true` names are tracked without an explicit activation, so
     // they are not activations at all and get no record — the same standing as
-    // legacy boolean-only state. docs/calculations-reference.md makes this claim
+    // legacy boolean-only state. docs/product/calculations-reference.md makes this claim
     // to users, so it is pinned here rather than left implicit.
     const sections = parse('Tuesday\n-Squat\n315 5\n325 5\n335 5');
     expect(getDefaultTrackedNames().map(n => normalizeExerciseKey(n))).toContain('squat');

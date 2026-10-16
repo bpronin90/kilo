@@ -4,7 +4,7 @@
 // Kilo could already PREVENT a large class of security failures — RLS, the
 // consent gate, the durable rate limiter, the dependency-audit gate, the
 // security-review gate — and could RESPOND to one it had been told about
-// (docs/security-incident-response.md). It could not NOTICE. Every
+// (docs/security/security-incident-response.md). It could not NOTICE. Every
 // security-relevant server decision existed only as a `console.error` line in a
 // Supabase Edge Function log: retained for days, not queryable as events, and
 // with no threshold behind it, so nothing ever alerted and an incident found a
@@ -403,7 +403,7 @@ export function renderAlert(alert) {
   return lines.join('\n');
 }
 
-const RUNBOOK = `Response (see docs/security-monitoring.md, "Investigation runbook"):
+const RUNBOOK = `Response (see docs/security/security-monitoring.md, "Investigation runbook"):
   1. Read the window's aggregates first: volume answers "how much", and
      distinct_subjects answers "one caller or many".
   2. As service_role, widen the window and correlate by subject_digest in
@@ -414,7 +414,7 @@ const RUNBOOK = `Response (see docs/security-monitoring.md, "Investigation runbo
   4. A critical event is never a threshold miss: ratelimit.unavailable means the
      durable limiter is unreachable, and authz.denied means a subject reached
      data that was not theirs. Treat either as an incident under
-     docs/security-incident-response.md.
+     docs/security/security-incident-response.md.
   5. Never delete rows to clear a finding. The log is append-only and is the
      evidence an investigation runs on.`;
 

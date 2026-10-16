@@ -6,9 +6,9 @@ Supabase backend in the shared production project.
 This document owns migration deployment, Data API exposure, client
 configuration and operational verification. Public Auth-provider setup lives in
 [Auth Activation](auth-activation.md). Schema
-meaning and ownership rules live in [Backend Schema](backend-schema.md);
+meaning and ownership rules live in [Backend Schema](../architecture/backend-schema.md);
 historical sequencing lives in the
-[archived backend roadmap](archive/backend-roadmap.md).
+[archived backend roadmap](../archive/backend-roadmap.md).
 
 ## Preconditions
 
@@ -136,7 +136,7 @@ and release-verification procedure.
 
 ## Relationship To Other Docs
 
-- `docs/backend-schema.md` owns the schema structure and the naming, source-of-truth, ownership, and isolation **policy** that schema changes must follow. Consult it for what the tables, columns, RLS, and grants mean.
+- `docs/architecture/backend-schema.md` owns the schema structure and the naming, source-of-truth, ownership, and isolation **policy** that schema changes must follow. Consult it for what the tables, columns, RLS, and grants mean.
 - `docs/archive/backend-roadmap.md` preserves the completed implementation sequence. It is historical, not an operational authority.
 - This document owns the current activation and provider-configuration procedure.
 

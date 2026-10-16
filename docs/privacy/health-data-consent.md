@@ -4,7 +4,7 @@ Status: current product, privacy, and engineering contract.
 
 This document owns Kilo's consent boundary for cloud processing of health data.
 The completed design and rollout specification is preserved in the
-[documentation archive](archive/article-9-explicit-consent-spec.md). This is a
+[documentation archive](../archive/article-9-explicit-consent-spec.md). This is a
 product and engineering contract, not legal advice.
 
 ## Product Decision
@@ -164,4 +164,4 @@ deno test --no-check --no-lock --allow-read supabase/functions/_shared/health-da
 
 Database consent-gate, withdrawal, purge, protocol, and migration checks live
 under `supabase/tests/` and are included in the migration test workflow described
-in [Testing and QA](testing-and-qa.md).
+in [Testing and QA](../testing-and-qa.md).

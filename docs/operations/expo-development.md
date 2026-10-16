@@ -36,7 +36,7 @@ The development build uses its own identity — `com.benpronin.kilo.dev`, shown 
 **Kilo Dev** — so it installs alongside the preview app rather than replacing it.
 Preview and production identifiers are unchanged. Keep both installed: the
 development client is for iteration, the preview build remains the surface for
-the [Installable Preview Smoke Checklist](manual-qa.md#installable-preview-smoke-checklist).
+the [Installable Preview Smoke Checklist](../testing/manual-qa.md#installable-preview-smoke-checklist).
 
 ## TL;DR
 

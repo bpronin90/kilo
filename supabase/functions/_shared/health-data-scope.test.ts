@@ -25,7 +25,7 @@ import {
 } from './health-data-scope.ts'
 
 // The nine tables that hold data concerning health, per
-// docs/health-data-consent.md § "Health-Data Boundary",
+// docs/privacy/health-data-consent.md § "Health-Data Boundary",
 // plus the two recovery tables admitted by #694. Written out literally rather
 // than derived, so a change to the scope module can never quietly change what
 // this test considers correct.

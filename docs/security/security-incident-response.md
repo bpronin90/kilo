@@ -2,8 +2,8 @@
 
 This runbook is Kilo's lightweight operating process for vulnerabilities and
 security incidents. It complements the [security-critical change review](security-review.md),
-[security monitoring](security-monitoring.md), [backend activation](backend-activation.md),
-and [phone/release runbook](phone-runbook.md); those documents remain
+[security monitoring](security-monitoring.md), [backend activation](../operations/backend-activation.md),
+and [phone/release runbook](../phone-runbook.md); those documents remain
 authoritative for their detailed controls.
 
 ## Intake and first response
@@ -80,7 +80,7 @@ block them.
   and preserves evidence without expanding exposure.
 - **Release/verification owner:** confirms tests, review, deployment, rollback,
   and post-release checks; for critical changes, obtains the human security
-  sign-off required by `docs/security-review.md`.
+  sign-off required by `docs/security/security-review.md`.
 - **Communications owner:** decides what to tell affected users, providers,
   reporters, or authorities with the owner; never discloses secrets or
   unverified impact.
@@ -153,7 +153,7 @@ ticket or use a suspected credential to investigate.
 - **OAuth and Turnstile:** rotate provider secrets in provider configuration,
   disable the affected client/widget if necessary, and verify redirect origins
   and server-side validation. Follow the secret-handling rules in
-  `docs/backend-activation.md`.
+  `docs/operations/backend-activation.md`.
 - **Sentry/telemetry:** rotate a credential only when evidence requires it,
   preserve event IDs and timestamps, and check that diagnostic payloads contain
   no unexpected sensitive data.
@@ -182,7 +182,7 @@ ticket or use a suspected credential to investigate.
 2. Select `security-critical` in the PR security section when the change touches
    auth, RLS, APIs, secrets, health data, abuse controls, update delivery,
    deployment, or another listed boundary. Use the checklist in
-   `docs/security-review.md`.
+   `docs/security/security-review.md`.
 3. Run focused regression tests and the applicable dependency audit,
    database/RLS, deployment, build, and migration checks. Do not treat a green
    check as proof that a human security sign-off is unnecessary.

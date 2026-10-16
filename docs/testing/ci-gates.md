@@ -40,7 +40,7 @@ node --test scripts/review-disposition.test.mjs
 Changes that can materially affect authentication, authorization, RLS and
 policies, server functions/APIs, secrets, health data, encryption/storage,
 account deletion/export, abuse controls, update delivery, or deployment
-security follow the [Security-critical change review](security-review.md)
+security follow the [Security-critical change review](../security/security-review.md)
 policy. The PR must identify its security impact and, when critical, retain an
 explicit human security sign-off bound to the full current head SHA before the
 change is eligible for release. A new head invalidates that sign-off and

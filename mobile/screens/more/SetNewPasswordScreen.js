@@ -14,11 +14,11 @@ import { FieldLabel } from '../../components/FieldLabel';
 // are populated: the PASSWORD_RECOVERY auth-state event and the native
 // cold/warm-start deep-link listener.
 //
-// docs/ui-design-rules.md #1 (top-of-tab content alignment): every screen
+// docs/design/ui-design-rules.md #1 (top-of-tab content alignment): every screen
 // renders inside ScreenShell, which owns the 16px horizontal padding, 16px
 // inter-child gap, and single 34/700 title — this screen does not hand-roll
 // its own outer padding or title size.
-// docs/ui-design-rules.md #2 (title-to-panel spacing): the form is one
+// docs/design/ui-design-rules.md #2 (title-to-panel spacing): the form is one
 // logical block (title, note, inputs, button, status), so it is wrapped in a
 // single ScreenShell child with its own `gap: 12`, matching AccountScreen's
 // `accountBlock` convention, rather than adding ad-hoc margins between
