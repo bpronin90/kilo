@@ -7,6 +7,7 @@
 // back to snapshot note ids and source lines for local reconstruction.
 import { parseWorkoutNote } from '../parser.js';
 import { _DAY_RE, _EXERCISE_NUMBERED_RE, _EXERCISE_CORE_RE } from '../parser/workoutNoteCore.js';
+import { parseHeaderDeclaration } from '../parser/workoutRow.js';
 import { splitHeaderContent } from './normalizationHeaderEdits.js';
 
 // Local snapshot discriminator for this protocol (not the snapshot's counter).
@@ -80,7 +81,9 @@ export function extractNoteHeaders(rawText) {
 // prescription is a descriptor, so "-Single-Leg RDL 2x8 each leg" offers
 // "Single-Leg RDL", using the same boundary as target edits. The split is used
 // only when the header rebuilt from that name and its own prescription bytes
-// reads back as exactly that name; any other case keeps the parsed name.
+// reads back as exactly that name and declares the same thing (as target edits
+// require: "-Bike 5 min easy" declares nothing, "-Bike 5 min" a timed row);
+// any other case keeps the parsed name.
 function authorityName(exercise) {
   const raw = exercise.raw_header;
   const prefix = typeof raw === 'string' ? headerFraming(raw) : null;
@@ -89,7 +92,9 @@ function authorityName(exercise) {
   const name = named.trim();
   if (!hasPrescription || ambiguous || !after.trim() || !name || name === exercise.name) return exercise.name;
   const reparsed = parseWorkoutNote(prefix + name + kept);
-  return reparsed?.ok && reparsed.sections[0]?.exercises[0]?.name === name ? name : exercise.name;
+  if (!reparsed?.ok || reparsed.sections[0]?.exercises[0]?.name !== name) return exercise.name;
+  const sameDeclaration = JSON.stringify(parseHeaderDeclaration(raw)) === JSON.stringify(parseHeaderDeclaration(prefix + name + kept));
+  return sameDeclaration ? name : exercise.name;
 }
 
 function authorityNames(rawText) {

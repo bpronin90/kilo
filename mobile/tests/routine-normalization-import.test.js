@@ -884,7 +884,7 @@ describe('owner descriptor examples apply through the batch write (#1383, compac
 });
 
 describe('post-prescription text is a descriptor in authority names and targets (#1394)', () => {
-  const AUTH = { id: 'a1394', title: 'Lower', raw_text: 'Monday\n-Single-Leg RDL 2x8 each leg\n- 20 8,8\n-Squat 5/3/1 3x5 heavy\n-Squat\n-Plank 3x30s each side\n-Lat Pulldown 2x10-12 (pack shoulder)\n-Row\n-Hold 3x30s2 sides\nCore: Dead Bug 3x10 slow' };
+  const AUTH = { id: 'a1394', title: 'Lower', raw_text: 'Monday\n-Single-Leg RDL 2x8 each leg\n- 20 8,8\n-Squat 5/3/1 3x5 heavy\n-Squat\n-Plank 3x30s each side\n-Lat Pulldown 2x10-12 (pack shoulder)\n-Row\n-Hold 3x30s2 sides\nCore: Dead Bug 3x10 slow\n-Bike 5 min easy' };
   const ORIG = 'Monday\n+LIFTING\n-Single-Leg RDL 2x8 each leg, light\n25 8,8\n-- existing note\n- 30 8 *PR\n-Squat 5/3/1 3x5 heavy\n- 185 5\n';
   const OUT = 'Monday\n+LIFTING\n-Single-Leg RDL 2x8\n25 8,8\n-- existing note\n- 30 8 *PR\n-- each leg, light\n-Squat 5/3/1 3x5\n- 185 5\n-- heavy\n';
   const TARGET = { id: 't1394', title: 'Lower', raw_text: ORIG };
@@ -895,9 +895,11 @@ describe('post-prescription text is a descriptor in authority names and targets 
 
   test('authority names exclude the prescription and everything after it; names without one, numbers before it and unsupported splits are unchanged', () => {
     expect(buildHeaderCatalog(AUTH, [TARGET]).names).toEqual([
-      'Single-Leg RDL', 'Squat 5/3/1', 'Squat', 'Plank', 'Lat Pulldown', 'Row', 'Hold 3x30s2 sides', 'Core: Dead Bug',
+      'Single-Leg RDL', 'Squat 5/3/1', 'Squat', 'Plank', 'Lat Pulldown', 'Row', 'Hold 3x30s2 sides', 'Core: Dead Bug', 'Bike 5 min easy',
     ]);
     expect(snap.catalog.headers.map(h => h.raw)).toEqual([RDL, SQUAT]);
+    // "-Bike 5 min" would declare a timed row the original doesn't; a target edit can't split it either.
+    expect(planFor('-Bike 5 min easy', { name: 'Bike', descriptor: 'easy' }).ok).toBe(false);
   });
 
   test('the RDL target accepts the authority name with its post-prescription descriptor and lands byte-exactly through the batch write', async () => {
