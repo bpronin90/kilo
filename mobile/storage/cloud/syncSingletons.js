@@ -1,4 +1,5 @@
 import * as Storage from '../entries';
+import { loadTrackedLiftsStrict, loadTrackedLiftActivationsStrict } from '../entries/settings';
 import { mergeUserProfile } from '../entries/profileStorage';
 import {
   loadDeloadNote,
@@ -225,14 +226,19 @@ async function buildUserHealthProfileRecords() {
   ];
 }
 
-// Flags + activation records land as one unit or not at all. They are two
-// storage writes, so a failure between them would leave a half pair locally
-// that the next pass then uploads over the other device's good row (#1398).
-// Roll back to the pre-apply pair (best effort) and rethrow: the pass fails
-// retryably, the cursor does not advance, and the next pass re-applies it.
+// Flags + records land as one unit or not at all (#1398): a failure between the
+// two writes would leave a half pair that the next pass uploads over the other
+// device's good row. Roll back (best effort) and rethrow, so the pass fails
+// retryably and re-applies. Strict snapshot reads: unreadable is never "{}".
 async function applyTrackedLiftsFromRow(row) {
-  const beforeFlags = await Storage.loadTrackedLifts();
-  const beforeRecords = await Storage.loadTrackedLiftActivations();
+  let beforeFlags = null;
+  let beforeRecords = null;
+  try {
+    beforeFlags = await loadTrackedLiftsStrict();
+    beforeRecords = await loadTrackedLiftActivationsStrict();
+  } catch {
+    beforeFlags = null; // no snapshot: apply and repair as before
+  }
   try {
     if (
       row.tracked_lifts &&
@@ -280,6 +286,7 @@ async function applyTrackedLiftsFromRow(row) {
     }
   } catch (err) {
     try {
+      if (beforeFlags === null || beforeRecords === null) throw err;
       const nowFlags = await Storage.loadTrackedLifts();
       if (stableStringify(nowFlags) !== stableStringify(beforeFlags)) await Storage.saveTrackedLifts(beforeFlags);
       const nowRecords = await Storage.loadTrackedLiftActivations();
@@ -295,6 +302,9 @@ async function applyUserHealthProfile(mergedList) {
   const row = singletonRow(mergedList);
   if (!row || isTombstone(row)) return;
 
+  // First: a failure rolls back before any other field of this row is applied.
+  await applyTrackedLiftsFromRow(row);
+
   const nextCurrent = row.current_workout_note_id ?? null;
   const localCurrent = (await Storage.loadCurrentWorkoutId()) ?? null;
   if (localCurrent !== nextCurrent) {
@@ -307,8 +317,6 @@ async function applyUserHealthProfile(mergedList) {
     const local = Number(await Storage.loadFatigueMultiplier());
     if (local !== next) await Storage.saveFatigueMultiplier(next);
   }
-
-  await applyTrackedLiftsFromRow(row);
 
   // Active deload (issue #498). A null raw_text is a cleared deload; removing the
   // local note is what stops the next diff from re-pushing it (no resurrection).

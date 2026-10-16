@@ -803,7 +803,9 @@ describe('a pulled Track change is adopted by a mounted hook (#1398)', () => {
   it('a failed storage write mid-apply publishes no half pair, and a later pass recovers', async () => {
     const cloud = makeXidFakeCloud();
     const { ref, tree } = await deviceA(cloud);
-    await deviceBWrites(cloud, squatAdded);
+    // The same pulled row also carries another field, which must not be left
+    // half-applied (it would read as a local edit and upload over B's row).
+    await deviceBWrites(cloud, { ...squatAdded, fatigue_multiplier: 1.2 });
     const realSetItem = secureStorage.setItem.bind(secureStorage);
     let failing = true;
     jest.spyOn(secureStorage, 'setItem').mockImplementation(async (key, value) => {
@@ -815,6 +817,7 @@ describe('a pulled Track change is adopted by a mounted hook (#1398)', () => {
     // The half-applied pair was rolled back: storage, hook and server never
     // hold flags without their records.
     expect(await Storage.loadTrackedLifts()).toEqual({ bench: true });
+    expect(await Storage.loadFatigueMultiplier()).toBe(1.07);
     expect(Object.keys(ref.current.trackedLifts).sort())
       .toEqual(Object.keys(await Storage.loadTrackedLifts()).sort());
     expect(Object.keys(ref.current.activations).sort())
@@ -825,6 +828,8 @@ describe('a pulled Track change is adopted by a mounted hook (#1398)', () => {
     await flushAsync(8);
     expect(ref.current.trackedLifts).toEqual({ bench: true, squat: true });
     expect(Object.keys(ref.current.activations).sort()).toEqual(['bench', 'squat']);
+    expect(await Storage.loadFatigueMultiplier()).toBe(1.2);
+    expect(Object.keys(healthRow(cloud).tracked_lift_activations).sort()).toEqual(['bench', 'squat']);
     act(() => tree.unmount());
   });
 });
