@@ -390,3 +390,34 @@ export function planTrackedLiftRenameTransition(notes, nextById, trackedLifts, a
   }
   return { ok: true, changed, lifts, activations: records };
 }
+
+function stableJson(value) {
+  if (value === undefined) return 'undefined';
+  return JSON.stringify(value, (_k, v) => (v && typeof v === 'object' && !Array.isArray(v)
+    ? Object.fromEntries(Object.keys(v).sort().map(k => [k, v[k]])) : v));
+}
+
+// Replay of a rename whose target note changed after an interruption (#1395).
+// Over the intent's AFFECTED keys only (a later toggle elsewhere is kept) each
+// current value must equal its recorded before or after value; a key matching
+// neither is unknown and throws so the intent is kept. A key already at its
+// after value also proves the rename landed. When landed, returns the maps with
+// those keys moved to the recorded result; `landed: false` means leave Track.
+export function reconcileDivergedApplyTracking(intent, lifts, activations, landedHint) {
+  let landed = landedHint;
+  const same = (x, y) => stableJson(x) === stableJson(y);
+  const out = {};
+  for (const [name, cur] of [['lifts', lifts], ['activations', activations]]) {
+    const next = { ...cur };
+    for (const key of new Set([...Object.keys(intent.before[name]), ...Object.keys(intent.tracking[name])])) {
+      const was = intent.before[name][key];
+      const will = intent.tracking[name][key];
+      if (same(was, will)) continue;
+      if (same(cur[key], will)) landed = true;
+      else if (!same(cur[key], was)) throw new Error('An unfinished routine rename could not be reconciled.');
+      if (will === undefined) delete next[key]; else next[key] = will;
+    }
+    out[name] = next;
+  }
+  return { ...out, landed };
+}

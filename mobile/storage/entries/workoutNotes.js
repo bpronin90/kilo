@@ -15,7 +15,7 @@ import {
   saveTrackedLiftActivations,
 } from './settings';
 import { withLocalWriteLock } from '../sync/localWriteLock';
-import { planTrackedLiftRenameTransition } from '../../lib/data/workoutAnalyticsActivations';
+import { planTrackedLiftRenameTransition, reconcileDivergedApplyTracking } from '../../lib/data/workoutAnalyticsActivations';
 
 // ── legacy workout sessions ────────────────────────────────────────────────────
 
@@ -136,8 +136,25 @@ export async function replaceWorkoutNotesRaw(list) {
 // be split from its write by another writer. The chain survives a rejected
 // step. Callers inside the lock must use the unlocked raw helpers.
 let notebookLock = Promise.resolve();
+//
+// #1395: every holder first settles any unfinished rename (apply intent), so a
+// notebook replace (backup restore, sync write-back, migration, purge) can never
+// erase the landing evidence and strand Track on the old key. The settle runs on
+// the unlocked internals under THIS lock (no re-entry) and takes no other lock,
+// so a holder that already owns the local-write lock (sync write-back) cannot
+// deadlock on it. Lock order stays notebook -> local-write everywhere. If the
+// intent cannot reach a safe terminal state the settle throws and the caller's
+// fn never runs: the write is refused rather than replacing the notebook.
 export function withWorkoutNotebookLock(fn) {
-  const run = notebookLock.then(() => fn());
+  return runInNotebookLock(async () => {
+    if (applyIntentMaybePending) await finishApplyIntentUnlocked(settleOps);
+    return fn();
+  });
+}
+
+// The raw chain, for the two entry points that settle (and report) the intent.
+function runInNotebookLock(fn) {
+  const run = notebookLock.then(fn);
   notebookLock = run.catch(() => {});
   return run;
 }
@@ -212,6 +229,9 @@ const LOCAL_TEXT_OPS = { isLive: n => !n.deleted_at, prepare: async () => row =>
 // True until a read shows no unfinished record, and again whenever a failed
 // commit may have left one; makes the common no-record check free.
 let applyIntentMaybePending = true;
+// The adapter (local or cloud) that last drove an apply or replay in this
+// process; the lock-level settle reuses it so cloud rows are stamped/enqueued.
+let settleOps = LOCAL_TEXT_OPS;
 export function isNormalizationApplyIntentMaybePending() {
   return applyIntentMaybePending;
 }
@@ -221,12 +241,6 @@ export function isNormalizationApplyIntentMaybePending() {
 // only the transport's per-table column whitelist (UPSERT_COLUMNS), so this field
 // is dropped at the wire and needs no backend or schema change.
 const APPLY_STAMP_FIELD = 'normalization_apply_id';
-
-function stableJson(value) {
-  if (value === undefined) return 'undefined';
-  return JSON.stringify(value, (_k, v) => (v && typeof v === 'object' && !Array.isArray(v)
-    ? Object.fromEntries(Object.keys(v).sort().map(k => [k, v[k]])) : v));
-}
 
 async function readApplyIntent() {
   const raw = await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY);
@@ -243,6 +257,23 @@ async function readApplyIntent() {
 // throws and keeps the record: an unknown outcome is never treated as done.
 async function finishApplyIntentUnlocked(ops) {
   if (!applyIntentMaybePending) return null;
+  const tracking = await settleApplyIntentUnlocked(ops);
+  await stripSpentApplyStamps();
+  return tracking;
+}
+
+// The stamp is local-only evidence (exported by backup, ignored elsewhere), so it
+// must not outlive its intent. Best effort: a failure leaves a spent stamp that
+// nothing consults and the next ordinary notebook write drops.
+async function stripSpentApplyStamps() {
+  try {
+    if (applyIntentMaybePending) return;
+    const list = await readNotebook();
+    if (list.some(n => n?.[APPLY_STAMP_FIELD])) await writeNotebook(list);
+  } catch { /* spent evidence only */ }
+}
+
+async function settleApplyIntentUnlocked(ops) {
   const intent = await readApplyIntent();
   if (intent) {
     const stamp = await ops.prepare();
@@ -250,53 +281,33 @@ async function finishApplyIntentUnlocked(ops) {
     const now = new Date().toISOString();
     const rows = [];
     const current = await readNotebook();
-    // A target note that is neither pre-apply nor applied was changed after the
-    // interruption. Never overwrite it, and never trust Track to be all-old: the
-    // durable write order is notebook -> flags -> activations, so a crash can
-    // leave Track half-moved. Whether the notebook write landed is decided by
-    // durable evidence written in that same single setItem: every row the apply
-    // writes carries the intent's `normalization_apply_id` (local-only, see
-    // APPLY_STAMP_FIELD), and it survives later edits because editors merge into
-    // the stored row. Landed = a stamped row, an applied text, or a moved Track
-    // key. Then, over the intent's affected keys only (a later toggle on any
-    // other key is kept):
-    //  - landed: Track is rolled forward to the recorded result;
-    //  - not landed: the rename never took effect, so the intent is retired with
-    //    notes and Track untouched;
-    //  - a key matching neither its before nor after value (a toggle landed
-    //    first), unreadable state, or a pre-journal intent: unknown, so the
-    //    intent is kept and the read throws (fail safe, nothing is pushed).
+    // A target note that is neither pre-apply nor applied changed after the
+    // interruption; it is never overwritten. Track may be half-moved (write
+    // order notebook -> flags -> activations), so whether the notebook write
+    // landed comes from evidence written in that same setItem: the rows carry
+    // the intent's APPLY_STAMP_FIELD, which editors preserve by merging into the
+    // stored row. Landed (stamp, applied text, or a moved Track key): roll the
+    // affected Track keys forward. Not landed: retire untouched. Unknown (a key
+    // matching neither before nor after, unreadable state, pre-journal intent):
+    // keep the intent and throw, so nothing is pushed.
     const live = new Map(current.filter(n => n && ops.isLive(n)).map(n => [n.id, n]));
     const state = intent.notes.map((rec) => {
       const text = live.get(rec.id)?.raw_text;
       return text === rec.expected_raw_text ? 'pre' : text === rec.next_raw_text ? 'post' : 'diverged';
     });
     if (state.includes('diverged')) {
-      const unknown = () => new Error('An unfinished routine rename could not be reconciled.');
-      if (!intent.before || !intent.id) throw unknown();
+      if (!intent.before || !intent.id) throw new Error('An unfinished routine rename could not be reconciled.');
       const lifts = await loadTrackedLiftsStrict();
       const activations = await loadTrackedLiftActivationsStrict();
-      const same = (x, y) => stableJson(x) === stableJson(y);
-      let landed = state.includes('post') || current.some(n => n?.[APPLY_STAMP_FIELD] === intent.id);
-      const plans = [['lifts', lifts], ['activations', activations]].map(([name, cur]) => {
-        const next = { ...cur };
-        for (const key of new Set([...Object.keys(intent.before[name]), ...Object.keys(intent.tracking[name])])) {
-          const was = intent.before[name][key];
-          const will = intent.tracking[name][key];
-          if (same(was, will)) continue;
-          if (same(cur[key], will)) landed = true;
-          else if (!same(cur[key], was)) throw unknown();
-          if (will === undefined) delete next[key]; else next[key] = will;
-        }
-        return next;
-      });
+      const stamped = state.includes('post') || current.some(n => n?.[APPLY_STAMP_FIELD] === intent.id);
+      const { landed, ...plans } = reconcileDivergedApplyTracking(intent, lifts, activations, stamped);
       if (landed) {
-        await saveTrackedLifts(plans[0]);
-        await saveTrackedLiftActivations(plans[1]);
+        await saveTrackedLifts(plans.lifts);
+        await saveTrackedLiftActivations(plans.activations);
       }
       await AsyncStorage.removeItem(NORMALIZATION_APPLY_INTENT_KEY);
       applyIntentMaybePending = false;
-      return landed ? { lifts: plans[0], activations: plans[1] } : null;
+      return landed ? plans : null;
     }
     const updated = current.map(n => {
       const rec = n && ops.isLive(n) ? byId.get(n.id) : null;
@@ -318,8 +329,9 @@ async function finishApplyIntentUnlocked(ops) {
 
 // Finish any unfinished record; resolves to the Track maps it committed, or null.
 export function finishNormalizationApplyIntent(ops = LOCAL_TEXT_OPS) {
+  settleOps = ops;
   if (!applyIntentMaybePending) return Promise.resolve(null);
-  return withWorkoutNotebookLock(() => withLocalWriteLock(() => finishApplyIntentUnlocked(ops)));
+  return runInNotebookLock(() => withLocalWriteLock(() => finishApplyIntentUnlocked(ops)));
 }
 
 async function commitTextBatch(updated, intent) {
@@ -333,6 +345,7 @@ async function commitTextBatch(updated, intent) {
   await saveTrackedLiftActivations(intent.tracking.activations);
   await AsyncStorage.removeItem(NORMALIZATION_APPLY_INTENT_KEY);
   applyIntentMaybePending = false;
+  await stripSpentApplyStamps();
 }
 
 async function rollBackTextBatch(list, lifts, activations) {
@@ -422,7 +435,8 @@ async function applyTextBatchUnlocked(request, ops) {
 }
 
 export function applyNoteTextBatchWithTracking(request, ops) {
-  return withWorkoutNotebookLock(() => withLocalWriteLock(() => applyTextBatchUnlocked(request, ops)));
+  settleOps = ops;
+  return runInNotebookLock(() => withLocalWriteLock(() => applyTextBatchUnlocked(request, ops)));
 }
 
 export function applyWorkoutNoteTextBatchIfUnchanged(request) {

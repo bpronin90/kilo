@@ -782,7 +782,9 @@ sync pass; a replay whose target note changed after the interruption decides whe
 write landed from a local-only apply id stamped on the rows in that same write (never
 uploaded; the cloud column whitelist drops it): landed rolls the intent's affected Track
 keys forward, not landed retires it untouched, and a key matching neither its before nor
-after value keeps the intent and fails safe. The hook runs the apply as one tracked-lift queue entry under the recovery
+after value keeps the intent and fails safe. Every notebook-lock holder (backup restore, sync write-back, migration, purge) settles a pending
+intent first, refusing its own write if the intent cannot be reconciled, and the stamp is
+stripped once the intent completes. The hook runs the apply as one tracked-lift queue entry under the recovery
 guard every sync pass holds, so toggles and passes see it wholly or not at all.
 
 ## Parse-to-Persistence Flow

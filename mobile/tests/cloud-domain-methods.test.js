@@ -401,6 +401,13 @@ describe('an interrupted commit is finished on restart (#1395)', () => {
 // what already landed: replay must classify the real Track state, never assume
 // it is all old, and never leave or push a mixed note/flag/activation tuple.
 describe('replay with a changed target note (#1395)', () => {
+  // Every locked writer now settles the intent first, so a post-crash edit that
+  // reaches replay unsettled has to be simulated on the unlocked primitive
+  // (a row merge, as an editor save would make).
+  const editRt = async (fresh, text) => fresh.replaceWorkoutNotesRaw(
+    (await fresh.loadWorkoutNotesRaw()).map(n => (n.id === 'rt' ? { ...n, raw_text: text } : n)),
+  );
+
   async function crashAt(hangAt) {
     await seedRename(LocalNotes);
     const realSet = AsyncStorage.setItem.getMockImplementation();
@@ -422,7 +429,7 @@ describe('replay with a changed target note (#1395)', () => {
       // eslint-disable-next-line global-require
       fresh = require('../storage/entries');
       // eslint-disable-next-line global-require
-      ({ finishNormalizationApplyIntent: finish } = require('../storage/entries/workoutNotes'));
+      ({ finishNormalizationApplyIntent: finish, withWorkoutNotebookLock: fresh.withWorkoutNotebookLock } = require('../storage/entries/workoutNotes'));
     });
     return { fresh, finish, end: async () => { die(new Error('process gone')); await crashed.catch(() => {}); } };
   }
@@ -437,9 +444,7 @@ describe('replay with a changed target note (#1395)', () => {
   ].flatMap(row => [[`${row[0]}`, ...row.slice(1), false], [`${row[0]} + later toggle`, ...row.slice(1), true]]))('%s', async (_name, hangAt, base, applied, toggle) => {
     const { fresh, finish, end } = await crashAt(hangAt);
     const EDITED = `${base}\n60 9`;
-    const stored = (await fresh.loadWorkoutNotesRaw()).find(n => n.id === 'rt');
-    // An ordinary editor save merges into the stored row.
-    await fresh.saveWorkoutNoteItem({ ...stored, raw_text: EDITED });
+    await editRt(fresh, EDITED);
     if (toggle) await fresh.saveTrackedLifts({ ...(await fresh.loadTrackedLifts()), extra: true });
     const extra = toggle ? { extra: true } : {};
     await finish();
@@ -455,21 +460,47 @@ describe('replay with a changed target note (#1395)', () => {
     await end();
   });
 
-  test('the apply id is never uploaded and is dropped by the next ordinary write', async () => {
+  test('the apply id is never uploaded and does not outlive its intent (export)', async () => {
     await seedRename(LocalNotes);
     await LocalNotes.applyWorkoutNoteTextBatchIfUnchanged(renameRequest());
-    const stored = (await LocalNotes.loadWorkoutNotesRaw()).find(n => n.id === 'rt');
-    expect(stored.normalization_apply_id).toEqual(expect.any(String));
+    // What backup export reads: the stored notebook, with no stamp left.
+    expect((await LocalNotes.loadWorkoutNotesRaw()).some(n => 'normalization_apply_id' in n)).toBe(false);
     // The wire row copies only the per-table column whitelist.
     // eslint-disable-next-line global-require
     expect(require('fs').readFileSync(require('path').join(__dirname, '../storage/cloud/transport.js'), 'utf8')).not.toContain('normalization_apply_id');
-    await LocalNotes.updateWorkoutNoteItem('rt', { raw_text: `${RT_NEXT}\n60 9` });
-    expect((await LocalNotes.loadWorkoutNotesRaw()).find(n => n.id === 'rt').normalization_apply_id).toBeUndefined();
+  });
+
+  // Backup restore replaces the notebook under the notebook lock with rows that
+  // never carried the stamp. The lock settles the intent first, so Track follows
+  // the landed rename instead of being stranded on the source key.
+  test.each([
+    ['crash after the notebook write', TRACKED_LIFTS_KEY],
+    ['crash after the flag write', TRACKED_LIFT_ACTIVATIONS_KEY],
+  ])('a notebook replace settles the pending rename first: %s', async (_name, hangAt) => {
+    const { fresh, end } = await crashAt(hangAt);
+    const backup = [RA, { ...RT, raw_text: `${RT_NEXT}\n60 9` }];
+    await fresh.withWorkoutNotebookLock(() => fresh.replaceWorkoutNotesRaw(backup));
+    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).toBeNull();
+    expect(await fresh.loadTrackedLifts()).toEqual(AFTER().lifts);
+    expect(await fresh.loadTrackedLiftActivations()).toEqual(AFTER().activations);
+    expect((await fresh.loadWorkoutNotesRaw()).find(n => n.id === 'rt').raw_text).toBe(`${RT_NEXT}\n60 9`);
+    await end();
+  });
+
+  test('a notebook replace is refused when the pending rename cannot be reconciled', async () => {
+    const { fresh, end } = await crashAt(TRACKED_LIFT_ACTIVATIONS_KEY);
+    await editRt(fresh, `${RT_NEXT}\n60 9`);
+    await fresh.saveTrackedLiftActivations({ ...AFTER().activations, [SRC]: { ...sourceRecord(), at: '2026-09-02T00:00:00.000Z' } });
+    const replace = fresh.withWorkoutNotebookLock(() => fresh.replaceWorkoutNotesRaw([RA]));
+    await expect(replace).rejects.toThrow();
+    expect((await fresh.loadWorkoutNotesRaw()).map(n => n.id)).toEqual(['ra', 'rt']);
+    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).not.toBeNull();
+    await end();
   });
 
   test('a Track key that matches neither the recorded before nor after keeps the intent', async () => {
     const { fresh, finish, end } = await crashAt(TRACKED_LIFT_ACTIVATIONS_KEY);
-    await fresh.saveWorkoutNoteItem({ ...RT, raw_text: `${RT_NEXT}\n60 9` });
+    await editRt(fresh, `${RT_NEXT}\n60 9`);
     await fresh.saveTrackedLiftActivations({ ...AFTER().activations, [SRC]: { ...sourceRecord(), at: '2026-09-02T00:00:00.000Z' } });
     await expect(finish()).rejects.toThrow();
     expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).not.toBeNull();
