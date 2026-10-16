@@ -1,6 +1,6 @@
 # Health-Deletion Queue Operations
 
-For operators configuring the deletion monitor or responding to stuck erasure jobs. Consent policy remains in [Health-Data Consent](health-data-consent.md).
+For operators configuring the deletion monitor or responding to stuck erasure jobs. Consent policy remains in [Health-Data Consent](../privacy/health-data-consent.md).
 
 ## Health-Deletion Queue Monitor
 

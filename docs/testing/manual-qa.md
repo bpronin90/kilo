@@ -1,6 +1,6 @@
 # Device and Browser QA
 
-For testers verifying installed native behavior and exported-browser boot. Automated checks cannot replace the human passes marked required below. Build procedures are in [Mobile Builds](mobile-builds.md).
+For testers verifying installed native behavior and exported-browser boot. Automated checks cannot replace the human passes marked required below. Build procedures are in [Mobile Builds](../operations/mobile-builds.md).
 
 Physical-device or emulator checks remain required for native layout, notification
 delivery, OAuth/password-recovery deep links, and platform packaging. The
@@ -179,7 +179,7 @@ issue #1159. All steps require a physical Android device and a configured cloud
 build (Supabase URL + anon key present).
 
 > **Re-auth timing conflict:** step 2 retains the inherited ">5 minutes" fixture,
-> while [Account Security](account-security.md#android-restore-credentials-trust-boundary)
+> while [Account Security](../security/account-security.md#android-restore-credentials-trust-boundary)
 > specifies a ten-minute fresh-auth boundary for #1162. Use a definitely expired
 > sign-in (>10 minutes) when executing this negative check; this refactor does
 > not redefine the server authentication policy.

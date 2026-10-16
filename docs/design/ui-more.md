@@ -42,4 +42,4 @@ the active accent treatment. Settings' fatigue multiplier is a 44dp stepper
 (`borderRadius: 12`) with decrement/value/increment controls. Irreversible
 Account and Backup actions stay in the error-tinted, bordered 16px-radius
 **Danger Zone** containers owned by those screens, as required by
-`docs/ui-design-rules.md` §14.
+`docs/design/ui-design-rules.md` §14.

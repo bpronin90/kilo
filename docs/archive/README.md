@@ -23,11 +23,11 @@ authoritative description of the active product.
 
 - [Article 9 explicit-consent specification](article-9-explicit-consent-spec.md)
   preserves the completed consent design, implementation acceptance criteria,
-  and rollout plan. The current boundary is [Health-Data Consent](../health-data-consent.md).
+  and rollout plan. The current boundary is [Health-Data Consent](../privacy/health-data-consent.md).
 - [Backend roadmap](backend-roadmap.md) records the completed phased transition
   to the optional Supabase-backed product. Current schema and operations are
-  documented in [Backend Schema](../backend-schema.md) and
-  [Backend Activation](../backend-activation.md).
+  documented in [Backend Schema](../architecture/backend-schema.md) and
+  [Backend Activation](../operations/backend-activation.md).
 
 ## Retired Implementation and Reference Inputs
 

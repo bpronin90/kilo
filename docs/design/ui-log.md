@@ -119,7 +119,7 @@ Consequences to preserve:
   row's `accessibilityLabel` read `Created <date>` from `saved_at`, falling back
   to the creation day encoded in the note id (`wn_YYYY-MM-DD_…`) and then to no
   date at all. `updated_at` is never displayed: it is the sync conflict cursor
-  (`docs/backend-schema.md`), so editing, tapping `Week A/B`, syncing, or
+  (`docs/architecture/backend-schema.md`), so editing, tapping `Week A/B`, syncing, or
   restoring a backup all moved it. The expanded list sorts by that same
   displayed field, newest first, undated last in notebook order. The viewed
   row keeps its `Week <X> · ` prefix in front of the date.

@@ -1,6 +1,6 @@
 # Home UI Contract
 
-For maintainers changing the Home summary and its handoffs. Analytics owns detailed evidence; calculations belong to [Calculations Reference](calculations-reference.md).
+For maintainers changing the Home summary and its handoffs. Analytics owns detailed evidence; calculations belong to [Calculations Reference](../product/calculations-reference.md).
 
 ## Home Screen
 

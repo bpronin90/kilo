@@ -1,6 +1,6 @@
 # UI Compatibility and Earlier Comparisons
 
-For maintainers interpreting older screen comparisons and intentional legacy differences. These pre-migration tables retain provenance; newer per-screen contracts and the [KUA specification](design/kinetic-utilitarian-athletic/README.md) take precedence. They are not a current defect backlog.
+For maintainers interpreting older screen comparisons and intentional legacy differences. These pre-migration tables retain provenance; newer per-screen contracts and the [KUA specification](kinetic-utilitarian-athletic/README.md) take precedence. They are not a current defect backlog.
 
 ## Cross-Screen Inconsistencies
 

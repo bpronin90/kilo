@@ -6,7 +6,7 @@
 //   1. guards the fixture notes against grammar drift (they must parse clean),
 //   2. locks the action taxonomy,
 //   3. locks the current-`main` baseline action counts + elapsed time for
-//      T1/T2/T3 - the numbers recorded in docs/logging-speed-benchmark.md,
+//      T1/T2/T3 - the numbers recorded in docs/testing/logging-speed-benchmark.md,
 //   4. shows a rerun with a changed flow (#938 keypad + #939 next/prev)
 //      recomputes comparably and moves the numbers in the expected direction,
 //   5. prints the markdown report for pasting into the living doc.

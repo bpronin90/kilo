@@ -91,7 +91,7 @@ describe('WorkoutSyntaxReference — rendered content', () => {
 
   test('has no nested Card/SectionTitle wrapper', () => {
     // WorkoutSyntaxReference must be a bare content block; callers own the
-    // surrounding Card/sheet (docs/ui-design-rules.md §4).
+    // surrounding Card/sheet (docs/design/ui-design-rules.md §4).
     const source = require('fs').readFileSync(
       require('path').join(__dirname, '../components/WorkoutSyntaxReference.js'),
       'utf8'

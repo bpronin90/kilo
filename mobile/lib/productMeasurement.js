@@ -173,7 +173,7 @@ export async function setProductMeasurementConsent(enabled) {
 //
 // This is intentionally fail-open: once the token is discarded locally above,
 // there is no durable retry for an offline or failed request. Durable
-// deletion jobs/retry storage are out of scope (see docs/product-measurement.md).
+// deletion jobs/retry storage are out of scope (see docs/privacy/product-measurement.md).
 function requestProductMeasurementDeletion(deletionToken) {
   try {
     const client = getSupabaseClient();
@@ -293,7 +293,7 @@ async function sendBufferedEventWithRetry(client, installId, deletionToken, even
 //   - Consent granted but Supabase is not configured (signed-out/local-only
 //     use, or no EXPO_PUBLIC_SUPABASE_URL/ANON_KEY): returns immediately with
 //     no network call of any kind, so local-only use keeps working exactly as
-//     documented in docs/product-measurement.md.
+//     documented in docs/privacy/product-measurement.md.
 // Successfully sent and permanently rejected events are removed from the
 // buffer; throttled or transiently-failed events remain buffered for the next
 // call. Returns { flushed, dropped, kept } counts.

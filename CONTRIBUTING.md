@@ -39,9 +39,9 @@ See `mobile/package.json` for the full set of platform-specific scripts (iOS, tu
 
 ## Testing And Verification
 
-Use [Automated Tests](docs/automated-tests.md) for targeted commands and isolation
-rules, [CI Gates](docs/ci-gates.md) for required checks, and
-[Manual QA](docs/manual-qa.md) for device/browser verification.
+Use [Automated Tests](docs/testing/automated-tests.md) for targeted commands and isolation
+rules, [CI Gates](docs/testing/ci-gates.md) for required checks, and
+[Manual QA](docs/testing/manual-qa.md) for device/browser verification.
 
 - Run the relevant test suite before opening a PR. The mobile app uses Jest:
   ```sh

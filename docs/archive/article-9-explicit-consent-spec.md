@@ -1,7 +1,7 @@
 # Article 9 Explicit Consent for Cloud Health Data
 
 Status: archived implementation and rollout specification. The living contract
-is [Health-Data Consent](../health-data-consent.md).
+is [Health-Data Consent](../privacy/health-data-consent.md).
 
 Decision date: 2026-07-13
 

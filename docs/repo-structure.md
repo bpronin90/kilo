@@ -96,5 +96,7 @@ internal commands into documentation.
 
 [`docs/README.md`](README.md) is the canonical documentation index.
 [`docs/archive/README.md`](archive/README.md) explains the historical boundary.
-Living docs describe current contracts; completed delivery chronology belongs in
+Living guides are grouped by topic under the [folder map](README.md#folder-layout);
+the root retains the shared entry indexes. Living docs describe current contracts;
+completed delivery chronology belongs in
 the changelog, GitHub issues, or the archive.

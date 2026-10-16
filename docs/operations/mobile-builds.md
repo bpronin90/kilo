@@ -1,6 +1,6 @@
 # Native Builds and Update Delivery
 
-For release operators producing Android/iOS artifacts and choosing a compatible update path. Read runtime values from `mobile/app.config.js`, never an old issue snapshot. Key custody remains in [KEYS.md](../mobile/certs/KEYS.md).
+For release operators producing Android/iOS artifacts and choosing a compatible update path. Read runtime values from `mobile/app.config.js`, never an old issue snapshot. Key custody remains in [KEYS.md](../../mobile/certs/KEYS.md).
 
 ## Standalone Android Build Via EAS
 
@@ -264,7 +264,7 @@ build/update sections above and [Preview Runtime Policy](#preview-runtime-policy
 The disabled `preview-5` → unsigned `preview-6` transition is historical native
 configuration: older clients remain isolated; it is not today's runtime value.
 
-[Current State](current-state.md#runtime-and-distribution) still records remote
+[Current State](../product/current-state.md#runtime-and-distribution) still records remote
 publication blocked on signing-key custody. The presence of update scripts is
 not evidence that custody is resolved. An authorized release operator must
 resolve that prerequisite before publishing; no release is performed by this
