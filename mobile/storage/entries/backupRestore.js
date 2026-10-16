@@ -31,18 +31,21 @@ import {
   enqueueDirty,
 } from '../syncQueue';
 import { saveUserProfile } from './profileStorage';
+import { withLocalWriteLock } from '../sync/localWriteLock';
 import {
-  saveFatigueMultiplier,
-  saveWeightDateEditEnabled,
-  saveDeloadDateEditEnabled,
-  saveFatigueTrackingEnabled,
-  saveDeloadModeEnabled,
+  saveFatigueMultiplierUnlocked,
+  saveWeightDateEditEnabledUnlocked,
+  saveDeloadDateEditEnabledUnlocked,
+  saveFatigueTrackingEnabledUnlocked,
+  saveDeloadModeEnabledUnlocked,
   loadTrackedLifts,
   saveTrackedLifts,
   saveTrackedLiftActivations,
+  readTrackedLiftRaw,
+  restoreTrackedLiftRaw,
   normalizeTrackedLiftActivations,
   pruneTrackedLiftActivations,
-  saveWorkoutCollapsed,
+  saveWorkoutCollapsedUnlocked,
 } from './settings';
 import { saveDeloadNote } from './deloadStorage';
 import {
@@ -290,24 +293,9 @@ async function replaceCollectionForCloud({ table, readRaw, writeRaw, imported, c
     importedIds.add(row.id);
     // eslint-disable-next-line no-unused-vars
     const { updated_at: _updatedAt, client_id: _clientId, ...content } = row;
-    // Build the restored record from the validated backup row ALONE — no merge
-    // with the prior local row. "Replace" means the backup is authoritative, so a
-    // field the backup omits must be CLEARED, not carried over and re-uploaded:
-    // the earlier `{ ...base, ...content }` merge let a dropped weight-entry
-    // `note` or an omitted workout-note derived field survive from the device's
-    // current row and get stamped into the restore (issue #526 review, P2).
-    //
-    // The allowlist of prior-row fields to preserve is deliberately EMPTY. It
-    // could only hold a column the cloud row legitimately has AND the backup
-    // format structurally never carries — and no such column exists for these two
-    // tables. The backup reads WEIGHT_KEY / WORKOUT_NOTES_KEY (see exportBackup),
-    // the exact raw collection storage the uploader reads from, so every cloud
-    // column a row can hold is already in the payload when the exporting device
-    // held it; an absent field is genuinely absent, and replace clears it. This
-    // also matches the LOCAL contract, which writes `payload.weight_entries`
-    // verbatim with no prior-row merge, and cannot widen `record_json`/`goal_json`
-    // (#475): those columns live only on deload_history/weight_goal, and the push
-    // whitelist for weight_entries/workout_notes never serializes them regardless.
+    // Build the record from the validated backup row ALONE (no merge with the
+    // prior local row): "replace" means the backup is authoritative, so a field
+    // it omits is CLEARED, not carried over and re-uploaded (#526, P2).
     const next = table === SYNC_TABLES.WORKOUT_NOTES ? withExplicitMovementGroups(content) : { ...content };
     const stamped = isTombstone(row)
       ? stampTombstone(next, clientId)
@@ -341,6 +329,57 @@ async function replaceCollectionForCloud({ table, readRaw, writeRaw, imported, c
   return dirty.length;
 }
 
+// #893: flags and records are restored as ONE authoritative pair. Restore
+// replaces the flag map and the note history outright, so the device's existing
+// records are not kept: a boolean-only backup restores an EMPTY record map and
+// gets the documented legacy full-history behavior. Records are taken through
+// the local loader's normalizer, then pruned to the restored flags. A failed
+// second write puts the first back (#1398 raw snapshot), so an incomplete pair
+// is never left durable for a hook or sync pass to adopt.
+async function restoreTrackedPair(cloud, store) {
+  const snapshot = await readTrackedLiftRaw(store);
+  try {
+    if (cloud.tracked_lifts != null) {
+      const tracked = {};
+      for (const [lift, value] of Object.entries(cloud.tracked_lifts)) {
+        if (typeof value === 'boolean') tracked[lift] = value;
+      }
+      await saveTrackedLifts(tracked, store);
+      await saveTrackedLiftActivations(
+        pruneTrackedLiftActivations(tracked, normalizeTrackedLiftActivations(cloud.tracked_lift_activations ?? {})),
+        store,
+      );
+    } else if (cloud.tracked_lift_activations != null) {
+      // Records without flags: pruned against whatever this device already has.
+      await saveTrackedLiftActivations(
+        pruneTrackedLiftActivations(await loadTrackedLifts(store), normalizeTrackedLiftActivations(cloud.tracked_lift_activations)),
+        store,
+      );
+    }
+  } catch (e) {
+    await restoreTrackedLiftRaw(snapshot, store).catch(() => {});
+    throw e;
+  }
+}
+
+async function restoreCloudSettings(cloud, store) {
+  await restoreTrackedPair(cloud, store);
+  if (cloud.ui_state != null && typeof cloud.ui_state.log_current_collapsed === 'boolean') {
+    await saveWorkoutCollapsedUnlocked(cloud.ui_state.log_current_collapsed, store);
+  }
+  const toggles = cloud.feature_toggles;
+  if (toggles != null) {
+    if (typeof toggles.weight_date_edit_enabled === 'boolean')
+      await saveWeightDateEditEnabledUnlocked(toggles.weight_date_edit_enabled, store);
+    if (typeof toggles.deload_date_edit_enabled === 'boolean')
+      await saveDeloadDateEditEnabledUnlocked(toggles.deload_date_edit_enabled, store);
+    if (typeof toggles.fatigue_tracking_enabled === 'boolean')
+      await saveFatigueTrackingEnabledUnlocked(toggles.fatigue_tracking_enabled, store);
+    if (typeof toggles.deload_mode_enabled === 'boolean')
+      await saveDeloadModeEnabledUnlocked(toggles.deload_mode_enabled, store);
+  }
+}
+
 // Restores the account/profile state that lives only in the cloud block.
 //
 // buildCloudExport is the only export shape carrying user_profile (which holds
@@ -364,59 +403,13 @@ async function restoreCloudBlock(cloud, store) {
     if (Object.keys(profile).length > 0) await saveUserProfile(profile, store);
   }
 
-  // #893: flags and records are restored as ONE authoritative pair.
-  //
-  // A restore replaces the flag map and the note history outright, so leaving
-  // the device's existing records in place would attach them to a routine they
-  // were never measured against — a boundary minted from later local state,
-  // shown as fact, and not corrected until some future save happens to retire
-  // it. A boolean-only backup, written before this field existed, therefore
-  // restores an EMPTY record map: its flags get the documented legacy
-  // full-history behavior, which is what that backup actually described.
-  //
-  // Records that are present are taken through the same normalizer the local
-  // loader uses, then pruned to the restored flags, so a payload that pairs a
-  // record with an untracked key cannot install one.
-  if (cloud.tracked_lifts != null) {
-    const tracked = {};
-    for (const [lift, value] of Object.entries(cloud.tracked_lifts)) {
-      if (typeof value === 'boolean') tracked[lift] = value;
-    }
-    await saveTrackedLifts(tracked, store);
-    await saveTrackedLiftActivations(
-      pruneTrackedLiftActivations(
-        tracked,
-        normalizeTrackedLiftActivations(cloud.tracked_lift_activations ?? {}),
-      ),
-      store,
-    );
-  } else if (cloud.tracked_lift_activations != null) {
-    // Records without flags: nothing authoritative to pair them to, so they are
-    // pruned against whatever this device already has.
-    await saveTrackedLiftActivations(
-      pruneTrackedLiftActivations(
-        await loadTrackedLifts(store),
-        normalizeTrackedLiftActivations(cloud.tracked_lift_activations),
-      ),
-      store,
-    );
-  }
-
-  if (cloud.ui_state != null && typeof cloud.ui_state.log_current_collapsed === 'boolean') {
-    await saveWorkoutCollapsed(cloud.ui_state.log_current_collapsed, store);
-  }
-
-  const toggles = cloud.feature_toggles;
-  if (toggles != null) {
-    if (typeof toggles.weight_date_edit_enabled === 'boolean')
-      await saveWeightDateEditEnabled(toggles.weight_date_edit_enabled, store);
-    if (typeof toggles.deload_date_edit_enabled === 'boolean')
-      await saveDeloadDateEditEnabled(toggles.deload_date_edit_enabled, store);
-    if (typeof toggles.fatigue_tracking_enabled === 'boolean')
-      await saveFatigueTrackingEnabled(toggles.fatigue_tracking_enabled, store);
-    if (typeof toggles.deload_mode_enabled === 'boolean')
-      await saveDeloadModeEnabled(toggles.deload_mode_enabled, store);
-  }
+  // #1400: every diff-synced local write of the block is ONE local-write-lock
+  // section (the lock is not re-entrant, so the `...Unlocked` twins), so a toggle
+  // or sync write-back lands wholly before or after it. The Track hook claims a
+  // generation bump only while it holds this lock, which is what stops a restore
+  // write from being taken for its own. Profile and deload note take the lock
+  // themselves, so they stay outside the section.
+  await withLocalWriteLock(() => restoreCloudSettings(cloud, store));
 
   if (cloud.current_deload_note != null && typeof cloud.current_deload_note.raw_text === 'string') {
     // #989: carry the frozen generation-time working_context through the restore
@@ -436,24 +429,20 @@ async function restoreCloudBlock(cloud, store) {
 // account; the cloud contract is opted into explicitly by the app seam, which is
 // the layer that knows the active storage mode.
 //
-// Everything outside the two collection tables is left to the DIFF-TRACKED sync
-// path and needs no import-time queueing: the weight goal, deload history,
-// profile, health profile, and feature toggles all detect local change by
-// diffing live local state against a persisted snapshot, and that diff does not
-// care which writer produced the change. Their `allowDelete` configs already
-// turn a cleared local value into a cloud tombstone. This is the "explicitly
-// confirmed alternative" the contract allows, not an omission.
+// Everything outside the two collection tables is DIFF-TRACKED (weight goal,
+// deload history, profile, health profile, toggles): sync detects local change
+// by diffing live state against a persisted snapshot whatever writer produced
+// it, and their `allowDelete` configs turn a cleared value into a cloud
+// tombstone. That is the confirmed alternative to import-time queueing.
 //
 // `archived_weight_goals` is a collection table that the backup FORMAT does not
 // carry at all. A replace therefore leaves it untouched: the payload contains no
 // evidence that those records were dropped, and tombstoning them on that
 // non-evidence would destroy data the user never asked to remove.
 //
-// The two recovery collections (#694) follow the same evidence rule, one version
-// later: v4 carries them, so a v4 restore replaces them under the full cloud
-// contract including omission tombstones — but a v1/v2/v3 file predates the
-// format and says nothing about recovery data, so it leaves every block and
-// membership exactly where it is.
+// The two recovery collections (#694) follow the same evidence rule: v4 carries
+// them and replaces them under the full cloud contract (omission tombstones);
+// a v1/v2/v3 file says nothing about them and leaves them exactly where they are.
 //
 // #1186: with the device key lost, a validated replace is the recovery path. It
 // writes into a PRIVATE reset-device overlay (the `store` threaded below; the
@@ -485,7 +474,37 @@ export async function importBackup(payload, strategy = 'replace', { mode = IMPOR
   return restoreValidatedBackup(payload, strategy, mode);
 }
 
-async function restoreValidatedBackup(payload, strategy, mode, store) {
+// #1400: every replace runs under the notebook lock, so a pending normalization
+// apply intent is settled (rolled forward or back) before the restore writes
+// anything, for every variant including a v1 restore carrying a cloud block, and
+// no note writer interleaves. Lock order: notebook -> local-write, as everywhere.
+function restoreValidatedBackup(payload, strategy, mode, store) {
+  const run = () => restoreUnderLock(payload, strategy, mode, store);
+  return strategy === 'replace' ? withWorkoutNotebookLock(run) : run();
+}
+
+async function restoreNotebookState(payload, target, store) {
+  if (payload.current_workout_id != null) {
+    await target.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(payload.current_workout_id));
+  } else {
+    await target.removeItem(CURRENT_WORKOUT_ID_KEY);
+  }
+  if ('weight_goal' in payload) {
+    if (payload.weight_goal != null) {
+      await target.setItem(WEIGHT_GOAL_KEY, JSON.stringify(payload.weight_goal));
+    } else {
+      await target.removeItem(WEIGHT_GOAL_KEY);
+    }
+  }
+  if ('fatigue_multiplier' in payload && payload.fatigue_multiplier != null) {
+    await saveFatigueMultiplierUnlocked(payload.fatigue_multiplier, store);
+  }
+  if (DELOAD_HISTORY_VERSIONS.has(payload.version) && 'deload_history' in payload) {
+    await writeList(WORKOUT_DELOAD_HISTORY_KEY, payload.deload_history, store);
+  }
+}
+
+async function restoreUnderLock(payload, strategy, mode, store) {
   const target = store || AsyncStorage;
   const cloudMode = mode === IMPORT_MODES.CLOUD;
   const resolvedMode = cloudMode ? IMPORT_MODES.CLOUD : IMPORT_MODES.LOCAL;
@@ -510,14 +529,13 @@ async function restoreValidatedBackup(payload, strategy, mode, store) {
       // v1 predates the notebook model, so it says nothing about workout notes.
       // Silence is not an instruction to delete them.
       if (isNotebookVersion) {
-        // #1172: the notebook replace runs under the shared notebook lock.
-        queued += await withWorkoutNotebookLock(() => replaceCollectionForCloud({
+        queued += await replaceCollectionForCloud({
           table: SYNC_TABLES.WORKOUT_NOTES,
           readRaw: loadWorkoutNotesRaw,
           writeRaw: replaceWorkoutNotesRaw,
           imported: payload.workout_notes,
           clientId,
-        }));
+        });
       }
       // Blocks BEFORE memberships, always. kilo.recovery_block_weeks carries a
       // real foreign key to kilo.recovery_blocks, and the push walks the dirty
@@ -552,8 +570,7 @@ async function restoreValidatedBackup(payload, strategy, mode, store) {
         // re-enters storage (issue #813).
         pairs.push([WORKOUT_NOTES_KEY, JSON.stringify(stripDerivedSectionsFromList(payload.workout_notes))]);
       }
-      // #1172: a notebook replacement is serialized with every note writer.
-      await (isNotebookVersion ? withWorkoutNotebookLock(() => target.multiSet(pairs)) : target.multiSet(pairs));
+      await target.multiSet(pairs);
       // Same dependency order on the local side, for the same reason a reader
       // would hit: a membership is only interpretable once its block exists.
       if (hasRecovery) {
@@ -570,26 +587,9 @@ async function restoreValidatedBackup(payload, strategy, mode, store) {
       }
     }
 
-    if (isNotebookVersion) {
-      if (payload.current_workout_id != null) {
-        await target.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(payload.current_workout_id));
-      } else {
-        await target.removeItem(CURRENT_WORKOUT_ID_KEY);
-      }
-      if ('weight_goal' in payload) {
-        if (payload.weight_goal != null) {
-          await target.setItem(WEIGHT_GOAL_KEY, JSON.stringify(payload.weight_goal));
-        } else {
-          await target.removeItem(WEIGHT_GOAL_KEY);
-        }
-      }
-      if ('fatigue_multiplier' in payload && payload.fatigue_multiplier != null) {
-        await saveFatigueMultiplier(payload.fatigue_multiplier, store);
-      }
-      if (DELOAD_HISTORY_VERSIONS.has(payload.version) && 'deload_history' in payload) {
-        await writeList(WORKOUT_DELOAD_HISTORY_KEY, payload.deload_history, store);
-      }
-    }
+    // The direct writes of diff-synced state (current id, goal, fatigue, deload
+    // history) are one local-write section, like the cloud block's (#1400).
+    if (isNotebookVersion) await withLocalWriteLock(() => restoreNotebookState(payload, target, store));
 
     if ('cloud' in payload && payload.cloud != null) {
       await restoreCloudBlock(payload.cloud, store);
