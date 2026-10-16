@@ -225,6 +225,72 @@ async function buildUserHealthProfileRecords() {
   ];
 }
 
+// Flags + activation records land as one unit or not at all. They are two
+// storage writes, so a failure between them would leave a half pair locally
+// that the next pass then uploads over the other device's good row (#1398).
+// Roll back to the pre-apply pair (best effort) and rethrow: the pass fails
+// retryably, the cursor does not advance, and the next pass re-applies it.
+async function applyTrackedLiftsFromRow(row) {
+  const beforeFlags = await Storage.loadTrackedLifts();
+  const beforeRecords = await Storage.loadTrackedLiftActivations();
+  try {
+    if (
+      row.tracked_lifts &&
+      typeof row.tracked_lifts === 'object' &&
+      !Array.isArray(row.tracked_lifts)
+    ) {
+      const local = await Storage.loadTrackedLifts();
+      if (stableStringify(local) !== stableStringify(row.tracked_lifts)) {
+        await Storage.saveTrackedLifts(row.tracked_lifts);
+      }
+    }
+
+    // #893. Applied independently of the flags above rather than nested under
+    // them: a server predating the column serves the pulled winner with no such
+    // field, so `undefined` here means "this row cannot speak to the records" and
+    // must leave the local ones alone — not clear them. A present-but-empty object
+    // IS a real value (every activation retired or untracked) and is applied.
+    // Normalized on the way in, because this crossed a trust boundary.
+    //
+    // The prune below then runs UNCONDITIONALLY, against whatever flags this
+    // device now holds. That is the half an older build cannot do for itself: its
+    // upsert names `tracked_lifts` and not this column, so Postgres PRESERVES the
+    // stored records across its untrack and the pulled row comes back carrying a
+    // record for a key that is no longer tracked. Dropping it here is what stops a
+    // later retrack from resuming the abandoned span with every gap session inside
+    // it. A watermark-aware writer never trips this: it deletes flag and record
+    // together, so there is nothing orphaned to drop.
+    if (
+      row.tracked_lift_activations &&
+      typeof row.tracked_lift_activations === 'object' &&
+      !Array.isArray(row.tracked_lift_activations)
+    ) {
+      const next = Storage.normalizeTrackedLiftActivations(row.tracked_lift_activations);
+      const local = await Storage.loadTrackedLiftActivations();
+      if (stableStringify(local) !== stableStringify(next)) {
+        await Storage.saveTrackedLiftActivations(next);
+      }
+    }
+
+    const flags = await Storage.loadTrackedLifts();
+    const records = await Storage.loadTrackedLiftActivations();
+    const pruned = Storage.pruneTrackedLiftActivations(flags, records);
+    if (stableStringify(pruned) !== stableStringify(records)) {
+      await Storage.saveTrackedLiftActivations(pruned);
+    }
+  } catch (err) {
+    try {
+      const nowFlags = await Storage.loadTrackedLifts();
+      if (stableStringify(nowFlags) !== stableStringify(beforeFlags)) await Storage.saveTrackedLifts(beforeFlags);
+      const nowRecords = await Storage.loadTrackedLiftActivations();
+      if (stableStringify(nowRecords) !== stableStringify(beforeRecords)) await Storage.saveTrackedLiftActivations(beforeRecords);
+    } catch {
+      // Storage is failing; the original error is the one to surface.
+    }
+    throw err;
+  }
+}
+
 async function applyUserHealthProfile(mergedList) {
   const row = singletonRow(mergedList);
   if (!row || isTombstone(row)) return;
@@ -242,50 +308,7 @@ async function applyUserHealthProfile(mergedList) {
     if (local !== next) await Storage.saveFatigueMultiplier(next);
   }
 
-  if (
-    row.tracked_lifts &&
-    typeof row.tracked_lifts === 'object' &&
-    !Array.isArray(row.tracked_lifts)
-  ) {
-    const local = await Storage.loadTrackedLifts();
-    if (stableStringify(local) !== stableStringify(row.tracked_lifts)) {
-      await Storage.saveTrackedLifts(row.tracked_lifts);
-    }
-  }
-
-  // #893. Applied independently of the flags above rather than nested under
-  // them: a server predating the column serves the pulled winner with no such
-  // field, so `undefined` here means "this row cannot speak to the records" and
-  // must leave the local ones alone — not clear them. A present-but-empty object
-  // IS a real value (every activation retired or untracked) and is applied.
-  // Normalized on the way in, because this crossed a trust boundary.
-  //
-  // The prune below then runs UNCONDITIONALLY, against whatever flags this
-  // device now holds. That is the half an older build cannot do for itself: its
-  // upsert names `tracked_lifts` and not this column, so Postgres PRESERVES the
-  // stored records across its untrack and the pulled row comes back carrying a
-  // record for a key that is no longer tracked. Dropping it here is what stops a
-  // later retrack from resuming the abandoned span with every gap session inside
-  // it. A watermark-aware writer never trips this: it deletes flag and record
-  // together, so there is nothing orphaned to drop.
-  if (
-    row.tracked_lift_activations &&
-    typeof row.tracked_lift_activations === 'object' &&
-    !Array.isArray(row.tracked_lift_activations)
-  ) {
-    const next = Storage.normalizeTrackedLiftActivations(row.tracked_lift_activations);
-    const local = await Storage.loadTrackedLiftActivations();
-    if (stableStringify(local) !== stableStringify(next)) {
-      await Storage.saveTrackedLiftActivations(next);
-    }
-  }
-
-  const flags = await Storage.loadTrackedLifts();
-  const records = await Storage.loadTrackedLiftActivations();
-  const pruned = Storage.pruneTrackedLiftActivations(flags, records);
-  if (stableStringify(pruned) !== stableStringify(records)) {
-    await Storage.saveTrackedLiftActivations(pruned);
-  }
+  await applyTrackedLiftsFromRow(row);
 
   // Active deload (issue #498). A null raw_text is a cleared deload; removing the
   // local note is what stops the next diff from re-pushing it (no resurrection).

@@ -665,3 +665,166 @@ describe('Track toggles upload through the shared pass (#1393)', () => {
     act(() => tree.unmount());
   });
 });
+
+// #1398: a sync pass that durably applies another device's Track flags and
+// activations must reach the mounted hook, so the NEXT toggle derives from the
+// pulled state instead of uploading only its own lift over it. Real hook, real
+// cloud adapter, xid-faithful transport.
+describe('a pulled Track change is adopted by a mounted hook (#1398)', () => {
+  const HISTORY = parseWorkoutNote('Monday\n-Bench\n225 5\n235 5\n245 5').sections;
+  const RECORD = { anchor: 0, at: '2026-09-01T00:00:00.000Z', witness: null };
+  const healthRow = (cloud) => cloud.remoteRow(SYNC_TABLES.USER_HEALTH_PROFILE, SINGLETON_SYNC_ID);
+
+  function mountTracked() {
+    const ref = { current: null };
+    function Probe() {
+      ref.current = useTrackedLifts();
+      return null;
+    }
+    let tree;
+    act(() => { tree = TestRenderer.create(React.createElement(Probe)); });
+    return { ref, tree };
+  }
+
+  // Device A: signed in, synced once, hook mounted and idle, Bench tracked.
+  // Device B is a direct transport push of the health row.
+  async function deviceA(cloud) {
+    setCloudTransport(cloud.transport);
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    await cloudAdapter.sync({ ownedDevice: false });
+    const mounted = mountTracked();
+    await flushAsync(8);
+    await act(async () => { await mounted.ref.current.toggle('bench', HISTORY); });
+    await flushAsync(8);
+    return mounted;
+  }
+
+  async function deviceBWrites(cloud, patch) {
+    const { __xid: _x, updated_at: _u, ...row } = healthRow(cloud); // eslint-disable-line no-unused-vars
+    await cloud.transport.push(SYNC_TABLES.USER_HEALTH_PROFILE, [{ ...row, ...patch }]);
+  }
+
+  const squatAdded = {
+    tracked_lifts: { bench: true, squat: true },
+    tracked_lift_activations: { bench: RECORD, squat: RECORD },
+  };
+
+  it('B tracks Squat, A pulls, A toggles Deadlift: both survive locally and in the upload', async () => {
+    const cloud = makeXidFakeCloud();
+    const { ref, tree } = await deviceA(cloud);
+    await deviceBWrites(cloud, squatAdded);
+    await act(async () => { await maybeSyncCloud(); });
+    await flushAsync(8);
+    // Adopted with no refresh() call and no remount.
+    expect(ref.current.trackedLifts).toEqual({ bench: true, squat: true });
+    expect(Object.keys(ref.current.activations).sort()).toEqual(['bench', 'squat']);
+
+    await act(async () => { await ref.current.toggle('deadlift', HISTORY); });
+    await flushAsync(8);
+    expect(await Storage.loadTrackedLifts()).toEqual({ bench: true, squat: true, deadlift: true });
+    expect(Object.keys(await Storage.loadTrackedLiftActivations()).sort()).toEqual(['bench', 'deadlift', 'squat']);
+    expect(healthRow(cloud).tracked_lifts).toEqual({ bench: true, squat: true, deadlift: true });
+    expect(Object.keys(healthRow(cloud).tracked_lift_activations).sort()).toEqual(['bench', 'deadlift', 'squat']);
+    expect(healthRow(cloud).tracked_lift_activations.squat).toEqual(RECORD);
+    expect(ref.current.trackedLifts).toEqual({ bench: true, squat: true, deadlift: true });
+    act(() => tree.unmount());
+  });
+
+  it('a pulled UNTRACK is adopted too, so the next toggle does not resurrect the lift', async () => {
+    const cloud = makeXidFakeCloud();
+    const { ref, tree } = await deviceA(cloud);
+    await deviceBWrites(cloud, { tracked_lifts: {}, tracked_lift_activations: {} });
+    await act(async () => { await maybeSyncCloud(); });
+    await flushAsync(8);
+    expect(ref.current.trackedLifts).toEqual({});
+
+    await act(async () => { await ref.current.toggle('deadlift', HISTORY); });
+    await flushAsync(8);
+    expect(healthRow(cloud).tracked_lifts).toEqual({ deadlift: true });
+    expect(Object.keys(healthRow(cloud).tracked_lift_activations)).toEqual(['deadlift']);
+    act(() => tree.unmount());
+  });
+
+  it('negative: a pass that changes nothing starts no extra pass and leaves the hook state alone', async () => {
+    const cloud = makeXidFakeCloud();
+    const { ref, tree } = await deviceA(cloud);
+    const before = ref.current.trackedLifts;
+    const passSpy = jest.spyOn(cloudAdapter, 'sync');
+    const pushes = cloud.calls.push;
+
+    await act(async () => { await maybeSyncCloud(); });
+    await flushAsync(8);
+    expect(passSpy).toHaveBeenCalledTimes(1);
+    expect(cloud.calls.push).toBe(pushes);
+    expect(ref.current.trackedLifts).toBe(before);
+    act(() => tree.unmount());
+  });
+
+  it('negative: a row predating the activations column applies flags and keeps local records', async () => {
+    const cloud = makeXidFakeCloud();
+    const { ref, tree } = await deviceA(cloud);
+    const localBench = (await Storage.loadTrackedLiftActivations()).bench;
+    const { __xid: _x, updated_at: _u, tracked_lift_activations: _a, ...row } = healthRow(cloud); // eslint-disable-line no-unused-vars
+    await cloud.transport.push(SYNC_TABLES.USER_HEALTH_PROFILE, [{
+      ...row, tracked_lifts: { bench: true, squat: true },
+    }]);
+    await act(async () => { await maybeSyncCloud(); });
+    await flushAsync(8);
+    expect(ref.current.trackedLifts).toEqual({ bench: true, squat: true });
+    expect((await Storage.loadTrackedLiftActivations()).bench).toEqual(localBench);
+    act(() => tree.unmount());
+  });
+
+  it('a toggle racing the pull leaves hook, storage and server on one coherent pair', async () => {
+    const cloud = makeXidFakeCloud();
+    const { ref, tree } = await deviceA(cloud);
+    await deviceBWrites(cloud, squatAdded);
+    let pulling;
+    let toggling;
+    await act(async () => {
+      pulling = maybeSyncCloud();
+      toggling = ref.current.toggle('deadlift', HISTORY);
+    });
+    await act(async () => { await pulling; await toggling; });
+    await flushAsync(16);
+    // Whole-row merge policy decides which device's row wins a true race; what
+    // must hold is that nothing is torn or rolled back by a stale hook cache.
+    const flags = await Storage.loadTrackedLifts();
+    const records = await Storage.loadTrackedLiftActivations();
+    expect(Object.keys(records).sort()).toEqual(Object.keys(flags).sort());
+    expect(ref.current.trackedLifts).toEqual(flags);
+    expect(Object.keys(ref.current.activations).sort()).toEqual(Object.keys(flags).sort());
+    expect(healthRow(cloud).tracked_lifts).toEqual(flags);
+    expect(Object.keys(healthRow(cloud).tracked_lift_activations).sort()).toEqual(Object.keys(flags).sort());
+    expect(flags.bench).toBe(true);
+    act(() => tree.unmount());
+  });
+
+  it('a failed storage write mid-apply publishes no half pair, and a later pass recovers', async () => {
+    const cloud = makeXidFakeCloud();
+    const { ref, tree } = await deviceA(cloud);
+    await deviceBWrites(cloud, squatAdded);
+    const realSetItem = secureStorage.setItem.bind(secureStorage);
+    let failing = true;
+    jest.spyOn(secureStorage, 'setItem').mockImplementation(async (key, value) => {
+      if (failing && key === 'kilo_tracked_lift_activations') throw new Error('disk full');
+      return realSetItem(key, value);
+    });
+    await act(async () => { await maybeSyncCloud().catch(() => {}); });
+    await flushAsync(8);
+    // The half-applied pair was rolled back: storage, hook and server never
+    // hold flags without their records.
+    expect(await Storage.loadTrackedLifts()).toEqual({ bench: true });
+    expect(Object.keys(ref.current.trackedLifts).sort())
+      .toEqual(Object.keys(await Storage.loadTrackedLifts()).sort());
+    expect(Object.keys(ref.current.activations).sort())
+      .toEqual(Object.keys(await Storage.loadTrackedLiftActivations()).sort());
+
+    failing = false;
+    await act(async () => { await maybeSyncCloud(); });
+    await flushAsync(8);
+    expect(ref.current.trackedLifts).toEqual({ bench: true, squat: true });
+    expect(Object.keys(ref.current.activations).sort()).toEqual(['bench', 'squat']);
+    act(() => tree.unmount());
+  });
+});
