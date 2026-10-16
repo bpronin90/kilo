@@ -2171,6 +2171,57 @@ describe('clean-bootstrap hydration keeps local intent written after the clean c
     expect(await readJson(FATIGUE_MULTIPLIER_KEY)).toBe(0.9);
   });
 
+  // #1421. Backup restore is reachable during a clean bootstrap: the More tab (and
+  // so Import Data) is never gated on the bootstrap phase, and restore takes the
+  // notebook + local-write locks, which a bootstrap holding only the recovery
+  // guard never contends for during its download. migrateToNotebook has no
+  // production caller (see #1409), so it is covered by that ordering test only.
+  describe('backup restore during the download (#1421)', () => {
+    const restorePayload = (currentId) => ({
+      version: '3',
+      exported_at: '2026-07-10T00:00:00.000Z',
+      weight_entries: [],
+      workout_notes: [],
+      current_workout_id: currentId,
+      weight_goal: null,
+      deload_history: [],
+    });
+    const restore = (currentId) => async () => {
+      const result = await Storage.importBackup(restorePayload(currentId), 'replace', { mode: 'local' });
+      expect(result.ok).toBe(true);
+    };
+
+    it('a restore that clears the (already absent) current id keeps it cleared; the rest hydrates', async () => {
+      await run(restore(null), 'download');
+      expect(await secureStorage.getItem(CURRENT_WORKOUT_ID_KEY)).toBeNull();
+      expect(await readJson(FATIGUE_MULTIPLIER_KEY)).toBe(1.12);
+      expect(await readJson(TRACKED_LIFTS_KEY)).toEqual({ squat: true });
+      expect(await readJson(WEIGHT_DATE_EDIT_KEY)).toBe(true);
+      expect((await nextUpload()).health.current_workout_note_id ?? null).toBeNull();
+    });
+
+    it('a restore that sets the current id keeps it; the rest hydrates', async () => {
+      await run(restore('wn_restored'), 'download');
+      expect(await readJson(CURRENT_WORKOUT_ID_KEY)).toBe('wn_restored');
+      expect(await readJson(FATIGUE_MULTIPLIER_KEY)).toBe(1.12);
+      expect((await nextUpload()).health.current_workout_note_id).toBe('wn_restored');
+    });
+
+    it('a restore whose current-id write fails counts nothing: the remote id hydrates', async () => {
+      const realRemove = secureStorage.removeItem.bind(secureStorage);
+      jest.spyOn(secureStorage, 'removeItem').mockImplementation(async (k) => {
+        if (k === CURRENT_WORKOUT_ID_KEY) throw new Error('disk full');
+        return realRemove(k);
+      });
+      await run(async () => {
+        await expect(Storage.importBackup(restorePayload(null), 'replace', { mode: 'local' })).rejects.toThrow('disk full');
+      }, 'download');
+      jest.restoreAllMocks();
+      expect(await readJson(CURRENT_WORKOUT_ID_KEY)).toBe('wn_remote');
+      await bounded(Storage.saveFatigueMultiplier(0.8));
+    });
+  });
+
   it('a failed local holder during the download does not stall hydration or later writers', async () => {
     await run(async () => {
       await expect(withLocalWriteLock(async () => { throw new Error('holder failed'); })).rejects.toThrow('holder failed');
