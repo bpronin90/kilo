@@ -1717,7 +1717,7 @@ describe('AnalyticsScreen Fatigue section — collapse/expand and edit affordanc
       summary: { roughTotal: 1, okTotal: 0, pendingTotal: 0, top_reason: 'tired' },
     });
     const texts = findAllText(setup().root);
-    expect(texts).toContain('Most common reason');
+    expect(texts).toContain('Most common issue');
     expect(texts).not.toContain('Session status');
   });
 
