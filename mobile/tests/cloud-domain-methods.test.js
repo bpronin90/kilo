@@ -615,8 +615,8 @@ describe('settling a pending apply intent honours the local-write lock (#1411)',
 
   test.each(WRITERS)('diverged reconciliation: %s', async (_name, start) => { await holdWhile(start, { diverge: true }); });
 
-  // v1 carries no notebook, so no notebook-lock holder runs and the intent is
-  // left alone; the restore still never touches the Track pair under the holder.
+  // Every replace restore, v1 included, settles the intent first (#1400), and
+  // none of it touches the Track pair under the holder.
   test('a v1 cloud restore never writes Track under the holder', async () => {
     await pend();
     let release;
@@ -631,7 +631,7 @@ describe('settling a pending apply intent honours the local-write lock (#1411)',
     release();
     await holder;
     expect((await op).ok).toBe(true);
-    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).not.toBeNull();
+    expect(await AsyncStorage.getItem(NORMALIZATION_APPLY_INTENT_KEY)).toBeNull();
   });
 
   test('a rejected holder does not wedge the settle, and nothing deadlocks', async () => {

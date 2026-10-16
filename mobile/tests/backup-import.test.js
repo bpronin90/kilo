@@ -36,6 +36,8 @@ import {
   resetStampClockForTests,
 } from '../storage/syncQueue';
 import { __resetSyncQueue } from '../storage/syncRecovery';
+import { withLocalWriteLock } from '../storage/sync/localWriteLock';
+import { getTrackedLiftWriteGeneration } from '../storage/entries/settings';
 
 // ── in-memory fake cloud ─────────────────────────────────────────────────────
 //
@@ -1423,5 +1425,57 @@ describe('recovery baselines across backup and restore (#1225)', () => {
     expect(backup.recovery_blocks[0].stray_local_field).toBeUndefined();
     expect('stray_local_field' in backup.recovery_blocks[0]).toBe(false);
     expect(backup.recovery_blocks[0].baseline).toEqual(block.baseline);
+  });
+});
+
+// #1400: restore's Track writes are one lock section with an all-or-nothing pair.
+describe('restore and the Track maps (#1400)', () => {
+  const V2 = (cloudBlock) => ({ version: '2', weight_entries: [], workout_notes: [], current_workout_id: null, ...(cloudBlock ? { cloud: cloudBlock } : {}) });
+  const REC = { anchor: 0, at: '2026-09-01T00:00:00.000Z', witness: null };
+
+  beforeEach(async () => {
+    Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+    setCloudTransport(null);
+    await Storage.saveTrackedLifts({ bench: true });
+    await Storage.saveTrackedLiftActivations({ bench: REC });
+  });
+
+  it('an absent cloud block or a malformed backup writes and announces nothing', async () => {
+    const before = getTrackedLiftWriteGeneration();
+    expect((await importBackup(V2(null), 'replace')).ok).toBe(true);
+    expect((await importBackup({ ...V2({ tracked_lifts: { squat: true } }), version: '99' }, 'replace')).ok).toBe(false);
+    expect((await importBackup(V2({ tracked_lifts: { squat: 'yes' } }), 'replace')).ok).toBe(false);
+    expect(getTrackedLiftWriteGeneration()).toBe(before);
+    expect(await Storage.loadTrackedLifts()).toEqual({ bench: true });
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({ bench: REC });
+  });
+
+  it('a failure on the second write rejects and puts the first back, never a half pair', async () => {
+    const realSetItem = AsyncStorage.setItem.getMockImplementation();
+    AsyncStorage.setItem.mockImplementation((key, value) => (key === 'kilo_tracked_lift_activations'
+      ? Promise.reject(new Error('disk full'))
+      : realSetItem(key, value)));
+    try {
+      await expect(importBackup(V2({ tracked_lifts: { squat: true }, tracked_lift_activations: { squat: REC } }), 'replace'))
+        .rejects.toThrow('disk full');
+    } finally {
+      AsyncStorage.setItem.mockImplementation(realSetItem);
+    }
+    expect(await Storage.loadTrackedLifts()).toEqual({ bench: true });
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({ bench: REC });
+  });
+
+  it('restore waits for a holder of the local-write lock instead of interleaving', async () => {
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const holder = withLocalWriteLock(() => gate);
+    const restoring = importBackup(V2({ tracked_lifts: { squat: true } }), 'replace');
+    for (let i = 0; i < 20; i++) await Promise.resolve(); // eslint-disable-line no-await-in-loop
+    expect(await Storage.loadTrackedLifts()).toEqual({ bench: true });
+    release();
+    await holder;
+    await restoring;
+    expect(await Storage.loadTrackedLifts()).toEqual({ squat: true });
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({});
   });
 });

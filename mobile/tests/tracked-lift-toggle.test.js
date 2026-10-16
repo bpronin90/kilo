@@ -21,6 +21,8 @@ import { withLocalWriteLock } from '../storage/sync/localWriteLock';
 import { secureStorage } from '../storage/secureStorage';
 import { SINGLETON_SYNC_ID, SYNC_TABLES, resetClientIdCacheForTests, resetStampClockForTests } from '../storage/syncQueue';
 import { cloudAdapter, setCloudTransport } from '../storage/cloudAdapter';
+import { getTrackedLiftWriteGeneration } from '../storage/entries/settings';
+import { importBackup } from '../storage/entries/backupImport';
 import { makeXidFakeCloud } from './mocks/xidFakeCloud';
 import { computeSaveClassifications } from '../screens/log/currentRoutineSave';
 import * as DeloadStorage from '../storage/entries/deloadStorage';
@@ -887,5 +889,115 @@ describe('a normalization apply carries Track (#1395)', () => {
     await settle();
     expect(await Storage.loadTrackedLifts()).toEqual({ [SRC]: true });
     expect(await Storage.loadTrackedLiftActivations()).toEqual({});
+  });
+
+  // #1400: a backup restore replaces the Track maps outside the hook's queue.
+  const restorePayload = (version, cloud) => (version === '1'
+    ? { version, weight_entries: [], cloud }
+    : { version, weight_entries: [], workout_notes: [], current_workout_id: null, cloud });
+  const SQUAT_CLOUD = { tracked_lifts: { squat: true }, tracked_lift_activations: { squat: DST_RECORD } };
+
+  test('a restore landing during a hook write is never taken for the hook\'s own bump, and a later toggle keeps it', async () => {
+    const ref = renderHook();
+    await settle();
+    const held = deferred();
+    const reached = deferred();
+    let armed = true;
+    const realSetItem = secureStorage.setItem.bind(secureStorage);
+    jest.spyOn(secureStorage, 'setItem').mockImplementation(async (key, value) => {
+      if (armed && key === 'kilo_tracked_lifts') {
+        armed = false;
+        reached.resolve();
+        await held.promise;
+      }
+      return realSetItem(key, value);
+    });
+    let toggling;
+    await act(async () => { toggling = ref.current.toggle('bench', HISTORY); });
+    await act(async () => { await reached.promise; });
+    let restoring;
+    await act(async () => { restoring = importBackup(restorePayload('2', SQUAT_CLOUD), 'replace'); });
+    await settle(8);
+    held.resolve();
+    await act(async () => { await toggling; await restoring; });
+    await settle(8);
+
+    // The restore lands wholly after the toggle (replace semantics) and the
+    // mounted hook shows it.
+    expect(await Storage.loadTrackedLifts()).toEqual({ squat: true });
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({ squat: DST_RECORD });
+    expect(ref.current.trackedLifts).toEqual({ squat: true });
+    await act(async () => { await ref.current.toggle('deadlift', HISTORY); });
+    await settle();
+    expect(await Storage.loadTrackedLifts()).toEqual({ squat: true, deadlift: true });
+    expect(Object.keys(await Storage.loadTrackedLiftActivations()).sort()).toEqual(['deadlift', 'squat']);
+  });
+
+  describe.each([
+    ['v2 local', '2', 'local'],
+    ['v2 cloud', '2', 'cloud'],
+    ['v1 carrying a cloud block', '1', 'local'],
+  ])('a restore with an apply intent pending: %s', (_name, version, mode) => {
+    test('settles the intent first; the restored Track state wins and survives a toggle', async () => {
+      await seedNotes();
+      const ref = renderHook();
+      await settle();
+      await trackSource(ref);
+      const realSetItem = AsyncStorage.setItem.getMockImplementation();
+      AsyncStorage.setItem.mockImplementation((key, value) => (key === 'kilo_tracked_lift_activations'
+        ? Promise.reject(new Error('disk full'))
+        : realSetItem(key, value)));
+      await act(async () => { await applyWorkoutNoteTextBatch(request()); });
+      expect(await AsyncStorage.getItem('kilo_normalization_apply_intent_v1')).not.toBeNull();
+      AsyncStorage.setItem.mockImplementation(realSetItem);
+
+      // Contention: with the local-write lock held, nothing of the restore (nor
+      // the intent settlement it triggers) may write a Track map.
+      const held = deferred();
+      const holder = withLocalWriteLock(() => held.promise);
+      const generation = getTrackedLiftWriteGeneration();
+      let restoring;
+      await act(async () => { restoring = importBackup(restorePayload(version, SQUAT_CLOUD), 'replace', { mode }); });
+      await settle(8);
+      expect(getTrackedLiftWriteGeneration()).toBe(generation);
+      held.resolve();
+      let result;
+      await act(async () => { await holder; result = await restoring; });
+      expect(result.ok).toBe(true);
+      await settle(8);
+      expect(await AsyncStorage.getItem('kilo_normalization_apply_intent_v1')).toBeNull();
+      expect(await Storage.loadTrackedLifts()).toEqual({ squat: true });
+      expect(await Storage.loadTrackedLiftActivations()).toEqual({ squat: DST_RECORD });
+      expect(ref.current.trackedLifts).toEqual({ squat: true });
+
+      await act(async () => { await ref.current.toggle('deadlift', HISTORY); });
+      await settle();
+      expect(await Storage.loadTrackedLifts()).toEqual({ squat: true, deadlift: true });
+    });
+  });
+
+  test('cloud: restored Squat and a later Deadlift toggle both reach the server, with paired activations', async () => {
+    resetClientIdCacheForTests();
+    resetStampClockForTests();
+    const cloud = makeXidFakeCloud();
+    setCloudTransport(cloud.transport);
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    try {
+      await cloudAdapter.sync({ ownedDevice: false });
+      const ref = renderHook();
+      await settle(8);
+      await act(async () => { await ref.current.toggle('bench', HISTORY); });
+      await settle(8);
+      await act(async () => { await importBackup(restorePayload('2', SQUAT_CLOUD), 'replace', { mode: 'cloud' }); });
+      await settle(8);
+      expect(ref.current.trackedLifts).toEqual({ squat: true });
+      await act(async () => { await ref.current.toggle('deadlift', HISTORY); });
+      await settle(16);
+      const row = cloud.remoteRow(SYNC_TABLES.USER_HEALTH_PROFILE, SINGLETON_SYNC_ID);
+      expect(row.tracked_lifts).toEqual({ squat: true, deadlift: true });
+      expect(Object.keys(row.tracked_lift_activations).sort()).toEqual(['deadlift', 'squat']);
+    } finally {
+      setCloudTransport(null);
+    }
   });
 });
