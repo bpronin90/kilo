@@ -7,6 +7,7 @@
 // back to snapshot note ids and source lines for local reconstruction.
 import { parseWorkoutNote } from '../parser.js';
 import { _DAY_RE, _EXERCISE_NUMBERED_RE, _EXERCISE_CORE_RE } from '../parser/workoutNoteCore.js';
+import { splitHeaderContent } from './normalizationHeaderEdits.js';
 
 // Local snapshot discriminator for this protocol (not the snapshot's counter).
 export const NORMALIZATION_PROTOCOL = 'compact-exercise-v1';
@@ -75,6 +76,22 @@ export function extractNoteHeaders(rawText) {
   return { lines, headers, boundaries };
 }
 
+// An authority header's normalization name (#1394): anything after the
+// prescription is a descriptor, so "-Single-Leg RDL 2x8 each leg" offers
+// "Single-Leg RDL", using the same boundary as target edits. The split is used
+// only when the header rebuilt from that name and its own prescription bytes
+// reads back as exactly that name; any other case keeps the parsed name.
+function authorityName(exercise) {
+  const raw = exercise.raw_header;
+  const prefix = typeof raw === 'string' ? headerFraming(raw) : null;
+  if (prefix == null) return exercise.name;
+  const { hasPrescription, named, kept, after, ambiguous } = splitHeaderContent(raw.slice(prefix.length));
+  const name = named.trim();
+  if (!hasPrescription || ambiguous || !after.trim() || !name || name === exercise.name) return exercise.name;
+  const reparsed = parseWorkoutNote(prefix + name + kept);
+  return reparsed?.ok && reparsed.sections[0]?.exercises[0]?.name === name ? name : exercise.name;
+}
+
 function authorityNames(rawText) {
   const parsed = parseWorkoutNote(rawText);
   if (!parsed || parsed.ok === false) return null;
@@ -82,7 +99,9 @@ function authorityNames(rawText) {
   for (const section of parsed.sections) {
     for (const exercise of section.exercises) {
       // A name that cannot be written in the reply grammar can never be chosen.
-      if (exercise.header_line != null && isReplyField(exercise.name) && exercise.name !== RESERVED_NO_MATCH) names.add(exercise.name);
+      if (exercise.header_line == null) continue;
+      const name = authorityName(exercise);
+      if (isReplyField(name) && name !== RESERVED_NO_MATCH) names.add(name);
     }
   }
   return [...names];

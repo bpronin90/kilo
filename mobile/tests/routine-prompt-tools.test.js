@@ -90,6 +90,15 @@ describe('routine prompt builders', () => {
     expect(buildExerciseNameNormalizationPrompt({ authority: auth, targets: [SENTINEL_TARGET, twin] })).toBe(prompt);
   });
 
+  test('authority names stop at the prescription: post-prescription text is a descriptor, never part of a name (#1394)', () => {
+    const auth = { id: 'a', title: 'A', raw_text: 'Monday\n-Single-Leg RDL 2x8 each leg\n- 20 8,8\n-Squat 5/3/1 3x5 heavy\n-Row' };
+    const target = { id: 't', title: 'T', raw_text: 'Monday\n-Single-Leg RDL 2x8 each leg, light\n25 8,8\n' };
+    const prompt = buildExerciseNameNormalizationPrompt({ authority: auth, targets: [target] });
+    expect(prompt).toContain('<<< BEGIN KILO AUTHORITATIVE EXERCISE NAMES >>>\nSingle-Leg RDL\nSquat 5/3/1\nRow\n<<< END KILO AUTHORITATIVE EXERCISE NAMES >>>');
+    expect(prompt).toContain('H1\nheader: -Single-Leg RDL 2x8 each leg, light\n');
+    expect(prompt).not.toMatch(/each leg\n<<< END KILO AUTHORITATIVE|20 8,8|25 8,8/);
+  });
+
   test('normalization returns no prompt when nothing safe can be extracted, never a full-note fallback', () => {
     const huge = { id: 'h', title: 'Huge', raw_text: `Monday\n-Bench\n${'x'.repeat(MAX_RAW_TEXT_LENGTH + 1)}` };
     expect(buildExerciseNameNormalizationPrompt({ authority: huge, targets: [TARGET] })).toBe('');

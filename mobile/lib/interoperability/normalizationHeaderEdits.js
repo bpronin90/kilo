@@ -80,6 +80,22 @@ function nameEnd(named, oldName, newName) {
   return end;
 }
 
+/**
+ * The normalization name/prescription boundary (#1394: anything after the
+ * prescription is a descriptor), shared by target edits and authority names.
+ * Splits header content (framing removed) into `named` (ahead of the
+ * prescription), `kept` (the whole prescription span) and `after`. `ambiguous`
+ * marks a cut inside a token ("3x30" + "s") or a number glued to a range/unit.
+ */
+export function splitHeaderContent(content) {
+  const span = keptSpan(content);
+  const named = span ? content.slice(0, span.start) : content;
+  const kept = span ? content.slice(span.start, span.end) : '';
+  const after = span ? content.slice(span.end) : '';
+  const ambiguous = /^[\p{L}\p{N}]|^[-–/.]\d/u.test(after) || (/\d$/.test(kept) && UNIT_START_RE.test(after));
+  return { hasPrescription: Boolean(span), named, kept, after, ambiguous };
+}
+
 const numbers = text => (text.match(/\d+(?:\.\d+)?/g) || []).join(',');
 const fail = problem => ({ ok: false, problem });
 
@@ -92,19 +108,14 @@ const fail = problem => ({ ok: false, problem });
 export function planHeaderEdit(header, choice) {
   const prefix = headerFraming(header.raw);
   if (prefix == null) return fail('This header isn’t a plain exercise header.');
-  const content = header.raw.slice(prefix.length);
-  const span = keptSpan(content);
-  const named = span ? content.slice(0, span.start) : content;
-  const kept = span ? content.slice(span.start, span.end) : '';
-  const after = span ? content.slice(span.end) : '';
+  const { hasPrescription, named, kept, after, ambiguous } = splitHeaderContent(header.raw.slice(prefix.length));
   if (!named.trim()) return fail('There is no exercise name ahead of the prescription.');
-  // A cut inside a token ("3x30" + "s") or a number glued to a range/unit is ambiguous.
-  if (/^[\p{L}\p{N}]|^[-–/.]\d/u.test(after) || (/\d$/.test(kept) && UNIT_START_RE.test(after))) return fail('The prescription boundary is ambiguous, so it can’t be kept whole.');
+  if (ambiguous) return fail('The prescription boundary is ambiguous, so it can’t be kept whole.');
   const end = nameEnd(named, header.name, choice.name);
   // Numbers in the old name text being replaced would vanish unless the chosen
   // name carries the same ones ("Squat 5/3/1" must not become "Back Squat").
   if (numbers(named.slice(0, end)) !== numbers(choice.name) && named.slice(0, end).toLowerCase() !== choice.name.toLowerCase()) return fail('Numbers in the old name would be dropped, so it was left alone.');
-  const parts = [cleanDescriptor(named.slice(end), Boolean(span)), cleanDescriptor(after)].filter(Boolean);
+  const parts = [cleanDescriptor(named.slice(end), hasPrescription), cleanDescriptor(after)].filter(Boolean);
   if (!parts.length && choice.descriptor != null) return fail('The header has no descriptor text, but one was given.');
   if (parts.length && choice.descriptor == null) return fail(`Header text “${parts.join(', ')}” would be dropped without a descriptor.`);
   if (parts.length && !JOINS.some(join => parts.join(join) === choice.descriptor)) return fail(`The descriptor doesn’t match the header’s own text “${parts.join(', ')}”.`);
