@@ -35,6 +35,10 @@ export function LogScreenContent(props) {
   } = props;
   const { colors, kuaPalette: kua } = useTheme();
   const styles = React.useMemo(() => createStyles(colors, kua), [colors, kua]);
+  // Once the management screen has opened, its section stays mounted (hidden)
+  // off-screen so Back never discards a block's reason draft or write error.
+  const [recoveryMounted, setRecoveryMounted] = React.useState(false);
+  React.useEffect(() => { if (effectiveTabView === 'manage') setRecoveryMounted(true); }, [effectiveTabView]);
   const headerRight = !otherEditor.editingNoteId && hasContent && currentEditor.mode === 'edit' && (
     <Pressable
       onPress={currentEditor.handleDoneCurrent}
@@ -168,9 +172,9 @@ export function LogScreenContent(props) {
 
             {effectiveTabView === 'routine' && currentEditor.mode === 'read' && hasContent && activeRoutineCard}
 
-            {(effectiveTabView === 'recovery' || effectiveTabView === 'manage') && (
+            {(effectiveTabView === 'recovery' || effectiveTabView === 'manage' || recoveryMounted) && (
               <RecoverySurface
-                isManage={effectiveTabView === 'manage'} onBack={() => handleTabViewChange('routine')}
+                mode={effectiveTabView === 'recovery' || effectiveTabView === 'manage' ? effectiveTabView : 'hidden'} onBack={() => handleTabViewChange('routine')}
                 showStart={showRecoveryStartInManagement} onStart={openStartRecoveryBlock} hasCompleted={recoveryManage.completedBlocks.length > 0}
               >
               <LogRecoverySection

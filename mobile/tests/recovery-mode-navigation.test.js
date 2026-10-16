@@ -149,6 +149,26 @@ describe('inactive Recovery navigation', () => {
     expect(byId(root, 'log-recovery-entry').length).toBeGreaterThan(0);
   });
 
+  test('Back and re-entry keep a block\'s unsaved reason draft, and never apply it to another block', () => {
+    const other = completed('rb-other', '2026-01-15T00:00:00.000Z', { reason: 'old' });
+    setup({ blocks: [done, other], weeks: [weekOf('rb-done'), weekOf('rb-other')] });
+    const c = mount();
+    const label = (l) => c.root.findAll(n => n.props.accessibilityLabel === l)[0];
+    press(c.root, 'log-recovery-entry');
+    press(c.root, 'recovery-manage-trigger-rb-done');
+    render.act(() => { label('Add a reason for this recovery block').props.onPress(); });
+    render.act(() => { label('Reason for this recovery block').props.onChangeText('typed'); });
+    press(c.root, 'log-recovery-management-back');
+    expect(byId(c.root, 'log-recovery-management')).toHaveLength(0);
+    press(c.root, 'log-recovery-entry');
+    expect(label('Reason for this recovery block').props.value).toBe('typed');
+    // Another block's card shows its own reason, not this draft.
+    press(c.root, 'recovery-history-header');
+    press(c.root, 'recovery-history-row-rb-other');
+    press(c.root, 'recovery-manage-trigger-rb-other');
+    expect(label('Edit reason for this recovery block: old')).toBeTruthy();
+  });
+
   test('loading, stale or pending state is never treated as verified inactivity', () => {
     setup({ ready: false });
     expect(byId(mount().root, 'log-recovery-entry')).toHaveLength(0);

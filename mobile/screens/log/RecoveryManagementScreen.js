@@ -62,7 +62,9 @@ export function RecoveryEntryRow({ newestCompleted, weeks, notes, notesError, on
   );
 }
 
-export function RecoveryManagementScreen({ onBack, showStart, onStart, hasCompleted, children }) {
+// Back / Start / the empty-history line above the Recovery section. The section
+// itself stays in RecoverySurface so it is never remounted by navigation.
+function RecoveryManagementHeader({ onBack, showStart, onStart, hasCompleted }) {
   const { colors, kuaPalette: kua } = useTheme();
   const st = useMemo(() => createStyles(colors, kua), [colors, kua]);
   return (
@@ -78,13 +80,17 @@ export function RecoveryManagementScreen({ onBack, showStart, onStart, hasComple
         </Pressable>
       ) : null}
       {hasCompleted ? null : <Text style={st.empty}>No completed recovery blocks yet.</Text>}
-      {children}
     </View>
   );
 }
 
-// The active Recovery view renders its children as-is; the inactive management
-// screen wraps them with Back / Start / the empty-history line.
-export function RecoverySurface({ isManage, children, ...props }) {
-  return isManage ? <RecoveryManagementScreen {...props}>{children}</RecoveryManagementScreen> : children;
+// One wrapper for every mode, so the Recovery section keeps its block-scoped
+// drafts and errors through Back and re-entry: 'hidden' only sets display:none.
+export function RecoverySurface({ mode, children, ...props }) {
+  return (
+    <View style={mode === 'hidden' ? { display: 'none' } : undefined}>
+      {mode === 'manage' ? <RecoveryManagementHeader {...props} /> : null}
+      {children}
+    </View>
+  );
 }
