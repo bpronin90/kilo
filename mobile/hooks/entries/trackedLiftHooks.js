@@ -40,23 +40,45 @@ function writeTrackedLiftStorage(lifts, activations) {
   });
 }
 
-// Bumped when a queued write starts and again when it settles, so refresh() can
-// tell a storage read that overlapped a write from one that did not.
+// What refresh() needs in order to tell a storage read that may be older than the
+// module state from one that is not. A queued write sets module state optimistically
+// and only later (behind the queue and the shared lock) makes it durable, so
+// storage can trail the module for the whole time a write is pending.
+//   * `pendingTrackedLiftWrites` counts writes from ENQUEUE (synchronously) to
+//     settle, so one still waiting on the queue or the lock counts too;
+//   * `trackedLiftsGeneration` is bumped when a write starts and when it settles,
+//     so a read that began and ended around a whole write is also caught.
+let pendingTrackedLiftWrites = 0;
 let trackedLiftsGeneration = 0;
 
 // Keep the shared write queue alive after a failed write: the caller still sees
 // the rejection, but the next toggle/save/reconcile runs instead of inheriting it.
+// Every path that sets module state optimistically (toggle, save, reconcile) goes
+// through here, so it is counted as pending before it can touch that state.
 function enqueueTrackedLiftWrite(work) {
+  pendingTrackedLiftWrites += 1;
   const run = trackedLiftsPromise.then(async () => {
     trackedLiftsGeneration += 1;
     try {
       return await work();
     } finally {
       trackedLiftsGeneration += 1;
+      pendingTrackedLiftWrites -= 1;
     }
   });
   trackedLiftsPromise = run.catch(() => {});
   return run;
+}
+
+// A read may replace module state only if no write was pending when it started
+// or when it finished, and none ran in between. Otherwise module state is newer;
+// the pending write's own broadcast reads storage again once it is durable.
+function beginTrackedLiftRead() {
+  const pendingAtStart = pendingTrackedLiftWrites;
+  const generation = trackedLiftsGeneration;
+  return () => pendingAtStart === 0
+    && pendingTrackedLiftWrites === 0
+    && generation === trackedLiftsGeneration;
 }
 
 let currentTrackedLifts = {};
@@ -103,16 +125,16 @@ export function useTrackedLifts() {
   // even after a retry succeeded. Clearing it on success — and only on success —
   // fixes that without reintroducing the mid-retry verified-empty window.
   //
-  // Every write broadcasts to this, so during a rapid burst a read can overlap a
-  // later toggle's write. Such a read is stale (#1393): adopting it would roll
-  // the module state back and the next toggle would derive from it, losing the
-  // burst's final intent. It shows the newer module state instead; that write's
-  // own broadcast reads storage again once it is durable.
+  // Every write broadcasts to this, so a read can overlap a pending write (queued,
+  // waiting for the lock, or running). Such a read may be older than module state
+  // (#1393): adopting it would roll the module back and the next toggle would
+  // derive from it, losing the user's latest intent. It shows the module state
+  // instead; see beginTrackedLiftRead.
   const refresh = useCallback(() => {
-    const generation = trackedLiftsGeneration;
+    const isFresh = beginTrackedLiftRead();
     Promise.all([Storage.loadTrackedLifts(), Storage.loadTrackedLiftActivations()])
       .then(([loadedLifts, loadedRecords]) => {
-        const fresh = generation === trackedLiftsGeneration;
+        const fresh = isFresh();
         const lifts = fresh ? loadedLifts : currentTrackedLifts;
         const records = fresh ? loadedRecords : currentActivations;
         currentTrackedLifts = lifts;

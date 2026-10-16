@@ -550,6 +550,95 @@ describe('Track toggles upload through the shared pass (#1393)', () => {
     act(() => tree.unmount());
   });
 
+  // Codex FEEDBACK 3 on PR #1397: a refresh that starts AND finishes while a
+  // queued write is waiting for the lock must not adopt the older durable state
+  // over that write's optimistic module state, or the next toggle derives from
+  // the stale value.
+  it('a refresh while a write waits for the lock does not roll back the queued intent', async () => {
+    const cloud = makeXidFakeCloud();
+    await signedInDevice(cloud);
+    const { ref, tree } = mountTracked();
+    await flushAsync(8);
+
+    let armed = false;
+    let readsAfterAck = 0;
+    let readGate = null;
+    const realPush = cloud.transport.push;
+    cloud.transport.push = jest.fn(async (table, records) => {
+      const acks = await realPush(table, records);
+      if (table === SYNC_TABLES.USER_HEALTH_PROFILE && readGate === null) armed = true;
+      return acks;
+    });
+    const realGetItem = secureStorage.getItem.bind(secureStorage);
+    jest.spyOn(secureStorage, 'getItem').mockImplementation(async (key) => {
+      if (armed && key === CURRENT_WORKOUT_ID_KEY) {
+        readsAfterAck += 1;
+        if (readsAfterAck === 2) {
+          armed = false;
+          readGate = deferred();
+          await readGate.promise;
+        }
+      }
+      return realGetItem(key);
+    });
+
+    await act(async () => { await ref.current.toggle('bench', HISTORY); });
+    await flushAsync(8);
+    expect(readGate).not.toBeNull();
+
+    // Untrack queues behind the held write-back; module state is already {}.
+    let untrack;
+    await act(async () => { untrack = ref.current.toggle('bench', HISTORY); });
+    await flushAsync(4);
+    // A refresh starts and finishes during that wait (durable is still bench).
+    await act(async () => { ref.current.refresh(); });
+    await flushAsync(8);
+    // Retrack, queued behind the untrack: must derive from {} and track again.
+    let retrack;
+    await act(async () => { retrack = ref.current.toggle('bench', HISTORY); });
+
+    readGate.resolve();
+    await act(async () => { await untrack; await retrack; });
+    await flushAsync(16);
+
+    expect(await Storage.loadTrackedLifts()).toEqual({ bench: true });
+    expect((await Storage.loadTrackedLiftActivations()).bench).toEqual(expect.objectContaining({ anchor: 3 }));
+    expect(healthRow(cloud).tracked_lifts).toEqual({ bench: true });
+    expect(healthRow(cloud).tracked_lift_activations.bench).toEqual(expect.objectContaining({ anchor: 3 }));
+    expect(ref.current.trackedLifts).toEqual({ bench: true });
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    act(() => tree.unmount());
+  });
+
+  it('negative: a refresh with no write pending adopts a value a pass pulled from another device', async () => {
+    const cloud = makeXidFakeCloud();
+    await signedInDevice(cloud);
+    const { ref, tree } = mountTracked();
+    await flushAsync(8);
+    await act(async () => { await ref.current.toggle('bench', HISTORY); });
+    await flushAsync(8);
+    expect(healthRow(cloud).tracked_lifts).toEqual({ bench: true });
+
+    // Another device replaces the health row's tracked lifts.
+    const { __xid: _x, updated_at: _u, ...row } = healthRow(cloud); // eslint-disable-line no-unused-vars
+    await cloud.transport.push(SYNC_TABLES.USER_HEALTH_PROFILE, [{
+      ...row, tracked_lifts: { squat: true }, tracked_lift_activations: {},
+    }]);
+    await act(async () => { await maybeSyncCloud(); });
+    await flushAsync(8);
+    expect(await Storage.loadTrackedLifts()).toEqual({ squat: true });
+
+    await act(async () => { ref.current.refresh(); });
+    await flushAsync(8);
+    expect(ref.current.trackedLifts).toEqual({ squat: true });
+
+    // And the next toggle derives from the adopted value, not the old one.
+    await act(async () => { await ref.current.toggle('deadlift', HISTORY); });
+    await flushAsync(8);
+    expect(await Storage.loadTrackedLifts()).toEqual({ squat: true, deadlift: true });
+    act(() => tree.unmount());
+  });
+
   it('offline: the toggle stays local, the phase fails retryably, and a retry uploads it', async () => {
     const cloud = makeXidFakeCloud();
     await signedInDevice(cloud);
