@@ -347,7 +347,8 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    flexWrap: 'wrap',
+    gap: 4,
   },
   weekIndexWeekLabel: {
     fontSize: TYPOGRAPHY['body-sm'].fontSize,
@@ -355,6 +356,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurface : colors.text,
   },
   weekIndexStateText: {
+    flexShrink: 1,
     fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
