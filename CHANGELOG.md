@@ -1,5 +1,109 @@
 # Changelog
 
+## 1.16.5 - 2026-10-17
+
+- Issue #1428: The collapsed Session Check-ins card now leads with your most common issue, with the flagged-session count shown below it.
+
+## 1.16.4 - 2026-10-17
+
+- Issue #1427: Weight Trends now draws subtle gridlines behind the chart so the line reads as a plot.
+
+## 1.16.3 - 2026-10-17
+
+- Issue #1426: The Goal card form fields now share the weigh-in panel's input styling, so labels, borders, radii, padding and typography match between the two.
+
+## 1.16.2 - 2026-10-17
+
+- Issue #1425: Analytics Recovery now shows a completed recovery block collapsed by default, with a summary of its ended status, total recovery and weeks; the Manage in Log link is removed from Analytics.
+
+## 1.16.1 - 2026-10-17
+
+- Issue #1424: While Recovery is active, End recovery block is now a visible action on the Recovery card instead of being tucked inside Manage block. Manage block is grouped into Block settings, Maintenance and Week actions, and ending a block or unlinking a week is disabled while Recovery data is stale or a change is pending.
+
+## 1.16.0 - 2026-10-17
+
+- Issue #1423: Recovery on the Log screen is now a temporary mode: with no active Recovery block, Log shows Routine (and Deload when enabled) plus one compact Recovery › entry under your current routine that opens a Recovery management screen (Start, completed-block history and maintenance, Reopen) with a Back button. Completed history alone no longer keeps a Recovery tab, and while Recovery is active Deload is hidden.
+
+## 1.15.22 - 2026-10-17
+
+- Issue #1421: Fixed a backup restore that clears the current routine during a first sign-in download being overwritten by the account's routine selection.
+
+## 1.15.21 - 2026-10-17
+
+- Issue #1417: Fixed an unfinished routine rename blocking note saves and Track changes with no way out for signed-out users. The discard action now appears in Data & Backup whether or not you are signed in.
+
+## 1.15.20 - 2026-10-17
+
+- Issue #1415: Fixed restoring a signed-in account onto a new device so settings, Track changes, the current routine and profile edits you make while the restore is running are no longer overwritten by the downloaded values.
+
+## 1.15.19 - 2026-10-17
+
+- Issue #1411: Fixed an unfinished routine rename being completed without the shared local-write lock, which could let a sync or a backup restore interleave with the half-written Track settings.
+
+## 1.15.18 - 2026-10-17
+
+- Issue #1409: Fixed restoring a signed-in account's profile onto a new device so a Track toggle made during the restore can no longer lose its activation record.
+
+## 1.15.17 - 2026-10-17
+
+- Issue #1407: Reorganized living documentation into focused architecture, UI, verification, and operator guides with task-oriented navigation and compatible section links.
+
+## 1.15.16 - 2026-10-17
+
+- Issue #1405: Fixed a synced health profile (Track lifts, current routine, fatigue multiplier, active deload) being left half-applied on this device when one of its fields failed to save, which could upload the mixed state over your other device.
+
+## 1.15.15 - 2026-10-17
+
+- Issue #1403: Turning Track on now counts the sessions already in your notebook at that moment, so a Log screen that was drawn before a rename or other notebook change can no longer start the tracked span too early and pull in history you had already logged. If the notebook cannot be read, the toggle is declined and can be tried again instead of guessing.
+
+## 1.15.14 - 2026-10-17
+
+- Issue #1402: Fixed an interrupted routine rename that cannot be finished blocking routine saves, tracked-lift changes and Cloud Sync with no way out. Cloud Sync settings now explain the problem and offer a confirmed "Discard unfinished rename" that keeps your current notes and tracked lifts exactly as they are.
+
+## 1.15.13 - 2026-10-17
+
+- Issue #1400: Fixed restoring a backup while a Track change or a pending routine rename was in flight, which could lose the restored Track state or a later Track toggle.
+
+## 1.15.12 - 2026-10-17
+
+- Issue #1399: Fixed a change to a profile, unit, toggle, fatigue multiplier, deload, weight goal or current routine setting made while a cloud sync was finishing being reverted by that sync, so it never reached your other devices.
+
+## 1.15.11 - 2026-10-17
+
+- Issue #1398: Fixed a sync pull that failed partway through applying another device's tracked lifts from leaving this device with lifts and no matching tracking records, which a later sync could upload over the other device's data.
+
+## 1.15.10 - 2026-10-17
+
+- Issue #1395: Applying a Normalize exercise names reply now carries each renamed exercise's Track setting to its normalized name. A tracked header such as `-DB Bench Press 3x6-8, step up` normalized to `-DB Bench Press 3x6-8` keeps the exercise tracked, and its tracked span still starts where you turned Track on: sessions from before that point stay out of the trend after the merge. If another header or routine still uses the old name, that one stays tracked too. The renamed text and the Track change are saved together; if saving is interrupted, Kilo finishes it the next time it starts or syncs, and a save that fails leaves both unchanged. Exercises already left untracked by an earlier normalization are not repaired automatically.
+
+## 1.15.9 - 2026-10-17
+
+- Issue #1394: Normalize exercise names now treats anything after a header's prescription as a descriptor. An authoritative header like `-Single-Leg RDL 2x8 each leg` now offers the name `Single-Leg RDL`, so a routine header like `-Single-Leg RDL 2x8 each leg, light` can be normalized to `-Single-Leg RDL 2x8` with `-- each leg, light` moved into a comment, instead of being rejected because numbers would be dropped. Numbers that belong to a name before the prescription (such as `Squat 5/3/1`) are kept. A prompt copied before this update whose authoritative names changed asks you to generate a fresh prompt.
+
+## 1.15.8 - 2026-10-17
+
+- Issue #1393: Tracking or untracking an exercise now syncs to the cloud right away instead of waiting for an unrelated save or relaunch. If that sync fails, the sync status shows the failure and a retry uploads the change. Several quick Track taps in a row now keep your final choice. A Track change, profile setting, or other synced setting changed while a sync is already running is no longer reverted when that sync finishes; the next sync uploads it.
+
+## 1.15.7 - 2026-10-17
+
+- Issue #1391: Exercise Progress no longer gets stuck on `First session` after a Recovery block or deload. A Track tap is counted against your whole notebook, and Home and Analytics now map that starting point onto the sessions they actually count, so every session logged after you tapped Track is used. When every tracked exercise is still on its first tracked session, Home and Analytics now say how many exercises are establishing a baseline instead of showing 0 · 0 · 0.
+
+## 1.15.6 - 2026-10-17
+
+- Issue #1389: Normalize exercise names replies are now easier to copy and fix. The prompt asks the LLM to answer in one code block, so tapping Copy in ChatGPT or Claude keeps every line break, and Kilo accepts a reply wrapped in one code block. If the line breaks are lost, Kilo shows one clear message instead of a long list of errors, and runs of missing replies are grouped (for example H1–H72). The error list can be selected, and a new Copy fix-up message button copies every problem with a short instruction you can paste back to the LLM.
+
+## 1.15.5 - 2026-10-17
+
+- Issue #1386: Normalize exercise names no longer sends your workout history. The prompt now shares only the authoritative routine's exercise names and each distinct exercise header from the routines you select (for example "-Single-Leg RDL 2x8 each leg, light"), with a numbered reference and the day or section it appears in. Logged sets, weights, dates and comments stay on your device, and Kilo applies each accepted change itself from your saved routines, moving any extra header text into a "-- " note after that exercise's sets. The reply is now one short line per header, and a reply that doesn't follow that format is rejected as a whole. A prompt saved by an earlier version can no longer be imported; copy a new prompt or discard the old one.
+
+## 1.15.4 - 2026-10-17
+
+- Issue #1385: Prompt tools now use one compact flow for Plan or update routine, Normalize exercise names, and Kilo routine format. Routines are chosen from a summary row that opens a bottom sheet (Normalize targets start empty, with Select all, All except authority, and Clear), same-titled routines are told apart by their edit date and exercise count, the prompt builds automatically, and Copy prompt and Share prompt come first. The prompt text is collapsed behind "View prompt", and the normalization import section always stays above it. Prompt text is unchanged.
+
+## 1.15.3 - 2026-10-17
+
+- Issue #1383: Normalize exercise names now gives the external model clearer cleanup rules with worked examples: match only the same movement, use the authoritative name exactly, keep the target's own prescription, and move the remaining header descriptor (for example "each leg, light" or "step up") into a "-- " note after that exercise's sets. Kilo now accepts and applies these cleaned replies, including headers whose descriptor follows the prescription and routines logged with bare set rows, while rejecting replies that drop, reword, or invent descriptor text, change the prescription, or rename to a name the authoritative routine does not contain. The prompt still includes full routine text, and existing tracked-lift history recorded under the old names is not migrated.
+
 ## 1.15.2 - 2026-10-15
 
 - Issue #1378: Completed blocks in Log → Recovery → Recovery Blocks now show their latest total recovery and week right in the row (for example, "82% total recovery · Week 3"), so you can compare finished blocks without opening each one. Blocks without a score say why instead of showing a number.
