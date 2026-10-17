@@ -81,9 +81,9 @@ describe('WeightScreen', () => {
     saving: false,
   };
 
-  const setup = (goal, entries = [], archivedGoals = []) => {
+  const setup = (goal, entries = [], archivedGoals = [], save = jest.fn()) => {
     useEntries.useWeightEntries.mockReturnValue({ entries, remove: jest.fn(), update: jest.fn() });
-    useEntries.useWeightGoal.mockReturnValue({ goal, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    useEntries.useWeightGoal.mockReturnValue({ goal, save, clear: jest.fn(), archiveGoal: jest.fn() });
     weightHooks.useArchivedWeightGoals.mockReturnValue({ archivedGoals, loading: false, refresh: jest.fn() });
     let component;
     render.act(() => {
@@ -499,18 +499,42 @@ describe('WeightScreen', () => {
       expect(hasTextSafe(frac.root, '175.5 lb')).toBe(true);
     });
 
-    test('no goal shows the new-goal entry form (not met state)', () => {
+    test('no goal shows a compact empty row, not a form (not met state)', () => {
       const component = setup(null, []);
       expect(hasTextSafe(component.root, 'Goal Met!')).toBe(false);
       expect(hasTextSafe(component.root, 'Archive')).toBe(false);
-      // Form inputs present
-      const root = component.root;
-      const inputs = root.findAll(n => n.type === 'TextInput');
-      expect(inputs.some(i => i.props.placeholder === '175')).toBe(true);
+      expect(hasTextSafe(component.root, 'No goal set')).toBe(true);
+      expect(hasTextSafe(component.root, 'Set goal')).toBe(true);
+      expect(component.root.findAll(n => n.type === 'TextInput' && n.props.placeholder === '175')).toHaveLength(0);
+    });
+
+    test('a failed goal save keeps the draft open with an error and never shows success', async () => {
+      const component = setup(null, [], [], jest.fn().mockRejectedValue(new Error('disk full')));
+      const press = (label) => render.act(async () => {
+        const text = component.root.findAllByType('Text').find(t => String(t.props.children) === label);
+        let node = text;
+        while (node && typeof node.props.onPress !== 'function') node = node.parent;
+        node.props.onPress();
+      });
+      await press('Set goal');
+      const target = component.root.findAll(n => n.type === 'TextInput').find(i => i.props.placeholder === '175');
+      render.act(() => { target.props.onChangeText('170'); });
+      const start = component.root.findAll(n => n.type === 'TextInput').find(i => i.props.placeholder === '200');
+      render.act(() => { start.props.onChangeText('190'); });
+      await press('Save goal');
+      expect(hasTextSafe(component.root, 'Could not save your goal. Try again.')).toBe(true);
+      expect(hasTextSafe(component.root, 'Save goal')).toBe(true);
+      expect(hasTextSafe(component.root, 'No goal set')).toBe(false);
     });
 
     test('no-goal Target field matches Weight field size with a plain whole-number placeholder (#1249, #1266)', () => {
       const component = setup(null, []);
+      render.act(() => {
+        const text = component.root.findAllByType('Text').find(t => String(t.props.children) === 'Set goal');
+        let node = text;
+        while (node && typeof node.props.onPress !== 'function') node = node.parent;
+        node.props.onPress();
+      });
       const target = component.root
         .findAll(n => n.type === 'TextInput')
         .find(i => i.props.placeholder === '175');

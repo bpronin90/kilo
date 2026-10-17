@@ -105,7 +105,7 @@ export function WeightGoalCard({
 
   return (
     <Card style={[styles.goalCard, isGoalMet && goal && !goalEditing ? styles.goalCardMet : null]}>
-      {goal && (
+      {(goal || goalEditing) && (
         <View style={styles.goalHeader}>
           {!goalEditing && isGoalMet && (
             <View style={styles.goalHeaderMet}>
@@ -138,7 +138,12 @@ export function WeightGoalCard({
         </View>
       )}
 
-      {(!goal || goalEditing) ? (
+      {!goal && !goalEditing ? (
+        <View style={styles.goalEmptyRow} testID="weight-goal-empty">
+          <Text style={styles.goalEmptyText}>No goal set</Text>
+          <ActionChip label="Set goal" onPress={startEditGoal} />
+        </View>
+      ) : goalEditing ? (
         <>
           {goalError ? <Text style={styles.goalErrorText}>{goalError}</Text> : null}
           {!currentWeight && (
@@ -263,6 +268,16 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   goalErrorText: {
     color: kua ? kua.error : colors.error,
     fontSize: TYPOGRAPHY['body-sm'].fontSize,
+    fontWeight: '600',
+  },
+  goalEmptyRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  goalEmptyText: {
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '600',
   },
   goalDisplay: {
