@@ -11,17 +11,20 @@ Sources: `mobile/screens/WeightScreen.js`, `mobile/components/UI.js`,
 
 ### Input Card
 
-| Element | Property | Value | Line |
-|---|---|---|---|
-| Input label | fontSize | `13` | `WeightScreen.js:480` |
-| | fontWeight | `700` | `WeightScreen.js:481` |
-| | color | `colors.textMuted` | `WeightScreen.js:482` |
-| Input field | fontSize | `16` | `WeightScreen.js:491` |
-| | borderRadius | `16` | `WeightScreen.js:486` |
-| | bg | `colors.inputBackground` | `WeightScreen.js:485` |
-| | border | `colors.inputBorder` | `WeightScreen.js:488` |
-| Save button | bg | `colors.text` | `UI.js:339` |
-| | paddingVertical | `16` | `UI.js:341` |
+The weigh-in and Goal forms carry no Weight-specific control skin (#1440).
+Every field is the shared `TextField` / `DateField` and every inline action the
+shared `ActionChip` / `TextAction`, documented in
+[Shared Form Controls](ui-shared-components.md#shared-form-controls-1440).
+Weight styles only position these controls and mark the editing state
+(`weightStyles.js` `editingCard`: 2px `primary` / `accent` border).
+
+| Field | Control | Notes |
+|---|---|---|
+| `Weight (lb|kg)`, Goal `Current weight`, `Target` | `TextField numeric` | decimal keypad, unit in the label |
+| `Date` (weigh-in / edit) | `DateField` (range `past`) | value shown as `YYYY-MM-DD`; name `Weigh-in date` / `Entry date` |
+| Goal `Target Date` | `DateField` (range `future`) | `formatDate` value, `Select date` placeholder; name `Goal target date` |
+| `Note` | `TextField` | `Morning, fasted` example placeholder |
+| Save / Update / Save goal | `Button` | default tone |
 
 ### Trends Card
 
@@ -69,11 +72,11 @@ card's 16px rhythm are unchanged; only the tap box grew.
 
 | Control | Property | Value | Source |
 |---|---|---|---|
-| Editing-header `Cancel`, note/date `Done` (×4) | minHeight / minWidth | `44` / `44` (`justifyContent` + `alignItems` `center`) | `WeightScreen.js` `editorActionTarget`; label 14 / 600 stays on `cancelText` |
+| Editing-header `Cancel`, note/date `Done` (×4) | minHeight / minWidth | `44` / `44` (`justifyContent` + `alignItems` `center`) | header `Cancel` is the shared `TextAction`; the `Done`s keep `WeightScreen.js` targets |
 | | accessibilityRole / Label | `button` / `"Cancel"` (header), `"Done …"` (each disclosure) | header `Cancel` gained both in #919 |
-| Goal `Edit` / `Archive` / `Clear` chip (5 sites) | minHeight / minWidth | `44` / `44` (`center` / `center`) | `WeightGoalCard.js` `goalActionChip`; 13 / 700 label, 12 / 6 padding unchanged |
+| Goal `Edit` / `Archive` / `Clear` chip (5 sites) | minHeight / minWidth | `44` / `44` (`center` / `center`) | shared `ActionChip` (`Archive` tone `positive`, `Clear` tone `danger`) |
 | | accessibilityRole / Label | `button` / visible label | added in #919 |
-| Goal-editor `Cancel` | minHeight / minWidth | `44` / `44` (`center` / `center`) | `WeightGoalCard.js` `goalCancelTarget`; 14 / 600 label stays on `goalActionText` |
+| Goal-editor `Cancel` | minHeight / minWidth | `44` / `44` (`center` / `center`) | shared `TextAction` |
 | | accessibilityRole / Label | `button` / `"Cancel"` | added in #919 |
 | Every one of the above | label `Text` | `accessible={false} importantForAccessibility="no"` | §15: the named parent announces once, not twice with its child |
 

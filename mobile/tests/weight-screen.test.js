@@ -303,7 +303,7 @@ describe('WeightScreen edit and delete correction flows', () => {
     });
 
     // Open the edit date picker and choose an earlier, valid date
-    const dateBtn = root.findByProps({ accessibilityLabel: 'Entry date' });
+    const dateBtn = root.findAll(n => n.props.accessibilityLabel === 'Entry date' && typeof n.props.onPress === 'function')[0];
     render.act(() => {
       dateBtn.props.onPress();
     });
@@ -458,7 +458,7 @@ describe('WeightScreen edit and delete correction flows', () => {
       root.findAll(n => n.type === 'TextInput')[0].props.onChangeText('190');
     });
 
-    const dateBtn = root.findByProps({ accessibilityLabel: 'Weigh-in date' });
+    const dateBtn = root.findAll(n => n.props.accessibilityLabel === 'Weigh-in date' && typeof n.props.onPress === 'function')[0];
     render.act(() => {
       dateBtn.props.onPress();
     });
@@ -814,7 +814,7 @@ describe('WeightScreen DateTimePicker onChange callbacks', () => {
     const root = component.root;
 
     // Open the always-visible date picker.
-    const dateBtn = root.findByProps({ accessibilityLabel: 'Weigh-in date' });
+    const dateBtn = root.findAll(n => n.props.accessibilityLabel === 'Weigh-in date' && typeof n.props.onPress === 'function')[0];
     render.act(() => {
       dateBtn.props.onPress();
     });

@@ -1,5 +1,5 @@
 import { useThemedStyles } from '../../theme/ThemeContext';
-import { TYPOGRAPHY } from '../../theme/typography';
+import { TYPOGRAPHY, TYPOGRAPHY_FALLBACK } from '../../theme/typography';
 import { GEOMETRY } from '../../theme/spacing';
 
 export const SET_ROW_FONT_SIZE = TYPOGRAPHY['label-lg'].fontSize;
@@ -36,3 +36,61 @@ export const createInputStyle = (colors, kua = null) => ({
 export function useInputStyle() {
   return useThemedStyles(createInputStyle);
 }
+
+// Labelled form-field skin (#1440), the app-level treatment the shared
+// TextField/DateField controls (components/FormControls.js) render with. Same
+// palette roles as createInputStyle (inlined: the #1142 court-palette scan
+// treats a factory-to-factory `kua` hand-off as unresolved), plus the 48dp
+// field height and the JetBrains Mono label-lg value role, so numeric entries
+// line up with the metrics they produce. `typo` is the fallback-aware role set from
+// useKuaTypography(); null falls back to the system-font roles.
+export const createFormFieldStyles = (colors, kua = null, typo = null) => {
+  const valueRole = (typo || TYPOGRAPHY_FALLBACK)['label-lg'];
+  const field = {
+    backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
+    borderWidth: 1,
+    borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
+    color: kua ? kua.onSurface : colors.text,
+    borderRadius: GEOMETRY['radius-2xl'],
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    minHeight: 48,
+    ...valueRole,
+    justifyContent: 'center',
+    textAlignVertical: 'center',
+  };
+  return {
+    input: field,
+    numericInput: field,
+    pickerText: { ...valueRole, color: field.color },
+    pickerPlaceholder: {
+      color: kua ? kua.onSurfaceVariant : colors.textMuted,
+      opacity: 0.6,
+      fontStyle: 'italic',
+    },
+  };
+};
+
+// Inline style for the web <input type="date"> the DateField renders (DOM
+// style object: letterSpacing needs a px string and colorScheme follows mode).
+export const createWebDateInputStyle = (colors, kua = null) => ({
+  backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
+  borderRadius: GEOMETRY['radius-2xl'],
+  borderWidth: 1,
+  borderStyle: 'solid',
+  borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
+  padding: 14,
+  minHeight: 48,
+  ...(kua
+    ? {
+      fontFamily: TYPOGRAPHY['label-lg'].fontFamily,
+      fontSize: TYPOGRAPHY['label-lg'].fontSize,
+      letterSpacing: `${TYPOGRAPHY['label-lg'].letterSpacing}px`,
+      fontVariantNumeric: 'tabular-nums',
+    }
+    : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontFamily: 'inherit' }),
+  colorScheme: colors.scheme,
+  color: kua ? kua.onSurface : colors.text,
+  width: '100%',
+  boxSizing: 'border-box',
+});

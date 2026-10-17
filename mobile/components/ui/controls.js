@@ -49,6 +49,50 @@ export function Chip({ children }) {
   );
 }
 
+// Compact inline actions (#1440) for card headers and editor rows, where a
+// full-width Button would outweigh the content. Each owns a real >=44x44dp box
+// (ui-design-rules.md §15: a hitSlop is clipped at a one-line row's bounds) and
+// announces once by its name; the visible label is silenced. ActionChip tones:
+// `default` (Edit), `positive` (Archive), `danger` (Clear). TextAction is the
+// unfilled secondary action (Cancel).
+export function ActionChip({ label, onPress, tone = 'default', accessibilityLabel }) {
+  const styles = useThemedStyles(createStyles);
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[styles.actionChip, tone === 'positive' ? styles.actionChipPositive : null]}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+    >
+      <Text
+        style={[
+          styles.actionChipText,
+          tone === 'positive' ? styles.actionChipTextPositive : null,
+          tone === 'danger' ? styles.actionChipTextDanger : null,
+        ]}
+        accessible={false}
+        importantForAccessibility="no"
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+export function TextAction({ label, onPress, accessibilityLabel }) {
+  const styles = useThemedStyles(createStyles);
+  return (
+    <Pressable
+      onPress={onPress}
+      style={styles.textAction}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+    >
+      <Text style={styles.textActionText} accessible={false} importantForAccessibility="no">{label}</Text>
+    </Pressable>
+  );
+}
+
 // When the production KUA gate supplies `kua` (#1139) the primary button, chip,
 // and trend badges resolve through the selected court palette; rendered outside
 // the gate (isolated tests) `kua` is null and every role falls back to the
@@ -139,5 +183,44 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.primaryOnContainer : colors.chipText,
+  },
+  // Inline actions (#1440). KUA keeps every chip on the tinted
+  // primary-container pair; legacy marks Archive with the filled success
+  // surface and Clear with the error ink.
+  actionChip: {
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: GEOMETRY['radius-lg'],
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionChipPositive: {
+    backgroundColor: kua ? kua.primaryContainer : colors.cardSuccessBg,
+  },
+  actionChipText: {
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
+    fontWeight: '700',
+    color: kua ? kua.primaryOnContainer : colors.chipText,
+  },
+  actionChipTextPositive: {
+    color: kua ? kua.primaryOnContainer : colors.textLight,
+  },
+  actionChipTextDanger: {
+    color: kua ? kua.primaryOnContainer : colors.error,
+  },
+  textAction: {
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  textActionText: {
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
+    fontWeight: '600',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    padding: 4,
   },
 });
