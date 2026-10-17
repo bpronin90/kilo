@@ -2376,10 +2376,10 @@ describe('AnalyticsScreen: excluded recovery notes and ordinary populations', ()
 
 // ── #727: Analytics forwards onNavigate to AnalyticsRecoverySection ──────────
 
-describe('AnalyticsScreen — onNavigate forwarded to Recovery section (#727)', () => {
+describe('AnalyticsScreen — Recovery section receives no Log navigation (#1442)', () => {
   const { AnalyticsRecoverySection } = require('../components/AnalyticsRecoverySection');
 
-  test('onNavigate prop from AnalyticsScreen is forwarded to AnalyticsRecoverySection', () => {
+  test('onNavigate is no longer forwarded to AnalyticsRecoverySection', () => {
     useEntries.useFeatureToggles.mockReturnValue({
       fatigueTrackingEnabled: false, deloadModeEnabled: false,
       setFatigueTrackingEnabled: jest.fn(), setDeloadModeEnabled: jest.fn(),
@@ -2399,7 +2399,7 @@ describe('AnalyticsScreen — onNavigate forwarded to Recovery section (#727)', 
     });
 
     const section = component.root.findByType(AnalyticsRecoverySection);
-    expect(section.props.onNavigate).toBe(onNavigate);
+    expect(section.props.onNavigate).toBeUndefined();
   });
 });
 

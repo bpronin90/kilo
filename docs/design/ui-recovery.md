@@ -148,8 +148,10 @@ reachable in a completed-only verified state (not the default view). A
 block id (repeats work via the shell nonce, scrolls the card into view) and shows
 an explicit unavailable notice for an unknown or deleted id; it waits for the
 verified read. Analytics history week rows stay focus targets
-(`Show evidence for {routine}, Recovery Week N, {state}`) with a separate
-`View note in Log` link (>=44dp, only for a readable note, never nested).
+(`Show evidence for {routine}, Recovery Week N, {state}`) as one compact
+>=44dp `Week N · state` row; Analytics history has no `View note in Log` link
+(#1442). Not-retested / not-scored disclosures group lifts that share a reason
+onto one line instead of repeating the reason per lift.
 
 **Tidy names** (#1309): `TidyRecoveryNamesAction` (`components/recovery/TidyRecoveryNames.js`,
 styles `recoveryTidyStyles.js`) is the single name-cleanup action in Log's Manage block, placed after `Rebuild baseline` and `Match exercise names`

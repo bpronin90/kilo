@@ -839,8 +839,10 @@ describe('Recovery Manage block and week selector targets (#1307, #1315)', () =>
     expect(createStrengthStyles(LightColors, kua).discHeader.minHeight).toBeGreaterThanOrEqual(44);
     expect(createStrengthStyles(LightColors, kua).weekRowPress.minHeight).toBeGreaterThanOrEqual(44);
     const analytics = createStyles(LightColors, kua);
-    expect(analytics.weekIndexFocus.minHeight).toBeGreaterThanOrEqual(44);
-    expect(analytics.weekIndexLogLink.minHeight).toBeGreaterThanOrEqual(44);
+    expect(analytics.weekIndexRow.minHeight).toBeGreaterThanOrEqual(44);
+    // Large text / narrow width: the compact row wraps instead of overflowing.
+    expect(analytics.weekIndexRow.flexWrap).toBe('wrap');
+    expect(analytics.weekIndexStateText.flexShrink).toBe(1);
     expect(createMovementGroupStyles(LightColors, kua).changeButton.minHeight).toBeGreaterThanOrEqual(44);
   });
 });

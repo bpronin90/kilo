@@ -177,7 +177,7 @@ describe('Week rows are the sole selector', () => {
 });
 
 describe('History focus and Log navigation', () => {
-  test('a history week row focuses that block and week; the Log link is a separate target that navigates by note id', () => {
+  test('a history week row focuses that block and week; there is no Log link', () => {
     const onNavigate = jest.fn();
     const done = block({ id: 'rb-done', completed_at: '2026-06-01T00:00:00Z', baseline_note_title: 'Old' });
     const oldWeeks = [week(1, 'w1', { block_id: 'rb-done' }), week(2, 'w2', { block_id: 'rb-done' })];
@@ -188,8 +188,8 @@ describe('History focus and Log navigation', () => {
     expect(summary(c.root)).toMatch(/^Week 1: /);
     expect(c.root.findAll(isRow).map(r => r.props.accessibilityState.selected)).toEqual([true, false]);
     expect(comp(c.root, 'recovery-history-week-rb-done-1').props.accessibilityState).toEqual({ selected: true });
-    press(c.root, 'recovery-history-week-log-rb-done-2');
-    expect(onNavigate).toHaveBeenCalledWith('Log', { kind: 'note', noteId: 'w2' });
+    expect(c.root.findAll(n => n.props.testID === 'recovery-history-week-log-rb-done-2')).toHaveLength(0);
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 });
 

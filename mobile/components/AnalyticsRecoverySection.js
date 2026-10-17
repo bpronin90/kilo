@@ -71,7 +71,6 @@ export function AnalyticsRecoverySection({
   // unavailable, which is not the same as there being none.
   notesError = null,
   onRetry,
-  onNavigate,
   // Effective 1K selection for the active block's Big 3 (#1351).
   oneKSelections = null,
 }) {
@@ -344,7 +343,6 @@ export function AnalyticsRecoverySection({
                     notesById={notesById}
                     selected={selected && w.id === effectiveWeekId}
                     onFocusWeek={(blockId, weekId) => { setFocusedBlockId(blockId); setOpenKey(_blockKey(block)); setWeekSelection({ blockId, weekId }); }}
-                    onNavigate={onNavigate}
                   />
                 ))}
               </View>
