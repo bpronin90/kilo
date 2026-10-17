@@ -2,7 +2,6 @@ import React from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { SectionTitle } from '../../components/UI';
-import { FieldLabel } from '../../components/FieldLabel';
 import { InfoButton, InfoNote, useInfoExplainer } from '../../components/InfoExplainer';
 import { ProgressionSuggestionCard, MutedProgressionRow } from '../../components/ProgressionSuggestionCard';
 import { renderOverloadListContent } from './AnalyticsStates';
@@ -118,7 +117,7 @@ export function AnalyticsProgressiveOverloadSection({
               ].map(item => (
                 <View key={item.key} style={styles.poSummaryCol} testID={`po-progress-${item.key}`}>
                   <Text style={[styles.poSummaryCount, { color: item.color }]}>{item.count}</Text>
-                  <Text style={styles.poSummaryLabel}>{item.label}</Text>
+                  <Text style={styles.poSummaryLabel} numberOfLines={1}>{item.label}</Text>
                 </View>
               ))}
             </View>
@@ -151,7 +150,6 @@ export function AnalyticsProgressiveOverloadSection({
       {showTableChrome && (
         <View testID="po-header">
           <View style={styles.searchContainer}>
-            <FieldLabel>Search exercises</FieldLabel>
             <TextInput
               testID="po-search"
               style={styles.searchInput}
@@ -162,9 +160,8 @@ export function AnalyticsProgressiveOverloadSection({
               clearButtonMode="while-editing"
               accessibilityLabel="Search tracked exercises"
             />
-          </View>
-          <View style={styles.poTitleRow}>
-            <Text style={styles.poSubLabel}>Metrics</Text>
+            {/* Metrics explainer rides the search row: the column headers span
+                the full row to align with the metric grid, so it can't sit there. */}
             <InfoButton
               testID="po-metrics-info-toggle"
               expanded={metricsInfoShown}
@@ -172,12 +169,6 @@ export function AnalyticsProgressiveOverloadSection({
               label="What 1RM, Kilo, Best, and Trend mean"
             />
           </View>
-          <InfoNote shown={metricsInfoShown} testID="po-metrics-info-body" style={styles.poInfoBody}>
-            <Text style={styles.poInfoText}>1RM: your estimated one-rep max.</Text>
-            <Text style={styles.poInfoText}>Kilo: Kilo's estimate of your strength from your logged history.</Text>
-            <Text style={styles.poInfoText}>Best: your latest top set.</Text>
-            <Text style={styles.poInfoText}>Trend: the Exercise Progress state shown above.</Text>
-          </InfoNote>
           <View style={styles.signalColumnHeader}>
             <View style={styles.signalColumnMetrics}>
               <Text style={styles.signalColumnLabel}>1RM</Text>
@@ -186,6 +177,12 @@ export function AnalyticsProgressiveOverloadSection({
               <Text style={styles.signalColumnLabel}>Trend</Text>
             </View>
           </View>
+          <InfoNote shown={metricsInfoShown} testID="po-metrics-info-body" style={styles.poInfoBody}>
+            <Text style={styles.poInfoText}>1RM: your estimated one-rep max.</Text>
+            <Text style={styles.poInfoText}>Kilo: Kilo's estimate of your strength from your logged history.</Text>
+            <Text style={styles.poInfoText}>Best: your latest top set.</Text>
+            <Text style={styles.poInfoText}>Trend: the Exercise Progress state shown above.</Text>
+          </InfoNote>
         </View>
       )}
 
