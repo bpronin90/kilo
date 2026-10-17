@@ -51,11 +51,17 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
       setGoalError('Enter a valid calendar date.');
       return;
     }
-    await saveGoal({
-      target_weight: tw,
-      target_date: goalTargetDate,
-      start_weight: !isNaN(startW) && startW > 0 ? startW : null,
-    });
+    try {
+      await saveGoal({
+        target_weight: tw,
+        target_date: goalTargetDate,
+        start_weight: !isNaN(startW) && startW > 0 ? startW : null,
+      });
+    } catch {
+      // Keep the draft open so the user can retry; never imply success.
+      setGoalError('Could not save your goal. Try again.');
+      return;
+    }
     setGoalEditing(false);
   };
 
@@ -94,6 +100,7 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
       const d = new Date();
       d.setMonth(d.getMonth() + 1);
       setGoalTargetDate(d.toISOString().slice(0, 10));
+      setGoalTargetWeight('');
       setGoalStartWeight('');
     }
     setGoalError('');

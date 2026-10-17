@@ -848,9 +848,10 @@ describe('WeightScreen DateTimePicker onChange callbacks', () => {
       );
     });
     const root = component.root;
+    render.act(() => { findPressableByText(root, 'Set goal').props.onPress(); });
 
     // Open goal date picker
-    const dateBtn = findPressableByText(root, 'Select date');
+    const dateBtn = root.find(n => n.props && n.props.accessibilityLabel === 'Goal target date' && typeof n.props.onPress === 'function');
     expect(dateBtn).toBeTruthy();
     render.act(() => {
       dateBtn.props.onPress();
@@ -917,6 +918,7 @@ describe('WeightScreen Goal Editor Live Preview', () => {
       );
     });
     const root = component.root;
+    render.act(() => { findPressableByText(root, 'Set goal').props.onPress(); });
 
     // The target weight input starts empty
     const targetWeightInput = root.findByProps({ placeholder: '175' });
@@ -927,7 +929,7 @@ describe('WeightScreen Goal Editor Live Preview', () => {
     });
 
     // Select date pressable should be visible
-    const dateBtn = findPressableByText(root, 'Select date');
+    const dateBtn = root.find(n => n.props && n.props.accessibilityLabel === 'Goal target date' && typeof n.props.onPress === 'function');
     expect(dateBtn).toBeTruthy();
     render.act(() => {
       dateBtn.props.onPress();
@@ -1305,6 +1307,11 @@ describe('WeightGoalCard goal date web fallback (#404)', () => {
       );
     });
     const root = component.root;
+    render.act(() => {
+      let node = root.findAllByType('Text').find(t => t.props.children === 'Set goal');
+      while (node && typeof node.props.onPress !== 'function') node = node.parent;
+      node.props.onPress();
+    });
     const dateInputs = root.findAll(
       n => n.type === 'input' && n.props.type === 'date' && n.props['aria-label'] === 'Goal target date'
     );
@@ -1321,6 +1328,11 @@ describe('WeightGoalCard goal date web fallback (#404)', () => {
       );
     });
     const root = component.root;
+    render.act(() => {
+      let node = root.findAllByType('Text').find(t => t.props.children === 'Set goal');
+      while (node && typeof node.props.onPress !== 'function') node = node.parent;
+      node.props.onPress();
+    });
     const dateInput = root.find(
       n => n.type === 'input' && n.props.type === 'date' && n.props['aria-label'] === 'Goal target date'
     );
