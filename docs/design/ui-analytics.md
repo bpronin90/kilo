@@ -11,8 +11,8 @@ Overview card. The legacy `overview` navigation id still means scroll offset 0.
 Ordering lives in `screens/analytics/AnalyticsLayout.js`
 (`orderAnalyticsSections`, pure):
 
-- **Normal training:** Strength → Progressive Overload → Weight Trends →
-  Routine Health → Recovery history (only when the Recovery section has
+- **Normal training:** Strength → Routine Health → Progressive Overload →
+  Weight Trends → Recovery history (only when the Recovery section has
   something to render).
 - **Active Recovery:** Recovery → Weight Trends → `Baseline training · paused
   during Recovery` disclosure (collapsed by default) holding Strength →

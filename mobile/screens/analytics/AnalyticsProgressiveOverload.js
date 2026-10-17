@@ -2,7 +2,6 @@ import React from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { SectionTitle } from '../../components/UI';
-import { FieldLabel } from '../../components/FieldLabel';
 import { InfoButton, InfoNote, useInfoExplainer } from '../../components/InfoExplainer';
 import { ProgressionSuggestionCard, MutedProgressionRow } from '../../components/ProgressionSuggestionCard';
 import { renderOverloadListContent } from './AnalyticsStates';
@@ -118,7 +117,7 @@ export function AnalyticsProgressiveOverloadSection({
               ].map(item => (
                 <View key={item.key} style={styles.poSummaryCol} testID={`po-progress-${item.key}`}>
                   <Text style={[styles.poSummaryCount, { color: item.color }]}>{item.count}</Text>
-                  <Text style={styles.poSummaryLabel}>{item.label}</Text>
+                  <Text style={styles.poSummaryLabel} numberOfLines={1}>{item.label}</Text>
                 </View>
               ))}
             </View>
@@ -151,7 +150,6 @@ export function AnalyticsProgressiveOverloadSection({
       {showTableChrome && (
         <View testID="po-header">
           <View style={styles.searchContainer}>
-            <FieldLabel>Search exercises</FieldLabel>
             <TextInput
               testID="po-search"
               style={styles.searchInput}

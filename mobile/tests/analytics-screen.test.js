@@ -963,6 +963,19 @@ describe('AnalyticsScreen Progressive Overload — tracking-state captions (#894
     });
   }
 
+  test('PO table chrome is compact: search keeps its accessible name without a separate label, Metrics explainer stays reachable (#1441)', () => {
+    const component = setupOneRow({
+      signal: { name: 'Bench Press', latest_pr: 225, kilo_max: 200, latest_top_weight: 185, overload_trend: 'up' },
+      trackedLiftActivations: {},
+    });
+    const root = component.root;
+    expect(hasText(root, 'Search exercises')).toBe(false);
+    const search = root.findAllByProps({ testID: 'po-search' }).find(n => n.props.accessibilityLabel);
+    expect(search.props.accessibilityLabel).toBe('Search tracked exercises');
+    expect(root.findAllByProps({ testID: 'po-metrics-info-toggle' }).length).toBeGreaterThan(0);
+    expect(root.findAllByProps({ testID: 'po-progress-summary' }).length).toBeGreaterThan(0);
+  });
+
   test('inherited tracking is explained behind the Exercise Progress info toggle, not inline or in Metrics', () => {
     // #893: absent from the activations map means legacy boolean-only tracked
     // state or a catalog `po: true` default — never an explicit Track tap.
@@ -1351,7 +1364,7 @@ describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
   });
 });
 
-// ── Normal hierarchy: Strength → PO → Weight → Routine Health → Recovery ───
+// ── Normal hierarchy: Strength → Routine Health → PO → Weight → Recovery ───
 
 // Top-level section titles in render order (exact-match, so a substring like
 // the "Recovery" inside "Baseline training · paused during Recovery" or a row
@@ -1375,16 +1388,16 @@ describe('AnalyticsScreen normal-training section order', () => {
     deleted_at: null,
   };
 
-  test('Strength → Progressive Overload → Weight Trends → Routine Health, then Recovery history last', () => {
+  test('Strength → Routine Health → Progressive Overload → Weight Trends, then Recovery history last', () => {
     const component = setup({ hookOverrides: { recoveryBlocks: [COMPLETED_BLOCK], recoveryWeeks: [] } });
     const root = component.root;
     expect(root.findAllByProps({ testID: 'recovery-section-anchor' }).length).toBeGreaterThan(0);
     expect(root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).length).toBe(0);
     const order = sectionOrder(root);
-    expect(order.slice(0, 4)).toEqual(['Strength', 'Progressive Overload', 'Weight Trends', 'Routine Health']);
-    // The Recovery section's own content follows Routine Health.
+    expect(order.slice(0, 4)).toEqual(['Strength', 'Routine Health', 'Progressive Overload', 'Weight Trends']);
+    // The Recovery section's own content follows Weight Trends.
     const texts = findAllText(root);
-    const routineIdx = texts.indexOf('Routine Health');
+    const routineIdx = texts.indexOf('Weight Trends');
     const anchorText = component.root.findByProps({ testID: 'recovery-section-anchor' }).findAllByType('Text')[0];
     const anchorChildren = anchorText.props.children;
     const anchorLabel = Array.isArray(anchorChildren) ? anchorChildren.join('') : String(anchorChildren ?? '');
@@ -1400,11 +1413,11 @@ describe('AnalyticsScreen normal-training section order', () => {
     expect(strength.some(sec => sec.findAll(n => n === po).length > 0)).toBe(false);
   });
 
-  test('with no Recovery history the order ends at Routine Health — no hole, no anchor', () => {
+  test('with no Recovery history the order ends at Weight Trends — no hole, no anchor', () => {
     const component = setup({ hookOverrides: { recoveryBlocks: [], recoveryWeeks: [] } });
     const root = component.root;
     expect(root.findAllByProps({ testID: 'recovery-section-anchor' }).length).toBe(0);
-    expect(sectionOrder(root)).toEqual(['Strength', 'Progressive Overload', 'Weight Trends', 'Routine Health']);
+    expect(sectionOrder(root)).toEqual(['Strength', 'Routine Health', 'Progressive Overload', 'Weight Trends']);
   });
 });
 

@@ -128,14 +128,14 @@ describe('orderAnalyticsSections — the two hierarchies', () => {
   });
   const keys = (items) => items.filter(Boolean).map(i => i.key);
 
-  test('normal training: Strength → Progressive Overload → Weight → Routine Health → Recovery history', () => {
+  test('normal training: Strength → Routine Health → Progressive Overload → Weight → Recovery history', () => {
     expect(keys(orderAnalyticsSections({ isActiveRecovery: false, baselineExpanded: false, ...parts() })))
-      .toEqual(['weight-error-banner', 'strength', 'po', 'weight', 'routine', 'recovery']);
+      .toEqual(['weight-error-banner', 'strength', 'routine', 'po', 'weight', 'recovery']);
   });
 
   test('normal training with no Recovery history leaves no slot behind', () => {
     expect(keys(orderAnalyticsSections({ isActiveRecovery: false, ...parts(), recovery: null })))
-      .toEqual(['weight-error-banner', 'strength', 'po', 'weight', 'routine']);
+      .toEqual(['weight-error-banner', 'strength', 'routine', 'po', 'weight']);
   });
 
   test('active Recovery, collapsed: Recovery → Weight → disclosure, baseline hidden', () => {

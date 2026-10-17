@@ -250,12 +250,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 8,
     backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
   },
+  // Card identity: a real heading (heading → metric → evidence), sized below
+  // the hero value so it never competes with it.
   oneKLabel: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
-    fontWeight: '800',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    ...(kua ? TYPOGRAPHY['headline-sm'] : { fontSize: TYPOGRAPHY['headline-sm'].fontSize, fontWeight: '800' }),
+    color: kua ? kua.onSurface : colors.text,
   },
   oneKValue: {
     // display exception per #1283 foundation

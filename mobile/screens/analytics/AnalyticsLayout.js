@@ -7,8 +7,8 @@ import { AnalyticsFatigueCard } from '../../components/AnalyticsFatigueCard';
 // Analytics is the evidence surface: Home owns the summary, so the tab opens
 // straight into analysis rather than an overview of the same signals.
 //
-// Normal training:   Strength → Progressive Overload → Weight Trends →
-//                    Routine Health → Recovery history (only when it exists).
+// Normal training:   Strength → Routine Health → Progressive Overload →
+//                    Weight Trends → Recovery history (only when it exists).
 // Active Recovery:   Recovery → Weight Trends → `Baseline training · paused
 //                    during Recovery` disclosure (collapsed by default) holding
 //                    Strength → Progressive Overload → Routine Health.
@@ -27,7 +27,7 @@ export function orderAnalyticsSections({
   disclosure,
 }) {
   if (!isActiveRecovery) {
-    return [...banners, strength, progressiveOverload, weight, routineHealth, recovery];
+    return [...banners, strength, routineHealth, progressiveOverload, weight, recovery];
   }
   return [
     ...banners,

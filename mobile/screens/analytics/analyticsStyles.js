@@ -26,7 +26,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 12,
   },
   poSection: {
-    gap: 8,
+    gap: 6,
   },
   poTitleRow: {
     flexDirection: 'row',
@@ -52,17 +52,22 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     lineHeight: 19,
   },
   // Exercise Progress counts — same three-up shape as Home's summary.
+  // Compact: count and label sit side by side, so the trio is one short row
+  // (wrapping on narrow/large-text) instead of a stacked three-up block.
   poSummaryRow: {
     flexDirection: 'row',
-    paddingVertical: 8,
+    flexWrap: 'wrap',
+    columnGap: 16,
+    rowGap: 4,
+    paddingVertical: 2,
   },
   poSummaryCol: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 2,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
   },
   poSummaryCount: {
-    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : { fontSize: 28, fontWeight: '800' }),
+    ...(kua ? TYPOGRAPHY['headline-sm'] : { fontSize: 18, fontWeight: '800' }),
   },
   poSummaryLabel: {
     fontSize: TYPOGRAPHY['label-sm'].fontSize,
@@ -96,8 +101,8 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     letterSpacing: 0.5,
   },
   searchContainer: {
-    marginTop: 12,
-    marginBottom: 12,
+    marginTop: 4,
+    marginBottom: 4,
   },
   searchInput: {
     backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
@@ -105,12 +110,13 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
     paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingVertical: 10,
     fontSize: TYPOGRAPHY['body-lg'].fontSize,
     color: kua ? kua.onSurface : colors.text,
   },
   signalColumnHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingBottom: 4,
   },
