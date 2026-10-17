@@ -527,6 +527,22 @@ describe('WeightScreen', () => {
       expect(hasTextSafe(component.root, 'No goal set')).toBe(false);
     });
 
+    test('cancelling a first-time goal discards the draft target', async () => {
+      const component = setup(null, []);
+      const press = (label) => render.act(async () => {
+        let node = component.root.findAllByType('Text').find(t => String(t.props.children) === label);
+        while (node && typeof node.props.onPress !== 'function') node = node.parent;
+        node.props.onPress();
+      });
+      const targetInput = () => component.root.findAll(n => n.type === 'TextInput').find(i => i.props.placeholder === '175');
+      await press('Set goal');
+      render.act(() => { targetInput().props.onChangeText('170'); });
+      await press('Cancel');
+      expect(targetInput()).toBeUndefined();
+      await press('Set goal');
+      expect(targetInput().props.value || '').toBe('');
+    });
+
     test('no-goal Target field matches Weight field size with a plain whole-number placeholder (#1249, #1266)', () => {
       const component = setup(null, []);
       render.act(() => {

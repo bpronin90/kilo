@@ -100,6 +100,7 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
       const d = new Date();
       d.setMonth(d.getMonth() + 1);
       setGoalTargetDate(d.toISOString().slice(0, 10));
+      setGoalTargetWeight('');
       setGoalStartWeight('');
     }
     setGoalError('');
