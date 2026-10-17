@@ -366,12 +366,16 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
   },
   oneKLiftRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     columnGap: 12,
+    rowGap: 8,
     marginTop: 12,
   },
+  // Wraps to a new row rather than ellipsizing names at large text sizes.
   oneKLiftItem: {
-    flex: 1,
-    minWidth: 0,
+    flexGrow: 1,
+    flexBasis: 0,
+    minWidth: 96,
     gap: 2,
   },
   oneKLiftLabel: {

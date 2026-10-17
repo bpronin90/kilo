@@ -96,8 +96,8 @@ export function HomeDashboard({
                 accessible
                 accessibilityLabel={`${row.label} ${row.value} ${unit}`}
               >
-                <Text style={styles.oneKLiftLabel} numberOfLines={1}>{row.label}</Text>
-                <Text testID={`home-one-k-lift-${row.key}-value`} style={styles.oneKLiftValue} numberOfLines={1}>{row.value}</Text>
+                <Text style={styles.oneKLiftLabel}>{row.label}</Text>
+                <Text testID={`home-one-k-lift-${row.key}-value`} style={styles.oneKLiftValue}>{row.value}</Text>
               </View>
             ))}
           </View>
