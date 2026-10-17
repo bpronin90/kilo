@@ -89,7 +89,7 @@ describe('one consistent disclosure rule', () => {
   test('expanding shows the complete named lists with their reasons', () => {
     const root = mount();
     tap(root, 'Expand 2 not retested lifts');
-    expect(texts(root)).toEqual(expect.arrayContaining(['Deadlift: not logged in any week yet', 'Curl: not logged in any week yet']));
+    expect(texts(root)).toEqual(expect.arrayContaining(['Deadlift, Curl: not logged in any week yet']));
     tap(root, 'Expand 1 lifts not scored for strength');
     expect(texts(root)).toContain('Plank: Timed work has no load and reps to score');
   });

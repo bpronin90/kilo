@@ -36,6 +36,18 @@ export function RecoveryDisclosure({ testID, title, caption = null, name, first 
   );
 }
 
+// Group entries sharing one reason into a single line ("Reason: A, B, C") so a
+// long inventory states each reason once instead of once per lift (#1442).
+function groupByReason(entries, reasonOf) {
+  const groups = new Map();
+  for (const e of entries) {
+    const reason = reasonOf(e);
+    if (!groups.has(reason)) groups.set(reason, []);
+    groups.get(reason).push(e.name);
+  }
+  return [...groups].map(([reason, names]) => ({ reason, names }));
+}
+
 const NOT_RETESTED_COPY = Object.freeze({
   [NOT_RETESTED.ABSENT_THIS_WEEK]: 'not logged this week',
   [NOT_RETESTED.NEVER_LOGGED]: 'not logged in any week yet',
@@ -50,7 +62,9 @@ export function NotRetestedDisclosure({ strength, first = false }) {
   if (list.length === 0) return null;
   return (
     <RecoveryDisclosure testID="recovery-strength-not-retested" title={`${list.length} not retested`} name={`${list.length} not retested lifts`} first={first}>
-      {list.map(n => <Text key={n.key} style={styles.infoLine}>{`${n.name}: ${NOT_RETESTED_COPY[n.kind]}`}</Text>)}
+      {groupByReason(list, n => NOT_RETESTED_COPY[n.kind]).map(g => (
+        <Text key={g.reason} style={styles.infoLine}>{`${g.names.join(', ')}: ${g.reason}`}</Text>
+      ))}
     </RecoveryDisclosure>
   );
 }
@@ -77,7 +91,9 @@ export function NotScoredDisclosure({ strength, first = false }) {
   if (list.length === 0) return null;
   return (
     <RecoveryDisclosure testID="recovery-strength-not-scored" title={`${list.length} not scored for strength`} name={`${list.length} lifts not scored for strength`} first={first}>
-      {list.map(n => <Text key={n.key} style={styles.infoLine}>{`${n.name}: ${n.reason}`}</Text>)}
+      {groupByReason(list, n => n.reason).map(g => (
+        <Text key={g.reason} style={styles.infoLine}>{`${g.names.join(', ')}: ${g.reason}`}</Text>
+      ))}
     </RecoveryDisclosure>
   );
 }

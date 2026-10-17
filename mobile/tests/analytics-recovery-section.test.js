@@ -1012,10 +1012,10 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const root = component.root;
 
     expect(hasText(root, 'Week 3')).toBe(true);
-    expect(hasText(root, 'PPL Week Three')).toBe(true);
+    expect(hasText(root, 'PPL Week Three')).toBe(false); // block title is not repeated per week
   });
 
-  test('an available completed week is pressable and fires onNavigate with the exact note_id', () => {
+  test('an available completed week is a single focus target with no Log link', () => {
     const onNavigate = jest.fn();
     const b = completedBlock('rb-c', '2026-04-01T00:00:00Z', 'Push Pull Legs');
     const w = week(1, 'note-w1', { block_id: 'rb-c', id: 'rw-c-1', completed_at: '2026-03-15T00:00:00Z' });
@@ -1023,41 +1023,26 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [n] }, onNavigate);
     const root = component.root;
 
-    const row = root.findAll(
-      inst => inst.props.accessibilityLabel === 'View note in Log: Push Pull Legs, Recovery Week 1, Week One Note'
-    )[0];
-    expect(row).toBeDefined();
-    expect(typeof row.props.onPress).toBe('function');
-
-    // Focusing the week is a SEPARATE target from the Log link: it never navigates
-    // and the link is not nested inside it.
     const focus = root.findAll(n => n.props.testID === 'recovery-history-week-rb-c-1' && typeof n.props.onPress === 'function')[0];
     expect(focus.props.accessibilityLabel).toMatch(/^Show evidence for Push Pull Legs, Recovery Week 1, /);
-    expect(focus.findAll(n => n === row)).toHaveLength(0);
+    expect(hasText(root, 'Week 1')).toBe(true);
+    expect(hasText(root, 'View note in Log')).toBe(false);
+    expect(hostById(root, 'recovery-history-week-log-rb-c-1')).toHaveLength(0);
+    expect(root.findAll(i => typeof i.props.accessibilityLabel === 'string' && i.props.accessibilityLabel.startsWith('View note in Log'))).toHaveLength(0);
     act(() => { focus.props.onPress(); });
     expect(onNavigate).not.toHaveBeenCalled();
-
-    act(() => { row.props.onPress(); });
-    expect(onNavigate).toHaveBeenCalledWith('Log', { kind: 'note', noteId: 'note-w1' });
-
-    act(() => { row.props.onPress(); });
-    expect(onNavigate).toHaveBeenCalledTimes(2);
-    expect(onNavigate).toHaveBeenNthCalledWith(2, 'Log', { kind: 'note', noteId: 'note-w1' });
   });
 
-  test('an in-progress available week shows "In progress" and is navigable', () => {
-    const onNavigate = jest.fn();
+  test('an in-progress available week shows "In progress" and is focusable', () => {
     const b = completedBlock('rb-c', '2026-04-01T00:00:00Z', 'Push Pull Legs');
     const w = week(2, 'note-w2', { block_id: 'rb-c', id: 'rw-c-2', completed_at: null });
     const n = note('note-w2', BASELINE_TEXT, 'Week Two Note');
-    const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [n] }, onNavigate);
+    const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [n] }, jest.fn());
     const root = component.root;
 
     expect(hasText(root, 'In progress')).toBe(true);
-    const row = root.findAll(inst => inst.props.accessibilityLabel === 'View note in Log: Push Pull Legs, Recovery Week 2, Week Two Note')[0];
+    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Show evidence for Push Pull Legs, Recovery Week 2, In progress')[0];
     expect(typeof row.props.onPress).toBe('function');
-    act(() => { row.props.onPress(); });
-    expect(onNavigate).toHaveBeenCalledWith('Log', { kind: 'note', noteId: 'note-w2' });
   });
 
   test('a missing note week shows Unavailable and has no onPress', () => {
@@ -1088,7 +1073,6 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const row = root.findAll(inst => inst.props.accessibilityLabel === 'Show evidence for Push Pull Legs, Recovery Week 1, Note unavailable')[0];
     expect(row).toBeDefined();
     expect(hostById(root, 'recovery-history-week-log-rb-c-1')).toHaveLength(0);
-    expect(hasText(root, 'Huge Note')).toBe(true);
     expect(hasText(root, 'Note unavailable')).toBe(true);
     expect(onNavigate).not.toHaveBeenCalled();
   });
@@ -1107,7 +1091,6 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const row = root.findAll(inst => inst.props.accessibilityLabel === 'Show evidence for Push Pull Legs, Recovery Week 1, Note unavailable')[0];
     expect(row).toBeDefined();
     expect(hostById(root, 'recovery-history-week-log-rb-c-1')).toHaveLength(0);
-    expect(hasText(root, 'Orphan Sets')).toBe(true);
     expect(hasText(root, 'Note unavailable')).toBe(true);
     expect(onNavigate).not.toHaveBeenCalled();
   });
@@ -1132,9 +1115,9 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const component = setupWithNavigate({ blocks: [b], weeks: [w5, w1], notes: [n1, n5] }, jest.fn());
     const root = component.root;
 
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'View note in Log: Push Pull Legs, Recovery Week 1, Note One').length).toBeGreaterThan(0);
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'View note in Log: Push Pull Legs, Recovery Week 5, Note Five').length).toBeGreaterThan(0);
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'View note in Log: Push Pull Legs, Recovery Week 2, Note One').length).toBe(0);
+    expect(root.findAll(inst => typeof inst.props.accessibilityLabel === 'string' && inst.props.accessibilityLabel.startsWith('Show evidence for Push Pull Legs, Recovery Week 1,')).length).toBeGreaterThan(0);
+    expect(root.findAll(inst => typeof inst.props.accessibilityLabel === 'string' && inst.props.accessibilityLabel.startsWith('Show evidence for Push Pull Legs, Recovery Week 5,')).length).toBeGreaterThan(0);
+    expect(root.findAll(inst => typeof inst.props.accessibilityLabel === 'string' && inst.props.accessibilityLabel.startsWith('Show evidence for Push Pull Legs, Recovery Week 2,')).length).toBe(0);
   });
 
   test('accessible identity includes block title, persisted week ordinal, and note title', () => {
@@ -1144,7 +1127,7 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [n] }, jest.fn());
     const root = component.root;
 
-    const row = root.findAll(inst => inst.props.accessibilityLabel === 'View note in Log: Push Pull Legs, Recovery Week 7, Seventh Session')[0];
+    const row = root.findAll(inst => typeof inst.props.accessibilityLabel === 'string' && inst.props.accessibilityLabel.startsWith('Show evidence for Push Pull Legs, Recovery Week 7,'))[0];
     expect(row).toBeDefined();
   });
 
@@ -1168,11 +1151,8 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const root = component.root;
 
     // Each block's week appears with its own block title in the label.
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'View note in Log: Block One, Recovery Week 1, Block One Note').length).toBeGreaterThan(0);
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'View note in Log: Block Two, Recovery Week 1, Block Two Note').length).toBeGreaterThan(0);
-    // Block One's note title must not appear under Block Two's label, and vice versa.
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'View note in Log: Block One, Recovery Week 1, Block Two Note').length).toBe(0);
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'View note in Log: Block Two, Recovery Week 1, Block One Note').length).toBe(0);
+    expect(root.findAll(inst => typeof inst.props.accessibilityLabel === 'string' && inst.props.accessibilityLabel.startsWith('Show evidence for Block One, Recovery Week 1,')).length).toBeGreaterThan(0);
+    expect(root.findAll(inst => typeof inst.props.accessibilityLabel === 'string' && inst.props.accessibilityLabel.startsWith('Show evidence for Block Two, Recovery Week 1,')).length).toBeGreaterThan(0);
   });
 });
 
@@ -2006,7 +1986,7 @@ describe('AnalyticsRecoverySection — routine-anchored summary label (#1219, #1
       expect(findAllText(root).filter(t => t.includes(title))).toEqual([title]);
       expect(hasText(root, '2 not retested')).toBe(true);
       act(() => { byLabel(root, 'Expand 2 not retested lifts').props.onPress(); });
-      expect(hasText(root, 'Bench: not logged in any week yet')).toBe(true);
+      expect(findAllText(root).some(t => /^Bench\b.*: not logged in any week yet$/.test(t))).toBe(true);
     }
   });
 

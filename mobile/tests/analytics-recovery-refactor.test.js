@@ -187,28 +187,20 @@ describe('#1052 refactor — the boundary renders the extracted components', () 
   });
 });
 
-// ── Note-navigation identity is preserved ───────────────────────────────────
-describe('#1052 refactor — note navigation identity', () => {
-  test('a readable week-index row navigates to its own note id', () => {
-    const onNavigate = jest.fn();
+// ── No Log note link in Analytics history (#1442) ───────────────────────────
+describe('#1442 — week-index rows have no Log note link', () => {
+  test('a readable week-index row renders no View note in Log affordance', () => {
     const b = completedBlock();
     const component = setup({
       blocks: [b],
       weeks: [week(1, 'note-w1')],
       notes: [note('note-w1', BASELINE_TEXT)],
-      onNavigate,
     });
     const root = component.root;
     act(() => { byLabel(root, 'Expand recovery history').props.onPress(); });
-    const pressable = root.findAll(
-      i => typeof i.props.accessibilityLabel === 'string'
-        && i.props.accessibilityLabel.startsWith('View note in Log:')
-        && i.props.accessibilityLabel.includes('Recovery Week 1')
-        && typeof i.props.onPress === 'function'
-    )[0];
-    expect(pressable).toBeDefined();
-    act(() => { pressable.props.onPress(); });
-    expect(onNavigate).toHaveBeenCalledWith('Log', { kind: 'note', noteId: 'note-w1' });
+    expect(root.findAll(
+      i => typeof i.props.accessibilityLabel === 'string' && i.props.accessibilityLabel.startsWith('View note in Log')
+    )).toHaveLength(0);
   });
 });
 
