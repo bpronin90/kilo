@@ -102,13 +102,9 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   searchContainer: {
     marginTop: 4,
-    marginBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: 8,
+    marginBottom: 4,
   },
   searchInput: {
-    flex: 1,
     backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
     borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,

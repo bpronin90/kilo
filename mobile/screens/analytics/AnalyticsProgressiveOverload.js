@@ -160,8 +160,9 @@ export function AnalyticsProgressiveOverloadSection({
               clearButtonMode="while-editing"
               accessibilityLabel="Search tracked exercises"
             />
-            {/* Metrics explainer rides the search row: the column headers span
-                the full row to align with the metric grid, so it can't sit there. */}
+          </View>
+          <View style={styles.poTitleRow}>
+            <Text style={styles.poSubLabel}>Metrics</Text>
             <InfoButton
               testID="po-metrics-info-toggle"
               expanded={metricsInfoShown}
@@ -169,6 +170,12 @@ export function AnalyticsProgressiveOverloadSection({
               label="What 1RM, Kilo, Best, and Trend mean"
             />
           </View>
+          <InfoNote shown={metricsInfoShown} testID="po-metrics-info-body" style={styles.poInfoBody}>
+            <Text style={styles.poInfoText}>1RM: your estimated one-rep max.</Text>
+            <Text style={styles.poInfoText}>Kilo: Kilo's estimate of your strength from your logged history.</Text>
+            <Text style={styles.poInfoText}>Best: your latest top set.</Text>
+            <Text style={styles.poInfoText}>Trend: the Exercise Progress state shown above.</Text>
+          </InfoNote>
           <View style={styles.signalColumnHeader}>
             <View style={styles.signalColumnMetrics}>
               <Text style={styles.signalColumnLabel}>1RM</Text>
@@ -177,12 +184,6 @@ export function AnalyticsProgressiveOverloadSection({
               <Text style={styles.signalColumnLabel}>Trend</Text>
             </View>
           </View>
-          <InfoNote shown={metricsInfoShown} testID="po-metrics-info-body" style={styles.poInfoBody}>
-            <Text style={styles.poInfoText}>1RM: your estimated one-rep max.</Text>
-            <Text style={styles.poInfoText}>Kilo: Kilo's estimate of your strength from your logged history.</Text>
-            <Text style={styles.poInfoText}>Best: your latest top set.</Text>
-            <Text style={styles.poInfoText}>Trend: the Exercise Progress state shown above.</Text>
-          </InfoNote>
         </View>
       )}
 
