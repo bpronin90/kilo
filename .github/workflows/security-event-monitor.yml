@@ -3,7 +3,7 @@ name: Security Event Monitor
 # Production monitor for Kilo's security signals (#975).
 #
 # Kilo could already PREVENT a large class of security failures and could
-# RESPOND to one it had been told about (docs/security-incident-response.md).
+# RESPOND to one it had been told about (docs/security/security-incident-response.md).
 # It could not NOTICE: every security-relevant server decision existed only as a
 # `console.error` line in a Supabase Edge Function log, retained for days, not
 # queryable as events, with no threshold behind it. This workflow is what
@@ -33,7 +33,7 @@ on:
     #
     # 90 against an hourly schedule gives 30 minutes of jitter tolerance, at the
     # cost of consecutive runs re-reporting an event in the overlap. A duplicate
-    # finding is cheap; a silent gap is not. See docs/security-monitoring.md for
+    # finding is cheap; a silent gap is not. See docs/security/security-monitoring.md for
     # the residual limit (a run skipped by more than 30 minutes still gaps, and
     # the durable 90-day log is what makes that recoverable).
     - cron: '10 * * * *'
@@ -94,7 +94,7 @@ jobs:
           # execute on kilo.security_event_monitor_snapshot(interval). It cannot
           # read the event table, cannot write an event, cannot decrypt a
           # secret, and reaches no co-tenant schema. See
-          # docs/security-monitoring.md, "Access and least privilege", for the
+          # docs/security/security-monitoring.md, "Access and least privilege", for the
           # out-of-band role setup.
           SUPABASE_SECURITY_MONITOR_URL: ${{ secrets.SUPABASE_SECURITY_MONITOR_URL }}
           # Empty on a scheduled run, so the script's 90-minute default applies.

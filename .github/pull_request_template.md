@@ -16,7 +16,7 @@ Issue: #000
 Impact: [choose one: security-critical / not security-critical]
 
 <!-- Required for security-critical changes. Complete the checklist in
-     docs/security-review.md and record the human review outcome. The SHA must
+     docs/security/security-review.md and record the human review outcome. The SHA must
      be the full 40-character current PR head. -->
 Reviewed head SHA: [required for security-critical changes]
 Security assumptions/findings: none

@@ -1,6 +1,6 @@
 # Recovery Evidence and Management UI
 
-For maintainers changing Recovery evidence, disclosure, accessible measures, and the Log-owned Manage block. Shared state and write verification are owned by [Recovery State](recovery-state.md).
+For maintainers changing Recovery evidence, disclosure, accessible measures, and the Log-owned Manage block. Shared state and write verification are owned by [Recovery State](../architecture/recovery-state.md).
 
 ### Recovery Section (`AnalyticsRecoverySection.js`)
 

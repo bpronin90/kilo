@@ -12,7 +12,7 @@ import { GEOMETRY } from '../theme/spacing';
 // the exact taught example independent of rendering.
 //
 // This is a bare content block by design — no `Card`/`SectionTitle` wrapper
-// (docs/ui-design-rules.md §4: no nested cards). Callers own the surrounding
+// (docs/design/ui-design-rules.md §4: no nested cards). Callers own the surrounding
 // Card (HelpScreen) or sheet (WorkoutSyntaxModal).
 export const WORKOUT_SYNTAX_EXAMPLE_LINES = [
   'Monday',

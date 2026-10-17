@@ -1,6 +1,6 @@
 # Theme Runtime and Compatibility Reference
 
-For UI maintainers tracing court/mode selection and legacy semantic-color compatibility. The approved court values belong to the [KUA token specification](design/kinetic-utilitarian-athletic/tokens.md).
+For UI maintainers tracing court/mode selection and legacy semantic-color compatibility. The approved court values belong to the [KUA token specification](kinetic-utilitarian-athletic/tokens.md).
 
 `ThemeContext.js` publishes both legacy `colors` and the selected `kuaPalette`.
 `KuaStyleGate` supplies the court palette to production styles; isolated renders

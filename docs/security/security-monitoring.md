@@ -43,7 +43,7 @@ each one is good for.
 | `kilo.security_events` | Classified, redacted security events (this document) | 90 days | `service_role` (operator); aggregates via the monitor role |
 | Supabase Edge Function logs | Per-request runtime output, including the console mirror of each security event | Supabase plan default (days) | Supabase dashboard |
 | Supabase Postgres / Auth logs | Database statements, connection and auth-provider activity | Supabase plan default | Supabase dashboard |
-| `kilo.health_data_deletion_jobs` + `kilo.health_deletion_monitor_snapshot()` | Consent-withdrawal purge queue state | Job lifetime | Health-deletion monitor (see [Architecture](architecture.md)) |
+| `kilo.health_data_deletion_jobs` + `kilo.health_deletion_monitor_snapshot()` | Consent-withdrawal purge queue state | Job lifetime | Health-deletion monitor (see [Architecture](../architecture.md)) |
 | GitHub Actions logs | Deployment, audit-gate, migration-drift, and monitor runs | GitHub default | Repository maintainers |
 
 Kilo's mobile crash reporting (Sentry) is a diagnostics surface, not a security
@@ -378,4 +378,4 @@ identity. This accessor is the monitor role's only database grant; the direct
 
 The schedule/window, failure exits, production secret name and setup, alert
 thresholds, and investigation steps are owned by the sections above. For the
-separate erasure queue, use [Health-Deletion Operations](health-deletion-operations.md).
+separate erasure queue, use [Health-Deletion Operations](../operations/health-deletion-operations.md).

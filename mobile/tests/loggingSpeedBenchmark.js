@@ -10,7 +10,7 @@
 // The model makes the #575 research estimate precise, versioned, and
 // re-runnable: `logging-speed-benchmark.test.js` locks the current-`main`
 // numbers, and any logging-workflow change is measured by flipping a flow
-// flag below and re-running, then re-recording `docs/logging-speed-benchmark.md`.
+// flag below and re-running, then re-recording `docs/testing/logging-speed-benchmark.md`.
 //
 // Scope: this file makes NO product-code change and imports only the parser
 // (read-only) so the exercise lists are driven by the real fixture notes.

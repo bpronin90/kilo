@@ -97,7 +97,7 @@ the agreement between the TypeScript and SQL copies of the event catalog and
 context allow-list. The database side --- catalog enforcement, server-derived
 severity, context sanitization, access control, the ingest cap, and retention
 --- is `supabase/tests/security-events.test.sql`, run by the `database-security`
-job. The full contract lives in [Security Monitoring](security-monitoring.md).
+job. The full contract lives in [Security Monitoring](../security/security-monitoring.md).
 
 ## Crash-reporting verification
 

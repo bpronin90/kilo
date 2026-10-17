@@ -51,7 +51,7 @@ import { GEOMETRY } from '../theme/spacing';
 
 // A routine row's date has exactly one meaning: the day the routine was created
 // (#775). It used to read `updated_at`, which is the sync conflict cursor
-// (docs/backend-schema.md, "Conflict/sync columns") — every edit, every Week
+// (docs/architecture/backend-schema.md, "Conflict/sync columns") — every edit, every Week
 // A/B tap, every restored backup rewrote it, so the same routine showed a
 // different "date" depending on what the app had done to it last. `saved_at` is
 // stamped once at creation and never rewritten, so it is the field the row

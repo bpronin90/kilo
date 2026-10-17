@@ -32,7 +32,7 @@ disabling suggestions does not change a note.
   sync, help, and product information.
 
 The retired browser prototype is preserved in
-[`docs/archive/browser-prototype/`](archive/browser-prototype/) for historical
+[`docs/archive/browser-prototype/`](../archive/browser-prototype/) for historical
 reference. It is not an active runtime or test target.
 
 ## Local Data
@@ -89,10 +89,10 @@ reappearing.
   to an allow-listed non-health event vocabulary.
 - Health-data consent, withdrawal, export, deletion, evidence retention, and
   purge monitoring follow the contracts linked from
-  [the documentation index](README.md).
+  [the documentation index](../README.md).
 - Server-owned endpoints record classified, pseudonymized security events with
   a 90-day retention period; production alerting and the investigation runbook
-  live in [Security Monitoring](security-monitoring.md). The production security
+  live in [Security Monitoring](../security/security-monitoring.md). The production security
   monitor is credentialed and scheduled to run hourly.
 
 ## Runtime and Distribution
@@ -112,14 +112,14 @@ Supported repository build paths are:
 Remote EAS Update publication is intentionally blocked while update-signing key
 custody is unresolved. Native build replacement is the supported delivery path;
 the exact runtime and build procedure lives in
-[Phone Runbook](phone-runbook.md).
+[Phone Runbook](../phone-runbook.md).
 
 ## Verification State
 
 The repository has Jest coverage for domain logic, storage, cloud sync, hooks,
 and rendered component contracts, plus database security tests and focused
 repository scripts. The exact commands, CI gates, and coverage inventory live in
-[Testing and QA](testing-and-qa.md).
+[Testing and QA](../testing-and-qa.md).
 
 The repository does not by itself prove external or physical-device state.
 Release decisions still require the applicable manual checks:
@@ -131,14 +131,14 @@ Release decisions still require the applicable manual checks:
 - production configuration for Supabase Auth, Turnstile, SMTP, OAuth, Sentry,
   policy URLs, and deployment secrets.
 
-Use [Play Store Readiness](play-store-readiness.md) for operator-owned Android
-release status and [Beta Tester Guide](tester-guide.md) for participant steps.
+Use [Play Store Readiness](../operations/play-store-readiness.md) for operator-owned Android
+release status and [Beta Tester Guide](../testing/tester-guide.md) for participant steps.
 
 ## Document Ownership
 
-Use the task-oriented [Documentation Index](README.md) to find each topic's
+Use the task-oriented [Documentation Index](../README.md) to find each topic's
 authoritative guide. This snapshot owns shipped-product state and externally
 unverified release boundaries; detailed contracts belong to those linked guides.
 
 Issue-by-issue delivery history belongs in the changelog, GitHub, and
-[`docs/archive/`](archive/), not in this snapshot.
+[`docs/archive/`](../archive/), not in this snapshot.

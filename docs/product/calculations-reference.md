@@ -616,6 +616,6 @@ Maps each of the three 1k slots (bench, squat, deadlift) to a specific exercise 
 - Update the affected section in the implementation PR when its calculation changes.
 - Keep this cohesive reference together: the reader task is understanding displayed
   numbers, including the configuration and lifecycle that explain them. Field
-  producer/persistence ownership belongs to [Workout Analytics Ownership](workout-analytics-ownership.md).
+  producer/persistence ownership belongs to [Workout Analytics Ownership](../architecture/workout-analytics-ownership.md).
 - Keep language non-technical; link to source files only in developer docs.
 - Structure is designed to map onto future in-app help or tooltip surfaces.

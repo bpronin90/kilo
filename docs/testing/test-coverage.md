@@ -381,10 +381,10 @@ isolate the I/O component only and are not a substitute.
 Operational production checks are not automated test inventory:
 
 - Auth-provider, CAPTCHA, SMTP, OAuth, policy-link, and throttle verification
-  belongs in [Backend Activation](backend-activation.md).
+  belongs in [Backend Activation](../operations/backend-activation.md).
 - Installed-device and browser verification belongs in [Manual QA](manual-qa.md).
 - Play Console state belongs in
-  [Play Store Readiness](play-store-readiness.md).
+  [Play Store Readiness](../operations/play-store-readiness.md).
 
 ---
 

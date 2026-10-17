@@ -1,6 +1,6 @@
 # Cloud Sync Contract
 
-For sync maintainers tracing account ownership, reconciliation, ordering, cursors, consent, and retry behavior. Consent wording and policy belong to [Health-Data Consent](health-data-consent.md).
+For sync maintainers tracing account ownership, reconciliation, ordering, cursors, consent, and retry behavior. Consent wording and policy belong to [Health-Data Consent](../privacy/health-data-consent.md).
 
 ## Ownership and reconciliation
 
