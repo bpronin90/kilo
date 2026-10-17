@@ -963,6 +963,19 @@ describe('AnalyticsScreen Progressive Overload — tracking-state captions (#894
     });
   }
 
+  test('PO table chrome is compact: search keeps its accessible name without a separate label, Metrics explainer stays reachable (#1441)', () => {
+    const component = setupOneRow({
+      signal: { name: 'Bench Press', latest_pr: 225, kilo_max: 200, latest_top_weight: 185, overload_trend: 'up' },
+      trackedLiftActivations: {},
+    });
+    const root = component.root;
+    expect(hasText(root, 'Search exercises')).toBe(false);
+    const search = root.findAllByProps({ testID: 'po-search' }).find(n => n.props.accessibilityLabel);
+    expect(search.props.accessibilityLabel).toBe('Search tracked exercises');
+    expect(root.findAllByProps({ testID: 'po-metrics-info-toggle' }).length).toBeGreaterThan(0);
+    expect(root.findAllByProps({ testID: 'po-progress-summary' }).length).toBeGreaterThan(0);
+  });
+
   test('inherited tracking is explained behind the Exercise Progress info toggle, not inline or in Metrics', () => {
     // #893: absent from the activations map means legacy boolean-only tracked
     // state or a catalog `po: true` default — never an explicit Track tap.
