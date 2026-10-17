@@ -1,7 +1,6 @@
 import { GEOMETRY } from '../../theme/spacing';
 import { TYPOGRAPHY, TYPOGRAPHY_FALLBACK } from '../../theme/typography';
 import { StyleSheet } from 'react-native';
-import { weightFormStyleSet } from './weightFormStyles';
 
 // Full JetBrains Mono role (family, tracking, tabular-nums); weight is encoded in the family.
 const monoRole = (typo, role) => (typo || TYPOGRAPHY_FALLBACK)[role];
@@ -64,13 +63,9 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     fontWeight: '600',
     marginBottom: 8,
   },
-  ...weightFormStyleSet(colors, kua, typo),
-  entryCard: {
-    backgroundColor: kua ? kua.surfaceCard : undefined,
-    borderColor: kua ? kua.surfaceBorder : undefined,
-  },
+  // Form controls come from the shared TextField/DateField (#1440) and the Card
+  // carries the surface, so the entry form only marks the editing state.
   editingCard: {
-    backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.primary : colors.accent,
     borderWidth: 2,
   },
@@ -85,21 +80,6 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     fontWeight: '700',
     color: kua ? kua.primary : colors.accentText,
     textTransform: 'uppercase',
-  },
-  cancelText: {
-    fontSize: TYPOGRAPHY['body-md'].fontSize,
-    fontWeight: '600',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    padding: 4,
-  },
-  // The editing-header Cancel is a text-only control. ui-design-rules.md §15
-  // says grow the box rather than reach for hitSlop (React Native clips a slop
-  // at the parent's bounds), so it carries its own >=44x44dp target.
-  editorActionTarget: {
-    minHeight: 44,
-    minWidth: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   trendsCardMerged: {
     padding: 0,

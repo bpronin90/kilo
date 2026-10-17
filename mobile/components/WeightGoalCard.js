@@ -1,36 +1,11 @@
-import { GEOMETRY } from '../theme/spacing';
 import React, { useMemo } from 'react';
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Alert } from '../lib/platformAlert';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { Card, Button } from './UI';
-import { weightFormStyleSet, webDateInputStyle } from '../screens/weight/weightFormStyles';
+import { StyleSheet, Text, View } from 'react-native';
+import { Card, Button, ActionChip, TextAction, TextField, DateField } from './UI';
 import { useTheme } from '../theme/ThemeContext';
 import { useKuaTypography, TYPOGRAPHY, TYPOGRAPHY_FALLBACK } from '../theme/typography';
 import { formatDate } from '../lib/format';
-import { localDateToday } from '../lib/WeightScreenHelpers';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, formatGoalWeightValue } from '../lib/units';
-
-// Web-safe goal target date input. The native @react-native-community/datetimepicker
-// has no usable rendering on web, so on web we render a real DOM <input type="date">
-// (react-native-web passes lowercase string element types through to the DOM),
-// mirroring the Weight tab entry-form fallback. Goal targets are future dates, so
-// this uses min={today} for parity with the native picker's minimumDate.
-function WebGoalDateInput({ value, onChangeDate, accessibilityLabel }) {
-  const { colors, kuaPalette: kua } = useTheme();
-  return React.createElement('input', {
-    type: 'date',
-    value: value || '',
-    min: localDateToday(),
-    'aria-label': accessibilityLabel,
-    onChange: (e) => {
-      const next = e?.target?.value;
-      if (next) onChangeDate(next);
-    },
-    style: webDateInputStyle(colors, kua),
-  });
-}
 
 export function GoalDerived({ info, calorieEstimate }) {
   const { colors, kuaPalette: kua } = useTheme();
@@ -104,7 +79,6 @@ export function WeightGoalCard({
   startEditGoal,
   cancelEditGoal,
   onDateChange,
-  pickerDate,
   goalInfo,
   calorieEstimate,
   currentWeight,
@@ -137,12 +111,8 @@ export function WeightGoalCard({
             <View style={styles.goalHeaderMet}>
               <Text style={styles.goalMetBadge}>Goal Met!</Text>
               <View style={styles.goalHeaderActions}>
-                <Pressable onPress={() => handleArchiveGoal(currentWeight)} style={[styles.goalActionChip, styles.goalArchiveChip]} accessibilityRole="button" accessibilityLabel="Archive">
-                  <Text style={[styles.goalActionChipText, styles.goalArchiveText]} accessible={false} importantForAccessibility="no">Archive</Text>
-                </Pressable>
-                <Pressable onPress={startEditGoal} style={styles.goalActionChip} accessibilityRole="button" accessibilityLabel="Edit">
-                  <Text style={styles.goalActionChipText} accessible={false} importantForAccessibility="no">Edit</Text>
-                </Pressable>
+                <ActionChip label="Archive" tone="positive" onPress={() => handleArchiveGoal(currentWeight)} />
+                <ActionChip label="Edit" onPress={startEditGoal} />
               </View>
             </View>
           )}
@@ -150,37 +120,20 @@ export function WeightGoalCard({
             <View style={styles.goalHeaderOverdue}>
               <Text style={styles.goalEndedText}>Goal ended</Text>
               <View style={styles.goalHeaderButtons}>
-                <Pressable onPress={() => handleArchiveGoal(currentWeight)} style={[styles.goalActionChip, styles.goalArchiveChip]} accessibilityRole="button" accessibilityLabel="Archive">
-                  <Text style={[styles.goalActionChipText, styles.goalArchiveText]} accessible={false} importantForAccessibility="no">Archive</Text>
-                </Pressable>
-                <Pressable onPress={startEditGoal} style={styles.goalActionChip} accessibilityRole="button" accessibilityLabel="Edit">
-                  <Text style={styles.goalActionChipText} accessible={false} importantForAccessibility="no">Edit</Text>
-                </Pressable>
-                <Pressable onPress={handleClearGoal} style={styles.goalActionChip} accessibilityRole="button" accessibilityLabel="Clear">
-                  <Text style={[styles.goalActionChipText, styles.goalClearText]} accessible={false} importantForAccessibility="no">Clear</Text>
-                </Pressable>
+                <ActionChip label="Archive" tone="positive" onPress={() => handleArchiveGoal(currentWeight)} />
+                <ActionChip label="Edit" onPress={startEditGoal} />
+                <ActionChip label="Clear" tone="danger" onPress={handleClearGoal} />
               </View>
             </View>
           )}
           {!goalEditing && !isGoalMet && !goalInfo?.isOverdue && (
             <View style={styles.goalHeaderActions}>
-              <Pressable onPress={startEditGoal} style={styles.goalActionChip} accessibilityRole="button" accessibilityLabel="Edit">
-                <Text style={styles.goalActionChipText} accessible={false} importantForAccessibility="no">Edit</Text>
-              </Pressable>
-              <Pressable onPress={handleClearGoal} style={styles.goalActionChip} accessibilityRole="button" accessibilityLabel="Clear">
-                <Text style={[styles.goalActionChipText, styles.goalClearText]} accessible={false} importantForAccessibility="no">Clear</Text>
-              </Pressable>
+              <ActionChip label="Edit" onPress={startEditGoal} />
+              <ActionChip label="Clear" tone="danger" onPress={handleClearGoal} />
             </View>
           )}
           {goalEditing && (
-            <Pressable
-              onPress={cancelEditGoal}
-              style={styles.goalCancelTarget}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel"
-            >
-              <Text style={styles.goalActionText} accessible={false} importantForAccessibility="no">Cancel</Text>
-            </Pressable>
+            <TextAction label="Cancel" onPress={cancelEditGoal} />
           )}
         </View>
       )}
@@ -189,66 +142,35 @@ export function WeightGoalCard({
         <>
           {goalError ? <Text style={styles.goalErrorText}>{goalError}</Text> : null}
           {!currentWeight && (
-            <>
-              <Text style={styles.inputLabel}>Current weight ({unit})</Text>
-              <TextInput
-                keyboardAppearance={colors.scheme}
-                value={goalStartWeight}
-                onChangeText={setGoalStartWeight}
-                placeholder={unit === 'kg' ? '90' : '200'}
-                placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
-                keyboardType="decimal-pad"
-                style={styles.numericInput}
-                accessibilityLabel={`Current weight (${unit})`}
-              />
-            </>
+            <TextField
+              label={`Current weight (${unit})`}
+              numeric
+              value={goalStartWeight}
+              onChangeText={setGoalStartWeight}
+              placeholder={unit === 'kg' ? '90' : '200'}
+            />
           )}
-          <Text style={styles.inputLabel}>Target ({unit})</Text>
-          <TextInput
-            keyboardAppearance={colors.scheme}
+          <TextField
+            label={`Target (${unit})`}
+            numeric
             value={goalTargetWeight}
             onChangeText={setGoalTargetWeight}
             placeholder={unit === 'kg' ? '80' : '175'}
-            placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
-            keyboardType="decimal-pad"
-            style={styles.numericInput}
-            accessibilityLabel={`Target (${unit})`}
           />
-          <Text style={styles.inputLabel}>Target Date</Text>
-          {Platform.OS === 'web' ? (
-            <WebGoalDateInput
-              value={goalTargetDate}
-              onChangeDate={(dateStr) => {
-                const [y, m, d] = dateStr.split('-').map(Number);
-                onDateChange({ type: 'set' }, new Date(y, m - 1, d));
-              }}
-              accessibilityLabel="Goal target date"
-            />
-          ) : (
-            <>
-              <Pressable
-                onPress={() => setShowDatePicker(true)}
-                style={styles.input}
-                accessibilityLabel="Goal target date"
-                accessibilityRole="button"
-              >
-                <Text style={[styles.pickerText, !goalTargetDate && styles.pickerTextPlaceholder]}>
-                  {goalTargetDate ? formatDate(goalTargetDate) : 'Select date'}
-                </Text>
-              </Pressable>
-              {showDatePicker && (
-                <DateTimePicker
-                  themeVariant={colors.scheme}
-                  value={pickerDate}
-                  mode="date"
-                  display="default"
-                  onChange={onDateChange}
-                  onDismiss={() => setShowDatePicker(false)}
-                  minimumDate={new Date()}
-                />
-              )}
-            </>
-          )}
+          <DateField
+            label="Target Date"
+            value={goalTargetDate}
+            onChangeDate={(dateStr) => {
+              const [y, m, d] = dateStr.split('-').map(Number);
+              onDateChange({ type: 'set' }, new Date(y, m - 1, d));
+            }}
+            accessibilityLabel="Goal target date"
+            range="future"
+            placeholder="Select date"
+            formatValue={formatDate}
+            pickerVisible={showDatePicker}
+            onPickerVisibleChange={setShowDatePicker}
+          />
           {goalInfo && (
             <View style={styles.formDerived}>
               <View style={styles.goalDivider} />
@@ -300,11 +222,8 @@ export function WeightGoalCard({
 const monoRole = (typo, role) => (typo || TYPOGRAPHY_FALLBACK)[role];
 
 export const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
-  ...weightFormStyleSet(colors, kua, typo),
   goalCard: {
     gap: 8,
-    backgroundColor: kua ? kua.surfaceCard : undefined,
-    borderColor: kua ? kua.surfaceBorder : undefined,
   },
   goalCardMet: {
     borderColor: kua ? kua.success : colors.success,
@@ -340,52 +259,6 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     fontWeight: '700',
     color: kua ? kua.success : colors.success,
     letterSpacing: 0.3,
-  },
-  goalArchiveChip: {
-    backgroundColor: kua ? kua.primaryContainer : colors.cardSuccessBg,
-  },
-  goalArchiveText: {
-    color: kua ? kua.primaryOnContainer : colors.textLight,
-  },
-  // Issue 919: Edit / Archive / Clear goal are text-only chips in a one-line
-  // row. ui-design-rules.md §15 says a hitSlop cannot rescue that shape (React
-  // Native clips it at the row's bounds), so the chip owns a >=44x44dp target
-  // while its 13/700 label and 12/6 padding stay as designed.
-  goalActionChip: {
-    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: GEOMETRY['radius-lg'],
-    minHeight: 44,
-    minWidth: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  // The goal-editor Cancel, same §15 floor without the chip's fill.
-  goalCancelTarget: {
-    minHeight: 44,
-    minWidth: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  goalActionChipText: {
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
-    fontWeight: '700',
-    color: kua ? kua.primaryOnContainer : colors.chipText,
-  },
-  goalClearText: {
-    color: kua ? kua.primaryOnContainer : colors.error,
-  },
-  goalActionText: {
-    fontSize: TYPOGRAPHY['body-md'].fontSize,
-    fontWeight: '600',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    padding: 4,
-  },
-  pickerTextPlaceholder: {
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    opacity: 0.6,
-    fontStyle: 'italic',
   },
   goalErrorText: {
     color: kua ? kua.error : colors.error,

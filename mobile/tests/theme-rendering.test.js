@@ -2332,7 +2332,6 @@ describe('KUA wiring for mixed Home/Analytics/Weight surfaces (#1143)', () => {
 // ---------------------------------------------------------------------------
 
 describe('KUA wiring for shared-input callers (#1146)', () => {
-  const { createStyles: createWeightGoalStyles1146 } = require('../components/WeightGoalCard');
   const { createStyles: createAnalyticsRecoveryStyles } = require('../components/recovery/analyticsRecoveryStyles');
 
   const KUA_LIST = [
@@ -2372,8 +2371,11 @@ describe('KUA wiring for shared-input callers (#1146)', () => {
   //
   // The null-fallback IS behaviorally distinct: old code set backgroundColor/borderColor/
   // color to undefined (override wins); new code returns the legacy palette values.
-  test('WeightGoalCard input falls back to legacy colors when kua is null', () => {
-    const styles = createWeightGoalStyles1146(LightColors, null);
+  // #1440: WeightGoalCard's fields now render through the shared form-field
+  // factory, so the legacy fallback is pinned there.
+  test('shared form-field skin (WeightGoalCard fields) falls back to legacy colors when kua is null', () => {
+    const { createFormFieldStyles } = require('../components/UI');
+    const styles = createFormFieldStyles(LightColors, null);
     expect(styles.input.backgroundColor).toBe(LightColors.inputBackground);
     expect(styles.input.borderColor).toBe(LightColors.inputBorder);
     expect(styles.numericInput.backgroundColor).toBe(LightColors.inputBackground);

@@ -500,3 +500,19 @@ radius, or copy sweep.
    file and line evidence, instead of surfacing occurrences over successive
    rounds. This covers the reviewed head only: each later head still receives
    its own verdict.
+
+## 17. Standard controls use shared primitives
+
+Field labels, text and numeric inputs, date fields, primary / secondary /
+destructive actions, compact inline actions, and ordinary cards come from the
+shared primitives in `components/UI` ([Shared UI Implementation](ui-shared-components.md#shared-form-controls-1440)).
+A feature style file may position, space, and group those controls, and may
+style genuinely unique feature content (metric displays, history grids). It
+must not re-skin a standard control or define a parallel field, label, button,
+or card treatment. When a shared primitive cannot express a need, extend the
+primitive rather than adding a local equivalent.
+
+Weight (weigh-in and Goal) consumes the shared form controls (#1440). Other
+screens still carry local input skins built on `createInputStyle` and local
+inline-action styles; migrate them to the shared controls when they are next
+materially changed.

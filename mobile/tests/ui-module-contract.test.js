@@ -41,10 +41,18 @@ const EXPECTED_EXPORTS = [
   'NoteParseError',
   'ArtisanalPanel',
   'ErrorBanner',
+  // #1440: shared form controls and inline actions joined the barrel so
+  // feature screens consume them instead of restyling standard controls.
+  'createFormFieldStyles',
+  'createWebDateInputStyle',
+  'TextField',
+  'DateField',
+  'ActionChip',
+  'TextAction',
 ];
 
 describe('UI.js compatibility barrel: export-surface parity', () => {
-  test('exports exactly the pre-split named export set, no more, no less', () => {
+  test('exports exactly the pre-split named export set plus the #1440 form controls', () => {
     expect(Object.keys(UI).sort()).toEqual([...EXPECTED_EXPORTS].sort());
   });
 

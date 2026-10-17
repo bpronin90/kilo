@@ -80,6 +80,26 @@ tone is unchanged.
 | fontWeight | `600` | `251` |
 | borderRadius | `999` (pill) | `248` |
 
+### Shared Form Controls (#1440)
+
+Source: `mobile/components/FormControls.js` (fields) and
+`mobile/components/ui/controls.js` (inline actions), all exported from
+`components/UI`. Standard controls compose these; feature styles only lay
+them out ([UI Design Rules §17](ui-design-rules.md#17-standard-controls-use-shared-primitives)).
+
+| Primitive | Contract |
+|---|---|
+| `TextField` | `FieldLabel` above a `TextInput`; the input's accessible name defaults to the label; `numeric` selects the decimal keypad; mode-matched keyboard and placeholder ink |
+| `DateField` | `FieldLabel` above the date value. Web: DOM `<input type="date">` (`aria-label`). Native: `button`-role field opening the platform picker. `range` `past` / `future` bounds both paths to today; `onChangeDate` receives `YYYY-MM-DD`; optional `placeholder`, `formatValue`, controlled `pickerVisible` |
+| `ActionChip` | compact card-header action, own 44×44dp box, tones `default` / `positive` / `danger`, label silenced under the named button |
+| `TextAction` | unfilled secondary action (`Cancel`), own 44×44dp box |
+
+Field skin (`createFormFieldStyles`): the `createInputStyle` palette roles,
+`radius-2xl`, 14 padding, `minHeight` 48, full mono `label-lg` value role.
+`createWebDateInputStyle` is the DOM equivalent for the web date input.
+Primary and destructive actions stay on `Button` (default / `tone="danger"`),
+ordinary surfaces on `Card`, and field labels on `FieldLabel`.
+
 ---
 
 ### InfoExplainer (`components/InfoExplainer.js`, #1245)
