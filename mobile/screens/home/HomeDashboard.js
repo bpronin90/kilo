@@ -8,7 +8,6 @@ import { useKuaTypography } from '../../theme/typography';
 import { HomeRecoverySummary } from './HomeRecoverySummary';
 import { HomeWeightCard } from './HomeWeightCard';
 import { Chevron, HomeActionStrip } from './HomeActionStrip';
-import { Big3Bars } from '../../components/Big3Bars';
 
 // Everything below the training hero, extracted from HomeScreen (#1049).
 // Presentation only: HomeScreen still owns the loading gate, the four-source
@@ -36,15 +35,12 @@ export function HomeDashboard({
     { key: 'bench', label: 'Bench', value: dashboardData.oneK?.bench ?? null },
     { key: 'deadlift', label: 'Deadlift', value: dashboardData.oneK?.deadlift ?? null },
   ].filter(l => l.value != null);
-  // #1341: the Big 3 bars are a bar chart of the three values on one shared
-  // scale (heaviest lift = full track) — the numbers themselves, not a new metric.
-  const heaviest = Math.max(0, ...oneKLifts.map(l => l.value));
+  // #1444: the three lifts are plain breakdown values. Only the collective 1K
+  // bar above tracks a target, so no per-lift track implies one.
   const liftRows = oneKLifts.map(l => ({
     key: l.key,
     label: l.label,
     value: displayWeight(l.value, unit).toFixed(0),
-    strong: true,
-    fill: heaviest > 0 ? (l.value / heaviest) * 100 : 0,
   }));
 
   return (
@@ -91,7 +87,20 @@ export function HomeDashboard({
           <Text testID="home-one-k-setup" style={styles.oneKSetupText}>Log a session of each Big 3 lift to see your 1K total.</Text>
         )}
         {liftRows.length > 0 ? (
-          <Big3Bars rows={liftRows} idPrefix="home-one-k-lift" testID="home-one-k-big3" />
+          <View testID="home-one-k-big3" style={styles.oneKLiftRow}>
+            {liftRows.map(row => (
+              <View
+                key={row.key}
+                testID={`home-one-k-lift-${row.key}`}
+                style={styles.oneKLiftItem}
+                accessible
+                accessibilityLabel={`${row.label} ${row.value} ${unit}`}
+              >
+                <Text style={styles.oneKLiftLabel} numberOfLines={1}>{row.label}</Text>
+                <Text testID={`home-one-k-lift-${row.key}-value`} style={styles.oneKLiftValue} numberOfLines={1}>{row.value}</Text>
+              </View>
+            ))}
+          </View>
         ) : null}
       </Card>
       )}

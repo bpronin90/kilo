@@ -139,9 +139,9 @@ describe('single source (#1353)', () => {
     expect(src).toMatch(/from '..\/Big3Bars'/);
   });
 
-  test('HomeBig3Bars is gone; every Big 3 surface renders the shared Big3Bars', () => {
+  test('HomeBig3Bars is gone; every Big 3 Recovery surface renders the shared Big3Bars', () => {
     expect(fs.existsSync(path.join(__dirname, '..', 'screens/home/HomeBig3Bars.js'))).toBe(false);
-    for (const f of ['screens/home/HomeDashboard.js', 'screens/home/HomeRecoverySummary.js', 'components/recovery/RecoveryEvidence.js']) {
+    for (const f of ['screens/home/HomeRecoverySummary.js', 'components/recovery/RecoveryEvidence.js']) {
       expect(read(f)).toMatch(/<Big3Bars /);
     }
   });
