@@ -9,7 +9,7 @@ Source: `mobile/screens/HomeScreen.js`
 **Hierarchy (#1339, visual summary #1341).** Home is an abstract of the app:
 signals as numbers, bars and a chart, explanation left to Analytics. Normal
 training: hero (current training / Exercise Progress / actions) → `1K Progress`
-(total, 1K bar, Big 3 bars) → body weight (value, goal, trend graph). Active
+(total, 1K bar, Big 3 values) → body weight (value, goal, trend graph). Active
 Recovery (open week or between weeks): ONE Recovery card is the training
 surface — `Recovery · Week N`, the total as the hero number, Big 3 bars, and the
 action strip — → body weight. No training hero and no 1K card render in Recovery. Home has no
@@ -200,12 +200,11 @@ goal` action (`onNavigate('Weight')`). Card padding is `20` horizontal, `4` top
 horizontal, `4` top, `20` bottom) under the start-aligned `1K Progress` header
 handoff (`classifSectionLabel`, like Exercise Progress and Body weight). With a
 total: the total (`home-one-k-total`, lerped hero color), the 1K bar (`8`,
-`primary` fill, toward 1000), then the Big 3 as bar rows (`home-one-k-big3`,
-`home-one-k-lift-{squat,bench,deadlift}`, shared `HomeBig3Bars`): name, value,
-and a `6` track whose fill is the lift's value on one shared scale (heaviest
-lift = full track) — a bar chart of the three numbers, not a new metric. No
+`primary` fill, toward 1000), then the Big 3 as plain values (`home-one-k-big3`,
+`home-one-k-lift-{squat,bench,deadlift}`): name over value in three columns.
+No per-lift track (#1444) — only the 1K total has a target. No
 total yet: one `body-sm` line (`home-one-k-setup`: `Log a session of each Big 3
-lift to see your 1K total.`) and bar rows for only the lifts already logged; no
+lift to see your 1K total.`) and values for only the lifts already logged; no
 `N/A` hero, empty progress bar or placeholder rows. The three-column grid and
 `oneKSetupCard` in the earlier layout are retired.
 

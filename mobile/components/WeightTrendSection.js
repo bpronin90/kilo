@@ -9,6 +9,14 @@ import { WEIGHT_TONE, weightTrendTone } from '../lib/data/derivedAnalytics';
 // success and away is error; without one a bare ↑/↓ keeps a directional cue.
 // Stable and missing data stay neutral. `styles` is passed in rather than
 // closed over: the sheet is built per palette by the calling component (#689).
+// Non-color reinforcement (#1444): the tone also reads as a word and bold type.
+const TONE_STATUS = {
+  [WEIGHT_TONE.SPIKE]: 'Spike',
+  [WEIGHT_TONE.NOTABLE]: 'Notable',
+  [WEIGHT_TONE.POSITIVE]: '✓ On goal',
+  [WEIGHT_TONE.NEGATIVE]: '✗ Off goal',
+};
+
 function toneStyle(tone, styles) {
   switch (tone) {
     case WEIGHT_TONE.SPIKE: return styles.paceSpike;
@@ -25,7 +33,9 @@ export function TrendSection({ title, col1, col2, col3, isLast, direction, paceL
   const { colors, kuaPalette: kua } = useTheme();
   const typo = useKuaTypography();
   const styles = useMemo(() => createStyles(colors, kua, typo), [colors, kua, typo]);
-  const col3ColorStyle = toneStyle(weightTrendTone({ direction, goalDirection, paceLevel }), styles);
+  const tone = weightTrendTone({ direction, goalDirection, paceLevel });
+  const col3ColorStyle = toneStyle(tone, styles);
+  const status = TONE_STATUS[tone] || null;
 
   return (
     <View style={[styles.trendSection, !isLast && styles.trendSectionDivider]}>
@@ -44,6 +54,11 @@ export function TrendSection({ title, col1, col2, col3, isLast, direction, paceL
           <Text style={[styles.trendValue, styles.trendTextEnd, col3ColorStyle]} numberOfLines={1}>
             {col3.value}
           </Text>
+          {status ? (
+            <Text testID="trend-status" style={[styles.trendStatus, styles.trendTextEnd, col3ColorStyle]}>
+              {status}
+            </Text>
+          ) : null}
           {!!col3.caption && (
             <Text style={[styles.trendCaption, styles.trendTextEnd, col3ColorStyle]}>
               {col3.caption}
@@ -100,6 +115,10 @@ const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   trendCaption: {
     ...monoRole(typo, 'label-md'),
     marginTop: 2,
+  },
+  trendStatus: {
+    ...monoRole(typo, 'label-md'),
+    fontWeight: '800',
   },
   trendLabel: {
     fontSize: TYPOGRAPHY['label-md'].fontSize,

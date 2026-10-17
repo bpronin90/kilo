@@ -364,6 +364,28 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,
   },
+  oneKLiftRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: 12,
+    rowGap: 8,
+    marginTop: 12,
+  },
+  // Wraps to a new row rather than ellipsizing names at large text sizes.
+  oneKLiftItem: {
+    flexGrow: 1,
+    flexBasis: 0,
+    minWidth: 96,
+    gap: 2,
+  },
+  oneKLiftLabel: {
+    ...(kua ? typography['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '700' }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
+  oneKLiftValue: {
+    ...(kua ? typography['label-lg'] : { fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '700' }),
+    color: kua ? kua.onSurface : colors.text,
+  },
   oneKSetupText: {
     ...(kua ? typography['body-sm'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,

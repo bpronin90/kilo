@@ -87,7 +87,9 @@ export function HomeWeightCard({ dashboardData, weightGoal, onNavigate, unit }) 
             <LineChart
               data={displayChartSeries(dashboardData.weightSeries, unit)}
               color={kua ? kua.primary : colors.textMuted}
-              height={64}
+              height={80}
+              showScale
+              showGrid
               paddingHorizontal={0}
               hideHeader
             />

@@ -2812,6 +2812,8 @@ describe('Home daily-dashboard states (#1333)', () => {
     expect(texts({ root: host(c, 'home-one-k-lift-bench-value') })).toEqual([expect.stringMatching(/^\d+$/)]);
     expect(has(c, 'home-one-k-lift-squat')).toBe(false);
     expect(has(c, 'home-one-k-lift-deadlift')).toBe(false);
+    // #1444: no per-lift progress track; breakdown values only.
+    expect(has(c, 'home-one-k-lift-bench-track')).toBe(false);
     expect(texts(c).some(t => t === 'N/A')).toBe(false);
   });
 
