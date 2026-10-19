@@ -2053,7 +2053,7 @@ describe('deriveProgressionSignals — single-block multi-session entries', () =
   });
 
   test('overload_trend up: top weight increases across sessions', () => {
-    const note = '-Bench Press\n- 225 5,5,5\n- 235 3';
+    const note = '-Bench Press\n- 225 5,5,5\n- 235 5';
     const { sections } = parseWorkoutNote(note);
     const sig = deriveProgressionSignals(sections, ['Bench Press']).exercises[0];
     expect(sig.overload_trend).toBe('up');

@@ -1,4 +1,4 @@
-import { parseWorkoutNote } from '../lib/parser';
+import { parseWorkoutNote, deriveProgressionSignals } from '../lib/parser';
 import { deriveWorkoutNoteAnalytics, buildTrackedLiftActivation } from '../lib/data/workoutAnalytics';
 import { deriveProgressionSuggestions } from '../lib/data/progressionSuggestions';
 import { captureDeloadWorkingContext, buildDeloadReentryRecord } from '../lib/parser/deloadHistory';
@@ -93,5 +93,34 @@ describe('post-deload re-entry is additive context (#959)', () => {
     const result = deriveWorkoutNoteAnalytics(RETURN, ['Bench Press'], undefined, activations, options([record()]));
     expect(result.reentry).toEqual({});
     expect(result.progressionSuggestions[0].suggested).toBe(false);
+  });
+});
+
+describe('overload trend when top weight and estimated PR disagree (#1466)', () => {
+  const signal = rows => deriveProgressionSignals(sections(`Friday\n-Deadlift: 3x5\n${rows}`), ['Deadlift']).exercises[0];
+
+  test.each([
+    ['heavier top set with a lower estimated PR', '325 6,6,6\n330 2,-,-', 'down'],
+    ['heavier top set with a higher estimated PR', '135 10\n155 5', 'up'],
+    ['heavier top set with an equal estimated PR', '100 15\n125 6', 'up'],
+    ['lighter top weight', '225 5,5,5\n215 5,5,5', 'down'],
+    ['exact hold', '135 5,5,5\n135 5,5,5', 'flat'],
+    ['equal weight, more reps', '135 5,5,5\n135 6,5,5', 'up'],
+    ['equal weight, fewer reps', '135 5,5,5\n135 5,5,4', 'down'],
+    ['first session', '135 5,5,5', 'first_session'],
+  ])('%s → %s', (_, rows, expected) => {
+    expect(signal(rows).overload_trend).toBe(expected);
+  });
+
+  test('a heavier, lower-PR session keeps capability metrics and the regressed status', () => {
+    const sig = signal('325 6,6,6\n330 2,-,-');
+    expect(sig).toMatchObject({ overload_trend: 'down', progression_status: 'regressed', latest_top_weight: 330, kilo_max: 390 });
+    expect(sig.latest_pr).toBeCloseTo(352, 5);
+    expect(sig.prior_pr).toBeCloseTo(390, 5);
+  });
+
+  test('bodyweight comparison is unchanged', () => {
+    const sig = deriveProgressionSignals(sections('Friday\n-Pull-ups: 3x8\n8,8,8\n8,6,4'), ['Pull-ups']).exercises[0];
+    expect(sig).toMatchObject({ is_bodyweight: true, overload_trend: 'down' });
   });
 });
