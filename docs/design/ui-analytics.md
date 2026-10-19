@@ -28,6 +28,14 @@ column methodology sits behind its `ⓘ`. Routine Health wraps `SessionGauge`
 (`showTitle={false}`, the section titles it) over `deriveRoutineStatus()`, plus
 the Session Check-ins card when fatigue tracking is on.
 
+Under the production KUA gate, `SessionGauge` resolves labels/zone captions
+(`onSurfaceVariant`), counts (`onSurface`), marker fill (`surfaceCard`) and
+status marks through the court palette's semantic tokens (`success`, `warning`,
+`errorText`), matching the sibling cards; outside the gate it keeps the legacy
+palette. Calculations, zone thresholds, deload gating and paused Recovery copy
+are unchanged. Visual checks on device are not recorded; light/dark token
+resolution is covered by `tests/session-gauge.test.js`.
+
 ### Weight Trends Card
 
 | Element | Property | Value | Line |

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
+import { useKuaStyle, useTheme, useThemedStyles } from '../../theme/ThemeContext';
 
 // KUA presentation opt-in gate. Defaults to null (legacy path) so every
 // WorkoutHeading/WorkoutSubheading/ExerciseBlock consumer that does not
@@ -41,8 +41,16 @@ export function getSessionZoneCaption(count) {
 
 // Direct status mark color for a gauge tone. Resolved per render from the
 // active palette rather than a module-level map, so dark mode uses the brighter
-// success/caution/error values (#689).
-function sessionGaugeToneColor(tone, colors) {
+// success/caution/error values (#689). Under the production KUA gate (#1462)
+// the marks resolve through the court palette's mode-aware semantic tokens
+// (`success`/`warning`/`errorText`, AA on every card surface) instead.
+function sessionGaugeToneColor(tone, colors, kua = null) {
+  if (kua) {
+    if (tone === 'success') return kua.success;
+    if (tone === 'warn') return kua.warning;
+    if (tone === 'error') return kua.errorText;
+    return kua.onSurfaceVariant;
+  }
   if (tone === 'success') return colors.success;
   if (tone === 'warn') return colors.caution;
   if (tone === 'error') return colors.error;
@@ -62,8 +70,12 @@ export function SessionGauge({ count, total, showDeload = true, paused = false, 
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const typography = useKuaTypography();
+  const kua = useKuaStyle();
   const tone = getSessionTone(count);
-  const toneColor = sessionGaugeToneColor(tone, colors);
+  const toneColor = sessionGaugeToneColor(tone, colors, kua);
+  const segColors = kua
+    ? [kua.success, kua.warning, kua.errorText]
+    : [colors.success, colors.caution, colors.error];
   const caption = getSessionZoneCaption(count);
   const markerPct = (Math.min(count, 11) / 11) * 100;
 
@@ -95,9 +107,9 @@ export function SessionGauge({ count, total, showDeload = true, paused = false, 
         <>
           <View style={styles.gaugeMeterWrap}>
             <View style={styles.gaugeBar}>
-              <View style={[styles.gaugeSeg, styles.gaugeSegLeft, { flex: 6, backgroundColor: colors.success }]} />
-              <View style={[styles.gaugeSeg, { flex: 3, backgroundColor: colors.caution }]} />
-              <View style={[styles.gaugeSeg, styles.gaugeSegRight, { flex: 2, backgroundColor: colors.error }]} />
+              <View style={[styles.gaugeSeg, styles.gaugeSegLeft, { flex: 6, backgroundColor: segColors[0] }]} />
+              <View style={[styles.gaugeSeg, { flex: 3, backgroundColor: segColors[1] }]} />
+              <View style={[styles.gaugeSeg, styles.gaugeSegRight, { flex: 2, backgroundColor: segColors[2] }]} />
             </View>
             <View style={[styles.gaugeMarker, { left: `${markerPct}%`, borderColor: toneColor }]} />
           </View>
@@ -111,7 +123,7 @@ export function SessionGauge({ count, total, showDeload = true, paused = false, 
           <Text style={[styles.sessionGaugeCaption, { color: toneColor }]}>{caption}</Text>
         </>
       )}
-      {paused && <Text style={[styles.sessionGaugeCaption, { color: colors.textMuted }]}>Baseline training is paused during Recovery.</Text>}
+      {paused && <Text style={[styles.sessionGaugeCaption, { color: kua ? kua.onSurfaceVariant : colors.textMuted }]}>Baseline training is paused during Recovery.</Text>}
     </Card>
   );
 }
@@ -298,9 +310,8 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
   },
   sessionGaugePanelTitle: {
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
-    fontWeight: '800',
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '800' }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
   },
   sessionGaugeHeader: {
@@ -315,14 +326,13 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     marginLeft: 'auto',
   },
   sessionGaugeLabel: {
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
-    fontWeight: '700',
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '700' }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
   sessionGaugeCount: {
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   sessionGaugeCountRow: {},
   sessionGaugeTotalStat: {},
@@ -355,7 +365,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     width: 16,
     height: 16,
     borderRadius: GEOMETRY['radius-full'],
-    backgroundColor: colors.card,
+    backgroundColor: kua ? kua.surfaceCard : colors.card,
     borderWidth: 3,
     transform: [{ translateX: -8 }],
   },
@@ -365,9 +375,8 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     marginTop: 4,
   },
   gaugeZoneLabel: {
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
-    fontWeight: '700',
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '700' }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -378,7 +387,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     textAlign: 'right',
   },
   sessionGaugeCaption: {
-    fontSize: TYPOGRAPHY['body-md'].fontSize,
+    ...(kua ? TYPOGRAPHY['body-md'] : { fontSize: TYPOGRAPHY['body-md'].fontSize }),
     fontWeight: '700',
     marginTop: 2,
   },
