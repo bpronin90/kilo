@@ -48,6 +48,12 @@ jest.mock('../hooks/entries/syncRecoveryHooks', () => ({
   },
 }));
 
+var mockScheme = { value: 'light' };
+jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
+  __esModule: true,
+  default: () => mockScheme.value,
+}));
+
 jest.mock('expo-status-bar', () => ({ StatusBar: () => null }));
 jest.mock('expo-updates', () => ({
   useUpdates: () => ({ isUpdatePending: false }),
@@ -356,4 +362,142 @@ describe('1K progress — App\'s sync callback refreshes every screen (#459)', (
     expect(countOf('home-probe')).toBe(2);
     expect(countOf('analytics-probe')).toBe(2);
   }, 30000);
+});
+
+// #1458: Home and Analytics render 1K Progress through ONE presentation unit.
+// Analytics' look is the authority; Analytics alone adds the graph and explainer.
+describe('1K Progress shares one presentation unit across Home and Analytics (#1458)', () => {
+  const { ThemeProvider } = require('../theme/ThemeContext');
+  const { OneKProgressSummary } = require('../components/OneKProgressSummary');
+  const { AnalyticsStrengthSection } = require('../components/AnalyticsStrengthSection');
+  const { HomeDashboard } = require('../screens/home/HomeDashboard');
+  const { setWeightUnitPreference, __resetWeightUnitForTests } = require('../lib/unitPreference');
+  const { StyleSheet } = require('react-native');
+
+  const ONE_K = { total: 900, squat: 300, bench: 250, deadlift: 350 };
+  const flat = (n) => StyleSheet.flatten(n.props.style) || {};
+  const textOf = (n) => [].concat(n.props.children ?? []).join('');
+
+  const mountHome = async (oneK, unit = 'lb') => {
+    let tree;
+    await act(async () => {
+      tree = renderer.create(
+        <ThemeProvider>
+          <HomeDashboard
+            recoverySummary={null}
+            onNavigate={jest.fn()}
+            dashboardData={{ oneK, weight: null }}
+            weightGoal={null}
+            baselinePaused={false}
+            oneKHeroColor="#123456"
+            unit={unit}
+          />
+        </ThemeProvider>
+      );
+    });
+    return tree;
+  };
+  const mountAnalytics = async (oneK, chart = []) => {
+    let tree;
+    await act(async () => {
+      tree = renderer.create(
+        <ThemeProvider>
+          <AnalyticsStrengthSection
+            handleStrengthLayout={() => {}}
+            isNotesLoading={false}
+            oneK={oneK}
+            oneKCanonical={oneK}
+            oneKChartData={chart}
+          />
+        </ThemeProvider>
+      );
+    });
+    return tree;
+  };
+
+  afterEach(() => { __resetWeightUnitForTests(); });
+
+  test('both consumers mount the shared component with matching typography and the 1,000-lb bar', async () => {
+    const home = await mountHome(ONE_K);
+    const analytics = await mountAnalytics(ONE_K);
+    expect(home.root.findAllByType(OneKProgressSummary)).toHaveLength(1);
+    expect(analytics.root.findAllByType(OneKProgressSummary)).toHaveLength(1);
+
+    const totalOf = (t) => t.root.findAll(n => n.type === 'Text' && /900/.test(textOf(n)) && flat(n).fontSize)[0];
+    expect(flat(totalOf(home)).fontSize).toBe(36);
+    expect(flat(totalOf(home)).fontSize).toBe(flat(totalOf(analytics)).fontSize);
+
+    const heading = (t) => t.root.findAll(n => n.type === 'Text' && textOf(n) === '1K Progress')[0];
+    expect(flat(heading(home))).toEqual(flat(heading(analytics)));
+
+    // Same Big 3 values and one bar at 900/1000.
+    for (const t of [home, analytics]) {
+      const fills = t.root.findAll(n => n.type === 'View' && flat(n).width === '90%');
+      expect(fills).toHaveLength(1);
+      for (const v of ['300', '250', '350']) {
+        expect(t.root.findAll(n => n.type === 'Text' && textOf(n) === v).length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test('Home stays compact; Analytics adds the explainer, graph and plate-calculator taps', async () => {
+    const home = await mountHome(ONE_K);
+    const chart = [{ label: 'a', value: 800 }, { label: 'b', value: 900 }];
+    const analytics = await mountAnalytics(ONE_K, chart);
+    expect(home.root.findAllByProps({ testID: 'onek-info-toggle' })).toHaveLength(0);
+    expect(home.root.findAll(n => n.type === 'Text' && textOf(n) === '1K total over sessions')).toHaveLength(0);
+    expect(home.root.findAll(n => typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith('Show plate loading'))).toHaveLength(0);
+    expect(analytics.root.findAllByProps({ testID: 'onek-info-toggle' }).length).toBeGreaterThan(0);
+    expect(analytics.root.findAll(n => n.type === 'Text' && textOf(n) === '1K total over sessions').length).toBeGreaterThan(0);
+    expect(analytics.root.findAll(n => typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith('Show plate loading')).length).toBeGreaterThan(0);
+  });
+
+  test('unit changes recompute the bar ratio identically (kg target is the converted 1,000 lb)', async () => {
+    const kg = (lb) => displayWeight(lb, 'kg');
+    setWeightUnitPreference('kg');
+    const display = { total: kg(900), squat: kg(300), bench: kg(250), deadlift: kg(350) };
+    const home = await mountHome(ONE_K, 'kg');
+    const analytics = await mountAnalytics(display);
+    for (const t of [home, analytics]) {
+      expect(t.root.findAll(n => n.type === 'Text' && textOf(n).startsWith(kg(900).toFixed(0))).length).toBeGreaterThan(0);
+      expect(t.root.findAll(n => n.type === 'View' && flat(n).width === '90%')).toHaveLength(1);
+    }
+  });
+
+  test('Home incomplete state keeps the setup copy and only the lifts already logged', async () => {
+    const home = await mountHome({ total: 0, squat: null, bench: 250, deadlift: null });
+    expect(home.root.findAllByProps({ testID: 'home-one-k-setup' }).length).toBeGreaterThan(0);
+    expect(home.root.findAllByProps({ testID: 'home-one-k-total' })).toHaveLength(0);
+    expect(home.root.findAllByProps({ testID: 'home-one-k-lift-bench' }).length).toBeGreaterThan(0);
+    expect(home.root.findAllByProps({ testID: 'home-one-k-lift-squat' })).toHaveLength(0);
+  });
+
+  // #1458: STRUCTURAL checks only. react-test-renderer runs no Yoga/text measurement,
+  // so these do not prove the layout at 320dp / 2x text; they pin the structure that
+  // makes it hold (all values rendered, values never truncated, wrapping row, 44dp
+  // items, one collective bar) in both color schemes. Native layout evidence is
+  // unavailable here and is reported as such on the issue.
+  describe.each([['light'], ['dark']])('large-text structure (%s)', (scheme) => {
+    beforeEach(() => { mockScheme.value = scheme; });
+    afterEach(() => { mockScheme.value = 'light'; });
+
+    test.each([['Home', mountHome], ['Analytics', mountAnalytics]])('%s renders 900 lb with 300/250/350 with unclipped, wrapping structure', async (_n, mount) => {
+      const t = await mount(ONE_K);
+      const texts = t.root.findByType(OneKProgressSummary).findAll(n => n.type === 'Text');
+      for (const v of ['300', '250', '350']) {
+        expect(texts.some(n => textOf(n) === v)).toBe(true);
+      }
+      expect(texts.some(n => /^900/.test(textOf(n)))).toBe(true);
+      // Only the heading may truncate (single line, shrinkable); values never do.
+      expect(texts.filter(n => /^\d/.test(textOf(n)) && textOf(n) !== '1K Progress').every(n => n.props.numberOfLines == null)).toBe(true);
+      const row = t.root.findAll(n => n.type === 'View' && flat(n).flexWrap === 'wrap' && flat(n).justifyContent === 'space-between')[0];
+      expect(row).toBeDefined();
+      const items = t.root.findAll(n => n.type === 'View' && flat(n).minWidth === 88);
+      expect(items).toHaveLength(3);
+      for (const it of items) expect(flat(it).minHeight).toBeGreaterThanOrEqual(44);
+      expect(flat(t.root.findAll(n => n.type === 'Text' && textOf(n) === '1K Progress')[0]).flexShrink).toBe(1);
+      // No per-lift progress bars: the only 8dp track is the collective bar.
+      expect(t.root.findAll(n => n.type === 'View' && flat(n).height === 8 && flat(n).overflow === 'hidden')).toHaveLength(1);
+    });
+  });
 });

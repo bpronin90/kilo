@@ -827,11 +827,13 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     expect(style.justifyContent).not.toBe('space-between');
   });
 
-  // #1339: the populated fixture has no 1K total, so the card is the compact
-  // setup row and its header sits at the start, not centered over a metric.
-  test('the unconfigured 1K header starts its compact setup row', () => {
+  // #1339/#1458: the populated fixture has no 1K total, so the shared summary shows
+  // its heading link (44dp target) over the setup row instead of a metric.
+  test('the unconfigured 1K header keeps a 44dp link over its compact setup row', () => {
     const oneK = flatStyle(component.root.findByProps({ testID: 'home-one-k-link' }));
-    expect(oneK.alignSelf).toBe('flex-start');
+    expect(oneK.minHeight).toBeGreaterThanOrEqual(44);
+    expect(component.root.findAllByProps({ testID: 'home-one-k-setup' }).length).toBeGreaterThan(0);
+    expect(component.root.findAllByProps({ testID: 'home-one-k-total' })).toHaveLength(0);
   });
 
   test('the classification columns keep horizontal separation', () => {
@@ -860,7 +862,7 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     expect(onNavigate).toHaveBeenNthCalledWith(2, 'Analytics', 'strength');
   });
 
-  test('the 1K hero total matches the Analytics owner scale, restoring the pre-#763 treatment (#771)', async () => {
+  test('the 1K total uses the Analytics 36px scale, with no 48/56px hero (#771, #1458)', async () => {
     // Regression guard: #763 gave oneKHeroValue its own 32/800 compact-summary
     // override instead of spreading HeroMetric.hero (48/900), which read as a
     // visual demotion of the 1K total. #771 restores the pre-regression scale.
@@ -875,9 +877,11 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     await render.act(async () => {
       local = render.create(<HomeScreen {...populatedProps(jest.fn())} workoutNote={NOTE_1K} notes={[NOTE_1K]} currentId="n1" />);
     });
-    const card = local.root.findByProps({ testID: 'home-one-k-link' }).parent.parent;
-    const heroValueNodes = card.findAll(n => n.type === 'Text' && (flatStyle(n).fontSize === 48 || flatStyle(n).fontSize === 56));
-    expect(heroValueNodes.length).toBeGreaterThan(0);
+    // #1458: Analytics' restrained 36px total is the authority; Home keeps no 48/56px hero.
+    const total = local.root.findAll(n => n.type === 'Text' && n.props.testID === 'home-one-k-total')[0];
+    expect(flatStyle(total).fontSize).toBe(36);
+    const card = total.parent.parent;
+    expect(card.findAll(n => n.type === 'Text' && [48, 56].includes(flatStyle(n).fontSize))).toHaveLength(0);
     await render.act(async () => { local.unmount(); });
   });
 
@@ -896,7 +900,7 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     await render.act(async () => {
       local = render.create(<HomeScreen {...populatedProps(jest.fn())} workoutNote={NOTE_1K} notes={[NOTE_1K]} currentId="n1" />);
     });
-    const card = local.root.findByProps({ testID: 'home-one-k-link' }).parent;
+    const card = local.root.findAll(n => n.type === 'Text' && n.props.testID === 'home-one-k-total')[0];
     const unitNodes = card.findAll(n => n.type === 'Text' && text(n).includes('lbs'));
     expect(unitNodes.length).toBeGreaterThan(0);
     for (const node of unitNodes) {
@@ -930,7 +934,7 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     await render.act(async () => {
       local = render.create(<HomeScreen {...populatedProps(jest.fn())} workoutNote={NOTE_1K} notes={[NOTE_1K]} currentId="n1" />);
     });
-    expect(flatStyle(local.root.findByProps({ testID: 'home-one-k-link' })).alignSelf).toBe('flex-start');
+    expect(local.root.findAllByProps({ testID: 'home-one-k-link' }).length).toBeGreaterThan(0);
     expect(local.root.findAllByProps({ testID: 'home-one-k-setup' })).toHaveLength(0);
     expect(local.root.findAllByProps({ testID: 'home-one-k-total' }).length).toBeGreaterThan(0);
     for (const slot of ['squat', 'bench', 'deadlift']) {

@@ -374,60 +374,8 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     paddingHorizontal: 20,
     paddingTop: 4,
     paddingBottom: 20,
-    gap: 2,
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,
-  },
-  oneKLiftRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    columnGap: 12,
-    rowGap: 8,
-    marginTop: 12,
-  },
-  // Wraps to a new row rather than ellipsizing names at large text sizes.
-  oneKLiftItem: {
-    flexGrow: 1,
-    flexBasis: 0,
-    minWidth: 96,
-    gap: 2,
-  },
-  oneKLiftLabel: {
-    ...(kua ? typography['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '700' }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  oneKLiftValue: {
-    ...(kua ? typography['label-lg'] : { fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '700' }),
-    color: kua ? kua.onSurface : colors.text,
-  },
-  oneKSetupText: {
-    ...(kua ? typography['body-sm'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginBottom: 12,
-  },
-  oneKHeroValue: {
-    ...(kua ? { ...typography['metric-display'], fontSize: 48, lineHeight: 52 } : HeroMetric.hero), // display exception per #1283 foundation
-    color: kua ? kua.onSurface : colors.text,
-  },
-  oneKHeroUnit: {
-    fontFamily: kua ? typography['body-md'].fontFamily : undefined,
-    fontSize: kua ? TYPOGRAPHY['headline-sm'].fontSize : TYPOGRAPHY['body-lg'].fontSize,
-    fontWeight: kua ? undefined : '600',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  progressBarLarge: {
-    height: 8,
-    backgroundColor: kua ? kua.surfaceBorder : colors.divider,
-    borderRadius: GEOMETRY['radius-sm'],
-    overflow: 'hidden',
-    marginTop: 8,
-    marginBottom: 18,
-    alignSelf: 'stretch',
-  },
-  progressFillLarge: {
-    height: '100%',
-    backgroundColor: kua ? kua.primary : colors.accent,
-    borderRadius: GEOMETRY['radius-sm'],
   },
   welcomeCard: {
     padding: 18,
