@@ -5,7 +5,7 @@
 // plate inventory.
 
 export const BAR_WEIGHT_LB = 45;
-export const PLATE_SIZES_LB = [45, 25, 10, 5, 2.5];
+export const PLATE_SIZES_LB = [55, 45, 35, 25, 10, 5, 2.5];
 export const BAR_WEIGHT_KG = 20;
 export const PLATE_SIZES_KG = [20, 15, 10, 5, 2.5, 1.25];
 
@@ -13,7 +13,9 @@ export const PLATE_SIZES_KG = [20, 15, 10, 5, 2.5, 1.25];
 // "infinite" plate set is not a real gym — and an unbounded stored count is
 // both a false-precision and a runtime-bound risk). Counts are per side.
 export const DEFAULT_PLATES_LB = [
+  { size: 55, count: 4 },
   { size: 45, count: 4 },
+  { size: 35, count: 4 },
   { size: 25, count: 4 },
   { size: 10, count: 4 },
   { size: 5, count: 4 },

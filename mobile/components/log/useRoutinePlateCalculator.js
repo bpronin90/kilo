@@ -1,4 +1,4 @@
-// Routine actions → Plate calculator (#1375). The calculator lives outside
+// Plate calculator entry points (#1375, #1445): header button and Routine actions. The calculator lives outside
 // the note body, so weights in the note stay plain text and never compete
 // with the body's double-tap-to-edit. This owns the calculator's visibility
 // and the menu-to-modal handoff: iOS cannot present a second Modal while the
@@ -39,7 +39,14 @@ export function useRoutinePlateCalculator(menuOpen) {
   // Unmount drops any pending launch along with the fallback timer above.
   useEffect(() => () => { pendingRef.current = false; }, []);
 
+  // Direct header entry (#1445): no sheet to wait on, and it supersedes any
+  // launch still pending from the overflow menu.
+  const open = useCallback(() => {
+    pendingRef.current = false;
+    setVisible(true);
+  }, []);
+
   const close = useCallback(() => setVisible(false), []);
 
-  return { visible, request, onMenuDismiss: launch, close };
+  return { visible, request, open, onMenuDismiss: launch, close };
 }

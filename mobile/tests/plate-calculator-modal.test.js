@@ -288,7 +288,7 @@ describe('PlateCalculatorModal — editable target mode (#1375)', () => {
     expect(findByText(root.root, 'Below the 45 lb bar').length).toBe(1);
     type(root, '45');
     expect(findByText(root.root, 'Empty bar. No plates.').length).toBe(1);
-    type(root, '1000');
+    type(root, '2000');
     expect(findByText(root.root, "can't be loaded with this inventory").length).toBe(1);
     act(() => { root.unmount(); });
   });
