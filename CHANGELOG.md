@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.16.13 - 2026-10-19
+
+- Issue #1446: The rest timer now has a 0:30 preset alongside 1:00, 1:30, 2:00 and 3:00.
+
+## 1.16.12 - 2026-10-19
+
+- Issue #1445: The plate calculator now supports 55 lb and 35 lb plates and has a one-tap Plates button in the active routine header, so you no longer need to open Routine actions first.
+
+## 1.16.11 - 2026-10-19
+
+- Issue #1444: Home 1K Progress now shows Squat, Bench and Deadlift as plain values instead of misleading per-lift bars, the Home weight chart uses the same scale and grid as Analytics, and Weight Trends labels on-goal and off-goal movement in text as well as color.
+
+## 1.16.10 - 2026-10-19
+
+- Issue #1443: The Weight tab's Goal card is now compact: with no goal it shows a single "Set goal" row instead of a full form, the form opens only when you create or edit a goal, and a failed save keeps your draft with an error.
+
+## 1.16.9 - 2026-10-19
+
+- Issue #1442: Recovery Analytics history is more compact: completed weeks are single "Week N" rows, the per-week "View note in Log" link is gone, and lifts that share a not-retested or not-scored reason are listed on one line.
+
+## 1.16.8 - 2026-10-19
+
+- Issue #1441: Analytics now shows Routine Health right after Strength, tightens the Progressive Overload header, search, and summary so exercises appear sooner, and gives the 1K Progress card a clearer heading.
+
+## 1.16.7 - 2026-10-19
+
+- Issue #1440: Weight weigh-in and goal forms now use the app's shared field labels, inputs, date fields, and inline actions, so their controls match the rest of Kilo.
+
+## 1.16.6 - 2026-10-19
+
+- Issue #1437: Grouped living documentation into topic folders and updated navigation, source references, and operator runbook paths.
+
 ## 1.16.5 - 2026-10-17
 
 - Issue #1428: The collapsed Session Check-ins card now leads with your most common issue, with the flagged-session count shown below it.
