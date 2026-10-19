@@ -133,6 +133,24 @@ describe('enable scheduling', () => {
     expect(call.content.data).toEqual({ kind: REMINDER_KIND.WEIGH_IN });
   });
 
+  test('a failing native schedule call surfaces its step and error code (#1455)', async () => {
+    mockNotifications.scheduleNotificationAsync.mockRejectedValueOnce(
+      Object.assign(new Error('boom'), { code: 'ERR_NOTIFICATIONS_FAILED_TO_SCHEDULE' })
+    );
+
+    await expect(applyWeighInReminder({ enabled: true, hour: 7, minute: 30 })).rejects.toThrow(
+      'schedule: ERR_NOTIFICATIONS_FAILED_TO_SCHEDULE boom'
+    );
+  });
+
+  test('a failing scheduled-notification fetch is labelled as the cancel step (#1455)', async () => {
+    mockNotifications.getAllScheduledNotificationsAsync.mockRejectedValueOnce(new Error('fetch failed'));
+
+    await expect(applyWeighInReminder({ enabled: true, hour: 7, minute: 30 })).rejects.toThrow(
+      'cancel: fetch failed'
+    );
+  });
+
   test('enabling the workout nudge schedules one weekly notification per weekday', async () => {
     await applyWorkoutReminder({ enabled: true, hour: 18, minute: 0 }, [2, 6]);
 
