@@ -103,10 +103,18 @@ export function WeightGoalCard({
       ? Number(formatBodyweightValue(currentWeight, 'kg'))
       : currentWeight;
 
+  // No saved goal shows the entry form directly (no "Set goal" tap). Persisted
+  // goal identity (`goal`) stays separate from the unsaved draft, so a failed
+  // save keeps the form and its values on screen.
+  const showForm = goalEditing || !goal;
+
   return (
-    <Card style={[styles.goalCard, isGoalMet && goal && !goalEditing ? styles.goalCardMet : null]}>
-      {(goal || goalEditing) && (
-        <View style={styles.goalHeader}>
+    <Card style={[
+      showForm ? styles.goalCardForm : styles.goalCard,
+      isGoalMet && goal && !goalEditing ? styles.goalCardMet : null,
+    ]}>
+      {goal && (
+        <View style={[styles.goalHeader, goalEditing && styles.goalHeaderForm]}>
           {!goalEditing && isGoalMet && (
             <View style={styles.goalHeaderMet}>
               <Text style={styles.goalMetBadge}>Goal Met!</Text>
@@ -138,12 +146,7 @@ export function WeightGoalCard({
         </View>
       )}
 
-      {!goal && !goalEditing ? (
-        <View style={styles.goalEmptyRow} testID="weight-goal-empty">
-          <Text style={styles.goalEmptyText}>No goal set</Text>
-          <ActionChip label="Set goal" onPress={startEditGoal} />
-        </View>
-      ) : goalEditing ? (
+      {showForm ? (
         <>
           {goalError ? <Text style={styles.goalErrorText}>{goalError}</Text> : null}
           {!currentWeight && (
@@ -152,7 +155,7 @@ export function WeightGoalCard({
               numeric
               value={goalStartWeight}
               onChangeText={setGoalStartWeight}
-              placeholder={unit === 'kg' ? '90' : '200'}
+              placeholder={unit === 'kg' ? '90.0' : '200.0'}
             />
           )}
           <TextField
@@ -160,7 +163,7 @@ export function WeightGoalCard({
             numeric
             value={goalTargetWeight}
             onChangeText={setGoalTargetWeight}
-            placeholder={unit === 'kg' ? '80' : '175'}
+            placeholder={unit === 'kg' ? '80.0' : '175.0'}
           />
           <DateField
             label="Target Date"
@@ -172,7 +175,6 @@ export function WeightGoalCard({
             accessibilityLabel="Goal target date"
             range="future"
             placeholder="Select date"
-            formatValue={formatDate}
             pickerVisible={showDatePicker}
             onPickerVisibleChange={setShowDatePicker}
           />
@@ -230,6 +232,8 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   goalCard: {
     gap: 8,
   },
+  // Form mode defers field spacing to the shared controls, like the weigh-in card.
+  goalCardForm: {},
   goalCardMet: {
     borderColor: kua ? kua.success : colors.success,
     borderWidth: 1.5,
@@ -238,6 +242,9 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
+  },
+  goalHeaderForm: {
+    marginBottom: 4,
   },
   goalHeaderMet: {
     flex: 1,
@@ -267,18 +274,9 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   },
   goalErrorText: {
     color: kua ? kua.error : colors.error,
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
-  },
-  goalEmptyRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  goalEmptyText: {
-    fontSize: TYPOGRAPHY['body-lg'].fontSize,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    fontWeight: '600',
+    marginBottom: 8,
   },
   goalDisplay: {
     gap: 8,

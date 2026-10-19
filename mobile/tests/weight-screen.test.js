@@ -848,7 +848,6 @@ describe('WeightScreen DateTimePicker onChange callbacks', () => {
       );
     });
     const root = component.root;
-    render.act(() => { findPressableByText(root, 'Set goal').props.onPress(); });
 
     // Open goal date picker
     const dateBtn = root.find(n => n.props && n.props.accessibilityLabel === 'Goal target date' && typeof n.props.onPress === 'function');
@@ -867,7 +866,7 @@ describe('WeightScreen DateTimePicker onChange callbacks', () => {
       picker.props.onChange({}, selectedDate);
     });
 
-    expect(findPressableByText(root, '12-25-2026')).toBeTruthy();
+    expect(findPressableByText(root, '2026-12-25')).toBeTruthy();
   });
 });
 
@@ -918,10 +917,9 @@ describe('WeightScreen Goal Editor Live Preview', () => {
       );
     });
     const root = component.root;
-    render.act(() => { findPressableByText(root, 'Set goal').props.onPress(); });
 
     // The target weight input starts empty
-    const targetWeightInput = root.findByProps({ placeholder: '175' });
+    const targetWeightInput = root.findByProps({ placeholder: '175.0' });
     expect(targetWeightInput).toBeTruthy();
 
     render.act(() => {
@@ -1307,11 +1305,6 @@ describe('WeightGoalCard goal date web fallback (#404)', () => {
       );
     });
     const root = component.root;
-    render.act(() => {
-      let node = root.findAllByType('Text').find(t => t.props.children === 'Set goal');
-      while (node && typeof node.props.onPress !== 'function') node = node.parent;
-      node.props.onPress();
-    });
     const dateInputs = root.findAll(
       n => n.type === 'input' && n.props.type === 'date' && n.props['aria-label'] === 'Goal target date'
     );
@@ -1328,11 +1321,6 @@ describe('WeightGoalCard goal date web fallback (#404)', () => {
       );
     });
     const root = component.root;
-    render.act(() => {
-      let node = root.findAllByType('Text').find(t => t.props.children === 'Set goal');
-      while (node && typeof node.props.onPress !== 'function') node = node.parent;
-      node.props.onPress();
-    });
     const dateInput = root.find(
       n => n.type === 'input' && n.props.type === 'date' && n.props['aria-label'] === 'Goal target date'
     );
