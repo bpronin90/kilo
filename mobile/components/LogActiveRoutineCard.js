@@ -304,6 +304,16 @@ export function LogActiveRoutineCard({
           </View>
         </Pressable>
           <Pressable
+            onPress={() => { setMenuOpen(false); plateCalculator.open(); }}
+            style={styles.plateButton}
+            accessibilityRole="button"
+            accessibilityLabel="Plate calculator"
+            accessibilityHint="Enter a target weight to calculate plates" testID="log-plate-calculator-button"
+          >
+            <MaterialIcons name="fitness-center" size={16} color={kua ? kua.onSurfaceVariant : colors.chipAccentText} accessible={false} />
+            <Text style={styles.plateButtonText}>Plates</Text>
+          </Pressable>
+          <Pressable
             onPress={() => setMenuOpen(o => !o)}
             style={styles.menuButton}
             accessibilityRole="button"
@@ -542,6 +552,14 @@ const createStyles = (kua, colors) => StyleSheet.create({
     alignItems: 'flex-start',
     paddingRight: 12,
     backgroundColor: kua ? kua.surfaceCardHeader : undefined,
+  },
+  plateButton: {
+    minHeight: 44, minWidth: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 8, // #1445
+  },
+  plateButtonText: {
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
+    fontWeight: '600',
+    color: kua ? kua.onSurfaceVariant : colors.chipAccentText,
   },
   menuScrim: {
     flex: 1,

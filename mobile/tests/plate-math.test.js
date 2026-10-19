@@ -12,12 +12,12 @@ import {
 } from '../lib/plateMath';
 
 describe('computePlateLoad', () => {
-  test('225 loads 2×45 per side with no remainder', () => {
+  test('225 loads 55+35 per side with no remainder', () => {
     const load = computePlateLoad(225);
     expect(load.valid).toBe(true);
     expect(load.belowBar).toBe(false);
     expect(load.perSideTarget).toBe(90);
-    expect(load.plates).toEqual([{ size: 45, count: 2 }]);
+    expect(load.plates).toEqual([{ size: 55, count: 1 }, { size: 35, count: 1 }]); // ties on count resolve to the larger plate first
     expect(load.remainder).toBe(0);
   });
 
@@ -44,7 +44,7 @@ describe('computePlateLoad', () => {
     const load = computePlateLoad(220);
     expect(load.remainder).toBe(0);
     const totalPlates = load.plates.reduce((n, p) => n + p.count, 0);
-    expect(totalPlates).toBe(5);
+    expect(totalPlates).toBe(4);
     const loaded = load.plates.reduce((sum, p) => sum + p.size * p.count, 0);
     expect(loaded).toBe(87.5);
   });
@@ -59,7 +59,7 @@ describe('computePlateLoad', () => {
 
   test('unloadable remainder is reported per side and never negative', () => {
     const load = computePlateLoad(227);
-    expect(load.plates).toEqual([{ size: 45, count: 2 }]);
+    expect(load.plates).toEqual([{ size: 55, count: 1 }, { size: 35, count: 1 }]); // ties on count resolve to the larger plate first
     expect(load.remainder).toBe(1);
   });
 
@@ -110,7 +110,34 @@ describe('computePlateLoad', () => {
 
   test('exports the standard bar and plate constants', () => {
     expect(BAR_WEIGHT_LB).toBe(45);
-    expect(PLATE_SIZES_LB).toEqual([45, 25, 10, 5, 2.5]);
+    expect(PLATE_SIZES_LB).toEqual([55, 45, 35, 25, 10, 5, 2.5]);
+  });
+
+  // ── #1445: 55 / 35 lb plates ──────────────────────────────────────────
+  test('default lb inventory carries four 55s and four 35s per side', () => {
+    expect(DEFAULT_PLATES_LB.slice(0, 3)).toEqual([{ size: 55, count: 4 }, { size: 45, count: 4 }, { size: 35, count: 4 }]);
+  });
+
+  test('uses a 55 lb plate: 155 lb → 55 per side on a 45 bar', () => {
+    const load = computePlateLoad({ totalWeight: 155, barWeight: 45, platesPerSide: DEFAULT_PLATES_LB });
+    expect(load.plates).toEqual([{ size: 55, count: 1 }]);
+    expect(load.remainder).toBe(0);
+  });
+
+  test('uses a 35 lb plate: 115 lb → 35 per side', () => {
+    const load = computePlateLoad({ totalWeight: 115, barWeight: 45, platesPerSide: DEFAULT_PLATES_LB });
+    expect(load.plates).toEqual([{ size: 35, count: 1 }]);
+    expect(load.remainder).toBe(0);
+  });
+
+  test('exhausted 55s and 35s fall through to smaller plates with exact remainder', () => {
+    const load = computePlateLoad({ totalWeight: 45 + 2 * 500, barWeight: 45, platesPerSide: DEFAULT_PLATES_LB });
+    // per side 500; capacity 4*(55+45+35+25+10+5)+5 = 705 ≥ 500 so exact
+    expect(load.remainder).toBe(0);
+    expect(load.plates.find((p) => p.size === 55).count).toBeLessThanOrEqual(4);
+    const capped = computePlateLoad({ totalWeight: 45 + 2 * 800, barWeight: 45, platesPerSide: DEFAULT_PLATES_LB });
+    expect(capped.plates.find((p) => p.size === 55).count).toBe(4);
+    expect(capped.remainder).toBeGreaterThan(0);
   });
 
   // ── #577: object call shape + finite kg inventory ──────────────────────

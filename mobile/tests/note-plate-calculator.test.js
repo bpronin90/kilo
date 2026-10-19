@@ -92,7 +92,8 @@ const byLabel = (root, label) => root.root.findAll(n => n.props
   && n.props.accessibilityLabel === label && typeof n.props.onPress === 'function')[0];
 const openMenu = (root) => act(() => { byLabel(root, 'Routine actions').props.onPress({ stopPropagation: jest.fn() }); });
 const chooseCalculator = (root) => act(() => {
-  byLabel(root, 'Plate calculator').props.onPress({ stopPropagation: jest.fn() });
+  root.root.findAll(n => n.props && n.props.accessibilityRole === 'menuitem'
+    && n.props.accessibilityLabel === 'Plate calculator' && n.props.onPress)[0].props.onPress({ stopPropagation: jest.fn() });
 });
 const menuModal = (root) => root.root.findAll(n => n.type === Modal && typeof n.props.onDismiss === 'function')[0];
 
@@ -118,6 +119,21 @@ describe('active routine card', () => {
     ]);
     const item = items[2];
     expect(item.props.accessibilityHint).toBe('Enter a target weight to calculate plates');
+  });
+
+  test.each(['android', 'ios'])('%s: header Plate calculator opens the calculator in one tap, outside the note body (#1445)', async (os) => {
+    Platform.OS = os;
+    const { root, props } = renderCard();
+    const button = root.root.findAll(n => n.props && n.props.testID === 'log-plate-calculator-button' && n.props.onPress)[0];
+    expect(button.props.accessibilityRole).toBe('button');
+    expect(button.props.accessibilityLabel).toBe('Plate calculator');
+    const noteBody = root.root.findAll(n => n.props && n.props.onPress === props.handleNoteBodyPress)[0];
+    expect(noteBody.findAll(n => n.props && n.props.testID === 'log-plate-calculator-button')).toHaveLength(0);
+    act(() => { button.props.onPress(); });
+    await flush();
+    expect(calculatorModal(root)).toHaveLength(1);
+    expect(props.handleNoteBodyPress).not.toHaveBeenCalled();
+    expect(props.toggleCollapsed).not.toHaveBeenCalled();
   });
 
   test.each([false, true])('Android: opens the empty calculator without changing a card (collapsed=%s)', async (isCollapsed) => {
