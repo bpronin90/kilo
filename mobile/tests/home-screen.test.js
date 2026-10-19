@@ -2748,6 +2748,8 @@ describe('Home daily-dashboard states (#1333)', () => {
       .map(n => n.props.testID);
     expect(order.slice(0, 3)).toEqual(['home-exercise-progress-link', 'home-routine-title', 'home-routine-week']);
     expect(has(c, 'home-classif-info')).toBe(false);
+    // Large text / narrow width: the title wraps instead of truncating.
+    expect(host(c, 'home-routine-title').props.numberOfLines).toBeUndefined();
     const link = host(c, 'home-exercise-progress-link');
     expect(link.props.accessibilityRole).toBe('button');
     press(c, 'home-exercise-progress-link');

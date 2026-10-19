@@ -134,7 +134,7 @@ export function HomeHeader({
       {routineTitle || (routineState === 'active' && routineWeek !== null) ? (
         <View style={styles.heroTitleRow}>
           {routineTitle ? (
-            <Text testID="home-routine-title" style={styles.heroTitleText} numberOfLines={2}>{routineTitle}</Text>
+            <Text testID="home-routine-title" style={styles.heroTitleText}>{routineTitle}</Text>
           ) : <View style={styles.heroTitleText} />}
           {routineState === 'active' && routineWeek !== null ? (
             <Text testID="home-routine-week" style={styles.heroWeekText}>{`Week ${routineWeek}`}</Text>
