@@ -48,34 +48,24 @@ describe('Home — Exercise Progress explainer (#1356)', () => {
     />
   );
 
-  test('the shared info icon sits beside Exercise Progress and explains a first tracked session on request', async () => {
+  test('Home carries no info icon; a first tracked session reads as an inline caption (#1456)', async () => {
     const root = await mount(header({ newlyTrackedCount: 1, hasInheritedTracking: false }));
-    const toggle = button(root.root, 'home-classif-info');
-    expect(toggle.props.accessibilityLabel).toBe('About these Exercise Progress counts');
-    expect(toggle.props.accessibilityState).toEqual({ expanded: false });
-    expect(toggle.props.style).toEqual(expect.arrayContaining([expect.objectContaining({ minWidth: 44, minHeight: 44 })]));
-    // Beside the label: the row holding the icon and the label holds no counts.
-    expect(texts(rowWith(toggle, 'Exercise Progress'))).toEqual(['Exercise Progress']);
-    const caption = '1 exercise is in its first tracked session. Log it again to see a trend.';
-    expect(texts(root.root)).not.toContain(caption);
-    await act(async () => { toggle.props.onPress(); });
-    expect(button(root.root, 'home-classif-info').props.accessibilityState).toEqual({ expanded: true });
-    const body = root.root.findAll(n => n.props.testID === 'home-classif-info-body')[0];
-    expect(texts(body)).toEqual([caption]);
+    expect(button(root.root, 'home-classif-info')).toBeUndefined();
+    expect(texts(root.root)).toContain('1 exercise is in its first tracked session. Log it again to see a trend.');
   });
 
   test('inherited tracking reads in plain language, not "tracked before this update"', async () => {
     const root = await mount(header({ newlyTrackedCount: 0, hasInheritedTracking: true }));
-    await act(async () => { button(root.root, 'home-classif-info').props.onPress(); });
     const all = texts(root.root);
     expect(all).toContain('Some exercises use their existing workout history for these counts.');
     expect(all.some(t => t.includes('before this update'))).toBe(false);
     expect(all.some(t => /Track tap|Deload|1RM/.test(t))).toBe(false);
   });
 
-  test('no unusual state, no info icon', async () => {
+  test('no unusual state, no info icon and no caption', async () => {
     const root = await mount(header({ newlyTrackedCount: 0, hasInheritedTracking: false }));
     expect(button(root.root, 'home-classif-info')).toBeUndefined();
+    expect(root.root.findAll(n => n.props.testID === 'home-classif-caption')).toHaveLength(0);
   });
 });
 

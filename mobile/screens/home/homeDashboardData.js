@@ -226,7 +226,7 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
   const latestWeight = weightTrends.currentWeight;
 
   // Canonical routine health (deriveRoutineStatus) — the same object Analytics'
-  // routine gauge reads; `weeksIn` is its routine depth.
+  // routine gauge reads; `weeksIn` is its routine depth, `elapsedWeeks` its week.
   const routineStatus = deriveRoutineStatus(sections, workoutNote, deloadHistory);
 
   // #893/#989/#699: the one canonical progression pass Analytics also reads —
@@ -280,6 +280,8 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
     oneKSelections,
     latestWeight,
     weeksIn: routineStatus.weeksIn,
+    // #1456: Home's `Week N` is the current routine's calendar week, not session depth.
+    routineWeek: routineStatus.elapsedWeeks >= 1 ? routineStatus.elapsedWeeks : null,
     routineStatus,
     exerciseProgress,
     weeklySummary,

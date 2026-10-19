@@ -160,12 +160,15 @@ already use and that is owned by `App.js`.
 
 ### Weekly Summary Hero Card
 
-**Current structure (#1112, #1333, #1339).** The hero answers three questions only:
-what is being trained (`home-hero-label`: `Week N`, `Current
-routine`, or `No current routine`, plus the routine title `home-routine-title`),
+**Current structure (#1112, #1333, #1339, #1456).** The hero answers three questions only:
+what is being trained (the routine title `home-routine-title` with its calendar
+`Week N` opposite, `home-routine-week` — the current routine's weeks since its
+own start, never session depth or a Recovery week, omitted without a usable
+start; `Current routine` / `No current routine` in the muted states, `home-hero-label`),
 how it is going (the `Exercise Progress` handoff `home-exercise-progress-link`
-→ `Analytics › progressive-overload`, then the Progressing/Steady/Regressing
-trio), and what to do next (the `Log workout` / `Log weight` strip). #1339
+at the card top → `Analytics › progressive-overload`, then the Progressing/Steady/Regressing
+trio; Home has no info icon — a first-session/inherited-tracking state is the
+inline `home-classif-caption`), and what to do next (the `Log workout` / `Log weight` strip). #1339
 removed the `Full history and insights` footer (sections deep-link instead) and,
 in Recovery, the hero's week subline, active-note title and the bare paused
 `Exercise Progress` handoff. #1341: the hero is normal-training only; in
