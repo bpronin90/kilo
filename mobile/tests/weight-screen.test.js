@@ -1790,6 +1790,37 @@ describe('TrendSection goal-direction aware colors (#406, H-3)', () => {
       texts.forEach(t => expect(t.props.numberOfLines).toBeUndefined());
     });
 
+    // Structural evidence only: react-test-renderer does no native text layout, so
+    // this proves nothing is capped or clipped by the component, not how it paints.
+    test('compact width at max accessibility font scale: every string renders uncapped', () => {
+      const { Dimensions, PixelRatio } = require('react-native');
+      const dims = jest.spyOn(Dimensions, 'get').mockReturnValue({ width: 320, height: 640, scale: 2, fontScale: 3.12 });
+      const scale = jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(3.12);
+      try {
+        const root = renderSection({
+          goalDirection: 'loss',
+          direction: 'down',
+          col1: { label: 'Average', value: '184.0 lb' },
+          col2: { label: 'Vs Prior 7d', value: '+1.0 lb' },
+          col3: { label: 'Trend', value: '↓ -12.5 lb', caption: 'over 5 days' },
+        });
+        const texts = root.findAll(n => n.type === 'Text');
+        const rendered = texts.map(t => [].concat(t.props.children).join(''));
+        ['184.0 lb', '+1.0 lb', '↓ -12.5 lb', '✓ On goal', 'over 5 days'].forEach(
+          str => expect(rendered).toContain(str)
+        );
+        texts.forEach(t => {
+          expect(t.props.numberOfLines).toBeUndefined();
+          expect(t.props.allowFontScaling).not.toBe(false);
+          expect(t.props.maxFontSizeMultiplier).toBeUndefined();
+          expect(t.props.adjustsFontSizeToFit).toBeUndefined();
+        });
+      } finally {
+        dims.mockRestore();
+        scale.mockRestore();
+      }
+    });
+
     test('positive, negative and neutral keep their tone on the larger value', () => {
       const pos = renderSection({ goalDirection: 'loss', direction: 'down', col3: { label: 'Trend', value: 'A' } });
       const neg = renderSection({ goalDirection: 'loss', direction: 'up', col3: { label: 'Trend', value: 'B' } });
