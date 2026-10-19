@@ -307,8 +307,10 @@ function _deriveSignalForComparables(comparable) {
   const prior_total_reps = comparable[priorIdx].sets.reduce((sum, s) => sum + (s.rep_count || 0), 0);
   const weight_diff = latest_top_weight !== null && prior_top_weight !== null
     ? latest_top_weight - prior_top_weight : null;
+  // A heavier top set that lowers the estimated PR (330x2 after 325x6x3) is a
+  // regression, not progress — consistent with progression_status above.
   const overload_trend = weight_diff === null ? null
-    : weight_diff > 0 ? 'up'
+    : weight_diff > 0 ? (latest_pr < prior_pr ? 'down' : 'up')
     : weight_diff < 0 ? 'down'
     : latest_total_reps > prior_total_reps ? 'up'
     : latest_total_reps < prior_total_reps ? 'down'
