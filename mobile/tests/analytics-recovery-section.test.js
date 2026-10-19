@@ -497,16 +497,19 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     expect(sizeOf(hostText(root, 'torn hamstring')[0]).fontSize).toBeGreaterThanOrEqual(13);
   });
 
-  test('the reason and routine sit at the bottom: hero first, then Baseline context, then Reason', () => {
+  test('the context sits at the bottom: hero first, then Reason, Baseline, then dates', () => {
     const b = block({ reason: 'torn hamstring', started_at: '2026-05-01T00:00:00Z' });
     const root = setup({ blocks: [b], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
     const texts = findAllText(root);
     const hero = texts.indexOf('100%');
     const ctx = texts.indexOf('05-01-2026');
     const reason = texts.indexOf('torn hamstring');
+    const baseline = texts.indexOf('Push Pull Legs');
     expect(hero).toBeGreaterThan(-1);
-    expect(ctx).toBeGreaterThan(hero);
-    expect(reason).toBeGreaterThan(ctx);
+    // #1461: reason, then baseline routine, then the date last.
+    expect(reason).toBeGreaterThan(hero);
+    expect(baseline).toBeGreaterThan(reason);
+    expect(ctx).toBeGreaterThan(baseline);
     // The routine is named once visibly, in the quiet Baseline context row (#1315);
     // the summary's full wording is its accessibility label.
     expect(texts.filter(t => t.includes('Push Pull Legs'))).toEqual(['Push Pull Legs']);
@@ -564,8 +567,29 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     const component = setup({ blocks: [b], weeks: [], notes: [] });
     const root = component.root;
 
+    // Collapsed by default: the range is expanded context only, never in the header.
+    expect(hasText(root, '04-01-2026')).toBe(false);
+    expandEnded(root);
     expect(hasText(root, '04-01-2026 to')).toBe(true);
     expect(hasText(root, '04-29-2026')).toBe(true);
+    expect(findAllText(root).filter(t => t.includes('04-01-2026'))).toHaveLength(1);
+  });
+
+  test('the collapsed completed header puts the reason before the routine on one ellipsized line', () => {
+    const b = block({ reason: 'torn hamstring', completed_at: '2026-04-29T00:00:00Z' });
+    const root = setup({ blocks: [b], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
+    const header = byLabel(root, /^Expand ended recovery block/);
+    expect(findAllText(header)).toEqual(['100% total recovery', 'Completed · 1 week', 'torn hamstring · Push Pull Legs']);
+    const line = header.findAll(n => typeof n.type === 'string' && n.props.numberOfLines === 1)[0];
+    expect(line).toBeDefined();
+  });
+
+  test('an unavailable total never shows a percentage in the collapsed header', () => {
+    const b = block({ completed_at: '2026-04-29T00:00:00Z' });
+    const root = setup({ blocks: [b], weeks: [], notes: [] }).root;
+    const header = byLabel(root, /^Expand ended recovery block/);
+    expect(findAllText(header).some(t => t.includes('%'))).toBe(false);
+    expect(findAllText(header)).toContain('Completed · 0 weeks');
   });
 
   // Scoped to host nodes only, matching the `groupHeaders` dedup pattern —
@@ -2377,7 +2401,7 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     expect(hasText(root, 'Not a medical judgment')).toBe(false);
     const block = hostById(root, 'recovery-footer-row')[0];
     expect(StyleSheet.flatten(block.props.style)).toMatchObject({ borderTopWidth: 1 });
-    expect(findAllText(block)).toEqual(['Baseline', 'Push Pull Legs', 'Started', '05-01-2026', 'Reason', 'torn hamstring']);
+    expect(findAllText(block)).toEqual(['Reason', 'torn hamstring', 'Baseline', 'Push Pull Legs', 'Started', '05-01-2026']);
     // Metadata carries no methodology explainer.
     expect(block.findAll(n => n.props.accessibilityRole === 'button' && n.props.testID !== 'recovery-manage-in-log')).toHaveLength(0);
     expect(byLabel(root, 'About these numbers')).toBeUndefined();
@@ -3043,7 +3067,7 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
   test('owner context: Started + date on one row, Reason + value on the next, no info button and no far-edge floating control', () => {
     const root = mountOwner({}, { onSaveReason: async () => ({ ok: true }) });
     const ctx = hostById(root, 'recovery-footer-row')[0];
-    expect(findAllText(ctx)).toEqual(['Baseline', 'Summer 2026 Routine', 'Started', '08-08-2026', 'Reason', 'Back injury']);
+    expect(findAllText(ctx)).toEqual(['Reason', 'Back injury', 'Baseline', 'Summer 2026 Routine', 'Started', '08-08-2026']);
     const dateRow = hostById(root, 'recovery-context-date')[0];
     expect(flat(dateRow)).toMatchObject({ flexDirection: 'row', flexWrap: 'wrap', minHeight: 44 });
     // #1358: the date is plain metadata — no info button in the row.
@@ -3095,7 +3119,7 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
   test('completed block: "Dates" row with the range, Reason row, and and no Reopen control (Log owns it)', () => {
     const root = mountOwner({ completed_at: '2026-09-20T12:00:00Z' }, { onSaveReason: async () => ({ ok: true }) });
     const ctx = hostById(root, 'recovery-footer-row')[0];
-    expect(findAllText(ctx)).toEqual(['Baseline', 'Summer 2026 Routine', 'Dates', '08-08-2026 to', '09-20-2026', 'Reason', 'Back injury']);
+    expect(findAllText(ctx)).toEqual(['Reason', 'Back injury', 'Baseline', 'Summer 2026 Routine', 'Dates', '08-08-2026 to', '09-20-2026']);
   });
 });
 
@@ -3153,8 +3177,11 @@ describe('AnalyticsRecoverySection — ended block starts collapsed (#1425)', ()
     const { root } = mount();
     const header = byLabel(root, /^Expand ended recovery block/);
     expect(header.props.accessibilityState).toEqual({ expanded: false });
-    expect(hasText(root, 'Ended · 100% total recovery · Week 1')).toBe(true);
-    expect(hasText(root, '1 week · 05-01-2026 to 09-01-2026 · Old Routine')).toBe(true);
+    // #1461: outcome first, then status, then reason/routine; no date range and
+    // no "Ended" prefix competing with the result.
+    expect(findAllText(header)).toEqual(['100% total recovery', 'Completed · 1 week', 'Old Routine']);
+    expect(header.props.accessibilityLabel).toContain('100% total recovery, Week 1');
+    expect(hasText(root, '05-01-2026')).toBe(false);
     expect(hostById(root, 'recovery-footer-row')).toHaveLength(0);
     expect(byLabel(root, /Manage|Open Recovery/i)).toBeUndefined();
     expandEnded(root);

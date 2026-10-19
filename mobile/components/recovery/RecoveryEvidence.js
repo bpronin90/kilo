@@ -197,6 +197,20 @@ export function BlockEvidence({
         {/* Block context (#1219): a quiet "label  value" list under one divider.
             Plain metadata, so no row carries an explainer (#1358). */}
         <View testID="recovery-footer-row" style={styles.contextBlock}>
+          {/* Quiet read-only context (#1307): editing lives in Log's Manage block. */}
+          {block.reason ? (
+            <View
+              testID="recovery-reason-context"
+              style={[styles.contextRow, styles.reasonRow]}
+              accessible
+              accessibilityLabel={`Reason: ${block.reason}`}
+            >
+              <Text style={labelStyle}>Reason</Text>
+              <Text style={[styles.contextValue, styles.contextValueShrink]} numberOfLines={2}>
+                {block.reason}
+              </Text>
+            </View>
+          ) : null}
           <View testID="recovery-context-routine" style={styles.contextRow}>
             <Text style={labelStyle} {...LABEL_HIDDEN}>Baseline</Text>
             <Text
@@ -220,20 +234,6 @@ export function BlockEvidence({
               {!isActive && <Text style={[styles.contextValue, styles.contextDateText]}>{formatDate(block.completed_at)}</Text>}
             </View>
           </View>
-          {/* Quiet read-only context (#1307): editing lives in Log's Manage block. */}
-          {block.reason ? (
-            <View
-              testID="recovery-reason-context"
-              style={[styles.contextRow, styles.reasonRow]}
-              accessible
-              accessibilityLabel={`Reason: ${block.reason}`}
-            >
-              <Text style={labelStyle}>Reason</Text>
-              <Text style={[styles.contextValue, styles.contextValueShrink]} numberOfLines={2}>
-                {block.reason}
-              </Text>
-            </View>
-          ) : null}
         </View>
       </Card>
 
