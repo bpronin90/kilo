@@ -472,20 +472,16 @@ describe('1K Progress shares one presentation unit across Home and Analytics (#1
     expect(home.root.findAllByProps({ testID: 'home-one-k-lift-squat' })).toHaveLength(0);
   });
 
-  // #1458 verification: react-test-renderer computes no native layout, so this pins
-  // what the fixtures CAN prove at compact width / 2x text in light and dark: all values
-  // render, nothing is clipped by numberOfLines on the total/lifts, the row wraps, every
-  // item keeps a 44dp box, and the surfaces agree. Device layout evidence is unavailable.
-  describe.each([['light'], ['dark']])('compact width and 2x text (%s)', (scheme) => {
-    const { Dimensions, PixelRatio } = require('react-native');
-    beforeEach(() => {
-      mockScheme.value = scheme;
-      jest.spyOn(Dimensions, 'get').mockReturnValue({ width: 320, height: 640, scale: 2, fontScale: 2 });
-      jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(2);
-    });
-    afterEach(() => { mockScheme.value = 'light'; jest.restoreAllMocks(); });
+  // #1458: STRUCTURAL checks only. react-test-renderer runs no Yoga/text measurement,
+  // so these do not prove the layout at 320dp / 2x text; they pin the structure that
+  // makes it hold (all values rendered, values never truncated, wrapping row, 44dp
+  // items, one collective bar) in both color schemes. Native layout evidence is
+  // unavailable here and is reported as such on the issue.
+  describe.each([['light'], ['dark']])('large-text structure (%s)', (scheme) => {
+    beforeEach(() => { mockScheme.value = scheme; });
+    afterEach(() => { mockScheme.value = 'light'; });
 
-    test.each([['Home', mountHome], ['Analytics', mountAnalytics]])('%s renders 900 lb with 300/250/350 unclipped and wrapping', async (_n, mount) => {
+    test.each([['Home', mountHome], ['Analytics', mountAnalytics]])('%s renders 900 lb with 300/250/350 with unclipped, wrapping structure', async (_n, mount) => {
       const t = await mount(ONE_K);
       const texts = t.root.findByType(OneKProgressSummary).findAll(n => n.type === 'Text');
       for (const v of ['300', '250', '350']) {
