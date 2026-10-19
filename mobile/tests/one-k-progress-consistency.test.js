@@ -48,6 +48,12 @@ jest.mock('../hooks/entries/syncRecoveryHooks', () => ({
   },
 }));
 
+var mockScheme = { value: 'light' };
+jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
+  __esModule: true,
+  default: () => mockScheme.value,
+}));
+
 jest.mock('expo-status-bar', () => ({ StatusBar: () => null }));
 jest.mock('expo-updates', () => ({
   useUpdates: () => ({ isUpdatePending: false }),
@@ -466,12 +472,36 @@ describe('1K Progress shares one presentation unit across Home and Analytics (#1
     expect(home.root.findAllByProps({ testID: 'home-one-k-lift-squat' })).toHaveLength(0);
   });
 
-  test('Big 3 items wrap at large text and keep a 44dp minimum, with no per-lift bars', async () => {
-    const home = await mountHome(ONE_K);
-    const row = home.root.findByProps({ testID: 'home-one-k-big3' });
-    expect(flat(row).flexWrap).toBe('wrap');
-    const item = home.root.findByProps({ testID: 'home-one-k-lift-squat' });
-    expect(flat(item).minHeight).toBeGreaterThanOrEqual(44);
-    expect(row.findAll(n => n.type === 'View' && n.props.style && flat(n).height === 8)).toHaveLength(0);
+  // #1458 verification: react-test-renderer computes no native layout, so this pins
+  // what the fixtures CAN prove at compact width / 2x text in light and dark: all values
+  // render, nothing is clipped by numberOfLines on the total/lifts, the row wraps, every
+  // item keeps a 44dp box, and the surfaces agree. Device layout evidence is unavailable.
+  describe.each([['light'], ['dark']])('compact width and 2x text (%s)', (scheme) => {
+    const { Dimensions, PixelRatio } = require('react-native');
+    beforeEach(() => {
+      mockScheme.value = scheme;
+      jest.spyOn(Dimensions, 'get').mockReturnValue({ width: 320, height: 640, scale: 2, fontScale: 2 });
+      jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(2);
+    });
+    afterEach(() => { mockScheme.value = 'light'; jest.restoreAllMocks(); });
+
+    test.each([['Home', mountHome], ['Analytics', mountAnalytics]])('%s renders 900 lb with 300/250/350 unclipped and wrapping', async (_n, mount) => {
+      const t = await mount(ONE_K);
+      const texts = t.root.findByType(OneKProgressSummary).findAll(n => n.type === 'Text');
+      for (const v of ['300', '250', '350']) {
+        expect(texts.some(n => textOf(n) === v)).toBe(true);
+      }
+      expect(texts.some(n => /^900/.test(textOf(n)))).toBe(true);
+      // Only the heading may truncate (single line, shrinkable); values never do.
+      expect(texts.filter(n => /^\d/.test(textOf(n)) && textOf(n) !== '1K Progress').every(n => n.props.numberOfLines == null)).toBe(true);
+      const row = t.root.findAll(n => n.type === 'View' && flat(n).flexWrap === 'wrap' && flat(n).justifyContent === 'space-between')[0];
+      expect(row).toBeDefined();
+      const items = t.root.findAll(n => n.type === 'View' && flat(n).minWidth === 88);
+      expect(items).toHaveLength(3);
+      for (const it of items) expect(flat(it).minHeight).toBeGreaterThanOrEqual(44);
+      expect(flat(t.root.findAll(n => n.type === 'Text' && textOf(n) === '1K Progress')[0]).flexShrink).toBe(1);
+      // No per-lift progress bars: the only 8dp track is the collective bar.
+      expect(t.root.findAll(n => n.type === 'View' && flat(n).height === 8 && flat(n).overflow === 'hidden')).toHaveLength(1);
+    });
   });
 });
