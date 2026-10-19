@@ -46,7 +46,7 @@
           "android": {
             "enableMinifyInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true,
-            "extraProguardRules": "# #1176: expo-modules-core stores @Field and other Expo annotations in\n# fields and reads them by reflection. Annotation types are only instantiated\n# by the runtime, so R8 optimization (#1167) treats those fields as always\n# null and rewrites Record conversion to `throw null`, which broke every\n# expo-secure-store call. Keeping the annotation types pins them.\n-keep @interface expo.modules.** { *; }"
+            "extraProguardRules": "# #1176: expo-modules-core stores @Field and other Expo annotations in\n# fields and reads them by reflection. Annotation types are only instantiated\n# by the runtime, so R8 optimization (#1167) treats those fields as always\n# null and rewrites Record conversion to `throw null`, which broke every\n# expo-secure-store call. Keeping the annotation types pins them.\n-keep @interface expo.modules.** { *; }\n# #1455: expo-notifications persists each scheduled request with Java\n# serialization and relies on private writeObject/readObject hooks to turn the\n# JSONObject body into a String. R8 stripped them from the release APK, so every\n# scheduleNotificationAsync threw NotSerializableException. The library ships\n# this rule but does not export it to consumers, so apply it here.\n-keep class expo.modules.notifications.** { *; }"
           }
         }
       ],
