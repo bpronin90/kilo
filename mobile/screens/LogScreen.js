@@ -67,6 +67,8 @@ import { LogScreenContent, buildLogRecovery, EditorHeaderActions } from './log/L
 import { useLogScreenController } from './log/LogScreenStates';
 import { useLogRecoveryManage } from './log/useLogRecoveryManage';
 
+// Scroll offset where the 44dp docked timer's countdown starts to clip (8dp header padding + 12dp).
+const DOCKED_TIMER_HANDOFF_SCROLL_Y = 12;
 export function LogScreen({
   workoutNoteText,
   setWorkoutNoteText,
@@ -438,7 +440,7 @@ export function LogScreen({
 
   // The header rest-timer control is docked only in current-routine edit; App.js
   // hides its app-shell pill only while that control is on screen (the header
-  // scrolls with the editor, so past ~52dp the fixed pill takes over again).
+  // scrolls with the editor; past the handoff offset the fixed pill returns).
   const restTimerDocked = !importRoutineOpen && !otherEditor.editingNoteId && currentEditor.mode === 'edit';
   const [editorHeaderScrolledAway, setEditorHeaderScrolledAway] = useState(false);
   const restTimerDockVisible = restTimerDocked && !editorHeaderScrolledAway;
@@ -506,7 +508,7 @@ export function LogScreen({
 
       <ScreenShell
         ref={editorScrollRef}
-        onScroll={(e) => setEditorHeaderScrolledAway((e?.nativeEvent?.contentOffset?.y ?? 0) > 52)}
+        onScroll={(e) => setEditorHeaderScrolledAway((e?.nativeEvent?.contentOffset?.y ?? 0) > DOCKED_TIMER_HANDOFF_SCROLL_Y)}
         style={isEditing ? { flex: 1 } : { display: 'none' }}
         title={
           deloadEditor.deloadMode === 'edit' ? 'Deload Week' :
@@ -534,7 +536,7 @@ export function LogScreen({
               onCancel={onCancelRestTimer}
               onDismissDone={onDismissRestTimerDone}
               onStart={onStartRestTimer}
-              showStart={restTimerDocked}
+              showStart={restTimerDocked} handedOff={!restTimerDockVisible}
               compact
             />
             <EditorHeaderActions otherEditor={otherEditor} deloadEditor={deloadEditor} currentEditor={currentEditor} />
