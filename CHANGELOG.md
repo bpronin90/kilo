@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.16.22 - 2026-10-19
+
+- Issue #1466: Progressive Overload no longer counts an exercise as Progressing when its top weight went up but the estimated max dropped (for example 325 for 6,6,6 followed by 330 for a single 2); it now shows Regressing.
+
+## 1.16.21 - 2026-10-19
+
+- Issue #1462: The Routine Health "Since deload" gauge now uses the same card, text and status colors as the other Analytics cards, in light and dark themes.
+
+## 1.16.20 - 2026-10-19
+
+- Issue #1461: Recovery's completed summary now leads with the total recovery result, then "Completed · N weeks", then the reason and routine; dates appear only in the expanded context, which now lists Reason, Baseline, then dates.
+
+## 1.16.19 - 2026-10-19
+
+- Issue #1460: Weight Trends now reads label, then value, then status: small muted labels sit above larger bold values, and large text wraps instead of truncating units or status.
+
+## 1.16.18 - 2026-10-19
+
+- Issue #1459: The Weight tab Goal card now shows the goal form right away when no goal is set, with no extra "Set goal" tap, and its target and date fields match the weigh-in form.
+
+## 1.16.17 - 2026-10-19
+
+- Issue #1458: Home and Analytics now show 1K Progress with the same card layout and typography, and Home no longer uses an oversized 1K total.
+
+## 1.16.16 - 2026-10-19
+
+- Issue #1456: Home's training card now leads with Exercise Progress, drops the info icon, and shows the routine's own calendar week beside its title.
+
+## 1.16.15 - 2026-10-19
+
+- Issue #1455: Fixed reminders and background rest-timer alerts failing to schedule on Android. Requires reinstalling the latest preview build.
+
+## 1.16.14 - 2026-10-19
+
+- Issue #1455: Reminder scheduling failures now show which step failed and its error code, to help diagnose reminders that cannot be enabled.
+
 ## 1.16.13 - 2026-10-19
 
 - Issue #1446: The rest timer now has a 0:30 preset alongside 1:00, 1:30, 2:00 and 3:00.
