@@ -47,6 +47,10 @@ export function RestTimerBanner({
   onStart,
   showStart = false,
   compact = false,
+  // Compact only: the app-shell pill owns the countdown while the editor header
+  // is scrolling away. The control keeps its layout slot (no header reflow) but
+  // is invisible, inert and hidden from screen readers so it never shows twice.
+  handedOff = false,
   // Applied to the root only when something actually renders, so a caller
   // reserving tab-bar/safe-area clearance (App.js) never consumes that space
   // while the component is idle (returns null).
@@ -118,7 +122,12 @@ export function RestTimerBanner({
       : phase === 'done' ? 'Start another rest' : 'Choose a rest length';
 
     return (
-      <View style={[styles.compactWrap, style]}>
+      <View
+        style={[styles.compactWrap, handedOff && styles.compactHandedOff, style]}
+        pointerEvents={handedOff ? 'none' : 'auto'}
+        accessibilityElementsHidden={handedOff}
+        importantForAccessibility={handedOff ? 'no-hide-descendants' : 'auto'}
+      >
         <Pressable
           ref={toggleRef}
           onPress={() => (expanded ? setExpanded(false) : openMenu())}
@@ -270,6 +279,9 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
   // size of its own and only anchors the (Modal-hosted) menu.
   compactWrap: {
     position: 'relative',
+  },
+  compactHandedOff: {
+    opacity: 0,
   },
   compactToggle: {
     minHeight: 44,

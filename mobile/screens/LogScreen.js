@@ -536,7 +536,7 @@ export function LogScreen({
               onCancel={onCancelRestTimer}
               onDismissDone={onDismissRestTimerDone}
               onStart={onStartRestTimer}
-              showStart={restTimerDocked}
+              showStart={restTimerDocked} handedOff={!restTimerDockVisible}
               compact
             />
             <EditorHeaderActions otherEditor={otherEditor} deloadEditor={deloadEditor} currentEditor={currentEditor} />

@@ -134,7 +134,7 @@ describe('#1054 source parity — source-scanned wiring stays in the boundary fi
   test('the docked editor timer and the app-shell pill never show together', () => {
     const appSrc = fs.readFileSync(path.join(__dirname, '../App.js'), 'utf8');
     expect(logScreenSrc).toMatch(/const restTimerDocked = !importRoutineOpen && !otherEditor\.editingNoteId && currentEditor\.mode === 'edit';/);
-    expect(logScreenSrc).toMatch(/showStart=\{restTimerDocked\}/);
+    expect(logScreenSrc).toMatch(/showStart=\{restTimerDocked\} handedOff=\{!restTimerDockVisible\}/);
     expect(logScreenSrc).toMatch(/onRestTimerDockedChange\?\.\(false\)/);
     // Docked only while the header control is on screen: scrolling the editor
     // past it hands the countdown back to the fixed app-shell pill.

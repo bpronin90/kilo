@@ -144,6 +144,17 @@ describe('RestTimerBanner compact editor control (#1006)', () => {
     expect(wrapper.children).toHaveLength(1);
   });
 
+  test('handedOff: the docked control keeps its slot but is invisible, inert and hidden from screen readers', () => {
+    const tree = renderBanner({ ...idle, showStart: true, isRunning: true, remainingMs: 5000, handedOff: true });
+    const wrapper = tree.root.findAll((n) => typeof n.type === 'string' && n.props.pointerEvents === 'none')[0];
+    expect(wrapper.props.importantForAccessibility).toBe('no-hide-descendants');
+    expect(wrapper.props.accessibilityElementsHidden).toBe(true);
+    const style = Object.assign({}, ...[].concat(wrapper.props.style).filter(Boolean));
+    expect(style.opacity).toBe(0);
+    const live = renderBanner({ ...idle, showStart: true, isRunning: true, remainingMs: 5000 });
+    expect(live.root.findAll((n) => n.props?.pointerEvents === 'none')).toHaveLength(0);
+  });
+
   test('tap the stopwatch: expands all five duration choices near the control', () => {
     const tree = renderBanner({ ...idle, showStart: true });
     const toggle = tree.root.findAll(

@@ -188,7 +188,8 @@ Consequences to preserve:
   running/done), and a full-width outlined Cancel or Dismiss button; a failed background alert shows
   on the closed control as a `notifications-off` glyph. App.js hides the
   app-shell pill only while that control is on screen — once the editor scrolls
-  it away the fixed pill returns — so the countdown never shows twice and is
+  it away (past 12dp) the fixed pill returns and the docked control turns
+  invisible and inert in place (no header reflow) — so the countdown never shows twice and is
   never unreachable; the pill shows Cancel (running) or Dismiss (done) directly.
 - **Recovery is its own tab, present only while `LogRecoverySection` has
   something to show (#823).** `recoveryTabVisible` (`LogScreen.js`) mirrors
