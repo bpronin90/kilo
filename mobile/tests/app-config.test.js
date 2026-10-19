@@ -22,7 +22,7 @@ describe('app config', () => {
 
     const result = configFactory({ config: { plugins: [] } });
 
-    expect(result.runtimeVersion).toBe('preview-12');
+    expect(result.runtimeVersion).toBe('preview-13');
   });
 
   test('uses the appVersion runtime policy for production builds', () => {
@@ -190,6 +190,10 @@ describe('app config', () => {
   // every SecureStore call. Optimization must never ship without this rule.
   const EXPO_ANNOTATION_KEEP_RULE = '-keep @interface expo.modules.** { *; }';
 
+  // #1455: R8 stripped expo-notifications' private writeObject/readObject hooks,
+  // so scheduling threw NotSerializableException (org.json.JSONObject).
+  const NOTIFICATIONS_KEEP_RULE = '-keep class expo.modules.notifications.** { *; }';
+
   test('R8 optimization is never registered without the Expo annotation keep rule', () => {
     const appJson = require('../app.json');
     const buildPropsPlugin = appJson.expo.plugins.find(
@@ -198,6 +202,7 @@ describe('app config', () => {
     expect(appJson.expo.plugins).toContain('./plugins/withAndroidR8Optimization');
     const rules = buildPropsPlugin[1].android.extraProguardRules;
     expect(rules.split('\n')).toContain(EXPO_ANNOTATION_KEEP_RULE);
+    expect(rules.split('\n')).toContain(NOTIFICATIONS_KEEP_RULE);
   });
 
   test('expo-build-properties emits the Expo annotation keep rule into release proguard rules', () => {
@@ -212,6 +217,7 @@ describe('app config', () => {
       'append',
     );
     expect(generated.split('\n')).toContain(EXPO_ANNOTATION_KEEP_RULE);
+    expect(generated.split('\n')).toContain(NOTIFICATIONS_KEEP_RULE);
   });
 
   describe('withAndroidR8Optimization', () => {

@@ -43,7 +43,12 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const PREVIEW_RUNTIME = 'preview-12';
+// preview-13: #1455 (2026-10-19) adds an R8 keep rule for expo.modules.notifications.
+//   R8 stripped the library's private writeObject/readObject serialization hooks,
+//   so scheduling any notification threw NotSerializableException. The rule
+//   changes the generated release proguard-rules.pro, so preview-12 installs
+//   need this rebuilt APK (installed over preview-12; no data is cleared).
+const PREVIEW_RUNTIME = 'preview-13';
 
 // Large-screen resizing (#1126). The SDK 54 template's MainActivity already
 // handles orientation|screenSize|screenLayout itself, but not
