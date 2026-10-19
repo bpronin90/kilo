@@ -42,16 +42,16 @@ export function TrendSection({ title, col1, col2, col3, isLast, direction, paceL
       <Text style={styles.trendSectionTitle}>{title}</Text>
       <View style={styles.trendGrid}>
         <View style={styles.trendGridItem}>
-          <Text style={styles.trendLabel} numberOfLines={1}>{col1.label}</Text>
-          <Text style={styles.trendValue} numberOfLines={1}>{col1.value}</Text>
+          <Text style={styles.trendLabel}>{col1.label}</Text>
+          <Text style={styles.trendValue}>{col1.value}</Text>
         </View>
         <View style={styles.trendGridItem}>
-          <Text style={styles.trendLabel} numberOfLines={1}>{col2.label}</Text>
-          <Text style={styles.trendValue} numberOfLines={1}>{col2.value}</Text>
+          <Text style={styles.trendLabel}>{col2.label}</Text>
+          <Text style={styles.trendValue}>{col2.value}</Text>
         </View>
         <View style={[styles.trendGridItem, styles.trendGridItemEnd]}>
-          <Text style={[styles.trendLabel, styles.trendTextEnd]} numberOfLines={1}>{col3.label}</Text>
-          <Text style={[styles.trendValue, styles.trendTextEnd, col3ColorStyle]} numberOfLines={1}>
+          <Text style={[styles.trendLabel, styles.trendTextEnd]}>{col3.label}</Text>
+          <Text style={[styles.trendValue, styles.trendTextEnd, col3ColorStyle]}>
             {col3.value}
           </Text>
           {status ? (
@@ -105,8 +105,15 @@ const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   trendTextEnd: {
     textAlign: 'right',
   },
+  // Hierarchy (#1460): small muted label -> primary bold value -> status/caption.
+  // The value takes the metric role (bold mono) at the 20pt size the three-column
+  // grid can hold; neither line truncates, so large text wraps instead of
+  // clipping units or status.
   trendValue: {
-    ...monoRole(typo, 'label-lg'),
+    ...monoRole(typo, 'metric-display-mobile'),
+    fontSize: 20,
+    lineHeight: 24,
+    letterSpacing: -0.2,
     color: kua ? kua.onSurface : colors.text,
   },
   // Secondary caption under the pace value (e.g. "over 5 days"). Its own line so
@@ -121,11 +128,9 @@ const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
     fontWeight: '800',
   },
   trendLabel: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
+    ...monoRole(typo, 'label-sm'),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   paceSpike: {
     color: colors.error,
