@@ -13,8 +13,8 @@ function formatCountdown(ms) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-const DURATION_PRESETS_SEC = [60, 90, 120, 180];
-const PANEL_WIDTH = 280;
+const DURATION_PRESETS_SEC = [30, 60, 90, 120, 180];
+const PANEL_WIDTH = 288;
 
 // Non-modal rest-timer surface (#577, #1026). One control, one place, every
 // state:

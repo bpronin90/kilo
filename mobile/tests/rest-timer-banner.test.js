@@ -144,14 +144,14 @@ describe('RestTimerBanner compact editor control (#1006)', () => {
     expect(wrapper.children).toHaveLength(1);
   });
 
-  test('tap the stopwatch: expands all four existing duration choices near the control', () => {
+  test('tap the stopwatch: expands all five duration choices near the control', () => {
     const tree = renderBanner({ ...idle, showStart: true });
     const toggle = tree.root.findAll(
       (n) => n.props && n.props.accessibilityLabel === 'Rest timer'
     )[0];
     act(() => { toggle.props.onPress(); });
     const json = JSON.stringify(tree.toJSON());
-    [60, 90, 120, 180].forEach((sec) => {
+    [30, 60, 90, 120, 180].forEach((sec) => {
       expect(json).toContain(`Start ${sec} second rest timer`);
     });
   });
@@ -218,8 +218,8 @@ describe('RestTimerBanner compact editor control (#1006)', () => {
     openRun();
     const runJson = JSON.stringify(run.toJSON());
     expect(runJson).toContain('Resting · tap a time to restart');
-    // Presets read in the countdown's m:ss format, all four in one row.
-    for (const t of ['1:00', '1:30', '2:00', '3:00']) expect(runJson).toContain(`"${t}"`);
+    // Presets read in the countdown's m:ss format, all five in one row.
+    for (const t of ["0:30", "1:00", "1:30", "2:00", "3:00"]) expect(runJson).toContain(`"${t}"`);
     act(() => { run.root.findAll(n => n.props?.accessibilityLabel === 'Restart 90 second rest timer')[0].props.onPress(); });
     expect(onStart).toHaveBeenCalledWith(90);
     openRun();

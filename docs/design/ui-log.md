@@ -180,11 +180,11 @@ Consequences to preserve:
   `Save routine`, captioned `Saves and keeps editing. Done saves and closes.`
 - **Rest timer is one docked control.** In current-routine edit the header
   control stays mounted through idle (stopwatch), running (live countdown) and
-  done (`Rest over`); one anchored 280dp panel (#1327, clamped to both
+  done (`Rest over`); one anchored 288dp panel (#1327, clamped to both
   viewport edges on narrow screens) holds a header with
   the state in large type (`Rest timer`, the live countdown, or `Rest over`)
-  and a caption, four equal-width presets in one row labelled in the
-  countdown's m:ss format (`1:00 1:30 2:00 3:00`; Start, or Restart while
+  and a caption, five equal-width presets in one row labelled in the
+  countdown's m:ss format (`0:30 1:00 1:30 2:00 3:00`; Start, or Restart while
   running/done), and a full-width outlined Cancel or Dismiss button; a failed background alert shows
   on the closed control as a `notifications-off` glyph. App.js hides the
   app-shell pill only while that control is on screen — once the editor scrolls
