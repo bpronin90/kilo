@@ -1761,6 +1761,15 @@ describe('TrendSection goal-direction aware colors (#406, H-3)', () => {
     return StyleSheet.flatten(node.props.style).color;
   };
 
+  test('success and error tones carry a non-color status word (#1444)', () => {
+    const ok = renderSection({ goalDirection: 'gain', direction: 'up' });
+    const bad = renderSection({ goalDirection: 'loss', direction: 'up' });
+    const neutral = renderSection({ direction: 'stable', col3: { label: 'Trend', value: 'Stable' } });
+    expect(ok.findByProps({ testID: 'trend-status' }).props.children).toBe('✓ On goal');
+    expect(bad.findByProps({ testID: 'trend-status' }).props.children).toBe('✗ Off goal');
+    expect(neutral.findAllByProps({ testID: 'trend-status' })).toHaveLength(0);
+  });
+
   test('upward trend is success (green) for a gain goal', () => {
     const root = renderSection({ goalDirection: 'gain', direction: 'up', col3: { label: 'Trend', value: '↑ Gaining' } });
     expect(col3Color(root, '↑ Gaining')).toBe(LightColors.success);
