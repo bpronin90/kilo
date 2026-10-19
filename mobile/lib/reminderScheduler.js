@@ -119,6 +119,19 @@ export async function requestReminderPermission() {
   return !!asked?.granted;
 }
 
+// #1455: label which native step failed and keep its error code, so the
+// settings card can show something more actionable than a generic failure.
+async function withStep(step, fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    const code = e?.code ? `${e.code} ` : '';
+    const err = new Error(`${step}: ${code}${e?.message ?? String(e)}`.slice(0, 160));
+    err.step = step;
+    throw err;
+  }
+}
+
 // Cancel every scheduled notification belonging to one reminder kind.
 export async function cancelReminders(kind) {
   if (!remindersSupported()) return;
@@ -134,7 +147,7 @@ export async function cancelReminders(kind) {
 export async function scheduleRequests(requests) {
   if (requests.length === 0) return;
   const Notifications = getNotificationsModule();
-  await prepareNotifications(Notifications);
+  await withStep('channel', () => prepareNotifications(Notifications));
   for (const request of requests) {
     const trigger = Platform.OS === 'android'
       ? { ...request.trigger, channelId: ANDROID_CHANNEL_ID }
@@ -142,7 +155,7 @@ export async function scheduleRequests(requests) {
     // Sequential on purpose: at most 8 requests (7 weekdays + 1 daily), and
     // some platforms misbehave with concurrent schedule calls.
     // eslint-disable-next-line no-await-in-loop
-    await Notifications.scheduleNotificationAsync({ content: request.content, trigger });
+    await withStep('schedule', () => Notifications.scheduleNotificationAsync({ content: request.content, trigger }));
   }
 }
 
@@ -150,7 +163,7 @@ export async function scheduleRequests(requests) {
 // always cancel the existing schedule, then reschedule only when enabled.
 export async function applyWeighInReminder(settings) {
   if (!remindersSupported()) return;
-  await cancelReminders(REMINDER_KIND.WEIGH_IN);
+  await withStep('cancel', () => cancelReminders(REMINDER_KIND.WEIGH_IN));
   await scheduleRequests(buildWeighInNotificationRequests(settings));
 }
 
@@ -158,7 +171,7 @@ export async function applyWeighInReminder(settings) {
 // list (inferred from the active routine note, or the user-selected fallback).
 export async function applyWorkoutReminder(settings, weekdays) {
   if (!remindersSupported()) return;
-  await cancelReminders(REMINDER_KIND.WORKOUT);
+  await withStep('cancel', () => cancelReminders(REMINDER_KIND.WORKOUT));
   await scheduleRequests(buildWorkoutNotificationRequests(settings, weekdays));
 }
 

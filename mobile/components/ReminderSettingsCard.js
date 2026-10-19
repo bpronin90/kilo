@@ -31,6 +31,12 @@ const WEEKDAY_NAMES = { 1: 'Sun', 2: 'Mon', 3: 'Tue', 4: 'Wed', 5: 'Thu', 6: 'Fr
 const PERMISSION_MESSAGE = 'Notifications are blocked. Allow notifications for Kilo in system settings, then try again.';
 const UNSUPPORTED_MESSAGE = 'Reminders need the mobile app; they are not available on web.';
 const SCHEDULE_ERROR_MESSAGE = 'Could not schedule the reminder. Please try again.';
+// #1455: append the failing step and native error code so a device report
+// identifies the cause instead of a bare "try again".
+function scheduleFailureMessage(e) {
+  const detail = e?.message ? ` (${String(e.message).slice(0, 160)})` : '';
+  return `${SCHEDULE_ERROR_MESSAGE}${detail}`;
+}
 const WORKOUT_DAYS_REQUIRED_MESSAGE = 'Pick at least one workout day before enabling the nudge.';
 
 // Reminders settings card (issue #440): two independent opt-in local
@@ -117,9 +123,9 @@ export function ReminderSettingsCard() {
     await Storage.saveWeighInReminder(next);
     try {
       await applyWeighInReminder(next);
-      return true;
-    } catch {
-      return false;
+      return null;
+    } catch (e) {
+      return scheduleFailureMessage(e);
     }
   }, []);
 
@@ -128,18 +134,18 @@ export function ReminderSettingsCard() {
     await Storage.saveWorkoutReminder(next);
     try {
       await applyWorkoutReminder(next, resolveWorkoutWeekdays(inferred, next.fallbackWeekdays));
-      return true;
-    } catch {
-      return false;
+      return null;
+    } catch (e) {
+      return scheduleFailureMessage(e);
     }
   }, []);
 
   const handleWeighInToggle = useCallback(async (enabled) => {
     setWeighInError(null);
     if (enabled && !(await ensurePermission(setWeighInError))) return;
-    const ok = await persistWeighIn({ ...weighIn, enabled });
-    if (!ok && enabled) {
-      setWeighInError(SCHEDULE_ERROR_MESSAGE);
+    const failure = await persistWeighIn({ ...weighIn, enabled });
+    if (failure && enabled) {
+      setWeighInError(failure);
       await persistWeighIn({ ...weighIn, enabled: false });
     }
   }, [weighIn, ensurePermission, persistWeighIn]);
@@ -151,9 +157,9 @@ export function ReminderSettingsCard() {
       return;
     }
     if (enabled && !(await ensurePermission(setWorkoutError))) return;
-    const ok = await persistWorkout({ ...workout, enabled }, inferredWeekdays);
-    if (!ok && enabled) {
-      setWorkoutError(SCHEDULE_ERROR_MESSAGE);
+    const failure = await persistWorkout({ ...workout, enabled }, inferredWeekdays);
+    if (failure && enabled) {
+      setWorkoutError(failure);
       await persistWorkout({ ...workout, enabled: false }, inferredWeekdays);
     }
   }, [workout, inferredWeekdays, ensurePermission, persistWorkout]);
