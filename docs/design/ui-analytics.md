@@ -76,8 +76,8 @@ the Session Check-ins card when fatigue tracking is on.
 |---|---|---|---|
 | Section wrapper | gap | `16` (`strengthSection`) | `171-173` |
 | 1K card | padding / bg | `24` / `panelBackground` (ArtisanalPanel) | `174-179` |
-| 1K label | fontSize / weight | `12` / `800`, uppercase, `letterSpacing: 1` | `180-186` |
-| 1K value | style | `HeroMetric.hero` (single hero metric) | `187-190` |
+| 1K heading / total / bar / Big 3 values (#1458) | shared `OneKProgressSummary` | `headline-sm` heading, 36px total, 8px bar toward 1000 lb, value-over-name Big 3 columns; also rendered by Home | `components/OneKProgressSummary.js` |
+| 1K graph, explainer, plate taps | Analytics-only layers | passed to the shared unit as `belowTitle`/`titleAccessory`/`lifts[].onPress`/children | `AnalyticsStrengthSection.js` |
 | Big 3 Mapping card | header | collapsible `Pressable`, default collapsed with mapped-lift summary | `111-125` |
 | Big 3 title | fontSize / weight | `12` / `700`, uppercase, `textMuted` | `297-303` |
 | Big 3 / info collapse | icon | `MaterialIcons` `expand-more`/`expand-less`, `14-16`, `textMuted` | `119-124`, `79-84` |

@@ -199,18 +199,19 @@ goal` action (`onNavigate('Weight')`). Card padding is `20` horizontal, `4` top
 
 ### 1K Club Card (Home)
 
-**Current structure (#1341).** Left-aligned (`oneKCard`: padding `20`
-horizontal, `4` top, `20` bottom) under the start-aligned `1K Progress` header
-handoff (`classifSectionLabel`, like Exercise Progress and Body weight). With a
-total: the total (`home-one-k-total`, lerped hero color), the 1K bar (`8`,
-`primary` fill, toward 1000), then the Big 3 as plain values (`home-one-k-big3`,
-`home-one-k-lift-{squat,bench,deadlift}`): name over value in three columns.
-No per-lift track (#1444) — only the 1K total has a target. No
-total yet: one `body-sm` line (`home-one-k-setup`: `Log a session of each Big 3
-lift to see your 1K total.`) and values for only the lifts already logged; no
-`N/A` hero, empty progress bar or placeholder rows. The three-column grid and
-`oneKSetupCard` in the earlier layout are retired.
-
+**Current structure (#1458).** Home renders the same `OneKProgressSummary`
+(`mobile/components/OneKProgressSummary.js`) Analytics uses, so the card hierarchy
+and typography are Analytics': centered `1K Progress` heading (the heading is the
+44dp link to Analytics Strength, with a chevron, `home-one-k-link`), a 36px total
+(`home-one-k-total`, lerped color; no 48/56px hero), the 1K bar (`8`, `primary`
+fill, toward 1000), then the Big 3 as plain values (`home-one-k-big3`,
+`home-one-k-lift-{squat,bench,deadlift}`): value over uppercase name, wrapping at
+large text. Home keeps its own `oneKCard` wrapper (padding `20` horizontal, `4`
+top, `20` bottom) and adds no graph, explainer or mapping controls. No per-lift
+track (#1444) — only the 1K total has a target. No total yet: one `body-sm` line
+(`home-one-k-setup`: `Log a session of each Big 3 lift to see your 1K total.`) and
+values for only the lifts already logged; no `N/A` hero, empty progress bar or
+placeholder rows.
 
 The retired three-column geometry and #763/#771 comparison are retained in
 [Compatibility Notes](ui-compatibility-notes.md#earlier-home-1k-layout).

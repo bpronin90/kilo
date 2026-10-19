@@ -729,9 +729,9 @@ describe('AnalyticsScreen 1K Progress Card', () => {
 
     expect(hasText(root, '1K Progress')).toBe(true);
     expect(hasText(root, '1000')).toBe(true);
-    expect(hasText(root, 'Squats')).toBe(true);
+    expect(hasText(root, 'Squat')).toBe(true);
     expect(hasText(root, 'Bench')).toBe(true);
-    expect(hasText(root, 'Deadlifts')).toBe(true);
+    expect(hasText(root, 'Deadlift')).toBe(true);
   });
 
   test('the 1K unit suffix uses a literal leading space, not marginLeft (#763)', () => {

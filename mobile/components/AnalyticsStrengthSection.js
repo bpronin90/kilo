@@ -1,7 +1,8 @@
 import { GEOMETRY } from '../theme/spacing';
 import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel } from './UI';
+import { Card, SectionTitle, LineChart, ArtisanalPanel } from './UI';
+import { OneKProgressSummary, createOneKSummaryStyles } from './OneKProgressSummary';
 import { PlateCalculatorModal } from './PlateCalculatorModal';
 import { useTheme } from '../theme/ThemeContext';
 import { TYPOGRAPHY } from '../theme/typography';
@@ -61,57 +62,45 @@ export function AnalyticsStrengthSection({
             <ActivityIndicator size="large" color={kua ? kua.primary : colors.accent} />
           ) : (
             <>
-              {/* #1245: the explainer sits behind the shared info icon beside its heading. */}
-              <View style={styles.oneKLabelRow}>
-                <Text style={styles.oneKLabel}>1K Progress</Text>
-                <InfoButton
-                  testID="onek-info-toggle"
-                  expanded={oneKInfoExpanded}
-                  onPress={toggleOneKInfo}
-                  label="What is 1K Progress?"
-                />
-              </View>
-              <InfoNote shown={oneKInfoExpanded} testID="onek-info-body" style={styles.oneKInfoBody}>
-                <Text style={styles.oneKInfoText}>
-                  1K is your estimated Squat + Bench + Deadlift one-rep max total, using the lifts in your Big 3 mapping.
-                </Text>
-                <Text style={styles.oneKInfoText}>
-                  It totals your most recent complete Big 3 cycle, so a lift you trained more recently can read one session behind until the others catch up.
-                </Text>
-                <Text style={styles.oneKInfoText}>
-                  Deload sessions appear on the graph as their own marked point, kept off the trend line.
-                </Text>
-              </InfoNote>
-              <Text style={[styles.oneKValue, { color: lerpColor(kua ? kua.primary : colors.accentText, kua ? kua.success : colors.success, Math.min(1, (displayOneK.total || 0) / oneKTarget)) }]}>
-                {displayOneK.total.toFixed(0)}<Text style={styles.oneKUnit}> {unit}</Text>
-              </Text>
-
-              <View style={styles.oneKProgressBarContainer}>
-                <View style={[styles.oneKProgressBar, { width: `${Math.min(100, (displayOneK.total / oneKTarget) * 100)}%` }]} />
-              </View>
-
-              <View style={styles.oneKBreakdown}>
-                {[
-                  { key: 'squat', label: 'Squats', value: displayOneK.squat, weightLb: canonicalOneK?.squat },
+              <OneKProgressSummary
+                total={displayOneK.total}
+                target={oneKTarget}
+                unit={unit}
+                totalColor={lerpColor(kua ? kua.primary : colors.accentText, kua ? kua.success : colors.success, Math.min(1, (displayOneK.total || 0) / oneKTarget))}
+                // #1245: the explainer sits behind the shared info icon beside its heading.
+                titleAccessory={(
+                  <InfoButton
+                    testID="onek-info-toggle"
+                    expanded={oneKInfoExpanded}
+                    onPress={toggleOneKInfo}
+                    label="What is 1K Progress?"
+                  />
+                )}
+                belowTitle={(
+                  <InfoNote shown={oneKInfoExpanded} testID="onek-info-body" style={styles.oneKInfoBody}>
+                    <Text style={styles.oneKInfoText}>
+                      1K is your estimated Squat + Bench + Deadlift one-rep max total, using the lifts in your Big 3 mapping.
+                    </Text>
+                    <Text style={styles.oneKInfoText}>
+                      It totals your most recent complete Big 3 cycle, so a lift you trained more recently can read one session behind until the others catch up.
+                    </Text>
+                    <Text style={styles.oneKInfoText}>
+                      Deload sessions appear on the graph as their own marked point, kept off the trend line.
+                    </Text>
+                  </InfoNote>
+                )}
+                lifts={[
+                  { key: 'squat', label: 'Squat', value: displayOneK.squat, weightLb: canonicalOneK?.squat },
                   { key: 'bench', label: 'Bench', value: displayOneK.bench, weightLb: canonicalOneK?.bench },
-                  { key: 'deadlift', label: 'Deadlifts', value: displayOneK.deadlift, weightLb: canonicalOneK?.deadlift },
-                ].map(item => (
-                  <Pressable
-                    key={item.key}
-                    style={[styles.oneKItem, item.value ? styles.oneKItemTappable : null]}
-                    onPress={item.value && item.weightLb ? () => setPlateWeightLb(item.weightLb) : null}
-                    accessibilityRole={item.value ? 'button' : undefined}
-                    // #577 review: `item.value` is display-space (it can be
-                    // kg under a metric preference) — this used to always
-                    // say "pounds," announcing a kg figure as pounds.
-                    accessibilityLabel={item.value ? `Show plate loading for ${item.label} at ${item.value.toFixed(0)} ${unit === 'kg' ? 'kilograms' : 'pounds'}` : undefined}
-                  >
-                    <Text style={styles.oneKItemValue}>{item.value?.toFixed(0) || 'N/A'}</Text>
-                    <Text style={styles.oneKItemLabel}>{item.label}</Text>
-                  </Pressable>
-                ))}
-              </View>
-
+                  { key: 'deadlift', label: 'Deadlift', value: displayOneK.deadlift, weightLb: canonicalOneK?.deadlift },
+                ].map(item => ({
+                  ...item,
+                  onPress: item.value && item.weightLb ? () => setPlateWeightLb(item.weightLb) : null,
+                  // #577 review: `item.value` is display-space (it can be kg under a
+                  // metric preference) — never announce it as pounds.
+                  accessibilityLabel: item.value ? `Show plate loading for ${item.label} at ${item.value.toFixed(0)} ${unit === 'kg' ? 'kilograms' : 'pounds'}` : undefined,
+                }))}
+              >
               {oneKChartData.length > 1 && (
                 <View style={styles.oneKChartBlock}>
                   <Text style={styles.oneKChartLabel}>1K total over sessions</Text>
@@ -126,7 +115,7 @@ export function AnalyticsStrengthSection({
                   />
                 </View>
               )}
-
+              </OneKProgressSummary>
             </>
           )}
         </ArtisanalPanel>
@@ -240,7 +229,9 @@ export function AnalyticsBig3MappingCard({
   );
 }
 
-export const createStyles = (colors, kua = null) => StyleSheet.create({
+export const createStyles = (colors, kua = null) => {
+  const summaryStyles = createOneKSummaryStyles(colors, kua);
+  return StyleSheet.create({
   strengthSection: {
     gap: 12,
   },
@@ -250,44 +241,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 8,
     backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
   },
-  // Card identity: a real heading (heading → metric → evidence), sized below
-  // the hero value so it never competes with it.
-  oneKLabel: {
-    ...(kua ? TYPOGRAPHY['headline-sm'] : { fontSize: TYPOGRAPHY['headline-sm'].fontSize, fontWeight: '800' }),
-    color: kua ? kua.onSurface : colors.text,
-  },
-  oneKValue: {
-    // display exception per #1283 foundation
-    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 36, lineHeight: 40 } : { ...HeroMetric.hero }),
-    color: kua ? undefined : colors.text,
-  },
-  // Literal leading space, not marginLeft — this Text is nested inside the
-  // value Text, and native RN treats a nested Text as an inline attributed
-  // run rather than a Yoga box, so marginLeft is not guaranteed to render
-  // (#763 review; matches Home's oneKHeroUnit).
-  oneKUnit: {
-    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '600' }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  oneKProgressBarContainer: {
-    width: '100%',
-    height: 8,
-    backgroundColor: kua ? kua.surfaceBorder : colors.divider,
-    borderRadius: GEOMETRY['radius-sm'],
-    marginVertical: 12,
-    overflow: 'hidden',
-  },
-  oneKProgressBar: {
-    height: '100%',
-    backgroundColor: kua ? kua.primary : colors.accent,
-    borderRadius: GEOMETRY['radius-sm'],
-  },
-  oneKBreakdown: {
-    flexDirection: 'row',
-    width: '100%',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
+  // The 1K heading/total/bar/breakdown styles live with the shared
+  // OneKProgressSummary (#1458); these are the same style objects, kept under
+  // their historical names for the theme fixtures.
+  oneKValue: summaryStyles.oneKValue,
+  oneKProgressBar: summaryStyles.oneKProgressBar,
   oneKChartBlock: {
     width: '100%',
     marginTop: 16,
@@ -299,37 +257,6 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
     textAlign: 'center',
-  },
-  oneKItem: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-    flex: 1,
-    minHeight: 44,
-  },
-  // #577: visible tappable cue matching the set-row plate-calculator
-  // affordance (UI.js's setWeightTappable), so both entry points read the
-  // same way.
-  oneKItemTappable: {
-    borderBottomWidth: 1,
-    borderBottomColor: kua ? kua.onSurfaceVariant : colors.textMuted,
-    borderStyle: 'dashed',
-  },
-  oneKItemValue: {
-    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '700' }),
-    color: kua ? kua.primary : colors.text,
-  },
-  oneKItemLabel: {
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
-    fontWeight: '600',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textTransform: 'uppercase',
-  },
-  oneKLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    columnGap: 4,
   },
   oneKInfoBody: {
     width: '100%',
@@ -442,4 +369,5 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 4,
   },
-});
+  });
+};

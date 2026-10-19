@@ -98,7 +98,7 @@ describe('AnalyticsStrengthSection — tapping a lift opens the fixed-target cal
     const modal = () => root.root.findByType(PlateCalculatorModal);
     expect(modal().props.visible).toBe(false);
     const squat = root.root.find((n) => typeof n.props.accessibilityLabel === 'string'
-      && n.props.accessibilityLabel.startsWith('Show plate loading for Squats') && typeof n.props.onPress === 'function');
+      && n.props.accessibilityLabel.startsWith('Show plate loading for Squat') && typeof n.props.onPress === 'function');
     await act(async () => { squat.props.onPress(); });
     expect(modal().props.visible).toBe(true);
     expect(modal().props.weightLb).toBe(300);

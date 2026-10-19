@@ -1,13 +1,13 @@
 import React, { useMemo } from 'react';
-import { Pressable, Text, View } from 'react-native';
 import { Card } from '../../components/UI';
+import { OneKProgressSummary } from '../../components/OneKProgressSummary';
 import { useTheme } from '../../theme/ThemeContext';
 import { displayWeight } from '../../lib/units';
 import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
 import { HomeRecoverySummary } from './HomeRecoverySummary';
 import { HomeWeightCard } from './HomeWeightCard';
-import { Chevron, HomeActionStrip } from './HomeActionStrip';
+import { HomeActionStrip } from './HomeActionStrip';
 
 // Everything below the training hero, extracted from HomeScreen (#1049).
 // Presentation only: HomeScreen still owns the loading gate, the four-source
@@ -35,13 +35,8 @@ export function HomeDashboard({
     { key: 'bench', label: 'Bench', value: dashboardData.oneK?.bench ?? null },
     { key: 'deadlift', label: 'Deadlift', value: dashboardData.oneK?.deadlift ?? null },
   ].filter(l => l.value != null);
-  // #1444: the three lifts are plain breakdown values. Only the collective 1K
-  // bar above tracks a target, so no per-lift track implies one.
-  const liftRows = oneKLifts.map(l => ({
-    key: l.key,
-    label: l.label,
-    value: displayWeight(l.value, unit).toFixed(0),
-  }));
+  // #1444: the three lifts are plain breakdown values; only the collective bar tracks a target.
+  const liftRows = oneKLifts.map(l => ({ ...l, value: displayWeight(l.value, unit) }));
 
   return (
     <>
@@ -53,55 +48,18 @@ export function HomeDashboard({
 
       {baselinePaused ? null : (
       <Card style={styles.oneKCard}>
-        <Pressable
-          testID="home-one-k-link"
-          onPress={() => onNavigate('Analytics', 'strength')}
-          style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
-          hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
-          accessibilityRole="button"
-          accessibilityLabel="1K Progress"
-          accessibilityHint="Opens the strength section of the Analytics tab"
-        >
-          <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]} numberOfLines={1}>1K Progress</Text>
-          <View style={styles.sectionHeaderChevron}>
-            <Chevron color={kua ? kua.onSurfaceVariant : colors.textMuted} />
-          </View>
-        </Pressable>
-        {hasOneKTotal ? (
-          <>
-            <Text testID="home-one-k-total" style={[styles.oneKHeroValue, { color: oneKHeroColor }]}>
-              {`${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}`}
-              <Text style={styles.oneKHeroUnit}> {unit}</Text>
-            </Text>
-            <View style={styles.progressBarLarge}>
-              <View
-                style={[
-                  styles.progressFillLarge,
-                  { width: `${Math.min(100, (dashboardData.oneK.total / 1000) * 100)}%` }
-                ]}
-              />
-            </View>
-          </>
-        ) : (
-          // The total needs one complete cycle of all three lifts (lib/data/oneK.js).
-          <Text testID="home-one-k-setup" style={styles.oneKSetupText}>Log a session of each Big 3 lift to see your 1K total.</Text>
-        )}
-        {liftRows.length > 0 ? (
-          <View testID="home-one-k-big3" style={styles.oneKLiftRow}>
-            {liftRows.map(row => (
-              <View
-                key={row.key}
-                testID={`home-one-k-lift-${row.key}`}
-                style={styles.oneKLiftItem}
-                accessible
-                accessibilityLabel={`${row.label} ${row.value} ${unit}`}
-              >
-                <Text style={styles.oneKLiftLabel}>{row.label}</Text>
-                <Text testID={`home-one-k-lift-${row.key}-value`} style={styles.oneKLiftValue}>{row.value}</Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
+        {/* #1458: the same presentation unit Analytics renders; Home adds no graph or extra icons. */}
+        <OneKProgressSummary
+          testIDPrefix="home-one-k"
+          total={hasOneKTotal ? displayWeight(dashboardData.oneK.total, unit) : null}
+          target={displayWeight(1000, unit)}
+          unit={unit}
+          totalColor={oneKHeroColor}
+          emptyText="Log a session of each Big 3 lift to see your 1K total."
+          onTitlePress={() => onNavigate('Analytics', 'strength')}
+          titleHint="Opens the strength section of the Analytics tab"
+          lifts={liftRows}
+        />
       </Card>
       )}
 
