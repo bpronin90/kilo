@@ -1,10 +1,20 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Alert } from '../lib/platformAlert';
 
+// One month out, local calendar day (not UTC) so the pre-filled date never
+// lands a day off near midnight.
+function defaultTargetDate() {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 1);
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
 export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActive = true, registerBackConsumer) {
   const [goalEditing, setGoalEditing] = useState(false);
   const [goalTargetWeight, setGoalTargetWeight] = useState('');
-  const [goalTargetDate, setGoalTargetDate] = useState('');
+  const [goalTargetDate, setGoalTargetDate] = useState(defaultTargetDate);
   const [goalStartWeight, setGoalStartWeight] = useState('');
   const [goalError, setGoalError] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -71,7 +81,7 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
       { text: 'Clear', style: 'destructive', onPress: async () => {
         await clearGoal();
         setGoalTargetWeight('');
-        setGoalTargetDate('');
+        setGoalTargetDate(defaultTargetDate());
         setGoalStartWeight('');
         setGoalEditing(false);
       }},
@@ -84,7 +94,7 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
       { text: 'Archive', style: 'default', onPress: async () => {
         await archiveGoal(completedWeight);
         setGoalTargetWeight('');
-        setGoalTargetDate('');
+        setGoalTargetDate(defaultTargetDate());
         setGoalStartWeight('');
         setGoalEditing(false);
       }},
@@ -97,9 +107,7 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
       setGoalTargetDate(goal.target_date);
       setGoalStartWeight(goal.start_weight ? String(goal.start_weight) : '');
     } else {
-      const d = new Date();
-      d.setMonth(d.getMonth() + 1);
-      setGoalTargetDate(d.toISOString().slice(0, 10));
+      setGoalTargetDate(defaultTargetDate());
       setGoalTargetWeight('');
       setGoalStartWeight('');
     }

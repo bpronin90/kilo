@@ -499,13 +499,16 @@ describe('WeightScreen', () => {
       expect(hasTextSafe(frac.root, '175.5 lb')).toBe(true);
     });
 
-    test('no goal shows a compact empty row, not a form (not met state)', () => {
+    test('no goal shows the goal form immediately with no Set goal step (#1459)', () => {
       const component = setup(null, []);
       expect(hasTextSafe(component.root, 'Goal Met!')).toBe(false);
       expect(hasTextSafe(component.root, 'Archive')).toBe(false);
-      expect(hasTextSafe(component.root, 'No goal set')).toBe(true);
-      expect(hasTextSafe(component.root, 'Set goal')).toBe(true);
-      expect(component.root.findAll(n => n.type === 'TextInput' && n.props.placeholder === '175')).toHaveLength(0);
+      expect(hasTextSafe(component.root, 'No goal set')).toBe(false);
+      expect(hasTextSafe(component.root, 'Set goal')).toBe(false);
+      expect(hasTextSafe(component.root, 'Save goal')).toBe(true);
+      expect(hasTextSafe(component.root, 'Cancel')).toBe(false);
+      expect(component.root.findAll(n => n.type === 'TextInput' && n.props.placeholder === '175.0')).toHaveLength(1);
+      expect(component.root.findAll(n => n.props && n.props.accessibilityLabel === 'Goal target date').length).toBeGreaterThan(0);
     });
 
     test('a failed goal save keeps the draft open with an error and never shows success', async () => {
@@ -516,50 +519,49 @@ describe('WeightScreen', () => {
         while (node && typeof node.props.onPress !== 'function') node = node.parent;
         node.props.onPress();
       });
-      await press('Set goal');
-      const target = component.root.findAll(n => n.type === 'TextInput').find(i => i.props.placeholder === '175');
-      render.act(() => { target.props.onChangeText('170'); });
-      const start = component.root.findAll(n => n.type === 'TextInput').find(i => i.props.placeholder === '200');
-      render.act(() => { start.props.onChangeText('190'); });
+      const input = (ph) => component.root.findAll(n => n.type === 'TextInput').find(i => i.props.placeholder === ph);
+      render.act(() => { input('175.0').props.onChangeText('170'); });
+      render.act(() => { input('200.0').props.onChangeText('190'); });
       await press('Save goal');
       expect(hasTextSafe(component.root, 'Could not save your goal. Try again.')).toBe(true);
       expect(hasTextSafe(component.root, 'Save goal')).toBe(true);
-      expect(hasTextSafe(component.root, 'No goal set')).toBe(false);
+      expect(input('175.0').props.value).toBe('170');
+      expect(input('200.0').props.value).toBe('190');
+      await press('Save goal');
+      expect(input('175.0').props.value).toBe('170');
     });
 
-    test('cancelling a first-time goal discards the draft target', async () => {
-      const component = setup(null, []);
+    test('cancelling an edit of an existing goal discards the draft target', async () => {
+      const component = setup({ target_weight: 175, target_date: '2099-01-01', start_weight: 190 }, []);
       const press = (label) => render.act(async () => {
         let node = component.root.findAllByType('Text').find(t => String(t.props.children) === label);
         while (node && typeof node.props.onPress !== 'function') node = node.parent;
         node.props.onPress();
       });
-      const targetInput = () => component.root.findAll(n => n.type === 'TextInput').find(i => i.props.placeholder === '175');
-      await press('Set goal');
+      const targetInput = () => component.root.findAll(n => n.type === 'TextInput').find(i => i.props.placeholder === '175.0');
+      await press('Edit');
       render.act(() => { targetInput().props.onChangeText('170'); });
       await press('Cancel');
       expect(targetInput()).toBeUndefined();
-      await press('Set goal');
-      expect(targetInput().props.value || '').toBe('');
+      expect(hasTextSafe(component.root, '175 lb')).toBe(true);
+      await press('Edit');
+      expect(targetInput().props.value).toBe('175');
     });
 
-    test('no-goal Target field matches Weight field size with a plain whole-number placeholder (#1249, #1266)', () => {
+    test('no-goal Target field and date match the weigh-in field geometry and typography (#1459)', () => {
       const component = setup(null, []);
-      render.act(() => {
-        const text = component.root.findAllByType('Text').find(t => String(t.props.children) === 'Set goal');
-        let node = text;
-        while (node && typeof node.props.onPress !== 'function') node = node.parent;
-        node.props.onPress();
-      });
       const target = component.root
         .findAll(n => n.type === 'TextInput')
-        .find(i => i.props.placeholder === '175');
+        .find(i => i.props.placeholder === '175.0');
       const style = StyleSheet.flatten(target.props.style);
       expect(style.fontSize).toBe(14);
       expect(style.fontFamily).toBe('JetBrainsMono-SemiBold');
+      expect(target.props.keyboardType).toBe('decimal-pad');
       expect(target.props.value || '').toBe('');
-      expect(target.props.placeholder).toBe('175');
-      expect(/e\.g\.|\.0$/.test(target.props.placeholder)).toBe(false);
+      // Date renders the same YYYY-MM-DD value as the weigh-in date field.
+      const dateBtn = component.root.find(n => n.props && n.props.accessibilityLabel === 'Goal target date' && typeof n.props.onPress === 'function');
+      const dateText = dateBtn.findByType('Text').props.children;
+      expect(String(dateText)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
   });
 

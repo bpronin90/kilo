@@ -22,19 +22,19 @@ Weight styles only position these controls and mark the editing state
 |---|---|---|
 | `Weight (lb|kg)`, Goal `Current weight`, `Target` | `TextField numeric` | decimal keypad, unit in the label |
 | `Date` (weigh-in / edit) | `DateField` (range `past`) | value shown as `YYYY-MM-DD`; name `Weigh-in date` / `Entry date` |
-| Goal `Target Date` | `DateField` (range `future`) | `formatDate` value, `Select date` placeholder; name `Goal target date` |
+| Goal `Target Date` | `DateField` (range `future`) | same `YYYY-MM-DD` value as the weigh-in date, `Select date` placeholder; name `Goal target date` |
 | `Note` | `TextField` | `Morning, fasted` example placeholder |
 | Save / Update / Save goal | `Button` | default tone |
 
 ### Goal Card States (#1443)
 
-Goal is secondary to the routine weigh-in form, so its fields appear only on demand.
+With no goal, the entry form shows immediately (#1459); there is no intermediate CTA.
 
 | State | Presentation |
 |---|---|
-| No goal | one row: `No goal set` + `Set goal` chip (no fields) |
+| No goal | form shown directly: target, date (pre-filled one month out), derived preview, `Save goal`; no `Cancel` (nothing to return to) |
 | Saved goal | summary: target, target date, to-go / On Track / Goal Met, derived guidance; `Edit` / `Clear` (`Archive` when met or ended) |
-| Create / edit | fields + derived preview + `Save goal`; header `Cancel` discards the draft (also for first-time create) |
+| Create / edit | fields + derived preview + `Save goal`; header `Cancel` discards the draft and restores the saved goal |
 | Save failure | draft stays open with `Could not save your goal. Try again.`; no success state |
 | Read failure | page-level `Could not load your weight goal.` banner; never shown as no goal |
 
