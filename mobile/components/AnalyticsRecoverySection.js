@@ -52,7 +52,11 @@ function _endedSummary(block, weeks, notes, stale, notesError) {
     );
   }
   const text = !summary.weekLabel && weekLabel ? `${weekLabel}: ${summary.text}` : summary.text;
-  return { ...summary, text, weeks: live.length };
+  // The visible outcome drops the trailing week label (#1461): the status line
+  // carries the block length, and the full wording stays on the accessibility label.
+  const tail = summary.weekLabel ? ` · ${summary.weekLabel}` : '';
+  const primary = tail && text.endsWith(tail) ? text.slice(0, -tail.length) : text;
+  return { ...summary, text, primary, weeks: live.length };
 }
 
 export function AnalyticsRecoverySection({
@@ -239,10 +243,14 @@ export function AnalyticsRecoverySection({
             accessibilityState={{ expanded }}
           >
             <View style={styles.historyHeaderContent}>
-              <Text style={styles.endedSummary}>{`Ended · ${endedSummary.text}`}</Text>
+              <Text style={styles.endedSummary}>{endedSummary.primary}</Text>
               {endedSummary.qualifiers.map(q => <Text key={q} style={styles.endedMeta}>{q}</Text>)}
-              <Text style={styles.endedMeta}>
-                {`${endedSummary.weeks} ${endedSummary.weeks === 1 ? 'week' : 'weeks'} · ${formatDate(focusedBlock.started_at)} to ${formatDate(focusedBlock.completed_at)} · ${focusedBlock.baseline_note_title || 'Untitled Routine'}`}
+              <Text style={styles.endedStatus}>
+                {`Completed · ${endedSummary.weeks} ${endedSummary.weeks === 1 ? 'week' : 'weeks'}`}
+              </Text>
+              {/* Dates live in the expanded context only, so they never repeat here. */}
+              <Text style={styles.endedMeta} numberOfLines={1}>
+                {[focusedBlock.reason, focusedBlock.baseline_note_title || 'Untitled Routine'].filter(Boolean).join(' · ')}
               </Text>
             </View>
             <MaterialIcons
@@ -321,9 +329,6 @@ export function AnalyticsRecoverySection({
                   accessibilityLabel={`View recovery evidence for ${block.baseline_note_title || 'Untitled Routine'}, completed ${formatDate(block.completed_at)}${block.reason ? `. Reason: ${block.reason}` : ''}`}
                 >
                   <Text style={styles.historyBaselineTitle}>{block.baseline_note_title || 'Untitled Routine'}</Text>
-                  <Text style={styles.historyDates}>
-                    {formatDate(block.started_at)} to {formatDate(block.completed_at)}
-                  </Text>
                   {/* What a completed block was FOR is usually the fastest way
                       to recognize it in a list of past recoveries (#872) —
                       more so than its baseline routine, which several blocks
@@ -334,6 +339,9 @@ export function AnalyticsRecoverySection({
                       {block.reason}
                     </Text>
                   ) : null}
+                  <Text style={styles.historyDates}>
+                    {formatDate(block.started_at)} to {formatDate(block.completed_at)}
+                  </Text>
                 </Pressable>
                 {blockWeeks.map(w => (
                   <WeekIndexRow

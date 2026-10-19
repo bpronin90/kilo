@@ -307,8 +307,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     overflow: 'hidden',
   },
   endedSummary: {
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
+    fontWeight: '800',
+    color: kua ? kua.onSurface : colors.text,
+  },
+  endedStatus: {
     ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurface : colors.text,
+    marginTop: 2,
   },
   endedMeta: {
     fontSize: TYPOGRAPHY['body-sm'].fontSize,
