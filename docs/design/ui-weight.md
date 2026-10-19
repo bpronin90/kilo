@@ -47,13 +47,11 @@ With no goal, the entry form shows immediately (#1459); there is no intermediate
 | | fontWeight | `700` | `WeightTrendSection.js:73` |
 | | textTransform | `uppercase` | `WeightTrendSection.js:75` |
 | | letterSpacing | `0.5` | `WeightTrendSection.js:76` |
-| Trend value | fontSize | `20` | `UI.js:11` |
-| | fontWeight | `900` | `UI.js:11` |
-| | color | `colors.text` | `WeightTrendSection.js:96` |
-| Trend label | fontSize | `11` | `WeightTrendSection.js:99` |
-| | fontWeight | `700` | `WeightTrendSection.js:101` |
-| | textTransform | `uppercase` | `WeightTrendSection.js:102` |
-| | letterSpacing | `0.5` | `WeightTrendSection.js:103` |
+| Trend value | role | `metric-display-mobile` (bold mono) at `20` / line `24` | `WeightTrendSection.js` `trendValue` |
+| | color | `colors.text`; col 3 takes the goal-aware tone | |
+| Trend label | role | `label-sm` (medium mono, `11`), uppercase, `colors.textMuted` | `WeightTrendSection.js` `trendLabel` |
+| Status / caption | role | `label-md` (col 3 only), tone-colored | |
+| Truncation | | none; labels and values wrap at large text sizes | |
 | Section divider | borderBottomWidth `1` / `colors.cardBorder` | | `WeightTrendSection.js:67-69` |
 
 ### Goal Display

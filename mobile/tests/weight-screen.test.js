@@ -1758,6 +1758,48 @@ describe('TrendSection goal-direction aware colors (#406, H-3)', () => {
     expect(neutral.findAllByProps({ testID: 'trend-status' })).toHaveLength(0);
   });
 
+  describe('label-to-value hierarchy (#1460)', () => {
+    const flat = (root, text) => StyleSheet.flatten(
+      root.findAll(n => n.type === 'Text' && n.props.children === text)[0].props.style
+    );
+
+    test.each([
+      ['lb', 'Average', '184.0 lb'],
+      ['kg', 'Average', '83.5 kg'],
+      ['long label', 'Vs Prior 7d Average', '-12.5 lb'],
+    ])('label is small, uppercase and lighter than the value (%s)', (_n, label, value) => {
+      const root = renderSection({
+        col1: { label, value },
+        col2: { label: 'Vs Prior 7d', value: '+1.0 lb' },
+      });
+      const l = flat(root, label);
+      const v = flat(root, value);
+      expect(l.textTransform).toBe('uppercase');
+      expect(l.fontWeight).not.toBe('700');
+      expect(v.fontSize).toBeGreaterThanOrEqual(l.fontSize * 1.5);
+    });
+
+    test('labels, values and status never truncate, so units survive large text', () => {
+      const root = renderSection({
+        goalDirection: 'loss',
+        direction: 'down',
+        col3: { label: 'Trend', value: '↓ -12.5 lb', caption: 'over 5 days' },
+      });
+      const texts = root.findAll(n => n.type === 'Text');
+      expect(texts.length).toBeGreaterThan(5);
+      texts.forEach(t => expect(t.props.numberOfLines).toBeUndefined());
+    });
+
+    test('positive, negative and neutral keep their tone on the larger value', () => {
+      const pos = renderSection({ goalDirection: 'loss', direction: 'down', col3: { label: 'Trend', value: 'A' } });
+      const neg = renderSection({ goalDirection: 'loss', direction: 'up', col3: { label: 'Trend', value: 'B' } });
+      const neu = renderSection({ direction: 'stable', col3: { label: 'Trend', value: 'C' } });
+      expect(flat(pos, 'A').color).toBeTruthy();
+      expect(flat(pos, 'A').color).not.toBe(flat(neg, 'B').color);
+      expect(flat(neu, 'C').color).toBe(flat(neu, '184.0 lb').color);
+    });
+  });
+
   test('upward trend is success (green) for a gain goal', () => {
     const root = renderSection({ goalDirection: 'gain', direction: 'up', col3: { label: 'Trend', value: '↑ Gaining' } });
     expect(col3Color(root, '↑ Gaining')).toBe(LightColors.success);
