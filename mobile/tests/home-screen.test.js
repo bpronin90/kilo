@@ -2739,8 +2739,15 @@ describe('Home daily-dashboard states (#1333)', () => {
 
   test('a normal routine names the week and the routine, and Exercise Progress hands off to Analytics', async () => {
     const { component: c, onNavigate } = await mount();
-    expect(host(c, 'home-hero-label').props.children).toMatch(/^Week \d+$/);
+    expect(has(c, 'home-hero-label')).toBe(false);
+    expect(host(c, 'home-routine-week').props.children).toMatch(/^Week \d+$/);
     expect(host(c, 'home-routine-title').props.children).toBe('Routine A');
+    // #1456: Exercise Progress leads, then title with its week opposite, then the trio.
+    const order = c.root
+      .findAll(n => typeof n.type === 'string' && ['home-exercise-progress-link', 'home-routine-title', 'home-routine-week', 'home-current-routine-link'].includes(n.props?.testID))
+      .map(n => n.props.testID);
+    expect(order.slice(0, 3)).toEqual(['home-exercise-progress-link', 'home-routine-title', 'home-routine-week']);
+    expect(has(c, 'home-classif-info')).toBe(false);
     const link = host(c, 'home-exercise-progress-link');
     expect(link.props.accessibilityRole).toBe('button');
     press(c, 'home-exercise-progress-link');
@@ -2820,9 +2827,9 @@ describe('Home daily-dashboard states (#1333)', () => {
   test('normal training orders Home as hero, 1K, then body weight', async () => {
     const { component: c } = await mount();
     const order = c.root
-      .findAll(n => typeof n.type === 'string' && ['home-hero-label', 'home-one-k-link', 'home-weight-card'].includes(n.props?.testID))
+      .findAll(n => typeof n.type === 'string' && ['home-exercise-progress-link', 'home-one-k-link', 'home-weight-card'].includes(n.props?.testID))
       .map(n => n.props.testID);
-    expect(order).toEqual(['home-hero-label', 'home-one-k-link', 'home-weight-card']);
+    expect(order).toEqual(['home-exercise-progress-link', 'home-one-k-link', 'home-weight-card']);
   });
 
   describe('subtitle (#1339, #1341)', () => {

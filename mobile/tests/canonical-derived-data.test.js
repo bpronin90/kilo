@@ -267,6 +267,44 @@ describe('Routine Health — deriveRoutineStatus is the only interpretation', ()
   });
 });
 
+// #1456: Home's `Week N` is the current routine's calendar week, not the
+// session-depth count (`weeksIn`) that six logged sessions would inflate.
+describe('Home routine week is routine-scoped (#1456)', () => {
+  const SIX = Array.from({ length: 6 }, (_, i) => `Day ${i + 1}\n+Lifting\n-Squat\n225 5`).join('\n');
+  const SIX_SESSIONS = '-Squat\n225 5\n230 5\n235 5\n240 5\n245 5\n250 5';
+
+  test('a routine started this week is Week 1 even with six sessions logged', () => {
+    const current = note('cur', SIX_SESSIONS, { saved_at: new Date().toISOString() });
+    const home = homePipeline({ notes: [current], currentNote: current });
+    expect(home.weeksIn).toBe(6);
+    expect(home.routineWeek).toBe(1);
+  });
+
+  test('older routines and deload archives do not move the current routine week', () => {
+    const old = note('old', SIX_SESSIONS, { saved_at: '2025-01-05T00:00:00Z' });
+    const current = note('cur', '-Squat\n225 5', { saved_at: new Date().toISOString() });
+    const deloadHistory = [{ completed_at: '2025-02-01T00:00:00Z', deload_session_ordinal: 1, deload_ordinal_is_count: true, raw_text: '-Squat\n135 5' }];
+    const home = homePipeline({ notes: [old, current], currentNote: current, deloadHistory });
+    expect(home.routineWeek).toBe(1);
+  });
+
+  test('a routine begun three Mondays ago reads Week 4, recomputed per current note', () => {
+    const threeWeeksAgo = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString();
+    const a = note('a', '-Squat\n225 5', { saved_at: threeWeeksAgo });
+    const b = note('b', '-Squat\n225 5', { saved_at: new Date().toISOString() });
+    expect(homePipeline({ notes: [a, b], currentNote: a }).routineWeek).toBe(4);
+    expect(homePipeline({ notes: [a, b], currentNote: b }).routineWeek).toBe(1);
+  });
+
+  test('no routine, no start date, or a future start omits the week', () => {
+    expect(homePipeline({ notes: [], currentNote: null }).routineWeek).toBeNull();
+    const undated = note('u', '-Squat\n225 5', { saved_at: undefined });
+    expect(homePipeline({ notes: [undated], currentNote: undated }).routineWeek).toBeNull();
+    const future = note('f', '-Squat\n225 5', { saved_at: '2999-01-01T00:00:00Z' });
+    expect(homePipeline({ notes: [future], currentNote: future }).routineWeek).toBeNull();
+  });
+});
+
 // #1391: Track anchors are minted over the whole notebook and translated into
 // the filtered progression population on both screens.
 describe('Exercise Progress — activation anchors across filtered populations', () => {

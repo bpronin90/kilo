@@ -111,10 +111,24 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     letterSpacing: 0.5,
     flexShrink: 1,
   },
-  heroRecoveryNoteLabel: {
+  // #1456: routine title with its calendar week opposite; the title wraps
+  // before the week gives way, so large text never hides either.
+  heroTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 8,
+  },
+  heroTitleText: {
+    flex: 1,
     ...(kua ? typography['body-sm'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurface : colors.text,
-    marginTop: 2,
+  },
+  heroWeekText: {
+    flexShrink: 0,
+    ...(kua ? typography['body-sm'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600' }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // No current routine / empty routine (#1333): one plain line, no fake week.
   heroRoutineMessage: {

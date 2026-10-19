@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Card } from '../../components/UI';
-import { InfoButton, InfoNote, useInfoExplainer } from '../../components/InfoExplainer';
 import { useTheme } from '../../theme/ThemeContext';
 import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
@@ -50,7 +49,6 @@ export function HomeHeader({
   const { colors, kuaPalette: kua } = useTheme();
   const typography = useKuaTypography();
   const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
-  const [captionExpanded, toggleCaption] = useInfoExplainer();
 
   // No current routine, or one with nothing written in it yet, is not a
   // training week: no `Week N/A`, no 0·0·0 trio, just the way back in (#1333).
@@ -61,8 +59,13 @@ export function HomeHeader({
   const routineState = !workoutNote ? 'none'
     : !hasRoutineContent ? 'empty'
     : 'active';
-  const headerLabel = routineState === 'none' ? 'No current routine'
-    : routineState === 'active' && dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Current routine';
+  // Muted-state label only: an active routine leads with Exercise Progress and
+  // carries its week beside the title instead (#1456).
+  const headerLabel = routineState === 'none' ? 'No current routine' : 'Current routine';
+  // Calendar week of THIS routine (routineStatus.elapsedWeeks, from the note's
+  // own start), not session depth: other routines' history and Recovery blocks
+  // never move it. Omitted when the routine has no usable start (#1456).
+  const routineWeek = dashboardData.routineWeek ?? null;
   const routineTitle = routineState === 'active' || routineState === 'empty'
     ? (workoutNote.title || '').trim() || null
     : null;
@@ -96,16 +99,47 @@ export function HomeHeader({
       ? 'Some exercises use their existing workout history for these counts.'
       : null;
 
+  const classifBody = baselineMessage ? (
+    <Text testID="home-progress-baseline" style={styles.heroRoutineMessage}>{baselineMessage}</Text>
+  ) : (
+    <View style={styles.classifRow}>
+      {[
+        { label: 'Progressing', count: counts?.progressing ?? 0, color: kua ? kua.success : colors.success },
+        { label: 'Steady', count: counts?.stalled ?? 0, color: kua ? kua.warning : colors.caution },
+        { label: 'Regressing', count: counts?.regressing ?? 0, color: kua ? kua.errorText : colors.error },
+      ].map((item, idx) => (
+        <View key={idx} style={styles.classifCol}>
+          <Text style={[styles.classifCount, kua ? { color: item.color } : null]}>{item.count}</Text>
+          <Text style={styles.classifLabel}>{item.label}</Text>
+        </View>
+      ))}
+    </View>
+  );
+
   return (
     <Card style={styles.weeklyHero}>
-      {/* What is being trained: the week identity, then which routine it is. */}
-      <View style={styles.heroHeaderRow}>
-        <View style={styles.heroAccentBar} />
-        <Text testID="home-hero-label" style={styles.heroSectionLabel} numberOfLines={1}>{headerLabel}</Text>
-      </View>
+      {routineState === 'active' ? (
+        /* #1456: Exercise Progress leads, like the sibling card headers. */
+        <View style={styles.classifHeaderRow}>
+          <ExerciseProgressLink linkId="home-exercise-progress-link" onNavigate={onNavigate} styles={styles} color={mutedStroke} />
+        </View>
+      ) : (
+        <View style={styles.heroHeaderRow}>
+          <View style={styles.heroAccentBar} />
+          <Text testID="home-hero-label" style={styles.heroSectionLabel} numberOfLines={1}>{headerLabel}</Text>
+        </View>
+      )}
 
-      {routineTitle ? (
-        <Text testID="home-routine-title" style={styles.heroRecoveryNoteLabel} numberOfLines={1}>{routineTitle}</Text>
+      {/* What is being trained: the routine, with its week opposite. */}
+      {routineTitle || (routineState === 'active' && routineWeek !== null) ? (
+        <View style={styles.heroTitleRow}>
+          {routineTitle ? (
+            <Text testID="home-routine-title" style={styles.heroTitleText} numberOfLines={2}>{routineTitle}</Text>
+          ) : <View style={styles.heroTitleText} />}
+          {routineState === 'active' && routineWeek !== null ? (
+            <Text testID="home-routine-week" style={styles.heroWeekText}>{`Week ${routineWeek}`}</Text>
+          ) : null}
+        </View>
       ) : null}
 
       {/* How it is going. */}
@@ -113,44 +147,12 @@ export function HomeHeader({
         <Text testID="home-no-routine" style={styles.heroRoutineMessage}>{routineMessage}</Text>
       ) : (
         <View style={styles.classifSection}>
-          <View style={styles.classifHeaderRow}>
-            <ExerciseProgressLink linkId="home-exercise-progress-link" onNavigate={onNavigate} styles={styles} color={mutedStroke} />
-            {captionText && kua ? (
-              <InfoButton
-                testID="home-classif-info"
-                expanded={captionExpanded}
-                onPress={toggleCaption}
-                label="About these Exercise Progress counts"
-              />
-            ) : null}
-          </View>
-          {baselineMessage ? (
-            <Text testID="home-progress-baseline" style={styles.heroRoutineMessage}>{baselineMessage}</Text>
-          ) : (
-            <View style={styles.classifRow}>
-              {[
-                { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: kua ? kua.success : colors.success },
-                { label: 'Steady', count: dashboardData.weeklySummary.classifications?.stalled ?? 0, color: kua ? kua.warning : colors.caution },
-                { label: 'Regressing', count: dashboardData.weeklySummary.classifications?.regressing ?? 0, color: kua ? kua.errorText : colors.error },
-              ].map((item, idx) => (
-                <View key={idx} style={styles.classifCol}>
-                  <Text style={[styles.classifCount, kua ? { color: item.color } : null]}>{item.count}</Text>
-                  <Text style={styles.classifLabel}>{item.label}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-          {/* #894: the counts only cover a fully classified tracked span; the
-              caption explains an unusual count (#1356: only that, never the
-              Progressive Overload method). KUA reveals it from the info icon;
-              legacy mode shows it plainly. */}
-          {captionText && !kua ? (
-            <Text style={styles.classifCaption}>{captionText}</Text>
-          ) : null}
-          {captionText && kua ? (
-            <InfoNote shown={captionExpanded} testID="home-classif-info-body">
-              <Text style={styles.classifCaption}>{captionText}</Text>
-            </InfoNote>
+          {classifBody}
+          {/* #894/#1456: the counts only cover a fully classified tracked span;
+              the caption says so inline (no info toggle on Home) and explains
+              only that, never the Progressive Overload method (#1356). */}
+          {captionText ? (
+            <Text testID="home-classif-caption" style={styles.classifCaption}>{captionText}</Text>
           ) : null}
         </View>
       )}
