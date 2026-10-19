@@ -141,6 +141,9 @@ describe('#1054 source parity — source-scanned wiring stays in the boundary fi
     expect(logScreenSrc).toMatch(/const restTimerDockVisible = restTimerDocked && !editorHeaderScrolledAway;/);
     expect(logScreenSrc).toMatch(/onRestTimerDockedChange\?\.\(restTimerDockVisible\)/);
     expect(logScreenSrc).toMatch(/onScroll=\{\(e\) => setEditorHeaderScrolledAway\(/);
+    // The handoff must happen before the countdown clips out of the header, so
+    // there is no scroll offset where neither surface shows it.
+    expect(Number(logScreenSrc.match(/DOCKED_TIMER_HANDOFF_SCROLL_Y = (\d+)/)[1])).toBeLessThanOrEqual(16);
     expect(appSrc).toMatch(/onRestTimerDockedChange=\{setRestTimerDocked\}/);
     expect(appSrc).toMatch(/!\(activeTab === 'Log' && restTimerDocked\) && <RestTimerBanner/);
   });
