@@ -397,6 +397,8 @@ describe('Log deload date editor: native picker and web DOM input (#314)', () =>
     };
     function Harness() {
       const [showPicker, setShowPicker] = React.useState(false);
+      const [isLinked, setIsLinked] = React.useState(linked);
+      spies.setLinked = setIsLinked;
       return (
         <LogScreenEditorCard
           deloadMode={null}
@@ -411,7 +413,7 @@ describe('Log deload date editor: native picker and web DOM input (#314)', () =>
           setWorkoutNoteTitle={noop}
           editingTitle={`${DELOAD_NOTE_PREFIX}2026-01-01`}
           setEditingTitle={spies.setEditingTitle}
-          editingDeloadHasLinkedRecord={linked}
+          editingDeloadHasLinkedRecord={isLinked}
           deloadEditDate="2026-01-01"
           setDeloadEditDate={spies.setDeloadEditDate}
           deloadEditOrdinal="3"
@@ -452,6 +454,16 @@ describe('Log deload date editor: native picker and web DOM input (#314)', () =>
     expect(sessionInput(unlinked)).toBeUndefined();
   });
 
+  test('losing the linked record while the row is open removes the date and Session # controls', () => {
+    const root = mountEditor();
+    openDateRow(root);
+    expect(sessionInput(root)).toBeTruthy();
+
+    render.act(() => { spies.setLinked(false); });
+    expect(sessionInput(root)).toBeUndefined();
+    expect(byLabel(root, 'Deload date')).toBeUndefined();
+  });
+
   test('the Session # input strips non-numeric characters before updating', () => {
     const root = mountEditor();
     openDateRow(root);
@@ -473,6 +485,10 @@ describe('Log deload date editor: native picker and web DOM input (#314)', () =>
     // The picker reports through onChange (not the web-only onValueChange).
     expect(typeof picker.props.onChange).toBe('function');
     expect(picker.props.onValueChange).toBeUndefined();
+    // Future dates cannot be picked, and the picker opens on the stored date.
+    expect(picker.props.maximumDate).toBeInstanceOf(Date);
+    expect(picker.props.maximumDate.getTime()).toBeLessThanOrEqual(Date.now());
+    expect(picker.props.value).toEqual(new Date(2026, 0, 1));
 
     render.act(() => { picker.props.onChange({}, new Date(2026, 1, 3)); });
     expect(spies.setDeloadEditDate).toHaveBeenCalledWith('2026-02-03');

@@ -476,7 +476,7 @@ describe('cooldown: at most one prompt per three session indices', () => {
 describe('LogScreen supplies the ownership predicate and the toggle gate', () => {
   const useEntries = require('../hooks/useEntries');
   const {
-    ControlledLogScreen, openCurrentRoutineMenu, openRecoveryManagement, findPressableByText,
+    ControlledLogScreen, openCurrentRoutineMenu, openRecoveryManagement, findPressableByText, expandManageRecovery,
   } = require('./helpers/log-screen');
 
   const note = { id: 'note1', title: 'Push Day', raw_text: decliningNote(), updated_at: '2026-01-01T00:00:00.000Z' };
@@ -579,6 +579,50 @@ describe('LogScreen supplies the ownership predicate and the toggle gate', () =>
     expect(modalProps().visible).toBe(false);
     expect(modalProps().checkInData).toBeNull();
     expect(checkInWrites(update)).toHaveLength(0);
+  });
+
+  describe('with an active recovery block', () => {
+    const baseline = { id: 'base1', title: 'Baseline', raw_text: 'Monday\n-Bench\n100 5,5,5', updated_at: '2026-01-01T00:00:00.000Z' };
+    const weekNote = { id: 'wk1', title: 'Recovery Week 1', raw_text: 'Monday\n-Bench\n90 5,5,5', updated_at: '2026-01-02T00:00:00.000Z' };
+    const block = {
+      id: 'rb1', baseline_note_id: baseline.id, baseline_note_title: baseline.title,
+      started_at: '2026-01-01T00:00:00.000Z', completed_at: null, deleted_at: null,
+    };
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: weekNote.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+
+    beforeEach(() => {
+      useEntries.useWorkoutNotes.mockReturnValue({
+        notes: [note, baseline, weekNote], currentId: note.id, currentNote: note, deloadNotes: [],
+        loading: false, error: null, refresh: jest.fn(), selectCurrent: jest.fn(), update, add: jest.fn(), remove: jest.fn(),
+      });
+      useEntries.useRecoveryBlockState.mockReturnValue({
+        activeBlock: block, blocks: [block], weeks, recoveryWeekNumberByNoteId: { [weekNote.id]: 1 },
+        loading: false, error: null, refresh: jest.fn(),
+      });
+    });
+
+    test.each([
+      ['Add week', (root) => findPressableByText(root, 'Add week')],
+      ['End recovery block', (root) => {
+        expandManageRecovery(root);
+        return findPressableByText(root, 'End recovery block');
+      }],
+    ])('opening the %s modal withdraws a raised sheet', async (_label, find) => {
+      const root = mountScreen();
+      // An active block opens on the Recovery tab; the routine editor is on Routine.
+      render.act(() => { findPressableByText(root, 'Routine').props.onPress(); });
+      await pressDone(root);
+      expect(modalProps().visible).toBe(true);
+
+      render.act(() => { findPressableByText(root, 'Recovery').props.onPress(); });
+      const trigger = find(root);
+      expect(trigger).toBeTruthy();
+      render.act(() => { trigger.props.onPress(); });
+
+      expect(modalProps().visible).toBe(false);
+      expect(modalProps().checkInData).toBeNull();
+      expect(checkInWrites(update)).toHaveLength(0);
+    });
   });
 
   test('the recovery-block modal taking the screen withdraws the sheet', async () => {
