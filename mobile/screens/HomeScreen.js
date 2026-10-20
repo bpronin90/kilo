@@ -1,4 +1,5 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
+import { useLocalCalendarDay, localDayToDate } from '../hooks/useLocalCalendarDay';
 import { Pressable, Text, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, ErrorBanner } from '../components/UI';
@@ -285,9 +286,10 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
     [noteSectionsList]
   );
 
+  const calendarDay = useLocalCalendarDay();
   const dashboardData = useMemo(
-    () => deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, normalNotes, notes, trackedLifts, trackedLiftActivations, deloadHistory, sourceNoteId: currentId ?? null, recoveryBlocks }),
-    [weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, normalNotes, notes, trackedLifts, trackedLiftActivations, deloadHistory, currentId, recoveryBlocks]
+    () => deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, normalNotes, notes, trackedLifts, trackedLiftActivations, deloadHistory, sourceNoteId: currentId ?? null, recoveryBlocks, referenceDate: localDayToDate(calendarDay) }),
+    [weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, normalNotes, notes, trackedLifts, trackedLiftActivations, deloadHistory, currentId, recoveryBlocks, calendarDay]
   );
 
   // 1K hero color, precomputed here (was inline in the 1K card JSX before the

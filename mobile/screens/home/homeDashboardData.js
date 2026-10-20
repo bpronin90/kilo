@@ -206,7 +206,7 @@ export const deriveHomeRecoveryBig3 = deriveRecoveryBig3;
 // callers that omit it get every supplied section. `notes` (#1391) is the
 // unfiltered notebook the Track anchors were minted in, so they can be
 // translated into that population; without it they are clamped as before.
-export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, normalNotes = null, notes = null, trackedLifts, trackedLiftActivations, deloadHistory, sourceNoteId = null, recoveryBlocks }) {
+export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, normalNotes = null, notes = null, trackedLifts, trackedLiftActivations, deloadHistory, sourceNoteId = null, recoveryBlocks, referenceDate = new Date() }) {
   let oneK = null;
   let sections = null;
 
@@ -221,7 +221,7 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
 
   // Canonical goal state: deriveWeightGoalAnalytics already normalizes overdue,
   // weeks remaining, and pace, so Home and Weight read the same values.
-  const { rollingSeries: rawWeightSeries, trendSummary: weightTrends, goalInfo } = deriveWeightGoalAnalytics(weightEntries, weightGoal);
+  const { rollingSeries: rawWeightSeries, trendSummary: weightTrends, goalInfo } = deriveWeightGoalAnalytics(weightEntries, weightGoal, {}, referenceDate);
   const weightSeries = relabelWeightSeriesDates(rawWeightSeries, weightEntries);
   const latestWeight = weightTrends.currentWeight;
 

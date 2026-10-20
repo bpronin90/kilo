@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
+import { useLocalCalendarDay, localDayToDate } from '../hooks/useLocalCalendarDay';
 import { ScreenShell } from '../components/ScreenShell';
 import { ErrorBanner } from '../components/UI';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
@@ -233,9 +234,10 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   }
 
   // Canonical weight analytics (lib/data); presentation only below.
+  const calendarDay = useLocalCalendarDay();
   const { trendSummary: weightTrends, paceLevel: weightPaceLevel, paceInfo: weightPaceInfo, rollingSeries, rollingSeries30 } = useMemo(
-    () => deriveWeightGoalAnalytics(weightEntries, weightGoal),
-    [weightEntries, weightGoal]
+    () => deriveWeightGoalAnalytics(weightEntries, weightGoal, {}, localDayToDate(calendarDay)),
+    [weightEntries, weightGoal, calendarDay]
   );
   // Converted into display space here (identity in lb mode) so LineChart
   // labels and the trends card read in the selected unit.
