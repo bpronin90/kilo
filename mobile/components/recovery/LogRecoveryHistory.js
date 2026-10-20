@@ -137,6 +137,8 @@ export function LogRecoveryManageStack({
   const [inclusionBusyId, setInclusionBusyId] = useState(null);
   // Errors are kept per block, so toggling another block never clears this one's.
   const [inclusionErrors, setInclusionErrors] = useState({});
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const toggleInclusion = async (block, include) => {
     if (inclusionBusyId || !lifecycle.setIncludeInNormalAnalytics) return;
     setInclusionErrors(prev => ({ ...prev, [block.id]: null }));
@@ -146,8 +148,11 @@ export function LogRecoveryManageStack({
       if (!result || result.ok === false) {
         setInclusionErrors(prev => ({ ...prev, [block.id]: (result && result.error) || 'That setting could not be saved.' }));
       }
+    } catch (_e) {
+      // Rejected: the write may or may not have landed, so say so; never a success.
+      if (mounted.current) setInclusionErrors(prev => ({ ...prev, [block.id]: 'Something went wrong, so that setting may not have been saved. Try again.' }));
     } finally {
-      setInclusionBusyId(null);
+      if (mounted.current) setInclusionBusyId(null);
     }
   };
   const writes = {
