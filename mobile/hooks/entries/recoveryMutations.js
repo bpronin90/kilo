@@ -17,6 +17,7 @@ import {
   startRecoveryOperation,
 } from '../../storage/entries/recoveryOperationJournal';
 import {
+  RECOVERY_ERROR_CODES,
   buildRecoveryWeek,
   findLiveMembershipForNote,
   isBlockActive,
@@ -27,24 +28,24 @@ import {
 } from '../../lib/data/recoveryBlocks';
 import { replaceRecoveryBlockBaseline } from '../../storage/entries/recoveryStorage';
 import { makeWorkoutNoteItem } from '../../lib/data';
-// Imported for its module-load side effect: it registers the mode-aware
-// note-deletion operations into the recovery journal (see
-// hooks/entries/storageMode.js). Without it the journal would fall back to its
-// local-only default even in cloud mode.
-import './storageMode';
+// Also imported for its load side effect: it registers the mode-aware note-deletion
+// operations into the recovery journal (else it falls back to local-only in cloud mode).
+import { readVia } from './storageMode';
 import { reloadWorkoutNotes } from './workoutNoteHooks';
 import { ensureVerifiedRecoveryState, notifyRecoveryBlocks } from './recoveryReadState';
 
 const RecoveryStorage = Storage;
 const RebuildStorage = { ...Storage, replaceRecoveryBlockBaseline };
+// Start's cleanup re-reads notes via the notebook hook's mode-aware path; the rest delegates live.
+const StartStorage = Object.create(Storage, { loadWorkoutNotes: { value: () => readVia('loadWorkoutNotes', Storage.loadWorkoutNotes) } });
 
-// Create the block, then attach exactly one week; a Week-1 failure rolls the
-// just-created block back so no orphan active block is left. The whole flow (the
-// optional "New note" write, block create, week attach, both rollbacks) runs behind
-// the process-wide lock Reopen uses (#839) via `runGuardedRecoveryAction`, so Start
-// and Reopen's "no active block" checks serialize. `createWeekNote`/`removeWeekNote`
-// (optional) create/roll back a Week-1 note this call made. `reason` (#872) goes
-// straight to the block record, which normalizes it.
+// Create the block, then attach exactly one week, behind the process-wide lock Reopen
+// uses (#839) via `runGuardedRecoveryAction`, so Start and Reopen's "no active block"
+// checks serialize. `createWeekNote`/`removeWeekNote` (optional) create/roll back a
+// Week-1 note this call made; `reason` (#872) goes straight to the block record.
+// Partial failure (#1489): a Week-1 failure tombstones the new block (cascading its
+// weeks). A created note is removed only when no block of this call can still link
+// it, and the error names a kept note or a block that may remain. Never ok:true.
 export function startRecoveryBlockCore(storage, {
   baselineNoteId, baselineNoteTitle = null, baselineNoteText = '', weekNoteId = null,
   reason = null, createWeekNote, removeWeekNote,
@@ -53,61 +54,63 @@ export function startRecoveryBlockCore(storage, {
     let finalWeekNoteId = weekNoteId;
     let createdNoteId = null;
     if (!finalWeekNoteId && createWeekNote) {
-      const created = await createWeekNote();
-      finalWeekNoteId = created?.id || null;
+      try {
+        finalWeekNoteId = (await createWeekNote())?.id || null;
+      } catch (e) {
+        return { ok: false, code: e?.code || null, error: `${e?.message || 'Could not create the Week 1 note.'} No recovery block was started.` };
+      }
       createdNoteId = finalWeekNoteId;
     }
-    if (!finalWeekNoteId) {
-      return { ok: false, error: 'Select or create a note for Recovery Week 1.' };
-    }
+    if (!finalWeekNoteId) return { ok: false, error: 'Select or create a note for Recovery Week 1.' };
 
     let block = null;
     try {
-      block = await storage.createRecoveryBlock({
-        baselineNoteId,
-        baselineNoteTitle,
-        baselineNoteText,
-        reason,
-      });
-    } catch (e) {
-      if (createdNoteId && removeWeekNote) {
-        try {
-          await removeWeekNote(createdNoteId);
-        } catch (_rollbackError) {
-          // Best-effort: the original failure is what the caller needs to see.
-        }
-      }
-      return { ok: false, code: e?.code || null, error: e?.message || 'Could not start the recovery block.' };
-    }
-
-    try {
+      block = await storage.createRecoveryBlock({ baselineNoteId, baselineNoteTitle, baselineNoteText, reason });
       const week = await storage.addRecoveryWeek({ blockId: block.id, noteId: finalWeekNoteId });
       notifyRecoveryBlocks();
       return { ok: true, block, week };
     } catch (e) {
-      try {
-        await storage.deleteRecoveryBlock(block.id);
-      } catch (_rollbackError) {
-        // Best-effort rollback; the original failure is what the caller needs
-        // to see either way.
+      const result = { ok: false, code: e?.code || null, error: e?.message || (block ? 'Could not add Recovery Week 1.' : 'Could not start the recovery block.') };
+      let blockMayRemain = !block && await startedBlockLanded(storage, e, baselineNoteId);
+      if (block) {
+        try { await storage.deleteRecoveryBlock(block.id); } catch { blockMayRemain = true; }
       }
-      if (createdNoteId && removeWeekNote) {
-        try {
-          await removeWeekNote(createdNoteId);
-        } catch (_rollbackError) {
-          // Best-effort: the original failure is what the caller needs to see.
-        }
+      // Only a block this call created AND failed to tombstone could still link the note.
+      let noteKept = !!createdNoteId && (!removeWeekNote || (blockMayRemain && !!block));
+      if (createdNoteId && !noteKept) {
+        try { await removeWeekNote(createdNoteId); } catch { noteKept = await noteStillPresent(storage, createdNoteId); }
       }
       notifyRecoveryBlocks();
-      return { ok: false, code: e?.code || null, error: e?.message || 'Could not add Recovery Week 1.' };
+      if (blockMayRemain) {
+        result.blockMayRemain = true;
+        result.error += ' A recovery block from this attempt may still be active; open Recovery to add Week 1 or end it before retrying.';
+      }
+      if (noteKept) result.keptNoteId = createdNoteId;
+      if (noteKept !== false) result.error += noteKept ? ' The new Week 1 note was kept in your notes.' : ' The new Week 1 note may still be in your notes.';
+      return result;
     }
   });
 }
 
+// A block write that persisted and then rejected leaves this call's block active with
+// no week. ACTIVE_BLOCK_EXISTS is refused before any write, so it never qualifies.
+async function startedBlockLanded(storage, e, baselineNoteId) {
+  if (e?.code === RECOVERY_ERROR_CODES.ACTIVE_BLOCK_EXISTS) return false;
+  try {
+    const active = (await storage.loadRecoveryBlocks()).find(isBlockActive);
+    return !!active && active.baseline_note_id === baselineNoteId
+      && (await storage.loadRecoveryWeeksForBlock(active.id)).length === 0;
+  } catch { return false; }
+}
+
+// A rejected note delete proves uncertainty, not survival: confirm against storage.
+// true = still a visible note, false = gone, null = the re-read failed (unknown).
+async function noteStillPresent(storage, noteId) {
+  try { return (await storage.loadWorkoutNotes()).some(n => n?.id === noteId && !n.deleted_at); } catch { return null; }
+}
+
 export function useStartRecoveryBlock() {
-  // Confirm-time recheck: freezing a baseline against unverified state is the write
-  // this gate prevents. Everything after it runs inside `startRecoveryBlockCore`'s
-  // own lock, so there is exactly one gate and one lock acquisition (#711).
+  // Confirm-time recheck (#711): one gate, then `startRecoveryBlockCore`'s own lock.
   const startBlock = useCallback(async ({
     baselineNoteId, baselineNoteTitle = null, baselineNoteText = '', weekNoteId = null,
     reason = null, createWeekNote, removeWeekNote,
@@ -115,7 +118,7 @@ export function useStartRecoveryBlock() {
     const gate = await ensureVerifiedRecoveryState();
     if (!gate.ok) return gate;
 
-    return startRecoveryBlockCore(Storage, {
+    return startRecoveryBlockCore(StartStorage, {
       baselineNoteId, baselineNoteTitle, baselineNoteText, weekNoteId, reason, createWeekNote, removeWeekNote,
     });
   }, []);
