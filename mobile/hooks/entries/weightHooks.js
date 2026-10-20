@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../../storage/entries';
 import {
   loadArchivedWeightGoals,
-  loadArchivedWeightGoalsRaw,
-  replaceArchivedWeightGoalsRaw,
+  archivedWeightGoalIdFor,
+  saveArchivedWeightGoalOnce,
+  clearWeightGoalIfMatches,
 } from '../../storage/entries/weightGoal';
 import { getClientId, stampWrite, enqueueDirty, SYNC_TABLES } from '../../storage/syncQueue';
 import { maybeSyncCloud, readVia, writeVia } from './storageMode';
@@ -79,11 +80,15 @@ export function useWeightGoal() {
     notifyGoal();
   }, []);
 
+  // Idempotent across retries and remounts (#1477): the archive id comes from
+  // the source goal, an already-durable archive is reused rather than
+  // re-minted, and only that same goal is cleared. Any boundary failure rejects
+  // so the caller can report it; retrying resumes from where it stopped.
   const archiveGoal = useCallback(async (completedWeight) => {
     if (!goal) return;
     const now = new Date().toISOString();
     const base = {
-      id: `ag_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: archivedWeightGoalIdFor(goal),
       target_weight: goal.target_weight ?? null,
       target_date: goal.target_date ?? null,
       start_weight: goal.start_weight ?? null,
@@ -93,15 +98,12 @@ export function useWeightGoal() {
       saved_at: now,
     };
     const clientId = await getClientId();
-    const stamped = stampWrite(base, clientId);
-    const list = await loadArchivedWeightGoalsRaw();
-    list.push(stamped);
-    await replaceArchivedWeightGoalsRaw(list);
-    await enqueueDirty(SYNC_TABLES.ARCHIVED_WEIGHT_GOALS, stamped);
-    await Storage.clearWeightGoal();
-    setGoal(null);
-    notifyGoal();
+    const stored = await saveArchivedWeightGoalOnce(stampWrite(base, clientId));
     notifyArchivedGoals();
+    await enqueueDirty(SYNC_TABLES.ARCHIVED_WEIGHT_GOALS, stored);
+    const cleared = await clearWeightGoalIfMatches(goal);
+    if (cleared) setGoal(null);
+    notifyGoal();
   }, [goal]);
 
   return { goal, loading, error, refresh, save, clear, archiveGoal };

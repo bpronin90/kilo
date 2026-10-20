@@ -92,7 +92,14 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
     Alert.alert('Archive Goal', 'Save this completed goal to history and set a new target?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Archive', style: 'default', onPress: async () => {
-        await archiveGoal(completedWeight);
+        try {
+          await archiveGoal(completedWeight);
+        } catch {
+          // The goal stays on screen and the archive is safely retryable
+          // (#1477); never reset the form or imply it was archived.
+          Alert.alert('Archive failed', 'Could not archive your goal. Try again.');
+          return;
+        }
         setGoalTargetWeight('');
         setGoalTargetDate(defaultTargetDate());
         setGoalStartWeight('');

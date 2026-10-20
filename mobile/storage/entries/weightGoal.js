@@ -84,6 +84,65 @@ export async function saveArchivedWeightGoal(archivedGoal) {
   return archivedGoal;
 }
 
+// Archive idempotency (#1477). Archiving is three durable boundaries — persist
+// the archived record, enqueue it for push, clear the active goal — and any of
+// them can fail after an earlier one landed. The archive id is therefore derived
+// from the SOURCE goal's durable identity rather than minted per attempt, so a
+// retry (same session, or after a remount/reload re-reads the same stored goal)
+// resumes the same archive instead of creating a second one. saveWeightGoal
+// re-stamps `saved_at` on every save, so an edited or replacement goal gets a
+// different identity and is archived as its own record.
+export function weightGoalIdentity(goal) {
+  return JSON.stringify([
+    goal?.saved_at ?? null,
+    goal?.target_weight ?? null,
+    goal?.target_date ?? null,
+    goal?.start_weight ?? null,
+    goal?.start_date ?? null,
+  ]);
+}
+
+// Two FNV-1a passes with different offsets -> 64 bits of a stable, sync-safe id.
+function fnv1a(str, seed) {
+  let h = seed >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}
+
+export function archivedWeightGoalIdFor(goal) {
+  const key = weightGoalIdentity(goal);
+  return `ag_${fnv1a(key, 0x811c9dc5)}${fnv1a(key, 0x050c5d1f)}`;
+}
+
+// Append `record` unless an archive with its id is already durable; either way
+// resolve the stored record, so a retry re-enqueues exactly what was persisted.
+export function saveArchivedWeightGoalOnce(record) {
+  return withLocalWriteLock(async () => {
+    const list = await loadArchivedWeightGoalsRaw();
+    const existing = list.find((r) => r?.id === record.id);
+    if (existing) return existing;
+    list.push(record);
+    await replaceArchivedWeightGoalsRaw(list);
+    return record;
+  });
+}
+
+// Clear the active goal only if it is still the goal that was archived, so a
+// replacement saved in the meantime survives. Resolves whether it cleared.
+// An unreadable goal record rejects rather than being treated as a match.
+export function clearWeightGoalIfMatches(goal) {
+  return withLocalWriteLock(async () => {
+    const raw = await AsyncStorage.getItem(WEIGHT_GOAL_KEY);
+    if (!raw) return false;
+    if (weightGoalIdentity(JSON.parse(raw)) !== weightGoalIdentity(goal)) return false;
+    await clearWeightGoalUnlocked();
+    return true;
+  });
+}
+
 export async function clearArchivedWeightGoals() {
   await AsyncStorage.removeItem(ARCHIVED_WEIGHT_GOALS_KEY);
 }
