@@ -2,15 +2,20 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { Alert } from '../lib/platformAlert';
 import { convertWeightDraft, retainedDraftLb, parseStrictWeightText } from '../lib/parser/weightEntry';
 
-// One month out, local calendar day (not UTC) so the pre-filled date never
-// lands a day off near midnight.
-function defaultTargetDate() {
-  const d = new Date();
-  d.setMonth(d.getMonth() + 1);
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${m}-${day}`;
+// One local calendar month ahead of `now`, clamped to the last valid day of the
+// destination month (Jan 31 -> Feb 28/29, not Mar 2/3). Local components only,
+// never UTC, so the pre-filled date does not land a day off near midnight.
+export function suggestedTargetDate(now = new Date()) {
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  const lastDay = new Date(y, m + 1, 0).getDate();
+  const d = new Date(y, m, Math.min(now.getDate(), lastDay));
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
 }
+
+const defaultTargetDate = () => suggestedTargetDate();
 
 export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActive = true, registerBackConsumer, unit = 'lb', canonicalGoal = null) {
   const [goalEditing, setGoalEditing] = useState(false);
