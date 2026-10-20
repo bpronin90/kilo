@@ -71,16 +71,21 @@ describe('revision fetch rejection', () => {
   });
 
   it('does not let a stale rejected fetch overwrite a newer successful load', async () => {
-    let rejectFirst;
+    let rejectSecond;
     fetchActiveConsentRevision
-      .mockImplementationOnce(() => new Promise((_r, rej) => { rejectFirst = rej; }))
+      .mockRejectedValueOnce(new Error('first'))
+      .mockImplementationOnce(() => new Promise((_r, rej) => { rejectSecond = rej; }))
       .mockResolvedValueOnce(revision);
     const tree = await render();
-    // First load is still pending (no retry shown while loading); a second load
-    // is not user-reachable, so assert the pending state then settle it.
-    expect(primaryDisabled(tree)).toBe(true);
-    await act(async () => { rejectFirst(new Error('late')); });
-    expect(byLabel(tree, 'Retry loading consent terms')).toBeTruthy();
+    const retry = () => byLabel(tree, 'Retry loading consent terms');
+    // Request B (pending) then request C (succeeds); B rejects afterwards.
+    await act(async () => { retry().props.onPress(); });
+    await act(async () => { retry().props.onPress(); });
+    expect(retry()).toBeUndefined();
+    await act(async () => { rejectSecond(new Error('stale')); });
+    expect(retry()).toBeUndefined();
+    await tick(tree);
+    expect(primaryDisabled(tree)).toBe(false);
   });
 });
 

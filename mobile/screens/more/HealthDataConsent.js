@@ -206,7 +206,7 @@ export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
         </Text>
       ) : null}
 
-      {!loading && (loadFailed || match === REVISION_MATCH.MISSING) ? (
+      {loadFailed || match === REVISION_MATCH.MISSING ? (
         <Button
           title="Retry"
           disabled={busy}
