@@ -4,7 +4,7 @@
 // The preview comes from `planBaselineRebuild` (the exact v2 capture); nothing is
 // written until Confirm, and the write re-validates authoritatively in the hook.
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Pressable, Text, View } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
 import { RECOVERY_BASELINE_BASIS, isLiveRecord, planBaselineRebuild } from '../../lib/data/recoveryBlocks';
@@ -18,6 +18,7 @@ const BASIS_LABELS = {
   [RECOVERY_BASELINE_BASIS.AMRAP]: 'latest AMRAP session',
   [RECOVERY_BASELINE_BASIS.NEVER_COMPLETE]: 'latest session (target never completed)',
 };
+const REJECTED = 'Something went wrong, so the baseline may not have been rebuilt. Review the preview and try again.';
 const WARNING = 'This routine was edited after Recovery began, so the rebuilt values may include recovery-period work.';
 
 const _n = (v) => Number(v).toLocaleString();
@@ -40,6 +41,8 @@ export function RebuildBaselineAction({ block, weeks = null, notes, unit = 'lb',
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [doneMessage, setDoneMessage] = useState(null);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   const rows = useMemo(() => {
     if (!plan.eligible) return [];
@@ -69,16 +72,19 @@ export function RebuildBaselineAction({ block, weeks = null, notes, unit = 'lb',
       const result = await onRebuild({ blockId: block.id, expectedBaseline: plan.baseline });
       if (!result || result.ok === false) {
         const message = (result && result.error) || 'Could not rebuild this baseline.';
-        setError(message);
+        if (mounted.current) setError(message);
         announce(message);
         return;
       }
       const message = 'Baseline rebuilt from the routine.';
-      setDoneMessage(message);
-      setOpen(false);
+      if (mounted.current) { setDoneMessage(message); setOpen(false); }
       announce(message);
+    } catch (_e) {
+      // Rejected: not a confirmed success. Keep the preview open for a retry.
+      if (mounted.current) setError(REJECTED);
+      announce(REJECTED);
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
 

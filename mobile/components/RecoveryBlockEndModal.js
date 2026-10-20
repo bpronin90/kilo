@@ -31,6 +31,8 @@ import { GEOMETRY, SPACING } from '../theme/spacing';
 import { MODAL_SUPPORTED_ORIENTATIONS, dialogWidthStyle } from './adaptiveLayout';
 import { scrim } from '../theme/styleHelpers';
 
+// A rejected call proves uncertainty, not failure: the write may have landed.
+const REJECTED_MESSAGE = 'Something went wrong, so this may not have been saved. Check the block and try again.';
 const REPLACED_MESSAGE = 'The active recovery block changed. Close this and choose End recovery block again.';
 
 export function RecoveryBlockEndModal({
@@ -53,6 +55,9 @@ export function RecoveryBlockEndModal({
   const [pendingInclusion, setPendingInclusion] = useState(storedInclusion);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,8 +125,12 @@ export function RecoveryBlockEndModal({
         return;
       }
       onClose();
+    } catch (_e) {
+      // Rejection is neither success nor a known failure: keep the modal, the
+      // selection and the gates, never close, and allow a retry.
+      if (mounted.current) setSubmitError(REJECTED_MESSAGE);
     } finally {
-      setSubmitting(false);
+      if (mounted.current) setSubmitting(false);
     }
   };
 

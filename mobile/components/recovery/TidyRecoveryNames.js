@@ -5,12 +5,14 @@
 // a stale review with zero writes. The parent mounts this keyed by block id, so draft/error state is
 // scoped to one block; #1307 moves the action into Manage block with its gates.
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Pressable, Text, View } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
 import { planTidyNames } from '../../lib/data/recoveryTidyNames';
 import { createStyles } from './analyticsRecoveryStyles';
 import { createTidyStyles } from './recoveryTidyStyles';
+
+const REJECTED = 'Something went wrong, so names may not have been tidied. Review the preview and try again.';
 
 function announce(message) {
   try { AccessibilityInfo.announceForAccessibility(message); } catch (_e) { /* best-effort */ }
@@ -72,6 +74,8 @@ export function TidyRecoveryNamesAction({
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   if (!block || !block.baseline || block.baseline.version !== 2) return null;
 
   const run = async (kind, action, success) => {
@@ -83,15 +87,18 @@ export function TidyRecoveryNamesAction({
       const result = await action();
       if (!result || result.ok === false) {
         const message = (result && result.error) || 'That could not be completed.';
-        setError(message);
+        if (mounted.current) setError(message);
         announce(message);
         return;
       }
-      setOpen(false);
-      setNotice(success);
+      if (mounted.current) { setOpen(false); setNotice(success); }
       announce(success);
+    } catch (_e) {
+      // Rejected: not a confirmed success. Keep the review open for a retry.
+      if (mounted.current) setError(REJECTED);
+      announce(REJECTED);
     } finally {
-      setBusy(null);
+      if (mounted.current) setBusy(null);
     }
   };
   const disabled = locked || busy !== null;
