@@ -287,4 +287,61 @@ describe('form copies of refreshed data (#1480)', () => {
     expect(out.form.goalTargetWeight).toBe('155');
     r.unmount();
   });
+
+  it('goal form: a creation-form draft survives an external goal arriving', async () => {
+    const { out, r } = await renderGoal();
+    await act(async () => { out.form.setGoalTargetWeight('155'); });
+    await Storage.saveWeightGoal({ target_weight: 180, target_date: '2026-12-01' });
+    await act(async () => { reloadPersistedSettingsDomains(); });
+    await flush();
+    expect(out.form.goalTargetWeight).toBe('155');
+    r.unmount();
+  });
+
+  it('goal form: a dirty date or manual start also keeps the creation draft', async () => {
+    const { out, r } = await renderGoal();
+    await act(async () => { out.form.setGoalStartWeight('190'); });
+    await Storage.saveWeightGoal({ target_weight: 180, target_date: '2026-12-01' });
+    await act(async () => { reloadPersistedSettingsDomains(); });
+    await flush();
+    expect(out.form.goalStartWeight).toBe('190');
+    expect(out.form.goalTargetWeight).toBe('');
+    r.unmount();
+  });
+
+  it('goal form: a pristine creation form adopts an external goal', async () => {
+    const { out, r } = await renderGoal();
+    await Storage.saveWeightGoal({ target_weight: 180, target_date: '2026-12-01' });
+    await act(async () => { reloadPersistedSettingsDomains(); });
+    await flush();
+    expect(out.form.goalTargetWeight).toBe('180');
+    expect(out.form.goalTargetDate).toBe('2026-12-01');
+    r.unmount();
+  });
+
+  it('goal form: an edit-mode draft survives an external replacement', async () => {
+    await Storage.saveWeightGoal({ target_weight: 170, target_date: '2026-12-01' });
+    const { out, r } = await renderGoal();
+    await act(async () => { out.form.startEditGoal(); });
+    await act(async () => { out.form.setGoalTargetWeight('155'); });
+    await Storage.saveWeightGoal({ target_weight: 160, target_date: '2026-11-01' });
+    await act(async () => { reloadPersistedSettingsDomains(); });
+    await flush();
+    expect(out.form.goalTargetWeight).toBe('155');
+    r.unmount();
+  });
+
+  it('goal form: cancel resets the baseline so the form follows the persisted goal again', async () => {
+    await Storage.saveWeightGoal({ target_weight: 170, target_date: '2026-12-01' });
+    const { out, r } = await renderGoal();
+    await act(async () => { out.form.startEditGoal(); });
+    await act(async () => { out.form.setGoalTargetWeight('155'); });
+    await act(async () => { out.form.cancelEditGoal(); });
+    expect(out.form.goalTargetWeight).toBe('170');
+    await Storage.saveWeightGoal({ target_weight: 160, target_date: '2026-11-01' });
+    await act(async () => { reloadPersistedSettingsDomains(); });
+    await flush();
+    expect(out.form.goalTargetWeight).toBe('160');
+    r.unmount();
+  });
 });

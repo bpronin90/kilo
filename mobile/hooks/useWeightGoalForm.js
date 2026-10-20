@@ -63,27 +63,28 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
     }
   }, [unit]);
 
-  // Last persisted values copied into the form. While the form still equals
-  // them it is pristine and follows the persisted goal, including an external
-  // deletion (sync/import, #1480); a draft the user changed is left alone.
-  const seededRef = useRef(null);
+  // Baseline = the values the form was last seeded or reset to. Fields that
+  // still equal it are pristine and follow the persisted goal, including an
+  // external replacement or deletion (sync/import, #1480); if any field differs
+  // the whole draft is kept, in creation and edit mode alike. `null` forces a
+  // re-seed (after save or cancel).
+  const baselineRef = useRef({ t: '', d: goalTargetDate, s: '' });
+  const reseed = (t, d, s) => {
+    baselineRef.current = { t, d, s };
+    setGoalTargetWeight(t);
+    setGoalTargetDate(d);
+    setGoalStartWeight(s);
+  };
   useEffect(() => {
-    if (goal && !goalEditing) {
-      const t = String(goal.target_weight);
-      const s = goal.start_weight ? String(goal.start_weight) : '';
-      seededRef.current = { t, d: goal.target_date, s };
-      setGoalTargetWeight(t);
-      setGoalTargetDate(goal.target_date);
-      setGoalStartWeight(s);
-    } else if (!goal && !goalEditing && seededRef.current) {
-      const seeded = seededRef.current;
-      seededRef.current = null;
-      if (goalTargetWeight === seeded.t && goalTargetDate === seeded.d && goalStartWeight === seeded.s) {
-        setGoalTargetWeight('');
-        setGoalTargetDate(defaultTargetDate());
-        setGoalStartWeight('');
-        dropProvenance();
-      }
+    const base = baselineRef.current;
+    const pristine = base === null
+      || (goalTargetWeight === base.t && goalTargetDate === base.d && goalStartWeight === base.s);
+    if (!pristine) return;
+    if (goal && (!goalEditing || base !== null)) {
+      reseed(String(goal.target_weight), goal.target_date, goal.start_weight ? String(goal.start_weight) : '');
+    } else if (!goal) {
+      reseed('', defaultTargetDate(), '');
+      dropProvenance();
     }
   }, [goal, goalEditing]);
 
@@ -139,6 +140,7 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
       return;
     }
     dropProvenance();
+    baselineRef.current = null;
     setGoalEditing(false);
   };
 
@@ -147,9 +149,7 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
       { text: 'Cancel', style: 'cancel' },
       { text: 'Clear', style: 'destructive', onPress: async () => {
         await clearGoal();
-        setGoalTargetWeight('');
-        setGoalTargetDate(defaultTargetDate());
-        setGoalStartWeight('');
+        reseed('', defaultTargetDate(), '');
         dropProvenance();
         setGoalEditing(false);
       }},
@@ -168,9 +168,7 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
           Alert.alert('Archive failed', 'Could not archive your goal. Try again.');
           return;
         }
-        setGoalTargetWeight('');
-        setGoalTargetDate(defaultTargetDate());
-        setGoalStartWeight('');
+        reseed('', defaultTargetDate(), '');
         dropProvenance();
         setGoalEditing(false);
       }},
@@ -184,13 +182,9 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
     startProvRef.current = goal && lbGoal?.start_weight
       ? { text: String(goal.start_weight), unit, lb: lbGoal.start_weight } : null;
     if (goal) {
-      setGoalTargetWeight(String(goal.target_weight));
-      setGoalTargetDate(goal.target_date);
-      setGoalStartWeight(goal.start_weight ? String(goal.start_weight) : '');
+      reseed(String(goal.target_weight), goal.target_date, goal.start_weight ? String(goal.start_weight) : '');
     } else {
-      setGoalTargetDate(defaultTargetDate());
-      setGoalTargetWeight('');
-      setGoalStartWeight('');
+      reseed('', defaultTargetDate(), '');
     }
     setGoalError('');
     setGoalEditing(true);
@@ -201,6 +195,7 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
     startProvRef.current = null;
     setGoalError('');
     setGoalStartWeight('');
+    baselineRef.current = null;
     setGoalEditing(false);
   };
 
