@@ -38,8 +38,9 @@ export const createStrengthStyles = (colors, kua = null) => {
     rowValue: { flexShrink: 0, ...label },
     weekRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 4, minHeight: 28 },
     // Selector row (#1307): a >=44dp press target; selection is a surface fill AND
-    // bold label, never color alone.
-    weekRowPress: { minHeight: 44, paddingHorizontal: 8, borderRadius: GEOMETRY['radius-lg'] },
+    // bold label, never color alone. weekRow wraps, so alignContent (#1544)
+    // centers the line in the 44dp target instead of pinning it to the top.
+    weekRowPress: { minHeight: 44, paddingHorizontal: 8, borderRadius: GEOMETRY['radius-lg'], alignContent: 'center' },
     weekRowSelected: { backgroundColor: track },
     weekLabelSelected: { fontWeight: '800', color: ink },
     weekLabel: { width: 64, ...label, color: inkMuted },

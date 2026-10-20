@@ -214,8 +214,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   // The date row wraps (never squeezes a date mid-digit): if label + date + info
   // cannot share a line the info button drops under, and each date stays whole.
+  // A wrapping row centers its line(s) in the 44dp row (#1544); alignItems
+  // alone leaves a single line pinned to the top.
   contextRowWrap: {
     flexWrap: 'wrap',
+    alignContent: 'center',
   },
   contextDateText: {
     flexShrink: 0,
@@ -228,10 +231,9 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   contextPlaceholder: {
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
-  // The whole reason row is the tap target; a long reason gets two lines.
-  reasonRow: {
-    paddingVertical: 4,
-  },
+  // A long reason gets two lines. No extra padding (#1544): the shared 44dp
+  // contextRow minHeight spaces Reason evenly with Baseline and Dates.
+  reasonRow: {},
   reasonEditIcon: {
     flexShrink: 0,
   },

@@ -1789,6 +1789,8 @@ describe('AnalyticsRecoverySection — scannable hierarchy (#1209)', () => {
     expect(row.props.accessibilityRole).toBe('button');
     expect(row.props.accessibilityLabel).toMatch(/^Week 1: /);
     expect(require('react-native').StyleSheet.flatten(row.props.style).minHeight).toBeGreaterThanOrEqual(44);
+    // The row wraps, so its line is centered in the 44dp target, not top-pinned (#1544).
+    expect(require('react-native').StyleSheet.flatten(row.props.style)).toMatchObject({ flexWrap: 'wrap', alignContent: 'center' });
     // No second selector: no WeekPicker chips or caption.
     expect(root.findAll(n => /^recovery-week-(chip|picker)/.test(n.props.testID || ''))).toHaveLength(0);
   });
@@ -2426,6 +2428,18 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     const t = root.findAll(n => n.type === 'Text' && [].concat(n.props.children).join('') === long)[0];
     expect(t.props.numberOfLines).toBe(2);
     expect(hostById(root, 'recovery-reason-context')[0].props.accessibilityLabel).toBe(`Reason: ${long}`);
+  });
+
+  test('context rows space evenly: no extra Reason padding, wrapped Dates line centered (#1544)', () => {
+    const root = mountWith({ reason: 'torn hamstring' });
+    const styleOf = (id) => StyleSheet.flatten(hostById(root, id)[0].props.style);
+    const reason = styleOf('recovery-reason-context');
+    const routine = styleOf('recovery-context-routine');
+    const date = styleOf('recovery-context-date');
+    expect(reason.minHeight).toBe(routine.minHeight);
+    expect(reason.paddingVertical).toBeUndefined();
+    expect(date.minHeight).toBe(routine.minHeight);
+    expect(date).toMatchObject({ flexWrap: 'wrap', alignContent: 'center' });
   });
 
   test('the total-recovery info button sits beside the percentage and reveals its note inline in a live region', () => {
