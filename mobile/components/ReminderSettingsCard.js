@@ -89,6 +89,10 @@ export function ReminderSettingsCard() {
     workoutChannel.current = createChannel({ ...DEFAULT_WORKOUT_REMINDER, fallbackWeekdays: [] });
   }
   const inferredRef = useRef([]);
+  // Inferred days are known only after a successful reconcile (or note
+  // broadcast). While unknown, [] is not an input: applying with it would
+  // cancel the schedule and build nothing, and look like success.
+  const inferredKnownRef = useRef(false);
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -123,6 +127,7 @@ export function ReminderSettingsCard() {
       return reconcileWorkoutReminder().then((reconciled) => {
         if (cancelled) return;
         inferredRef.current = reconciled.inferredWeekdays;
+        inferredKnownRef.current = true;
         setInferredWeekdays(reconciled.inferredWeekdays);
       }, (e) => {
         const ch = workoutChannel.current;
@@ -147,6 +152,7 @@ export function ReminderSettingsCard() {
       reconcileWorkoutReminder()
         .then((reconciled) => {
           inferredRef.current = reconciled.inferredWeekdays;
+          inferredKnownRef.current = true;
           setInferredWeekdays(reconciled.inferredWeekdays);
         })
         .catch(() => {});
@@ -256,11 +262,27 @@ export function ReminderSettingsCard() {
     weighInChannel, setWeighIn, setWeighInError, applyWeighInReminder, Storage.saveWeighInReminder, build, revert,
   ), [commit]);
 
+  // Unknown inferred days: reconcile (which infers them itself from the
+  // persisted routine and config) instead of applying with a guessed [].
+  const applyWorkout = useCallback(async (value) => {
+    if (inferredKnownRef.current) {
+      await applyWorkoutReminder(value, resolveWorkoutWeekdays(inferredRef.current, value.fallbackWeekdays));
+      return;
+    }
+    const reconciled = await reconcileWorkoutReminder();
+    inferredRef.current = reconciled.inferredWeekdays;
+    inferredKnownRef.current = true;
+    if (mountedRef.current) setInferredWeekdays(reconciled.inferredWeekdays);
+    if (value.enabled && resolveWorkoutWeekdays(reconciled.inferredWeekdays, value.fallbackWeekdays).length === 0) {
+      throw new Error('no workout days to schedule');
+    }
+  }, []);
+
   const commitWorkout = useCallback((build, revert) => commit(
     workoutChannel, setWorkout, setWorkoutError,
-    (value) => applyWorkoutReminder(value, resolveWorkoutWeekdays(inferredRef.current, value.fallbackWeekdays)),
+    applyWorkout,
     Storage.saveWorkoutReminder, build, revert,
-  ), [commit]);
+  ), [commit, applyWorkout]);
 
   const handleWeighInToggle = useCallback(async (enabled) => {
     if (!weighInChannel.current.hydrated) return;
@@ -273,7 +295,18 @@ export function ReminderSettingsCard() {
     if (!workoutChannel.current.hydrated) return;
     setWorkoutError(null);
     const days = workoutChannel.current.latest.fallbackWeekdays;
-    if (enabled && resolveWorkoutWeekdays(inferredRef.current, days).length === 0) {
+    if (enabled && !inferredKnownRef.current) {
+      // Try to learn the routine's days before judging "no days".
+      try {
+        const reconciled = await reconcileWorkoutReminder();
+        inferredRef.current = reconciled.inferredWeekdays;
+        inferredKnownRef.current = true;
+        setInferredWeekdays(reconciled.inferredWeekdays);
+      } catch {
+        // Still unknown: let the commit path reconcile and report.
+      }
+    }
+    if (enabled && inferredKnownRef.current && resolveWorkoutWeekdays(inferredRef.current, days).length === 0) {
       setWorkoutError(WORKOUT_DAYS_REQUIRED_MESSAGE);
       return;
     }
