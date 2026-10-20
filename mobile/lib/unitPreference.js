@@ -18,6 +18,11 @@ import { unitFromUnitSystem } from './units';
 let currentUnit = 'lb';
 let hydrateStarted = false;
 let explicitlySet = false;
+// Bumped on every explicit set and every read start, so a read can tell it was
+// overtaken (#1480): an explicit choice made after it began, or a newer read.
+let explicitEpoch = 0;
+let readGeneration = 0;
+let lastAppliedGeneration = 0;
 const listeners = new Set();
 
 function emit() {
@@ -32,6 +37,7 @@ export function getWeightUnit() {
 // the caller's responsibility (Settings selector via useUserProfile().save).
 export function setWeightUnitPreference(unit) {
   explicitlySet = true;
+  explicitEpoch += 1;
   hydrateStarted = true;
   const next = unit === 'kg' ? 'kg' : 'lb';
   if (next !== currentUnit) {
@@ -40,12 +46,19 @@ export function setWeightUnitPreference(unit) {
   }
 }
 
-function ensureHydrated() {
-  if (hydrateStarted) return;
-  hydrateStarted = true;
-  loadUserProfile()
+// Read the persisted profile unit and apply it unless something newer won.
+// `authoritative` (external refresh) overrides an earlier explicit set, because
+// the persisted profile is the truth after a pull/import; an explicit set made
+// while the read was in flight still wins. Read-only: never writes.
+function readPersistedUnit({ authoritative }) {
+  const generation = ++readGeneration;
+  const epoch = explicitEpoch;
+  return loadUserProfile()
     .then((profile) => {
-      if (explicitlySet) return;
+      if (generation < lastAppliedGeneration) return;
+      if (epoch !== explicitEpoch) return;
+      if (explicitlySet && !authoritative) return;
+      lastAppliedGeneration = generation;
       const next = unitFromUnitSystem(profile?.unit_system);
       if (next !== currentUnit) {
         currentUnit = next;
@@ -53,6 +66,20 @@ function ensureHydrated() {
       }
     })
     .catch(() => {});
+}
+
+function ensureHydrated() {
+  if (hydrateStarted) return;
+  hydrateStarted = true;
+  readPersistedUnit({ authoritative: false });
+}
+
+// Re-read the stored profile after an external write (sync pull, backup
+// import). Before first hydration there is nothing mounted to refresh: the
+// first subscriber will hydrate from storage itself.
+export function refreshWeightUnitPreference() {
+  if (!hydrateStarted) return Promise.resolve();
+  return readPersistedUnit({ authoritative: true });
 }
 
 export function subscribeWeightUnit(listener) {
@@ -73,5 +100,8 @@ export function __resetWeightUnitForTests() {
   currentUnit = 'lb';
   hydrateStarted = false;
   explicitlySet = false;
+  explicitEpoch = 0;
+  readGeneration = 0;
+  lastAppliedGeneration = 0;
   listeners.clear();
 }

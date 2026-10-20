@@ -16,7 +16,7 @@ import { Alert } from '../lib/platformAlert';
 import { useUpdates } from 'expo-updates';
 
 import { TAB_BAR_HEIGHT_FALLBACK } from '../components/TabBarLayout';
-import { useCloudSyncStatus, useSyncRecovery, useWeightEntries, useWorkoutNotes, useAutoSync, reloadWeightEntries, reloadWorkoutNotes } from '../hooks/useEntries';
+import { useCloudSyncStatus, useSyncRecovery, useWeightEntries, useWorkoutNotes, useAutoSync, reloadWeightEntries, reloadWorkoutNotes, reloadPersistedSettingsDomains } from '../hooks/useEntries';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { parseWeightEntry, buildSessionsFromNote } from '../lib/parser';
 import { PRODUCT_MEASUREMENT_EVENTS } from '../lib/productMeasurement';
@@ -196,6 +196,8 @@ export function useAppShell({ onDeviceDataWiped }) {
       // instances left them rendering the pre-sync data (#459).
       reloadWeightEntries();
       reloadWorkoutNotes();
+      // Goal, archive, profile/unit, toggles: read-only re-read (#1480).
+      reloadPersistedSettingsDomains();
     },
   }) || {};
 

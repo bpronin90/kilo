@@ -18,7 +18,7 @@ import { LogScreen } from './screens/LogScreen';
 import { WeightScreen } from './screens/WeightScreen';
 import { AnalyticsScreen } from './screens/AnalyticsScreen';
 
-import { CloudSyncContext } from './hooks/useEntries';
+import { CloudSyncContext, reloadPersistedSettingsDomains } from './hooks/useEntries';
 import { reloadRecoveryBlocks } from './hooks/entries/recoveryBlockHooks';
 import { invalidateRecoveryReadState } from './hooks/entries/recoveryReadState';
 import { importBackup, getStorageMode } from './storage/entries';
@@ -224,6 +224,9 @@ function ShellView({ onDeviceDataWiped }) {
       // mutation, a cloud sync, or a restart — indefinitely for a local-only
       // user.
       reloadRecoveryBlocks();
+      // Goal (replaced or deleted), archive history, profile unit and toggles
+      // are replaced wholesale too (#1480). Only on a committed import.
+      reloadPersistedSettingsDomains();
     }
     return result;
   // weightHook.refresh/noteHook.refresh, not the whole hook objects (#592

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as Storage from '../../storage/entries';
 import {
   loadArchivedWeightGoals,
@@ -10,9 +10,27 @@ import { getClientId, stampWrite, enqueueDirty, SYNC_TABLES } from '../../storag
 import { maybeSyncCloud, readVia, writeVia } from './storageMode';
 import { safeNotify } from './shared';
 import { markStartupPhase } from '../../storage/entries/startupTiming';
+import { reloadUserProfile } from './profileHooks';
+import { refreshFeatureToggles } from './featureToggleHooks';
+import { refreshWeightUnitPreference } from '../../lib/unitPreference';
 
 let goalListeners = [];
 const notifyGoal = () => safeNotify(goalListeners);
+let archivedGoalListeners = [];
+const notifyArchivedGoals = () => safeNotify(archivedGoalListeners);
+
+// Re-read every settings-like domain mirror after persisted storage changed
+// underneath the app (successful sync pull or backup import) (#1480). Every
+// listener here is a storage read, never a write, so this enqueues nothing and
+// cannot re-enter sync. Mounted consumers keep their own unsaved form drafts:
+// only persisted-data state is replaced.
+export function reloadPersistedSettingsDomains() {
+  notifyGoal();
+  notifyArchivedGoals();
+  reloadUserProfile();
+  refreshWeightUnitPreference();
+  refreshFeatureToggles();
+}
 
 export function useWeightGoal() {
   const [goal, setGoal] = useState(null);
@@ -24,6 +42,9 @@ export function useWeightGoal() {
   // useWeightEntries and useTrackedLifts already expose, so consumers can keep
   // loading, failure, and verified-empty apart.
   const [error, setError] = useState(null);
+  // Newest read/write wins; nothing applies after unmount (#1480).
+  const seq = useRef(0);
+  const mounted = useRef(true);
 
   // `error` is cleared by a read that SUCCEEDS, never on the way in (#737
   // review). Clearing it up front made the failure vanish the instant Retry was
@@ -40,8 +61,10 @@ export function useWeightGoal() {
     //
     // The previous goal is deliberately left in place on failure: stale but
     // true beats silently reverting the user to "no goal".
+    const mine = ++seq.current;
     return Storage.loadWeightGoalResult()
       .then(({ ok, goal: next, error: readError }) => {
+        if (!mounted.current || mine !== seq.current) return;
         if (ok) {
           setGoal(next);
           setError(null);
@@ -50,14 +73,16 @@ export function useWeightGoal() {
           setError(readError || new Error('Could not read the weight goal.'));
         }
       })
-      .catch(e => setError(e))
-      .finally(() => setLoading(false));
+      .catch(e => { if (mounted.current && mine === seq.current) setError(e); })
+      .finally(() => { if (mounted.current && mine === seq.current) setLoading(false); });
   }, []);
 
   useEffect(() => {
+    mounted.current = true;
     refresh();
     goalListeners.push(refresh);
     return () => {
+      mounted.current = false;
       goalListeners = goalListeners.filter(l => l !== refresh);
     };
   }, [refresh]);
@@ -69,6 +94,7 @@ export function useWeightGoal() {
   // real, which is the exact dishonesty this state exists to prevent.
   const save = useCallback(async (goal_data) => {
     const saved = await Storage.saveWeightGoal(goal_data);
+    seq.current += 1;
     setGoal(saved);
     notifyGoal();
     return saved;
@@ -76,6 +102,7 @@ export function useWeightGoal() {
 
   const clear = useCallback(async () => {
     await Storage.clearWeightGoal();
+    seq.current += 1;
     setGoal(null);
     notifyGoal();
   }, []);
@@ -102,30 +129,42 @@ export function useWeightGoal() {
     notifyArchivedGoals();
     await enqueueDirty(SYNC_TABLES.ARCHIVED_WEIGHT_GOALS, stored);
     const cleared = await clearWeightGoalIfMatches(goal);
-    if (cleared) setGoal(null);
+    if (cleared) {
+      seq.current += 1;
+      setGoal(null);
+    }
     notifyGoal();
   }, [goal]);
 
   return { goal, loading, error, refresh, save, clear, archiveGoal };
 }
 
-let archivedGoalListeners = [];
-const notifyArchivedGoals = () => safeNotify(archivedGoalListeners);
-
 export function useArchivedWeightGoals() {
   const [archivedGoals, setArchivedGoals] = useState([]);
   const [loading, setLoading] = useState(true);
+  const seq = useRef(0);
+  const mounted = useRef(true);
 
+  // A failed read keeps the last good list (stale but true) rather than
+  // rejecting unhandled; only the newest read applies, never after unmount.
   const refresh = useCallback(() => {
-    loadArchivedWeightGoals()
-      .then(setArchivedGoals)
-      .finally(() => setLoading(false));
+    const mine = ++seq.current;
+    return loadArchivedWeightGoals()
+      .then((next) => {
+        if (mounted.current && mine === seq.current) setArchivedGoals(next);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (mounted.current && mine === seq.current) setLoading(false);
+      });
   }, []);
 
   useEffect(() => {
+    mounted.current = true;
     refresh();
     archivedGoalListeners.push(refresh);
     return () => {
+      mounted.current = false;
       archivedGoalListeners = archivedGoalListeners.filter(l => l !== refresh);
     };
   }, [refresh]);
@@ -166,7 +205,11 @@ export function useWeightEntries() {
   // a failing read correctly stays in the failed state.
   const refresh = useCallback(() => {
     maybeSyncCloud()
-      .then(reload)
+      .then((synced) => {
+        // A pass that ran may have pulled goal/profile/toggle rows too (#1480).
+        if (synced) reloadPersistedSettingsDomains();
+        return reload();
+      })
       .catch(e => setError(e))
       .finally(() => setLoading(false));
   }, [reload]);
@@ -186,7 +229,11 @@ export function useWeightEntries() {
     // sync-then-reload sequence below.
     reload();
     maybeSyncCloud()
-      .then((synced) => (synced ? reload() : undefined))
+      .then((synced) => {
+        if (!synced) return undefined;
+        reloadPersistedSettingsDomains();
+        return reload();
+      })
       .catch(e => setError(e));
     weightListeners.push(refresh);
     weightReloadListeners.push(reload);
