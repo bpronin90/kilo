@@ -23,7 +23,7 @@ import {
 import { useNoteViewer, toggleViewingWeek } from './otherRoutineViewers';
 import {
   useOtherEditingProjection, otherMetadata, canonicalOtherMetadata,
-  hasPersistableMetadataChange, persistedOtherMetadata,
+  hasPersistableMetadataChange, persistedOtherMetadata, runOtherAutosave,
 } from './otherRoutineEditing';
 import { useOtherEditorLifecycle } from './otherRoutineLifecycle';
 import { createOtherAdoptionHandlers } from './otherRoutineAdoption';
@@ -105,16 +105,13 @@ export function useLogOtherRoutineEditor({
   const lastSavedNoteIdRef = useRef(null);
   const lastSavedSourceRef = useRef(null);
 
-  // The editor fields most recently persisted by handleSaveOtherNote. Done
-  // compares the live editor against these to detect any field an in-flight
-  // autosave for older content did not save (text, title, and linked-deload
-  // date/ordinal) — or a metadata edit made during the race is lost.
+  // Fields most recently persisted by handleSaveOtherNote; Done compares the
+  // live editor against them to catch edits an in-flight save did not cover.
   const lastSavedTextRef = useRef(null);
   const lastSavedTitleRef = useRef(null);
   const lastSavedDeloadDateRef = useRef(null);
   const lastSavedDeloadOrdinalRef = useRef(null);
-  // What the last save made durable across every persisted metadata field
-  // (#1500); binds `Saved on device` to it alongside title/text.
+  // What the last save made durable for every persisted metadata field (#1500).
   const lastSavedMetadataRef = useRef(null);
 
   // Live-value refs so async save callbacks read current state without stale closures.
@@ -131,7 +128,6 @@ export function useLogOtherRoutineEditor({
   deloadEditDateRef.current = deloadEditDate;
   deloadEditOrdinalRef.current = deloadEditOrdinal;
 
-  // Cheap local draft (#880): separate timer/state from the expensive autosave.
   const draftOtherTimerRef = useRef(null);
   const draftBaseUpdatedAtRef = useRef(null);
   const preserveExistingDraftRef = useRef(false);
@@ -215,7 +211,7 @@ export function useLogOtherRoutineEditor({
   liveSaveInputsRef.current = {
     isDeload: isEditingDeloadNote, note: editingNote, record: editingDeloadRecord,
     dateTouched: deloadEditDateTouched, hasABWeeks: editingHasABWeeks, week: editingEffectiveWeek,
-    canonical: editingCanonicalMetadata,
+    canonical: editingCanonicalMetadata, persistable: hasPersistableOther,
   };
   const hasUnsavedOtherRef = useRef(hasUnsavedOther);
   hasUnsavedOtherRef.current = hasUnsavedOther;
@@ -451,7 +447,11 @@ export function useLogOtherRoutineEditor({
     if (autosaveOtherTimerRef.current) clearTimeout(autosaveOtherTimerRef.current);
     autosaveOtherTimerRef.current = setTimeout(async () => {
       autosaveOtherTimerRef.current = null;
-      await handleSaveOtherNote({ autosave: true });
+      await runOtherAutosave({
+        save: () => handleSaveOtherNote({ autosave: true }), inFlightRef: saveOtherNoteInFlightRef,
+        identity: () => `${editingNoteIdRef.current}|${editingSourceRef.current}`,
+        isStillPersistable: () => liveSaveInputsRef.current.persistable,
+      });
     }, AUTOSAVE_DEBOUNCE_MS);
     return () => {
       if (autosaveOtherTimerRef.current) {

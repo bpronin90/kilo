@@ -126,3 +126,18 @@ export function persistedOtherMetadata(submitted, canonical, dateTouched) {
       : (canonical?.deloadOrdinal ?? null),
   };
 }
+
+// The debounced autosave body (#1500). A debounce that expires while an older
+// save is in flight coalesces onto it and would otherwise drop the newer edit,
+// so once that save SUCCEEDS, run exactly one fresh save (which reads live
+// inputs) if the same note/source is still open with a persistable change. A
+// failed save is never retried here: status stays unsaved until the next edit
+// or Done, so a failing write cannot loop.
+export async function runOtherAutosave({ save, inFlightRef, identity, isStillPersistable }) {
+  const coalesced = !!inFlightRef.current;
+  const scheduledIdentity = identity();
+  const ok = await save();
+  if (!coalesced || !ok) return ok;
+  if (identity() !== scheduledIdentity || !isStillPersistable()) return ok;
+  return save();
+}

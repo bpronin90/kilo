@@ -297,6 +297,83 @@ describe('saved status is bound to persisted metadata (#1500)', () => {
   });
 });
 
+describe('a debounce that expires during an older save is not dropped (#1500)', () => {
+  test('ordinal changed and debounced while the previous autosave is in flight is persisted after it settles', async () => {
+    const gate = deferred();
+    let calls = 0;
+    const { ref, update, updateDeload } = mountEditor({
+      notes: [deloadNote()],
+      deloadHistory: [linkedRecord()],
+      updateImpl: async () => { calls += 1; if (calls === 1) await gate.promise; return true; },
+    });
+    act(() => { ref.current.handleOpenOtherNote(ref.notes[0]); });
+    act(() => { ref.current.setDeloadEditOrdinal('4'); });
+    await fireAutosave(); // ordinal-4 autosave starts; its note update is held
+    expect(updateDeload).toHaveBeenLastCalledWith('h1', { deload_session_ordinal: 4 });
+
+    act(() => { ref.current.setDeloadEditOrdinal('6'); });
+    await fireAutosave(); // this debounce expires while the ordinal-4 save is in flight
+    expect(updateDeload).toHaveBeenCalledTimes(1);
+
+    await act(async () => { gate.resolve(); });
+    await flush();
+    await fireAutosave();
+
+    expect(updateDeload).toHaveBeenLastCalledWith('h1', { deload_session_ordinal: 6 });
+    expect(ref.history[0].deload_session_ordinal).toBe(6);
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(ref.current.hasUnsavedOther).toBe(false);
+  });
+
+  test('a failed in-flight save is not auto-retried, and a failing write never loops', async () => {
+    const gate = deferred();
+    const { ref, update, updateDeload } = mountEditor({
+      notes: [deloadNote()],
+      deloadHistory: [linkedRecord()],
+      updateImpl: async () => { await gate.promise; return false; },
+    });
+    act(() => { ref.current.handleOpenOtherNote(ref.notes[0]); });
+    act(() => { ref.current.setDeloadEditOrdinal('4'); });
+    await fireAutosave();
+    act(() => { ref.current.setDeloadEditOrdinal('6'); });
+    await fireAutosave(); // coalesces onto the in-flight (failing) save
+
+    await act(async () => { gate.resolve(); });
+    await flush();
+    for (let i = 0; i < 4; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      await fireAutosave();
+    }
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(updateDeload).toHaveBeenCalledTimes(1);
+    expect(ref.current.saveError).toBe('Save failed');
+    expect(ref.current.saveStatus).toBe(null);
+    expect(ref.current.hasUnsavedOther).toBe(true);
+  });
+
+  test('no follow-up save runs once the editor has left the note', async () => {
+    const gate = deferred();
+    let calls = 0;
+    const { ref, update } = mountEditor({
+      notes: [deloadNote()],
+      deloadHistory: [linkedRecord()],
+      updateImpl: async () => { calls += 1; if (calls === 1) await gate.promise; return true; },
+    });
+    act(() => { ref.current.handleOpenOtherNote(ref.notes[0]); });
+    act(() => { ref.current.setDeloadEditOrdinal('4'); });
+    await fireAutosave();
+    act(() => { ref.current.setDeloadEditOrdinal('6'); });
+    await act(async () => { jest.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS + 10); });
+    // Leave the editor before the in-flight save settles.
+    act(() => { ref.current.setEditingNoteId(null); });
+    await act(async () => { gate.resolve(); });
+    await flush();
+    await fireAutosave();
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('Done converges on metadata edited after Done is pressed (#1500)', () => {
   test('an ordinal changed while Done awaits an in-flight save is persisted and Done closes', async () => {
     const gate = deferred();
