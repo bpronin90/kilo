@@ -13,21 +13,28 @@ export const createMovementGroupStyles = (colors, kua = null) => {
   const caption = { fontSize: TYPOGRAPHY['body-sm'].fontSize, color: inkMuted };
   const label = { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '700', color: ink };
   return StyleSheet.create({
+    // Nested groups sit under the dominant header: indented behind a quiet rail,
+    // lighter weight, no card (#1537).
     panel: { gap: 4 },
+    group: { marginLeft: 8, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: border },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 44 },
     headerText: { flexShrink: 1, gap: 2 },
     title: { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '700', color: ink },
     caption,
     notice: { ...caption, paddingBottom: 4 },
     groupRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingVertical: 6, borderTopWidth: 1, borderTopColor: border },
-    groupMain: { flexShrink: 1, gap: 2 },
-    groupName: { fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '700', color: ink },
-    groupValue: { flexShrink: 0, ...label },
-    groupValueEmpty: { flexShrink: 0, ...caption },
+    groupMain: { flexGrow: 1, flexShrink: 1, gap: 2 },
+    groupName: { fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '600', color: ink },
+    groupValue: { flexShrink: 0, minWidth: 64, textAlign: 'right', ...label },
+    groupValueEmpty: { flexShrink: 0, minWidth: 64, textAlign: 'right', ...caption },
     exerciseList: { paddingLeft: 12, gap: 2, paddingBottom: 6 },
     exercise: { gap: 2, paddingVertical: 4 },
-    exerciseHead: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, rowGap: 2, minHeight: 28 },
+    exerciseHead: { flexDirection: 'row', alignItems: 'center', columnGap: 8, minHeight: 28 },
     exerciseName: { flexGrow: 1, flexShrink: 1, fontSize: TYPOGRAPHY['body-md'].fontSize, color: ink },
+    exerciseValue: { flexShrink: 0, minWidth: 64, textAlign: 'right', ...label },
+    exerciseValueEmpty: { flexShrink: 0, minWidth: 64, textAlign: 'right', ...caption },
+    exerciseTrack: { height: 6, borderRadius: 3, backgroundColor: kua ? kua.surfaceSection : colors.subtleBg, overflow: 'hidden' },
+    exerciseFill: { height: '100%', borderRadius: 3, backgroundColor: kua ? kua.primary : colors.accent },
     exerciseMeta: caption,
     // ── editor (separate control surface; relocatable) ──────────────────────
     changeButton: { minHeight: 44, minWidth: 44, justifyContent: 'center', paddingHorizontal: 8 },

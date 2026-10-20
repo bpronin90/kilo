@@ -89,7 +89,10 @@ pace (`90% ~2 wk · 100% ~4 wk`, `need 3 wks`, `no gain`, `reached`, `pace
 hidden`); the full best-case pace text (rate, week window, insufficient / no-gain
 / suppressed) is in the row label and the explainer. Lifts with no score this
 week or ever live in the `N not scored for strength` disclosure (identities
-de-duplicated), lifts with no entry this week in `N not retested`. An unreadable
+de-duplicated), lifts with no entry this week in `N not retested`. Both lists show one heading
+per reason (`{reason} · N lifts`, a `list`) and one full-width line per exercise,
+in order, never comma-joined or truncated. The `Lifts` caption reads
+`{n} scored for strength · {m} lifts in details`. An unreadable
 week is a dashed `No data` gap. No warning/amber ink. Styles:
 `recoveryStrengthStyles.js` (`disc*` for the shared disclosure).
 
@@ -99,9 +102,13 @@ week is a dashed `No data` gap. No warning/amber ink. Styles:
 strength ladder, not a second hero (the shared `RecoveryDisclosure`; an unavailable
 saved-choice read adds a concise `saved choices unavailable` to its caption, with
 the full notice on demand). Expanded, each group is a flat row (name, compact
-`{scored}/{cohort} scored · {baseline} baseline` — the full `N of M lifts in the
+`{scored} of {cohort} scored · {baseline} in baseline` — the full `N of M lifts in the
 average scored · B lifts in the baseline` wording is its label — and the
-mean % or `No score`, never 0%) that discloses its exercises; no nested cards.
+mean % or `No score`, never 0%) that discloses its exercises. Groups are nested
+under the dominant header (indented behind a quiet rail, 600 weight, fixed-width
+right-aligned value, no cards) and open independently. An exercise row is name,
+strength % (or `No score`) and a thin bar, then `status · Automatic|Your choice`;
+the value is strength, never the work total.
 The read-only numbers are separate from the controls: the per-exercise editor
 (`MovementGroupEditor.js`) lives only in Log's Manage block (#1307, #1315), under a collapsed
 `Movement groups` header (`Choose which group each lift counts in.`) listing

@@ -36,22 +36,38 @@ export function RecoveryDisclosure({ testID, title, caption = null, name, first 
   );
 }
 
-// Group entries sharing one reason into a single line ("Reason: A, B, C") so a
-// long inventory states each reason once instead of once per lift (#1442).
+// Group entries sharing one reason under one heading, then list every exercise
+// on its own line, in the original order. Nothing is joined into a paragraph or
+// truncated (#1442, #1537).
 function groupByReason(entries, reasonOf) {
   const groups = new Map();
   for (const e of entries) {
     const reason = reasonOf(e);
     if (!groups.has(reason)) groups.set(reason, []);
-    groups.get(reason).push(e.name);
+    groups.get(reason).push(e);
   }
-  return [...groups].map(([reason, names]) => ({ reason, names }));
+  return [...groups].map(([reason, items]) => ({ reason, items }));
+}
+
+const _count = (n) => `${n} ${n === 1 ? 'lift' : 'lifts'}`;
+
+// One reason: a heading naming the reason and its count, then a list of one
+// compact line per exercise. The list is announced as a list with its reason.
+function ReasonGroup({ id, reason, items, styles }) {
+  return (
+    <View testID={`recovery-reason-${id}`} style={styles.reasonGroup} accessibilityRole="list" accessibilityLabel={`${reason}: ${_count(items.length)}`}>
+      <Text testID={`recovery-reason-heading-${id}`} accessibilityRole="header" style={styles.reasonHeading}>{`${reason} · ${_count(items.length)}`}</Text>
+      {items.map((e, i) => (
+        <Text key={`${e.key || e.name}:${i}`} testID={`recovery-reason-item-${e.key || e.name}`} style={styles.reasonItem}>{e.name}</Text>
+      ))}
+    </View>
+  );
 }
 
 const NOT_RETESTED_COPY = Object.freeze({
-  [NOT_RETESTED.ABSENT_THIS_WEEK]: 'not logged this week',
-  [NOT_RETESTED.NEVER_LOGGED]: 'not logged in any week yet',
-  [NOT_RETESTED.UNKNOWN]: 'not in any readable week',
+  [NOT_RETESTED.ABSENT_THIS_WEEK]: 'Not logged this week',
+  [NOT_RETESTED.NEVER_LOGGED]: 'Not logged in any week yet',
+  [NOT_RETESTED.UNKNOWN]: 'Not in any readable week',
 });
 
 // Baseline exercises with no completed entry in the selected week.
@@ -63,7 +79,7 @@ export function NotRetestedDisclosure({ strength, first = false }) {
   return (
     <RecoveryDisclosure testID="recovery-strength-not-retested" title={`${list.length} not retested`} name={`${list.length} not retested lifts`} first={first}>
       {groupByReason(list, n => NOT_RETESTED_COPY[n.kind]).map(g => (
-        <Text key={g.reason} style={styles.infoLine}>{`${g.names.join(', ')}: ${g.reason}`}</Text>
+        <ReasonGroup key={g.reason} id={`retest-${g.items[0].kind}`} reason={g.reason} items={g.items} styles={styles} />
       ))}
     </RecoveryDisclosure>
   );
@@ -77,7 +93,8 @@ export function notScoredEntries(strength) {
   const add = (key, name, reasonKey) => {
     if (seen.has(key)) return;
     seen.add(key);
-    out.push({ key, name, reason: UNSCOREABLE_REASON[reasonKey] || UNSCOREABLE_REASON.no_scoreable_set });
+    const known = UNSCOREABLE_REASON[reasonKey] ? reasonKey : 'no_scoreable_set';
+    out.push({ key, name, reason: UNSCOREABLE_REASON[known], reasonKey: known });
   };
   for (const l of strength.lifts || []) if (l.state === LIFT_STATE.UNSCOREABLE) add(l.key, l.name, l.reason);
   for (const n of strength.not_scored || []) add(n.key, n.name, n.reason);
@@ -92,7 +109,7 @@ export function NotScoredDisclosure({ strength, first = false }) {
   return (
     <RecoveryDisclosure testID="recovery-strength-not-scored" title={`${list.length} not scored for strength`} name={`${list.length} lifts not scored for strength`} first={first}>
       {groupByReason(list, n => n.reason).map(g => (
-        <Text key={g.reason} style={styles.infoLine}>{`${g.names.join(', ')}: ${g.reason}`}</Text>
+        <ReasonGroup key={g.reason} id={`unscored-${g.items[0].reasonKey}`} reason={g.reason} items={g.items} styles={styles} />
       ))}
     </RecoveryDisclosure>
   );

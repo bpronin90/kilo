@@ -292,7 +292,7 @@ describe('Recovery movement-group UI', () => {
     // An added lift is grouped but unscored: Arms shows no percent.
     expect(host(root, 'movement-group-value-arms')[0].props.children).toBe('No score');
     // Compact visible counts; the full wording stays in the row's label.
-    expect(texts(root)).toContain('1/1 scored · 1 baseline');
+    expect(texts(root)).toContain('1 of 1 scored · 1 in baseline');
     const row = host(root, 'movement-group-row-push')[0];
     expect(row.props.accessibilityLabel).toContain('1 of 1 lift in the average scored · 1 lift in the baseline');
   });

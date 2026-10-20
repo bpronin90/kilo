@@ -1665,10 +1665,11 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
     const root = setup({ blocks: [block({ baseline: legacy })], weeks: [week(1, 'note-w1')], notes: [note('note-w1', '-Bench\n- 135 5')] }).root;
     expect(hasText(root, 'Baseline best-set data unavailable. Rebuild the baseline in Manage block (Log tab) to score strength.')).toBe(true);
     // Not retested is a counted, collapsed disclosure (#1315).
-    expect(hasText(root, 'Pull-up: not logged in any week yet')).toBe(false);
+    expect(hasText(root, 'Pull-up')).toBe(false);
     expect(hasText(root, '1 not retested')).toBe(true);
     act(() => { byLabel(root, 'Expand 1 not retested lifts').props.onPress(); });
-    expect(hasText(root, 'Pull-up: not logged in any week yet')).toBe(true);
+    expect(hasText(root, 'Not logged in any week yet · 1 lift')).toBe(true);
+    expect(hasText(root, 'Pull-up')).toBe(true);
     // The single live week still gets its row, with an explicit unscored state.
     expect(hostTextsIn(weekRow(root, 1))).toContain('Not scored');
     expect(hostById(root, 'recovery-strength-scale')).toHaveLength(0);
@@ -2016,7 +2017,7 @@ describe('AnalyticsRecoverySection — routine-anchored summary label (#1219, #1
       expect(findAllText(root).filter(t => t.includes(title))).toEqual([title]);
       expect(hasText(root, '2 not retested')).toBe(true);
       act(() => { byLabel(root, 'Expand 2 not retested lifts').props.onPress(); });
-      expect(findAllText(root).some(t => /^Bench\b.*: not logged in any week yet$/.test(t))).toBe(true);
+      expect(findAllText(root).some(t => /^Not logged in any week yet · \d+ lifts?$/.test(t))).toBe(true);
     }
   });
 
