@@ -46,6 +46,7 @@ jest.mock('../lib/reminderScheduler', () => ({
 }));
 
 function setReconciled(workout, inferredWeekdays) {
+  Storage.loadWorkoutReminder.mockResolvedValue(workout);
   reconcileWorkoutReminder.mockResolvedValue({ workout, inferredWeekdays });
 }
 
@@ -283,12 +284,13 @@ describe('ReminderSettingsCard', () => {
 
     test('an edit before hydration is ignored, so the stored setting is never replaced by defaults', async () => {
       const pending = deferred();
-      reconcileWorkoutReminder.mockReturnValueOnce(pending.promise);
+      Storage.loadWorkoutReminder.mockReturnValueOnce(pending.promise);
       const tree = await mount();
       await act(async () => { find(tree, 'Nudge on Monday').props.onPress(); });
       expect(Storage.saveWorkoutReminder).not.toHaveBeenCalled();
       await act(async () => {
-        pending.resolve({ workout: { enabled: true, hour: 19, minute: 30, fallbackWeekdays: [3] }, inferredWeekdays: [] });
+        pending.resolve({ enabled: true, hour: 19, minute: 30, fallbackWeekdays: [3] });
+        await Promise.resolve();
         await Promise.resolve();
         await Promise.resolve();
       });
@@ -297,15 +299,41 @@ describe('ReminderSettingsCard', () => {
       expect(find(tree, 'Nudge on Monday').props.accessibilityState.checked).toBe(false);
     });
 
-    test('hydration failure leaves the card read-only with a truthful message', async () => {
-      reconcileWorkoutReminder.mockRejectedValueOnce(new Error('boom'));
+    test('a read failure leaves only that channel read-only; the other stays editable', async () => {
+      Storage.loadWorkoutReminder.mockRejectedValueOnce(new Error('boom'));
       const tree = await mount();
       expect(texts(tree).join('|')).toContain('Could not load your saved reminder settings');
       await act(async () => { find(tree, 'Nudge on Monday').props.onPress(); });
-      await act(async () => { await find(tree, 'Daily weigh-in reminder').props.onValueChange(true); });
       expect(Storage.saveWorkoutReminder).not.toHaveBeenCalled();
+      await act(async () => { await find(tree, 'Daily weigh-in reminder').props.onValueChange(true); });
+      expect(Storage.saveWeighInReminder).toHaveBeenCalledWith({ enabled: true, hour: 8, minute: 0 });
+      expect(find(tree, 'Daily weigh-in reminder').props.value).toBe(true);
+    });
+
+    test('a weigh-in read failure does not block the workout channel', async () => {
+      Storage.loadWeighInReminder.mockRejectedValueOnce(new Error('boom'));
+      const tree = await mount();
+      await act(async () => { await find(tree, 'Daily weigh-in reminder').props.onValueChange(true); });
       expect(Storage.saveWeighInReminder).not.toHaveBeenCalled();
-      expect(requestReminderPermission).not.toHaveBeenCalled();
+      await act(async () => { find(tree, 'Nudge on Monday').props.onPress(); });
+      expect(Storage.saveWorkoutReminder).toHaveBeenCalledWith(expect.objectContaining({ fallbackWeekdays: [2] }));
+    });
+
+    test('an initial schedule failure after a successful read shows the durable state, a schedule warning, and stays editable', async () => {
+      const workout = { enabled: true, hour: 19, minute: 30, fallbackWeekdays: [3] };
+      Storage.loadWorkoutReminder.mockResolvedValue(workout);
+      reconcileWorkoutReminder.mockRejectedValue(new Error('alarm denied'));
+      const tree = await mount();
+      expect(find(tree, 'Workout day nudge').props.value).toBe(true);
+      expect(find(tree, 'Nudge on Tuesday').props.accessibilityState.checked).toBe(true);
+      const joined = texts(tree).join('|');
+      expect(joined).toContain('Could not schedule the reminder');
+      expect(joined).not.toContain('Could not load');
+      // Editable: the user can retry or disable.
+      await act(async () => { await find(tree, 'Workout day nudge').props.onValueChange(false); });
+      expect(Storage.saveWorkoutReminder).toHaveBeenCalledWith({ ...workout, enabled: false });
+      expect(find(tree, 'Workout day nudge').props.value).toBe(false);
+      expect(texts(tree).join('|')).not.toContain('Could not schedule');
     });
 
     test('weigh-in enable rejection restores the switch, reports a save error, and does not schedule', async () => {

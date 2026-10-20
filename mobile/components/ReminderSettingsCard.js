@@ -67,7 +67,7 @@ const WORKOUT_DAYS_REQUIRED_MESSAGE = 'Pick at least one workout day before enab
 // `scheduleError` is the unresolved scheduling failure (if any) of the DURABLE
 // config, so it survives a newer request that never became durable.
 function createChannel(initial) {
-  return { latest: initial, durable: initial, rev: 0, chain: Promise.resolve(), scheduleError: null };
+  return { latest: initial, durable: initial, rev: 0, chain: Promise.resolve(), scheduleError: null, hydrated: false };
 }
 
 export function ReminderSettingsCard() {
@@ -89,9 +89,6 @@ export function ReminderSettingsCard() {
     workoutChannel.current = createChannel({ ...DEFAULT_WORKOUT_REMINDER, fallbackWeekdays: [] });
   }
   const inferredRef = useRef([]);
-  // Edits are ignored until the stored settings have loaded: defaults are not a
-  // durable baseline, so a failed early edit must never roll back to them.
-  const hydratedRef = useRef(false);
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -100,29 +97,40 @@ export function ReminderSettingsCard() {
     };
   }, []);
 
+  // Each channel hydrates independently, and reading the durable config is a
+  // separate step from the initial schedule reconcile. A channel's edits are
+  // ignored until its stored settings have loaded (`hydrated`): defaults are
+  // not a durable baseline, so a failed early edit must never roll back to
+  // them. A read failure leaves that channel read-only; a reconcile failure
+  // after a successful read keeps the durable value editable and surfaces the
+  // scheduling error instead.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const [weighInSettings, reconciled] = await Promise.all([
-        Storage.loadWeighInReminder(),
-        reconcileWorkoutReminder(),
-      ]);
-      if (cancelled) return;
-      weighInChannel.current.latest = weighInSettings;
-      weighInChannel.current.durable = weighInSettings;
-      workoutChannel.current.latest = reconciled.workout;
-      workoutChannel.current.durable = reconciled.workout;
-      hydratedRef.current = true;
-      setWeighIn(weighInSettings);
-      setWorkout(reconciled.workout);
-      inferredRef.current = reconciled.inferredWeekdays;
-      setInferredWeekdays(reconciled.inferredWeekdays);
-    })().catch(() => {
-      // Hydration failed: the card stays read-only on defaults rather than
-      // letting edits overwrite settings it could not read.
-      if (cancelled) return;
-      setWeighInError(LOAD_ERROR_MESSAGE);
-      setWorkoutError(LOAD_ERROR_MESSAGE);
+    const install = (ch, value, setState) => {
+      ch.latest = value;
+      ch.durable = value;
+      ch.hydrated = true;
+      setState(value);
+    };
+    Storage.loadWeighInReminder().then((value) => {
+      if (!cancelled) install(weighInChannel.current, value, setWeighIn);
+    }).catch(() => {
+      if (!cancelled) setWeighInError(LOAD_ERROR_MESSAGE);
+    });
+    Storage.loadWorkoutReminder().then((value) => {
+      if (!cancelled) install(workoutChannel.current, value, setWorkout);
+      else return null;
+      return reconcileWorkoutReminder().then((reconciled) => {
+        if (cancelled) return;
+        inferredRef.current = reconciled.inferredWeekdays;
+        setInferredWeekdays(reconciled.inferredWeekdays);
+      }, (e) => {
+        const ch = workoutChannel.current;
+        ch.scheduleError = scheduleFailureMessage(e);
+        if (!cancelled && ch.rev === 0) setWorkoutError(ch.scheduleError);
+      });
+    }, () => {
+      if (!cancelled) setWorkoutError(LOAD_ERROR_MESSAGE);
     });
     return () => {
       cancelled = true;
@@ -171,8 +179,8 @@ export function ReminderSettingsCard() {
   // reports the schedule problem separately. `revertOnScheduleFailure` turns an
   // enable back off (its own durable write) when it could not be scheduled.
   const commit = useCallback((channelRef, setState, setError, apply, save, build, revertOnScheduleFailure = false) => {
-    if (!hydratedRef.current) return Promise.resolve();
     const ch = channelRef.current;
+    if (!ch.hydrated) return Promise.resolve();
     const next = build(ch.latest);
     let rev = ++ch.rev;
     ch.latest = next;
@@ -255,14 +263,14 @@ export function ReminderSettingsCard() {
   ), [commit]);
 
   const handleWeighInToggle = useCallback(async (enabled) => {
-    if (!hydratedRef.current) return;
+    if (!weighInChannel.current.hydrated) return;
     setWeighInError(null);
     if (enabled && !(await ensurePermission(setWeighInError))) return;
     await commitWeighIn((base) => ({ ...base, enabled }), enabled);
   }, [ensurePermission, commitWeighIn]);
 
   const handleWorkoutToggle = useCallback(async (enabled) => {
-    if (!hydratedRef.current) return;
+    if (!workoutChannel.current.hydrated) return;
     setWorkoutError(null);
     const days = workoutChannel.current.latest.fallbackWeekdays;
     if (enabled && resolveWorkoutWeekdays(inferredRef.current, days).length === 0) {
