@@ -92,10 +92,20 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     borderColor: kua ? kua.primary : undefined,
     borderWidth: kua ? 2 : undefined,
   },
+  // #1533: Home card convention shared by Exercise Progress, 1K Progress and
+  // Body Weight: 20dp sides, a 44dp tappable header carrying the top slack
+  // (4dp card top), and 16dp below the content. Overrides weeklyHero's padding
+  // for the Progress card only so Recovery keeps its own layout.
+  progressCard: {
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 16,
+  },
   heroHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginTop: 14,
     marginBottom: 12,
   },
   heroAccentBar: {
@@ -118,7 +128,7 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     alignItems: 'baseline',
     justifyContent: 'space-between',
     gap: 12,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   heroTitleText: {
     flex: 1,
@@ -206,7 +216,7 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
   },
   // The classification trio is the hero's lead content (#1112: training leads).
   classifSection: {
-    marginBottom: 12,
+    marginBottom: 8,
   },
   classifHeaderRow: {
     flexDirection: 'row',
@@ -257,12 +267,6 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     ...(kua ? { fontFamily: typography['body-sm'].fontFamily, fontSize: TYPOGRAPHY['label-md'].fontSize } : { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
-  },
-  classifCaption: {
-    ...(kua ? { ...typography['body-sm'], fontSize: TYPOGRAPHY['label-md'].fontSize } : { fontSize: TYPOGRAPHY['label-md'].fontSize }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginTop: kua ? 4 : 8,
-    fontStyle: 'italic',
   },
   // Recovery status card (#757).
   recoveryCard: {
@@ -343,7 +347,7 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     rowGap: 8,
   },
   weightTrendChart: {
-    marginTop: 14,
+    marginTop: 8,
   },
   goalSummary: {
     flexShrink: 1,
@@ -373,7 +377,7 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
   oneKCard: {
     paddingHorizontal: 20,
     paddingTop: 4,
-    paddingBottom: 20,
+    paddingBottom: 16,
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,
   },

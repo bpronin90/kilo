@@ -2987,3 +2987,73 @@ describe('Home Exercise Progress — establishing a baseline (#1391)', () => {
     expect(texts(c)).toContain('Progressing');
   });
 });
+
+// #1533: Home card convention + removed first-session blurb.
+describe('Home Exercise Progress card — convention and no first-session blurb (#1533)', () => {
+  const React = require('react');
+  const render = require('react-test-renderer');
+  const { ThemeProvider } = require('../theme/ThemeContext');
+  const { HomeHeader } = require('../screens/home/HomeHeader');
+  const { createStyles } = require('../screens/home/homeStyles');
+  const { LightColors } = require('../theme/colors');
+
+  const texts = (c) => c.root.findAll(n => n.type === 'Text')
+    .map(n => [].concat(n.props.children).join(''));
+  const has = (c, testID) => c.root.findAll(n => n.props.testID === testID).length > 0;
+  const mount = async (weeklySummary, note = { id: 'n1', title: 'Routine A', raw_text: 'Monday\n-Squat\n225 5' }) => {
+    let c;
+    const onNavigate = jest.fn();
+    await render.act(async () => {
+      c = render.create(
+        <ThemeProvider>
+          <HomeHeader
+            dashboardData={{ weeksIn: 3, weeklySummary: { hasInheritedTracking: false, newlyTrackedCount: 0, ...weeklySummary } }}
+            onNavigate={onNavigate}
+            workoutNote={note}
+            notes={[]}
+            handleLogWorkoutPress={jest.fn()}
+            heroPrimaryActionLabel="Log workout"
+            heroPrimaryActionHint="Opens Log"
+          />
+        </ThemeProvider>,
+      );
+    });
+    return { c, onNavigate };
+  };
+  const trio = { progressing: 2, stalled: 1, regressing: 0 };
+
+  test.each([
+    ['first session', { newlyTrackedCount: 3 }],
+    ['inherited tracking', { hasInheritedTracking: true }],
+  ])('%s shows counts and no explanation paragraph', async (_n, extra) => {
+    const { c } = await mount({ classifications: trio, ...extra });
+    expect(has(c, 'home-classif-caption')).toBe(false);
+    const all = texts(c);
+    expect(all.some(t => /first tracked session|existing workout history/.test(t))).toBe(false);
+    expect(all).toEqual(expect.arrayContaining(['2', 'Progressing', '1', 'Steady', '0', 'Regressing']));
+  });
+
+  test('no-routine state keeps its message and link-free layout', async () => {
+    const { c } = await mount({ classifications: trio }, null);
+    expect(has(c, 'home-no-routine')).toBe(true);
+    expect(has(c, 'home-classif-caption')).toBe(false);
+  });
+
+  test('Exercise Progress header still navigates to Progressive Overload', async () => {
+    const { c, onNavigate } = await mount({ classifications: trio });
+    const link = c.root.findAll(n => n.props.testID === 'home-exercise-progress-link' && n.props.onPress)[0];
+    link.props.onPress();
+    expect(onNavigate).toHaveBeenCalledWith('Analytics', 'progressive-overload');
+  });
+
+  test('Progress, 1K and Body Weight cards share one padding convention', () => {
+    const s = createStyles(LightColors);
+    const flat = (o) => ({ h: o.paddingHorizontal, t: o.paddingTop, b: o.paddingBottom });
+    expect(flat(s.progressCard)).toEqual({ h: 20, t: 4, b: 16 });
+    expect(flat(s.goalCard)).toEqual(flat(s.progressCard));
+    expect(flat(s.oneKCard)).toEqual(flat(s.progressCard));
+    // Recovery's own hero layout is untouched.
+    expect(s.weeklyHero.padding).toBe(18);
+    expect(s.classifCaption).toBeUndefined();
+  });
+});

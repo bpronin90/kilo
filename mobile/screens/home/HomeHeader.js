@@ -91,14 +91,6 @@ export function HomeHeader({
     newlyTracked: newlyTrackedCount,
     classified: (counts?.progressing ?? 0) + (counts?.stalled ?? 0) + (counts?.regressing ?? 0),
   });
-  const captionText = newlyTrackedCount > 0
-    ? (newlyTrackedCount === 1
-        ? '1 exercise is in its first tracked session. Log it again to see a trend.'
-        : `${newlyTrackedCount} exercises are in their first tracked session. Log them again to see a trend.`)
-    : dashboardData.weeklySummary.hasInheritedTracking
-      ? 'Some exercises use their existing workout history for these counts.'
-      : null;
-
   const classifBody = baselineMessage ? (
     <Text testID="home-progress-baseline" style={styles.heroRoutineMessage}>{baselineMessage}</Text>
   ) : (
@@ -117,7 +109,7 @@ export function HomeHeader({
   );
 
   return (
-    <Card style={styles.weeklyHero}>
+    <Card style={[styles.weeklyHero, styles.progressCard]}>
       {routineState === 'active' ? (
         /* #1456: Exercise Progress leads, like the sibling card headers. */
         <View style={styles.classifHeaderRow}>
@@ -148,12 +140,6 @@ export function HomeHeader({
       ) : (
         <View style={styles.classifSection}>
           {classifBody}
-          {/* #894/#1456: the counts only cover a fully classified tracked span;
-              the caption says so inline (no info toggle on Home) and explains
-              only that, never the Progressive Overload method (#1356). */}
-          {captionText ? (
-            <Text testID="home-classif-caption" style={styles.classifCaption}>{captionText}</Text>
-          ) : null}
         </View>
       )}
 
