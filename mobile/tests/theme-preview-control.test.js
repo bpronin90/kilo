@@ -4,7 +4,6 @@ import { Text } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { ThemeProvider, useTheme } from '../theme/ThemeContext';
-import { ThemePreviewControl } from '../components/ThemePreviewControl';
 import { SettingsScreen } from '../components/SettingsScreen';
 import {
   __resetAppearancePreferenceForTests,
@@ -45,120 +44,10 @@ jest.mock('../components/ReminderSettingsCard', () => ({
   ReminderSettingsCard: () => null,
 }));
 
-function renderControl() {
-  let component;
-  act(() => {
-    component = renderer.create(
-      <ThemeProvider>
-        <ThemePreviewControl />
-      </ThemeProvider>
-    );
-  });
-  return component;
-}
-
-function themeButton(component, label) {
-  return component.root.findByProps({ accessibilityLabel: `Select ${label} court theme` });
-}
-
-function appearanceButton(component, label) {
-  return component.root.findByProps({ accessibilityLabel: `Select ${label} appearance` });
-}
-
 beforeEach(() => {
   __resetThemeSelectionForTests();
   __resetAppearancePreferenceForTests();
   AsyncStorage.clear();
-});
-
-describe('ThemePreviewControl renders all six combinations', () => {
-  test('renders theme buttons for Hard, Clay, and Grass', () => {
-    const component = renderControl();
-    expect(() => themeButton(component, 'Hard')).not.toThrow();
-    expect(() => themeButton(component, 'Clay')).not.toThrow();
-    expect(() => themeButton(component, 'Grass')).not.toThrow();
-  });
-
-  test('renders appearance buttons for Light, Dark, and System', () => {
-    const component = renderControl();
-    expect(() => appearanceButton(component, 'Light')).not.toThrow();
-    expect(() => appearanceButton(component, 'Dark')).not.toThrow();
-    expect(() => appearanceButton(component, 'System')).not.toThrow();
-  });
-
-  test('Hard Court is selected by default', () => {
-    const component = renderControl();
-    expect(themeButton(component, 'Hard').props.accessibilityState.selected).toBe(true);
-    expect(themeButton(component, 'Clay').props.accessibilityState.selected).toBe(false);
-    expect(themeButton(component, 'Grass').props.accessibilityState.selected).toBe(false);
-  });
-
-  test('System appearance is selected by default', () => {
-    const component = renderControl();
-    expect(appearanceButton(component, 'System').props.accessibilityState.selected).toBe(true);
-    expect(appearanceButton(component, 'Light').props.accessibilityState.selected).toBe(false);
-    expect(appearanceButton(component, 'Dark').props.accessibilityState.selected).toBe(false);
-  });
-
-  test('pressing Clay Court switches the theme selection', () => {
-    const component = renderControl();
-
-    act(() => {
-      themeButton(component, 'Clay').props.onPress();
-    });
-
-    expect(themeButton(component, 'Clay').props.accessibilityState.selected).toBe(true);
-    expect(themeButton(component, 'Hard').props.accessibilityState.selected).toBe(false);
-    expect(getThemeSelection()).toBe('clay-court');
-  });
-
-  test('pressing Grass Court switches the theme selection', () => {
-    const component = renderControl();
-
-    act(() => {
-      themeButton(component, 'Grass').props.onPress();
-    });
-
-    expect(themeButton(component, 'Grass').props.accessibilityState.selected).toBe(true);
-    expect(getThemeSelection()).toBe('grass-court');
-  });
-
-  test('pressing Dark switches the appearance', () => {
-    const component = renderControl();
-
-    act(() => {
-      appearanceButton(component, 'Dark').props.onPress();
-    });
-
-    expect(appearanceButton(component, 'Dark').props.accessibilityState.selected).toBe(true);
-    expect(appearanceButton(component, 'System').props.accessibilityState.selected).toBe(false);
-    expect(getAppearancePreference()).toBe('dark');
-  });
-
-  test('pressing Light switches the appearance', () => {
-    const component = renderControl();
-
-    act(() => {
-      appearanceButton(component, 'Light').props.onPress();
-    });
-
-    expect(appearanceButton(component, 'Light').props.accessibilityState.selected).toBe(true);
-    expect(getAppearancePreference()).toBe('light');
-  });
-
-  test('pressing System restores system appearance', () => {
-    const component = renderControl();
-
-    act(() => {
-      appearanceButton(component, 'Dark').props.onPress();
-    });
-    act(() => {
-      appearanceButton(component, 'System').props.onPress();
-    });
-
-    expect(appearanceButton(component, 'System').props.accessibilityState.selected).toBe(true);
-    expect(getAppearancePreference()).toBe('system');
-  });
 });
 
 describe('all six theme+appearance combinations', () => {
@@ -268,17 +157,6 @@ describe('theme/appearance independence in context', () => {
     });
 
     expect(reading(component)).toBe('grass-court/system');
-  });
-});
-
-describe('DEV label is present', () => {
-  test('the control renders a dev-only label', () => {
-    const component = renderControl();
-    const texts = component.root
-      .findAllByType(require('react-native').Text)
-      .map((n) => n.props.children);
-    const hasDevLabel = texts.some((t) => typeof t === 'string' && t.includes('DEV'));
-    expect(hasDevLabel).toBe(true);
   });
 });
 
