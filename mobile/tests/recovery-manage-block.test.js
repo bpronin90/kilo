@@ -304,7 +304,7 @@ describe('Selection invalidation across every focus transition', () => {
     const B = block({ id: 'rb-b', completed_at: '2026-06-01T00:00:00Z', baseline_note_title: 'Old' });
     const bWeeks = [week(1, 'w1', { block_id: 'rb-b' }), week(2, 'w2', { block_id: 'rb-b' })];
     let c;
-    act(() => { c = render.create(<AnalyticsRecoverySection blocks={[B]} weeks={bWeeks} notes={NOTES} />); });
+    act(() => { c = render.create(<AnalyticsRecoverySection blocks={[B, { ...B, id: 'rb-sib', completed_at: '2020-01-01T00:00:00Z', baseline_note_title: 'Sibling' }]} weeks={bWeeks} notes={NOTES} />); });
     expandEnded(c.root);
     pickWeek(c.root, 1);
     act(() => { byLabel(c.root, 'Expand recovery history').props.onPress(); });

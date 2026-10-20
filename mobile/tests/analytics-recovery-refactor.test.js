@@ -176,7 +176,8 @@ describe('#1052 refactor — the boundary renders the extracted components', () 
     const w2 = week(2, 'note-w2');
     const w1 = week(1, 'note-w1');
     const component = setup({
-      blocks: [b],
+      // A lone completed block omits History (#1536), so an older sibling keeps it.
+      blocks: [b, { ...b, id: 'rb-sibling', baseline_note_title: 'Sibling', completed_at: '2020-01-01T00:00:00Z' }],
       weeks: [w2, w1],
       notes: [note('note-w1', BASELINE_TEXT), note('note-w2', BASELINE_TEXT)],
     });
@@ -192,7 +193,7 @@ describe('#1442 — week-index rows have no Log note link', () => {
   test('a readable week-index row renders no View note in Log affordance', () => {
     const b = completedBlock();
     const component = setup({
-      blocks: [b],
+      blocks: [b, { ...b, id: 'rb-sibling', baseline_note_title: 'Sibling', completed_at: '2020-01-01T00:00:00Z' }],
       weeks: [week(1, 'note-w1')],
       notes: [note('note-w1', BASELINE_TEXT)],
     });
@@ -263,7 +264,8 @@ describe('#1052 refactor — preserved states reach the screen', () => {
   });
 
   test('Analytics Recovery is read-only: no inclusion toggle, no Manage block (Log owns them, #1315)', () => {
-    const component = setup({ blocks: [completedBlock()], weeks: [], notes: [] });
+    const cb = completedBlock();
+    const component = setup({ blocks: [cb, { ...cb, id: 'rb-sibling', completed_at: '2020-01-01T00:00:00Z' }], weeks: [], notes: [] });
     const root = component.root;
     act(() => { byLabel(root, 'Expand recovery history').props.onPress(); });
     expect(root.findAllByType(RecoveryInclusionToggle)).toHaveLength(0);
