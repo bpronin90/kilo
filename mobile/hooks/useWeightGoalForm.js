@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Alert } from '../lib/platformAlert';
+import { convertWeightDraft } from '../lib/parser/weightEntry';
 
 // One month out, local calendar day (not UTC) so the pre-filled date never
 // lands a day off near midnight.
@@ -11,13 +12,38 @@ function defaultTargetDate() {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
-export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActive = true, registerBackConsumer) {
+export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActive = true, registerBackConsumer, unit = 'lb', canonicalGoal = null) {
   const [goalEditing, setGoalEditing] = useState(false);
   const [goalTargetWeight, setGoalTargetWeight] = useState('');
   const [goalTargetDate, setGoalTargetDate] = useState(defaultTargetDate);
   const [goalStartWeight, setGoalStartWeight] = useState('');
   const [goalError, setGoalError] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // Unit-change bridge (#1476): form text is typed in the selected unit. While
+  // editing, a preference change converts the dirty text once (never discards
+  // it). Provenance refs keep the original lb value for text we seeded or
+  // converted, so repeated switches and unchanged drafts do not drift.
+  const prevUnitRef = useRef(unit);
+  const targetProvRef = useRef(null);
+  const startProvRef = useRef(null);
+  useEffect(() => {
+    const from = prevUnitRef.current;
+    if (from === unit) return;
+    prevUnitRef.current = unit;
+    // With no saved goal the form is shown directly (goalEditing stays false).
+    if (!goalEditing && goal) return;
+    const t = convertWeightDraft(goalTargetWeight, from, unit, targetProvRef.current);
+    if (t) {
+      targetProvRef.current = t;
+      setGoalTargetWeight(t.text);
+    }
+    const s = convertWeightDraft(goalStartWeight, from, unit, startProvRef.current);
+    if (s) {
+      startProvRef.current = s;
+      setGoalStartWeight(s.text);
+    }
+  }, [unit]);
 
   useEffect(() => {
     if (goal && !goalEditing) {
@@ -109,6 +135,11 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
   };
 
   const startEditGoal = () => {
+    const lbGoal = canonicalGoal ?? null;
+    targetProvRef.current = goal && lbGoal?.target_weight != null
+      ? { text: String(goal.target_weight), unit, lb: lbGoal.target_weight } : null;
+    startProvRef.current = goal && lbGoal?.start_weight
+      ? { text: String(goal.start_weight), unit, lb: lbGoal.start_weight } : null;
     if (goal) {
       setGoalTargetWeight(String(goal.target_weight));
       setGoalTargetDate(goal.target_date);
@@ -123,6 +154,8 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
   };
 
   const cancelEditGoal = () => {
+    targetProvRef.current = null;
+    startProvRef.current = null;
     setGoalError('');
     setGoalStartWeight('');
     setGoalEditing(false);

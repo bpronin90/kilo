@@ -7,6 +7,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { useWeightEntries, useWeightGoal, useUserProfile } from '../hooks/useEntries';
 import { getWeightDeltaSeverity } from '../lib/format';
 import { parseWeightEntry } from '../lib/parser';
+import { convertWeightDraft } from '../lib/parser/weightEntry';
 import { deriveWeightGoalAnalytics } from '../lib/data';
 import { isGoalMet as computeIsGoalMet, isWeightThresholdMet } from '../lib/data/weightGoal';
 import { useArchivedWeightGoals } from '../hooks/entries/weightHooks';
@@ -55,6 +56,23 @@ export function WeightScreen({
   // submission time, preserving the original default-today semantics.
   const [newEntryDateTouched, setNewEntryDateTouched] = useState(false);
   const [editDate, setEditDate] = useState('');
+
+  // Weigh-in draft unit bridge (#1476). weightValue is text typed in the
+  // selected unit; this screen stays mounted while hidden, so a preference
+  // change converts the dirty draft once here (new and edit paths alike)
+  // instead of letting the parser reinterpret the old number in the new unit.
+  const draftProvRef = useRef(null);
+  const prevUnitRef = useRef(unit);
+  useEffect(() => {
+    const from = prevUnitRef.current;
+    if (from === unit) return;
+    prevUnitRef.current = unit;
+    const next = convertWeightDraft(weightValue, from, unit, draftProvRef.current);
+    if (next) {
+      draftProvRef.current = next;
+      setWeightValue(next.text);
+    }
+  }, [unit]);
   const [goalHistoryCollapsed, setGoalHistoryCollapsed] = useState(true);
   const scrollRef = useRef(null);
 
@@ -98,7 +116,7 @@ export function WeightScreen({
     })
   ), [saveGoal, unit]);
 
-  const goalForm = useWeightGoalForm(displayGoal, saveGoalCanonical, clearGoal, archiveGoal, isActive, registerBackConsumer);
+  const goalForm = useWeightGoalForm(displayGoal, saveGoalCanonical, clearGoal, archiveGoal, isActive, registerBackConsumer, unit, goal);
 
   // Draft goal fields are typed in the selected unit; convert them to lb-space
   // strings before the lb-domain analytics derivation (identity in lb mode).
@@ -189,7 +207,9 @@ export function WeightScreen({
   const handleEditEntry = useCallback((entry) => {
     setLocalError('');
     setEditingId(entry.id);
-    setWeightValue(formatBodyweightValue(entry.weight_value, unit));
+    const seeded = formatBodyweightValue(entry.weight_value, unit);
+    draftProvRef.current = { text: seeded, unit, lb: entry.weight_value };
+    setWeightValue(seeded);
     setWeightNote(entry.note || '');
     setEditDate(entry.date);
     scrollRef.current?.scrollTo({ x: 0, y: 0, animated: !reduceMotion });
@@ -198,6 +218,7 @@ export function WeightScreen({
   const cancelEdit = useCallback(() => {
     setLocalError('');
     setEditingId(null);
+    draftProvRef.current = null;
     setWeightValue('');
     setWeightNote('');
     setEditDate('');
