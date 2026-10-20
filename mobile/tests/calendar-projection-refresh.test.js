@@ -85,11 +85,13 @@ describe('useLocalCalendarDay (#1484)', () => {
     expect(days[days.length - 1]).toBe('2025-03-08');
     render.act(() => { jest.advanceTimersByTime(31 * 60 * 1000); });
     expect(days[days.length - 1]).toBe('2025-03-09');
-    // Re-armed at 2025-03-09 00:00:05 local; the following midnight spans the
-    // offset change itself (23h day) and lands on 03-10.
-    render.act(() => { jest.advanceTimersByTime(22 * 3600 * 1000); });
+    // Re-armed at 00:00:05 on 03-09. Advance by real local-midnight arithmetic
+    // (not fixed hour counts): 23h in a DST zone, 24h elsewhere.
+    const now = new Date();
+    const msToMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime() - now.getTime();
+    render.act(() => { jest.advanceTimersByTime(msToMidnight - 60 * 1000); });
     expect(days[days.length - 1]).toBe('2025-03-09');
-    render.act(() => { jest.advanceTimersByTime(3600 * 1000 + 10 * 1000); });
+    render.act(() => { jest.advanceTimersByTime(60 * 1000 + 10 * 1000); });
     expect(days[days.length - 1]).toBe('2025-03-10');
   });
 
