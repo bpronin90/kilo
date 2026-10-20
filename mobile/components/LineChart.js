@@ -1,5 +1,5 @@
 import { TYPOGRAPHY } from '../theme/typography';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View, Text, Pressable, PixelRatio } from 'react-native';
 import Svg, { Polyline, Circle, Rect, G, Line } from 'react-native-svg';
 import { useTheme } from '../theme/ThemeContext';
@@ -47,7 +47,26 @@ export function LineChart({
   // caller that omits `color` (#689).
   const strokeColor = color || (kua ? kua.primary : colors.accent);
   const mutedColor = kua ? kua.onSurfaceVariant : colors.textMuted;
-  const [selectedIndex, setSelectedIndex] = useState(null);
+  const [rawSelectedIndex, setSelectedIndex] = useState(null);
+  // Selection is only meaningful inside the current series (#1479). Derived on
+  // every render — not in an effect — so replacement data that shrinks the
+  // series never reads an out-of-range point, even on the render before the
+  // cleanup effect below runs. An invalid index falls back to "latest".
+  // Fewer than two points is not a chart at all, so nothing is selectable.
+  const selectableLength = data && data.length >= 2 ? data.length : 0;
+  const selectionValid =
+    rawSelectedIndex !== null && rawSelectedIndex >= 0 && rawSelectedIndex < selectableLength;
+  const selectedIndex = selectionValid ? rawSelectedIndex : null;
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+  // Drop the stale state (so a later expansion does not resurrect the old
+  // index) and tell the caller its selected point is gone.
+  useEffect(() => {
+    if (rawSelectedIndex !== null && !selectionValid) {
+      setSelectedIndex(null);
+      onSelectRef.current?.(null);
+    }
+  }, [rawSelectedIndex, selectionValid]);
   const [chartWidth, setChartWidth] = useState(0);
 
   if (!data || data.length < 2) {
