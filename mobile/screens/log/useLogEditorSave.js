@@ -44,6 +44,12 @@ export async function runDoneConvergenceLoop({ save, hasConverged, guardMax = 5 
   return true;
 }
 
+// New-routine Done (#1474): a blank title is persisted as 'Untitled Routine',
+// so the live title and the last-saved title converge modulo that default.
+export function newRoutineTitleConverged(liveTitle, savedTitle) {
+  return (liveTitle || 'Untitled Routine') === savedTitle;
+}
+
 // Post-save draft cleanup, shared by both editors. Retires the saved snapshot
 // and drafts that predate the save checkpoint; a different draft written after
 // the checkpoint is the user's newer in-flight typing and is rebased onto the

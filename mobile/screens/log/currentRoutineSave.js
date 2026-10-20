@@ -400,11 +400,8 @@ export async function performRevertCurrent({
 // id-stable create (#997): the attempt token is durable before the create and
 // retired only after full success, so a retried create completes the same note
 // instead of adding a second.
-export function performCurrentSave(ctx, { autosave = false, overrideText, universalSkipCount, sessionCheckins } = {}) {
+export function performCurrentSave(ctx, { autosave = false, overrideText, universalSkipCount, sessionCheckins, resumeCreated = false } = {}) {
   const {
-    workoutNoteText,
-    workoutNoteTitle,
-    currentId,
     notes,
     trackedLifts,
     trackedLiftActivations,
@@ -432,6 +429,15 @@ export function performCurrentSave(ctx, { autosave = false, overrideText, univer
     setWorkoutNoteTitle,
     setWorkoutNoteText,
   } = ctx;
+  // Live values, not render-closure ones (#1474): a Done retry re-enters this
+  // closure after the create resolved, and must save the newest text/title to
+  // the created note (draftNoteIdOverrideRef holds its id until currentId
+  // catches up; only Done's retries opt in via resumeCreated) rather than
+  // create a duplicate.
+  const workoutNoteText = workoutNoteTextRef.current;
+  const workoutNoteTitle = workoutNoteTitleRef.current;
+  const currentId = ctx.currentId || (resumeCreated && draftNoteIdOverrideRef.current) || null;
+  const adoptedCreatedId = !ctx.currentId && !!currentId;
 
   const isSpecializedSave = overrideText !== undefined
     || universalSkipCount !== undefined
@@ -515,9 +521,9 @@ export function performCurrentSave(ctx, { autosave = false, overrideText, univer
       }
 
       if (result) {
-        const identityUnchanged = savedForId
+        const identityUnchanged = savedForId && !adoptedCreatedId
           ? currentIdRef.current === savedForId
-          : currentIdRef.current == null || currentIdRef.current === result.id;
+          : currentIdRef.current == null || currentIdRef.current === (result.id || savedForId);
         // Commit the counter only after the write actually persisted, so a
         // failed save leaves the advisory flag in sync with the stored text.
         if (identityUnchanged) {

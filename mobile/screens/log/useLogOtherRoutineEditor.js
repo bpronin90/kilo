@@ -240,10 +240,11 @@ export function useLogOtherRoutineEditor({
   const handleSaveOtherNote = ({ autosave = false } = {}) => {
     if (saveOtherNoteInFlightRef.current) return saveOtherNoteInFlightRef.current;
 
-    const savedNoteId = editingNoteId;
+    // Live refs, not closure state (#1474): Done's retries must see the created id and newer edits.
+    const savedNoteId = editingNoteIdRef.current;
     const savedSource = editingSource;
-    const snapshotText = editingFullText;
-    const snapshotTitle = editingTitle;
+    const snapshotText = editingFullTextRef.current;
+    const snapshotTitle = editingTitleRef.current;
     const snapshotDeloadDate = deloadEditDate;
     const snapshotDeloadOrdinal = deloadEditOrdinal;
 
@@ -262,11 +263,11 @@ export function useLogOtherRoutineEditor({
       const draftCheckpointPromise = markWorkoutNoteDraftSaveStart().catch(() => null);
       try {
         let result;
-        let titleToSave = editingTitle || 'Untitled Routine';
+        let titleToSave = snapshotTitle || 'Untitled Routine';
         if (isEditingDeloadNote && !titleToSave.startsWith(DELOAD_NOTE_PREFIX)) {
           titleToSave = DELOAD_NOTE_PREFIX + (deloadEditDate || titleToSave);
         }
-        if (editingNoteId === 'new') {
+        if (savedNoteId === 'new') {
           // Id-stable create (#997): the attempt token is durable before the
           // create and retired only after it fully succeeds, so retrying a
           // create whose cloud enqueue failed — with the title or body edited,
@@ -281,7 +282,7 @@ export function useLogOtherRoutineEditor({
           const attemptToken = createAttemptTokenRef.current
             || await ensureWorkoutNoteCreationAttempt(OTHER_CREATE_ATTEMPT_KEY);
           createAttemptTokenRef.current = attemptToken;
-          result = await add(titleToSave, editingFullText, { attemptToken });
+          result = await add(titleToSave, snapshotText, { attemptToken });
           await clearWorkoutNoteCreationAttempt(OTHER_CREATE_ATTEMPT_KEY, attemptToken);
           createAttemptTokenRef.current = null;
           savingOtherSnapshotRef.current.noteId = result.id;
@@ -302,7 +303,7 @@ export function useLogOtherRoutineEditor({
             if (withWeek) result = withWeek;
           }
         } else {
-          const patch = { title: titleToSave, raw_text: editingFullText };
+          const patch = { title: titleToSave, raw_text: snapshotText };
           if (editingHasABWeeks && isValidActiveWeek(editingEffectiveWeek)) {
             patch.activeWeek = editingEffectiveWeek;
           } else if (!editingHasABWeeks && editingNote?.activeWeek != null) {
@@ -338,7 +339,7 @@ export function useLogOtherRoutineEditor({
               }
             }
           }
-          result = await update(editingNoteId, patch);
+          result = await update(savedNoteId, patch);
         }
         if (!result) {
           setSaveError('Save failed');
