@@ -63,6 +63,16 @@ export function WeightScreen({
   // instead of letting the parser reinterpret the old number in the new unit.
   const draftProvRef = useRef(null);
   const prevUnitRef = useRef(unit);
+  // Provenance lives only as long as the exact draft it describes: any user
+  // keystroke, cancel, successful save, or an emptied field drops it, so a later
+  // draft that happens to reuse the same text can never inherit a stale lb value.
+  const onUserWeightChange = useCallback((text) => {
+    draftProvRef.current = null;
+    setWeightValue(text);
+  }, [setWeightValue]);
+  useEffect(() => {
+    if (!weightValue) draftProvRef.current = null;
+  }, [weightValue]);
   useEffect(() => {
     const from = prevUnitRef.current;
     if (from === unit) return;
@@ -279,6 +289,7 @@ export function WeightScreen({
         const retainedLb = retainedDraftLb(weightValue, unit, draftProvRef.current);
         const ok = retainedLb == null ? await onSaveWeight(newDate) : await onSaveWeight(newDate, retainedLb);
         if (ok) {
+          draftProvRef.current = null;
           setNewEntryDate(localDateToday());
           setNewEntryDateTouched(false);
         }
@@ -337,7 +348,7 @@ export function WeightScreen({
         displayError={displayError}
         unit={unit}
         weightValue={weightValue}
-        setWeightValue={setWeightValue}
+        setWeightValue={onUserWeightChange}
         weightNote={weightNote}
         setWeightNote={setWeightNote}
         newEntryDate={newEntryDate}

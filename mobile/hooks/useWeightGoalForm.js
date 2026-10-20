@@ -27,6 +27,24 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
   const prevUnitRef = useRef(unit);
   const targetProvRef = useRef(null);
   const startProvRef = useRef(null);
+  // Provenance lives only as long as the exact draft it describes (#1476): any
+  // user keystroke drops it, and so does the form closing, saving, clearing or
+  // archiving, so a later draft reusing the same text never inherits a stale lb.
+  const dropProvenance = () => {
+    targetProvRef.current = null;
+    startProvRef.current = null;
+  };
+  const onTargetChange = (text) => {
+    targetProvRef.current = null;
+    setGoalTargetWeight(text);
+  };
+  const onStartChange = (text) => {
+    startProvRef.current = null;
+    setGoalStartWeight(text);
+  };
+  useEffect(() => {
+    if (!goalEditing && goal) dropProvenance();
+  }, [goalEditing, goal]);
   useEffect(() => {
     const from = prevUnitRef.current;
     if (from === unit) return;
@@ -104,6 +122,7 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
       setGoalError('Could not save your goal. Try again.');
       return;
     }
+    dropProvenance();
     setGoalEditing(false);
   };
 
@@ -115,6 +134,7 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
         setGoalTargetWeight('');
         setGoalTargetDate(defaultTargetDate());
         setGoalStartWeight('');
+        dropProvenance();
         setGoalEditing(false);
       }},
     ]);
@@ -135,6 +155,7 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
         setGoalTargetWeight('');
         setGoalTargetDate(defaultTargetDate());
         setGoalStartWeight('');
+        dropProvenance();
         setGoalEditing(false);
       }},
     ]);
@@ -189,11 +210,11 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
     goalEditing,
     setGoalEditing,
     goalTargetWeight,
-    setGoalTargetWeight,
+    setGoalTargetWeight: onTargetChange,
     goalTargetDate,
     setGoalTargetDate,
     goalStartWeight,
-    setGoalStartWeight,
+    setGoalStartWeight: onStartChange,
     goalError,
     setGoalError,
     showDatePicker,
