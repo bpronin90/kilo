@@ -31,6 +31,7 @@ import {
   TRACKED_LIFT_ACTIVATIONS_KEY,
 } from '../storage/entries/keys';
 import { mergeUserProfile } from '../storage/entries/profileStorage';
+import * as localWriteLockModule from '../storage/sync/localWriteLock';
 import { withLocalWriteLock } from '../storage/sync/localWriteLock';
 import { migrateToNotebook } from '../storage/entries/migrations';
 import { secureStorage } from '../storage/secureStorage';
@@ -1325,9 +1326,24 @@ describe('settings writers vs the ack write-back (#1399)', () => {
       });
       await Promise.race([reachedGate.promise, passEnded, missing]);
 
-      // Each write queues on the local write lock synchronously, behind the
-      // parked write-back, so releasing now still races them against it.
-      writes = during().map((p) => Promise.resolve(p).then(() => 'ok', () => 'failed'));
+      // Some writers (e.g. setCurrentWorkoutNote) reach the local write lock only
+      // after their own awaited work, so wait for every write to have requested
+      // it, queued behind the parked write-back, before releasing the gate.
+      let lockRequests = 0;
+      let expected = Infinity;
+      let lockArrived;
+      const arrival = new Promise((resolve) => { lockArrived = resolve; });
+      const realLock = localWriteLockModule.withLocalWriteLock;
+      jest.spyOn(localWriteLockModule, 'withLocalWriteLock').mockImplementation((fn) => {
+        lockRequests += 1;
+        if (lockRequests >= expected) lockArrived();
+        return realLock(fn);
+      });
+      const issued = during();
+      expected = issued.length;
+      if (lockRequests >= expected) lockArrived();
+      writes = issued.map((p) => Promise.resolve(p).then(() => 'ok', () => 'failed'));
+      await Promise.race([arrival, passEnded, missing]);
       gate.resolve();
       outcomes = await Promise.all(writes);
       await pass;
