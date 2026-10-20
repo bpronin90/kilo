@@ -1,6 +1,8 @@
 import React from 'react';
 import render from 'react-test-renderer';
 import { AnalyticsScreen } from '../screens/AnalyticsScreen';
+import { ThemeProvider } from '../theme/ThemeContext';
+import { setWeightUnitPreference, __resetWeightUnitForTests } from '../lib/unitPreference';
 import { deriveAnalytics, deriveParsedSections, deriveOneKChartData, deriveGroupedSignals } from '../screens/analytics/analyticsDerivations';
 import * as useEntries from '../hooks/useEntries';
 import * as data from '../lib/data';
@@ -796,6 +798,78 @@ describe('AnalyticsScreen 1K Progress Card', () => {
     expect(hasText(root, 'one session behind')).toBe(true);
     expect(hasText(root, 'Deload sessions')).toBe(true);
     expect(hasText(root, 'Kilo Max')).toBe(false);
+  });
+
+  // #1535: tightened shared spacing; exactly one collective bar, no per-lift targets.
+  test('keeps one collective progress bar and tight shared spacing (#1535)', () => {
+    const oneK = { total: 558, squat: 200, bench: 158, deadlift: 200 };
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals: [],
+      nameDisplayMap: new Map(),
+      repDropOffFlags: {},
+    });
+    jest.spyOn(data, 'derive1kTotalFromSectionsList').mockReturnValue(oneK);
+
+    const root = setup().root;
+    const flat = n => [].concat(n.props.style ?? []).reduce((acc, s) => (s ? Object.assign(acc, s) : acc), {});
+    const fills = root.findAll(n => n.type === 'View' && flat(n).height === '100%' && /%$/.test(String(flat(n).width)));
+    expect(fills).toHaveLength(1);
+    expect(parseFloat(flat(fills[0]).width)).toBeCloseTo(55.8, 5);
+    const up = (n, pred) => { let c = n.parent; while (c && !pred(flat(c))) c = c.parent; return c; };
+    const track = up(fills[0], st => st.height === 8 && st.width === '100%');
+    expect(flat(track).marginTop).toBe(4);
+    expect(flat(track).marginVertical).toBeUndefined();
+    expect(flat(up(track, st => st.alignSelf === 'stretch')).gap).toBe(4);
+    expect(hasText(root, '558')).toBe(true);
+    for (const v of ['200', '158']) expect(hasText(root, v)).toBe(true);
+    expect(hasText(root, '%')).toBe(false);
+  });
+
+  // #1535: both units, a long mapped name beneath, and chart selection round-trip.
+  describe.each([['lb', 1], ['kg', 0.45359237]])('shared summary in %s with a long mapped name (#1535)', (unit, f) => {
+    afterEach(() => __resetWeightUnitForTests());
+
+    test('selecting then clearing a historical point swaps then restores the values, with one collective bar', () => {
+      const { Text: RNText } = require('react-native');
+      const { LineChart } = require('../components/LineChart');
+      const { AnalyticsStrengthSection } = require('../components/AnalyticsStrengthSection');
+      if (unit === 'kg') setWeightUnitPreference('kg');
+      const cv = n => Math.round(n * f);
+      const now = { total: cv(1000), squat: cv(400), bench: cv(300), deadlift: cv(300) };
+      const past = { value: cv(900), squat: cv(360), bench: cv(280), deadlift: cv(260), valueLb: 900, squatLb: 360, benchLb: 280, deadliftLb: 260 };
+      LineChart.mockClear();
+      let c;
+      render.act(() => {
+        c = render.create(
+          <ThemeProvider>
+            <AnalyticsStrengthSection
+              handleStrengthLayout={() => {}}
+              isNotesLoading={false}
+              oneK={now}
+              oneKCanonical={{ total: 1000, squat: 400, bench: 300, deadlift: 300 }}
+              oneKChartData={[{ session: 1, ...past }, { session: 2, value: now.total }]}
+              big3Mapping={<RNText>Paused Competition Back Squat With Long Descriptive Custom Mapping Name</RNText>}
+            />
+          </ThemeProvider>
+        );
+      });
+      const root = c.root;
+      const flat = n => [].concat(n.props.style ?? []).reduce((acc, st) => (st ? Object.assign(acc, st) : acc), {});
+      const fills = () => root.findAll(n => n.type === 'View' && flat(n).height === '100%' && /%$/.test(String(flat(n).width)));
+      const texts = () => root.findAllByType(RNText).map(t => [].concat(t.props.children).join(''));
+      expect(fills()).toHaveLength(1);
+      expect(texts()).toEqual(expect.arrayContaining([String(now.squat), String(now.bench), String(now.deadlift)]));
+      expect(texts().some(t => t.includes('Long Descriptive Custom Mapping Name'))).toBe(true);
+      const onSelect = () => LineChart.mock.calls[LineChart.mock.calls.length - 1][0].onSelect;
+      render.act(() => { onSelect()(past); });
+      expect(fills()).toHaveLength(1);
+      expect(texts()).toEqual(expect.arrayContaining([String(past.squat), String(past.bench), String(past.deadlift)]));
+      expect(texts()).not.toContain(String(now.squat));
+      render.act(() => { onSelect()(null); });
+      expect(fills()).toHaveLength(1);
+      expect(texts()).toEqual(expect.arrayContaining([String(now.squat), String(now.bench), String(now.deadlift)]));
+      expect(texts().some(t => t.includes('%'))).toBe(false);
+    });
   });
 });
 
