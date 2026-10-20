@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -53,9 +53,33 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(null);
   const [targetEntry, setTargetEntry] = useState(EMPTY_TARGET_ENTRY);
+  // Live copy of the visible profile (every write builds on it, never on a
+  // stale closure) plus a counter tying each write to the choice it saves
+  // (#1485): only the newest write may report failure, so an earlier
+  // completion can neither claim nor undo a later choice.
+  const profileRef = useRef(null);
+  const writeSeqRef = useRef(0);
+  const [saveFailed, setSaveFailed] = useState(false);
+
+  const persist = (next) => {
+    profileRef.current = next;
+    setProfile(next);
+    const seq = ++writeSeqRef.current;
+    setSaveFailed(false);
+    savePlateCalculatorProfile(next).then(
+      () => {},
+      () => { if (seq === writeSeqRef.current) setSaveFailed(true); },
+    );
+  };
 
   useEffect(() => {
     if (!visible) {
+      // Drop the visible profile and orphan any pending write so a reopen
+      // shows only what storage holds, never an earlier optimistic result.
+      writeSeqRef.current += 1;
+      profileRef.current = null;
+      setProfile(null);
+      setSaveFailed(false);
       // A host that keeps this mounted (the Routine actions card) must reopen
       // on the target view, never on an abandoned inventory edit.
       setTargetEntry(EMPTY_TARGET_ENTRY);
@@ -65,7 +89,10 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
     }
     let cancelled = false;
     loadPlateCalculatorProfile().then((p) => {
-      if (!cancelled) setProfile(p);
+      if (!cancelled) {
+        profileRef.current = p;
+        setProfile(p);
+      }
     });
     return () => {
       cancelled = true;
@@ -107,14 +134,8 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
     setEditing(false);
     setDraft(null);
     setTargetEntry((entry) => targetEntryForUnitChange(entry, nextUnit));
-    // Functional update avoids the closure-captured `profile` from this
-    // render going stale relative to any edit that just committed via
-    // setProfile in the same interaction.
-    setProfile((p) => {
-      const next = { ...p, activeUnit: nextUnit };
-      savePlateCalculatorProfile(next).catch(() => {});
-      return next;
-    });
+    // Built from the live ref so a rapid prior change is never rolled back.
+    persist({ ...profileRef.current, activeUnit: nextUnit });
   };
 
   const startEdit = () => {
@@ -143,10 +164,11 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
     // reject-and-fall-back-to-default behavior on an invalid field now
     // applies identically to what the user sees immediately and to what is
     // stored.
+    const current = profileRef.current;
     const rawCandidate = {
-      ...profile,
+      ...current,
       profiles: {
-        ...profile.profiles,
+        ...current.profiles,
         [unit]: {
           barWeight: Number(draft.barWeight),
           platesPerSide: draft.platesPerSide.map((p) => ({ size: p.size, count: Number(p.count) })),
@@ -154,17 +176,15 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
       },
     };
     const normalized = normalizePlateCalculatorProfile(rawCandidate);
-    setProfile(normalized);
-    savePlateCalculatorProfile(normalized).catch(() => {});
+    persist(normalized);
     setDraft(null);
     setEditing(false);
   };
 
   const resetDefault = () => {
     const defaults = defaultPlateCalculatorProfile();
-    const nextProfile = { ...profile, profiles: { ...profile.profiles, [unit]: defaults.profiles[unit] } };
-    setProfile(nextProfile);
-    savePlateCalculatorProfile(nextProfile).catch(() => {});
+    const current = profileRef.current;
+    persist({ ...current, profiles: { ...current.profiles, [unit]: defaults.profiles[unit] } });
     setDraft(null);
     setEditing(false);
   };
@@ -209,6 +229,22 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
               </Pressable>
             ))}
           </View>
+
+          {saveFailed && (
+            <View style={styles.saveError} accessibilityRole="alert" accessibilityLiveRegion="polite">
+              <Text style={styles.saveErrorText}>
+                Couldn't save your plate setup. It is shown here but is not saved yet.
+              </Text>
+              <Pressable
+                onPress={() => persist(profileRef.current)}
+                style={styles.editActionBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Retry saving plate setup"
+              >
+                <Text style={styles.editActionText}>Retry</Text>
+              </Pressable>
+            </View>
+          )}
 
           {!editing && (
             <ScrollView style={styles.viewScroll} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
@@ -404,6 +440,18 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 20,
     gap: 10,
+  },
+  saveError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+  },
+  saveErrorText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   editScroll: {
     maxHeight: '70%',
