@@ -973,6 +973,45 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     await render.act(async () => { local.unmount(); });
   });
 
+  test('the shared 1K summary in kg keeps one collective bar, the unit and every lift value (#1535)', () => {
+    const { OneKProgressSummary } = require('../components/OneKProgressSummary');
+    const { ThemeProvider } = require('../theme/ThemeContext');
+    const press = jest.fn();
+    let c;
+    render.act(() => {
+      c = render.create(
+        <ThemeProvider>
+          <OneKProgressSummary
+            testIDPrefix="home-one-k"
+            total={253}
+            target={454}
+            unit="kg"
+            lifts={[
+              { key: 'squat', label: 'Squat', value: 100, onPress: press, accessibilityLabel: 'Show plate loading for Squat at 100 kilograms' },
+              { key: 'bench', label: 'Bench', value: 73, onPress: null },
+              { key: 'deadlift', label: 'Deadlift', value: null },
+            ]}
+            onTitlePress={press}
+            titleHint="hint"
+          />
+        </ThemeProvider>
+      );
+    });
+    const root = c.root;
+    const text = (id) => [].concat(root.findAll(n => n.type === 'Text' && n.props.testID === id)[0].props.children).flatMap(ch => (typeof ch === 'object' ? ch.props.children : ch)).join('');
+    expect(text('home-one-k-total')).toContain('253');
+    expect(text('home-one-k-total')).toContain('kg');
+    expect(text('home-one-k-lift-squat-value')).toBe('100');
+    expect(text('home-one-k-lift-bench-value')).toBe('73');
+    expect(text('home-one-k-lift-deadlift-value')).toBe('N/A');
+    expect(root.findAll(n => n.type === 'View' && n.props.testID === 'home-one-k-progress-fill')).toHaveLength(1);
+    expect(root.findAllByProps({ testID: 'home-one-k-lift-squat-track' })).toHaveLength(0);
+    expect(root.findByProps({ testID: 'home-one-k-lift-squat' }).props.accessibilityLabel).toMatch(/kilograms/);
+    expect(flatStyle(root.findByProps({ testID: 'home-one-k-link' })).minHeight).toBe(44);
+    render.act(() => { root.findByProps({ testID: 'home-one-k-link' }).props.onPress(); });
+    expect(press).toHaveBeenCalledTimes(1);
+  });
+
   test('the empty 1K state keeps the compact setup row with no extra bottom margin (#1535)', () => {
     const setup = component.root.findAllByProps({ testID: 'home-one-k-setup' })[0];
     expect(flatStyle(setup).marginBottom).toBeUndefined();
