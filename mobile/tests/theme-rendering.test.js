@@ -1066,14 +1066,13 @@ describe('no production surface can hold a stale palette', () => {
       });
     }
     // Sanctioned exceptions:
-    // - The two brand-orange wordmark accents (KiloWordmark) and the dev-only
-    //   ThemePreviewControl use the Kilo brand color that has no palette token.
+    // - The two brand-orange wordmark accents (KiloWordmark) use the Kilo brand
+    //   color that has no palette token.
     // - The KUA-spec overlay scrim lives once in theme/styleHelpers.js (outside
     //   this scan), so no component carries its own copy.
     expect(leaks).toEqual([
       'components/KiloWordmark.js:23 "#FF5C00"',
       'components/KiloWordmark.js:27 "#FF5C00"',
-      "components/ThemePreviewControl.js:70 '#FF5C00'",
     ]);
   });
 });
@@ -2793,9 +2792,7 @@ describe('every production themed-style factory consumes the selected court (#11
   const FACTORY = /^create[A-Za-z]*Styles?$|^create[A-Za-z]*Style$/;
 
   // DEV-only exemptions: surfaces intentionally outside the palette system,
-  // keyed `"<relative path> <factory name>"`. ThemePreviewControl (the dev court
-  // picker) ships plain literals and is never migrated to a production theme, so
-  // if it ever grows a factory it would live here. A production surface never
+  // keyed `"<relative path> <factory name>"`. A production surface never
   // belongs in this set; today it is empty because every production factory
   // already consumes the court palette.
   const DEV_EXEMPT = new Set([]);

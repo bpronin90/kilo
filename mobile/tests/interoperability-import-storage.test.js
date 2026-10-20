@@ -1,5 +1,4 @@
 import { saveFreshImportedWorkoutNotes } from '../storage/entries/workoutNotes';
-import { serializeImportedWorkoutNotes } from '../lib/interoperability/workoutText';
 import { parseWorkoutNote } from '../lib/parser';
 
 describe('fresh imported workout writes', () => {
@@ -37,8 +36,14 @@ describe('fresh imported workout writes', () => {
 
   test('round trips intermediate records through save, reload, and parse', async () => {
     const persisted = [];
-    const drafts = serializeImportedWorkoutNotes([{ title: 'Lift', metadata: { vendor: 'fixture' }, sections: [{ exercises: [{ name: 'Bench @2', rows: [{ kind: 'performed', sets: [{ rep_count: 5, weight_value: 80, weight_unit: 'lb' }] }] }] }] }])
-      .map(({ title, rawText }) => ({ title, raw_text: rawText }));
+    // Direct supported fixture: the `@import-note` / `@import-exercise` / `@import-record`
+    // grammar (base64url canonical-JSON payloads) that parseWorkoutNote reads.
+    const rawText = [
+      '-- @import-note eyJtZXRhZGF0YSI6bnVsbCwibm90ZU1ldGFkYXRhIjp7InZlbmRvciI6ImZpeHR1cmUifSwic2NvcGUiOiJzZWN0aW9uIiwic2VjdGlvbk9yZGluYWwiOjAsInRleHQiOiIiLCJ2IjoxfQ',
+      '-@import-exercise "Bench @2"',
+      '- @import-record eyJraW5kIjoicGVyZm9ybWVkIiwicm93T3JkaW5hbCI6MCwic2V0cyI6W3sicmVwX2NvdW50Ijo1LCJ3ZWlnaHRfdW5pdCI6ImxiIiwid2VpZ2h0X3ZhbHVlIjo4MH1dLCJ2IjoxfQ',
+    ].join('\n');
+    const drafts = [{ title: 'Lift', raw_text: rawText }];
     await saveFreshImportedWorkoutNotes(drafts, { writeNote: async note => persisted.push(JSON.parse(JSON.stringify(note))), idFactory: () => 'fresh' });
     const parsed = parseWorkoutNote(persisted[0].raw_text);
     expect(parsed.sections[0].exercises[0]).toMatchObject({ name: 'Bench @2', session_entries: [{ import_record: { kind: 'performed', sets: [{ rep_count: 5, weight_value: 80, weight_unit: 'lb' }] } }] });
