@@ -534,16 +534,17 @@ export function runRecoveryFilterRead() {
   return recoveryFilterReadInFlight;
 }
 
-// Everything the boundary decision depends on, and nothing else. A reload with
-// the same signature republishes the SAME snapshot object, so consumers bail
-// out instead of re-rendering Home, Analytics, and the Log editor.
+// Everything displayed (#1488), not timestamps alone; object key order is
+// canonicalized. An equal signature republishes the SAME snapshot object.
+const _canon = (_k, v) => (v && typeof v === 'object' && !Array.isArray(v)
+  ? Object.fromEntries(Object.keys(v).sort().map(k => [k, v[k]])) : v);
 function _recoverySignature(blocks, weeks) {
-  const blockPart = (blocks || []).map(
-    b => `${b.id}|${b.updated_at}|${b.include_in_normal_analytics === true ? 1 : 0}|${b.deleted_at ? 1 : 0}`
-  );
-  const weekPart = (weeks || []).map(
-    w => `${w.id}|${w.block_id}|${w.note_id}|${w.updated_at}|${w.deleted_at ? 1 : 0}`
-  );
+  const blockPart = (blocks || []).map(b => JSON.stringify([
+    b.id, b.updated_at, b.include_in_normal_analytics === true, !!b.deleted_at, b.reason, b.baseline,
+    b.baseline_note_id, b.baseline_note_title, b.started_at, b.completed_at,
+  ], _canon));
+  const weekPart = (weeks || []).map(w => JSON.stringify([
+    w.id, w.block_id, w.note_id, w.updated_at, !!w.deleted_at, w.week_number, w.completed_at]));
   return `${blockPart.join(',')}~${weekPart.join(',')}`;
 }
 
