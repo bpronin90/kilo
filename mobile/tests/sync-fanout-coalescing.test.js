@@ -31,6 +31,7 @@ import {
   TRACKED_LIFT_ACTIVATIONS_KEY,
 } from '../storage/entries/keys';
 import { mergeUserProfile } from '../storage/entries/profileStorage';
+import * as localWriteLockModule from '../storage/sync/localWriteLock';
 import { withLocalWriteLock } from '../storage/sync/localWriteLock';
 import { migrateToNotebook } from '../storage/entries/migrations';
 import { secureStorage } from '../storage/secureStorage';
@@ -1275,6 +1276,7 @@ describe('settings writers vs the ack write-back (#1399)', () => {
     let armed = false;
     let reads = 0;
     let gate = null;
+    const reachedGate = deferred();
     const realPush = cloud.transport.push;
     cloud.transport.push = jest.fn(async (t, records) => {
       const acks = await realPush(t, records);
@@ -1288,6 +1290,7 @@ describe('settings writers vs the ack write-back (#1399)', () => {
         if (reads === 2) {
           armed = false;
           gate = deferred();
+          reachedGate.resolve();
           await gate.promise;
         }
       }
@@ -1305,21 +1308,56 @@ describe('settings writers vs the ack write-back (#1399)', () => {
       });
     }
 
-    const pass = cloudAdapter.sync();
-    for (let i = 0; i < 40 && gate === null; i += 1) {
-      // eslint-disable-next-line no-await-in-loop
-      await tick(1);
-    }
-    expect(gate).not.toBeNull();
+    let writes = [];
+    let outcomes;
+    let timeout;
+    let pass = Promise.resolve();
+    try {
+      pass = cloudAdapter.sync();
+      // The parked point is signalled by the mocked read itself. A pass that
+      // settles first never reached it, so fail instead of waiting. The timer
+      // only guards a missing event; it never decides readiness.
+      const passEnded = pass.then(
+        () => { throw new Error('sync pass finished before the ACK write-back parked'); },
+        (e) => { throw new Error(`sync pass rejected before the ACK write-back parked: ${e && e.message}`); },
+      );
+      passEnded.catch(() => {}); // only observed while racing; avoid a late unhandled rejection
+      const missing = new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error('ACK write-back never parked')), 4000);
+      });
+      await Promise.race([reachedGate.promise, passEnded, missing]);
 
-    const writes = during().map((p) => Promise.resolve(p).then(() => 'ok', () => 'failed'));
-    await tick(6);
-    gate.resolve();
-    const outcomes = await Promise.all(writes);
-    await pass;
-    jest.restoreAllMocks();
+      // Some writers (e.g. setCurrentWorkoutNote) reach the local write lock only
+      // after their own awaited work, so wait for every write to have requested
+      // it, queued behind the parked write-back, before releasing the gate.
+      let lockRequests = 0;
+      let expected = Infinity;
+      let lockArrived;
+      const arrival = new Promise((resolve) => { lockArrived = resolve; });
+      const realLock = localWriteLockModule.withLocalWriteLock;
+      jest.spyOn(localWriteLockModule, 'withLocalWriteLock').mockImplementation((fn) => {
+        lockRequests += 1;
+        if (lockRequests >= expected) lockArrived();
+        return realLock(fn);
+      });
+      const issued = during();
+      expected = issued.length;
+      if (lockRequests >= expected) lockArrived();
+      writes = issued.map((p) => Promise.resolve(p).then(() => 'ok', () => 'failed'));
+      await Promise.race([arrival, passEnded, missing]);
+      gate.resolve();
+      outcomes = await Promise.all(writes);
+      await pass;
+    } finally {
+      clearTimeout(timeout);
+      if (gate) gate.resolve();
+      // Settle the pass and writers before shared state is restored so a failed
+      // case cannot leak storage work into the next one.
+      await Promise.all(writes);
+      await pass.catch(() => {});
+      jest.restoreAllMocks();
+    }
     await cloudAdapter.sync();
-    await tick(4);
     return { cloud, outcomes };
   }
 
@@ -1636,16 +1674,32 @@ describe('settings writers vs the ack write-back (#1399)', () => {
     });
 
     it('saved_at (re-stamped by the write) with every other field unchanged lands and uploads', async () => {
-      let v1;
-      const r = await run({
-        ...base,
-        setup: () => Storage.saveWeightGoal(GOAL_V1),
-        first: async () => { v1 = await Storage.saveWeightGoal(GOAL_V1); await sleep(5); },
-        during: () => [Storage.saveWeightGoal(GOAL_V1)],
+      // Only Date is faked, so setImmediate/timers driving the sync keep running.
+      jest.useFakeTimers({
+        doNotFake: ['hrtime', 'nextTick', 'performance', 'queueMicrotask', 'requestAnimationFrame',
+          'cancelAnimationFrame', 'requestIdleCallback', 'cancelIdleCallback', 'setImmediate',
+          'clearImmediate', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'],
       });
-      const durable = await Storage.loadWeightGoal();
-      expect(durable.saved_at).not.toBe(v1.saved_at);
-      expect(ms(remote(r.cloud, base.table).saved_at)).toBe(ms(durable.saved_at));
+      try {
+        let v1;
+        const at = (sec) => jest.setSystemTime(new Date(`2026-06-21T10:00:0${sec}.000Z`));
+        const r = await run({
+          ...base,
+          setup: () => { at(0); return Storage.saveWeightGoal(GOAL_V1); },
+          first: async () => { at(1); v1 = await Storage.saveWeightGoal(GOAL_V1); },
+          during: () => {
+            at(2);
+            return [Storage.saveWeightGoal(GOAL_V1)];
+          },
+        });
+        const durable = await Storage.loadWeightGoal();
+        expect(durable.saved_at).not.toBe(v1.saved_at);
+        expect(ms(durable.saved_at)).toBeGreaterThan(ms(v1.saved_at));
+        expect(durable).toEqual(expect.objectContaining(GOAL_V1));
+        expect(ms(remote(r.cloud, base.table).saved_at)).toBe(ms(durable.saved_at));
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('goal clear lands and uploads as a delete', async () => {
