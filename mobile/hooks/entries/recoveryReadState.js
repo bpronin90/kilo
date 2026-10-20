@@ -534,17 +534,17 @@ export function runRecoveryFilterRead() {
   return recoveryFilterReadInFlight;
 }
 
-// Everything displayed (#1488): content fields, not timestamps alone. An equal
-// signature republishes the SAME snapshot object so consumers bail out.
+// Everything displayed (#1488), not timestamps alone; object key order is
+// canonicalized. An equal signature republishes the SAME snapshot object.
+const _canon = (_k, v) => (v && typeof v === 'object' && !Array.isArray(v)
+  ? Object.fromEntries(Object.keys(v).sort().map(k => [k, v[k]])) : v);
 function _recoverySignature(blocks, weeks) {
   const blockPart = (blocks || []).map(b => JSON.stringify([
-    b.id, b.updated_at, b.include_in_normal_analytics === true, !!b.deleted_at, b.reason ?? null,
-    b.baseline ?? null, b.baseline_note_id ?? null, b.baseline_note_title ?? null,
-    b.started_at ?? null, b.completed_at ?? null,
-  ]));
+    b.id, b.updated_at, b.include_in_normal_analytics === true, !!b.deleted_at, b.reason, b.baseline,
+    b.baseline_note_id, b.baseline_note_title, b.started_at, b.completed_at,
+  ], _canon));
   const weekPart = (weeks || []).map(w => JSON.stringify([
-    w.id, w.block_id, w.note_id, w.updated_at, !!w.deleted_at, w.week_number ?? null, w.completed_at ?? null,
-  ]));
+    w.id, w.block_id, w.note_id, w.updated_at, !!w.deleted_at, w.week_number, w.completed_at]));
   return `${blockPart.join(',')}~${weekPart.join(',')}`;
 }
 

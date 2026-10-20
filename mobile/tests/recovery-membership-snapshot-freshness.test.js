@@ -105,6 +105,19 @@ describe('authoritative snapshot content freshness', () => {
     expect(store.getFilterSnapshot().blocks).toBe(blocks);
   });
 
+  it('keeps snapshot identity when only baseline key order differs', async () => {
+    mockBlocks = [mkBlock({ baseline: { version: 2, exercises: [{ name: 'Bench', weight: 100 }] } })];
+    await mount();
+    const { blocks, weeks } = latest;
+    mockBlocks = [mkBlock({ baseline: { exercises: [{ weight: 100, name: 'Bench' }], version: 2 } })];
+    await refresh();
+    expect(latest.blocks).toBe(blocks);
+    expect(latest.weeks).toBe(weeks);
+    const filter = store.getFilterSnapshot();
+    await act(async () => { await store.runRecoveryFilterRead(); });
+    expect(store.getFilterSnapshot()).toBe(filter);
+  });
+
   it('refreshes the filter snapshot when the authoritative pass publishes new content', async () => {
     await mount();
     mockBlocks = [mkBlock({ reason: 'changed' })];
