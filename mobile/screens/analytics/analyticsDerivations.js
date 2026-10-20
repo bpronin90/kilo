@@ -5,9 +5,9 @@ import {
   derive1kTotalFromSectionsList,
   derive1kTotalSeriesFromSectionsList,
 } from '../../lib/data';
-import { deriveProgressionSections, deriveProgressionAnchorSource, deriveExerciseProgress } from '../../lib/data/exerciseProgress';
+import { deriveExerciseProgress } from '../../lib/data/exerciseProgress';
 import { normalizeExerciseKey } from '../../lib/parser/workoutPure';
-import { filterNotesForNormalAnalytics } from '../../lib/data/recoveryAnalyticsFilter';
+import { projectWorkoutHistoryPopulation, isExcludedByNoteIds } from '../../lib/data/workoutHistoryPopulation';
 
 // `excludedNoteIds` (#699) is the set of recovery-linked note ids whose block
 // keeps `include_in_normal_analytics` off. It is applied ONCE here, so every
@@ -40,17 +40,22 @@ export function tagNoteSections(notes) {
 }
 
 export function deriveParsedSections(notes, currentNote, excludedNoteIds = null) {
-  const normalNotes = filterNotesForNormalAnalytics(notes || [], excludedNoteIds);
-  const noteSectionsList = normalNotes.map(n => getNoteSections(n));
-  const allSections = noteSectionsList.flat();
-  // signalSections is the canonical deload-excluded progression population
-  // (lib/data/exerciseProgress), the same one Home derives its summary from.
-  // The 1K series intentionally keeps deload as its own point (#396), so
-  // noteSectionsList/allSections are left untouched.
-  const signalSections = deriveProgressionSections(normalNotes, noteSectionsList);
-  // #1391: the unfiltered notebook the Track anchors were minted in, so they are
-  // translated into signalSections rather than clamped.
-  const anchorSource = deriveProgressionAnchorSource(notes || [], (notes || []).map(n => getNoteSections(n)), normalNotes);
+  // #1492: the canonical population projection. `noteSectionsList`/`allSections`
+  // are the recovery-filtered normal population; the 1K series intentionally
+  // keeps deload as its own point (#396), so they are left deload-inclusive.
+  // signalSections is the deload-excluded progression population Home also
+  // derives its summary from, and anchorSource (#1391) carries the unfiltered
+  // notebook the Track anchors were minted in, so they are translated into
+  // signalSections rather than clamped.
+  const population = projectWorkoutHistoryPopulation(notes, {
+    sectionsOf: getNoteSections,
+    isExcluded: isExcludedByNoteIds(excludedNoteIds),
+  });
+  const noteSectionsList = population.normalNoteSectionsList;
+  const allSections = population.normalSections;
+  const signalSections = population.progressionSections;
+  const normalNotes = population.normalNotes;
+  const anchorSource = population.anchorSource;
   const currentSections = getNoteSections(currentNote);
   return { allSections, signalSections, currentSections, noteSectionsList, normalNotes, anchorSource };
 }
