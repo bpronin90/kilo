@@ -3,7 +3,7 @@ import { Alert } from '../../lib/platformAlert';
 import { resolveExerciseSourceAnchor } from '../../lib/parser';
 import { isValidActiveWeek } from './editorWeekText';
 import { restoreWorkoutNoteDraft } from './editorDrafts';
-import { runDoneConvergenceLoop, newRoutineTitleConverged } from './useLogEditorSave';
+import { runDoneConvergenceLoop } from './useLogEditorSave';
 import {
   clearWorkoutNoteDraft,
   clearWorkoutNoteDraftsForNote,
@@ -58,12 +58,7 @@ export function useOtherEditorLifecycle(ctx) {
     autosaveOtherTimerRef,
     saveOtherNoteInFlightRef,
     createAttemptTokenRef,
-    deloadEditDateRef,
-    deloadEditOrdinalRef,
-    lastSavedTextRef,
-    lastSavedTitleRef,
-    lastSavedDeloadDateRef,
-    lastSavedDeloadOrdinalRef,
+    hasOtherConverged,
     // setters
     setEditingNoteId,
     setEditingSource,
@@ -232,8 +227,9 @@ export function useOtherEditorLifecycle(ctx) {
 
   // #863: session alignment is a purely inline, ignorable signal now, so Done
   // just saves (converging on any content typed past the in-flight save; Done
-  // compares text, title, and linked-deload date/ordinal so a metadata edit
-  // made during the race is not lost) and closes.
+  // compares text, title, and every persisted metadata field via the hook's
+  // shared hasOtherConverged (#1500) so an edit made during the race is not lost)
+  // and closes.
   const handleDoneOther = async () => {
     if (autosaveOtherTimerRef.current) {
       clearTimeout(autosaveOtherTimerRef.current);
@@ -245,9 +241,7 @@ export function useOtherEditorLifecycle(ctx) {
         // while Done itself awaits; a failed save keeps the editor open.
         const converged = await runDoneConvergenceLoop({
           save: () => handleSaveOtherNote(),
-          hasConverged: () =>
-            editingFullTextRef.current === lastSavedTextRef.current
-            && newRoutineTitleConverged(editingTitleRef.current, lastSavedTitleRef.current),
+          hasConverged: () => hasOtherConverged(true),
         });
         if (!converged) return;
       }
@@ -260,11 +254,7 @@ export function useOtherEditorLifecycle(ctx) {
     if (hasUnsavedOther) {
       const converged = await runDoneConvergenceLoop({
         save: () => handleSaveOtherNote(),
-        hasConverged: () =>
-          editingFullTextRef.current === lastSavedTextRef.current
-          && editingTitleRef.current === lastSavedTitleRef.current
-          && deloadEditDateRef.current === lastSavedDeloadDateRef.current
-          && deloadEditOrdinalRef.current === lastSavedDeloadOrdinalRef.current,
+        hasConverged: () => hasOtherConverged(false),
       });
       if (!converged) return;
     }

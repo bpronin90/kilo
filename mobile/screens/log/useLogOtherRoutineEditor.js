@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Alert } from '../../lib/platformAlert';
 import { DELOAD_NOTE_PREFIX, AUTOSAVE_DEBOUNCE_MS } from '../../lib/LogScreenHelpers';
-import { useNoteConvergencePending, deriveOtherSaveStatus } from './editorConvergence';
+import { useNoteConvergencePending, deriveOtherSaveStatus, metadataMatches } from './editorConvergence';
 import { isValidActiveWeek } from './editorWeekText';
 import {
   markWorkoutNoteDraftSaveStart,
@@ -21,7 +21,10 @@ import {
   reconcileDraftsAfterSave,
 } from './useLogEditorSave';
 import { useNoteViewer, toggleViewingWeek } from './otherRoutineViewers';
-import { useOtherEditingProjection } from './otherRoutineEditing';
+import {
+  useOtherEditingProjection, liveOtherMetadata, canonicalOtherMetadata, useOpenDeloadDates,
+  hasPersistableMetadataChange, persistedOtherMetadata, runOtherAutosave, otherDoneConverged,
+} from './otherRoutineEditing';
 import { useOtherEditorLifecycle } from './otherRoutineLifecycle';
 import { createOtherAdoptionHandlers } from './otherRoutineAdoption';
 
@@ -64,10 +67,8 @@ export function useLogOtherRoutineEditor({
   const pendingConvergence = useNoteConvergencePending(
     editingNoteId && editingNoteId !== 'new' ? editingNoteId : null
   );
-  // Which surface opened the current editingNoteId session (#841): 'recovery'
-  // when the Recovery block's own inline editor is driving it, null for every
-  // other entry point. LogScreen reads this to decide whether the shared
-  // full-screen editor should render for the current editingNoteId.
+  // Surface that opened this editingNoteId session (#841): 'recovery' for the
+  // Recovery block's inline editor, null otherwise (LogScreen reads it).
   const [editingSource, setEditingSource] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
   // Full underlying raw_text being edited (both A/B halves + separator, when
@@ -79,11 +80,8 @@ export function useLogOtherRoutineEditor({
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
   const [originalNoteState, setOriginalNoteState] = useState(null);
-  // Two independent viewer slots (#836): routineViewer backs the Routine tab
-  // (LogPreviousRoutines and the deload viewer), recoveryViewer backs the
-  // Recovery tab. Separate useNoteViewer instances — not one shared
-  // viewingNoteId — is what keeps an expanded note on one tab invisible on the
-  // other.
+  // Two independent viewer slots (#836): Routine tab and Recovery tab, so an
+  // expanded note on one tab stays invisible on the other.
   const routineViewer = useNoteViewer(notes);
   const recoveryViewer = useNoteViewer(notes);
   const [deloadEditDate, setDeloadEditDate] = useState('');
@@ -95,10 +93,8 @@ export function useLogOtherRoutineEditor({
   const [showDeloadDatePicker, setShowDeloadDatePicker] = useState(false);
   const [deloadEditOrdinal, setDeloadEditOrdinal] = useState('');
 
-  // Post-save adoption prompt (#748; #745 Part 4 §A1). Saving a routine NEVER
-  // adopts it — Save performs exactly one write. This lightweight, dismissible,
-  // non-Alert prompt then offers the choice and persists until acted on or the
-  // editor is left; no dismissal flag is ever written (Part 3 rule 0.3).
+  // Post-save adoption prompt (#748; #745 Part 4 §A1): Save never adopts; this
+  // dismissible prompt offers it until acted on or the editor is left.
   const [adoptionPrompt, setAdoptionPrompt] = useState(null); // { id, title } | null
   const [adoptionError, setAdoptionError] = useState('');
   const [adoptionBusy, setAdoptionBusy] = useState(false);
@@ -108,15 +104,12 @@ export function useLogOtherRoutineEditor({
   const savingOtherSnapshotRef = useRef(null);
   const lastSavedNoteIdRef = useRef(null);
   const lastSavedSourceRef = useRef(null);
-
-  // The editor fields most recently persisted by handleSaveOtherNote. Done
-  // compares the live editor against these to detect any field an in-flight
-  // autosave for older content did not save (text, title, and linked-deload
-  // date/ordinal) — or a metadata edit made during the race is lost.
+  // Last save's text/title, its submitted metadata (Done convergence) and its
+  // durable metadata (status), #1500.
   const lastSavedTextRef = useRef(null);
   const lastSavedTitleRef = useRef(null);
-  const lastSavedDeloadDateRef = useRef(null);
-  const lastSavedDeloadOrdinalRef = useRef(null);
+  const lastSubmittedMetadataRef = useRef(null);
+  const lastSavedMetadataRef = useRef(null);
 
   // Live-value refs so async save callbacks read current state without stale closures.
   const editingFullTextRef = useRef(editingFullText);
@@ -132,7 +125,6 @@ export function useLogOtherRoutineEditor({
   deloadEditDateRef.current = deloadEditDate;
   deloadEditOrdinalRef.current = deloadEditOrdinal;
 
-  // Cheap local draft (#880): separate timer/state from the expensive autosave.
   const draftOtherTimerRef = useRef(null);
   const draftBaseUpdatedAtRef = useRef(null);
   const preserveExistingDraftRef = useRef(false);
@@ -142,10 +134,8 @@ export function useLogOtherRoutineEditor({
   const notesRef = useRef(notes);
   notesRef.current = notes;
 
-  // Durable creation-attempt token for this editor's new-note create (#997).
-  // Minted before the create, retained after a failed one, restored on mount so
-  // a retry after an app restart completes the original note, cleared only on
-  // full success. See editorDrafts for the shared restore-on-mount effect.
+  // Durable creation-attempt token for the new-note create (#997): minted before
+  // it, restored on mount, cleared only on full success (see editorDrafts).
   const createAttemptTokenRef = useRef(null);
   useRestoreCreationAttemptToken(OTHER_CREATE_ATTEMPT_KEY, createAttemptTokenRef);
 
@@ -173,11 +163,12 @@ export function useLogOtherRoutineEditor({
 
   const isEditingDeloadNote = !!editingNote?.title?.startsWith(DELOAD_NOTE_PREFIX);
 
-  // True only when the deload note being edited has a linked history record.
-  // Legacy deload notes without a note_id match are read-only for date edits.
-  const editingDeloadHasLinkedRecord = useMemo(() =>
-    isEditingDeloadNote ? deloadHistory.some(r => r.note_id === editingNoteId) : false,
+  // The linked history record of the deload note being edited, if any. Legacy
+  // deload notes without a note_id match are read-only for date edits.
+  const editingDeloadRecord = useMemo(() =>
+    (isEditingDeloadNote ? deloadHistory.find(r => r.note_id === editingNoteId) ?? null : null),
   [isEditingDeloadNote, deloadHistory, editingNoteId]);
+  const editingDeloadHasLinkedRecord = !!editingDeloadRecord;
 
   // A/B projection for the note open in the editor (see ./otherRoutineEditing).
   const {
@@ -196,23 +187,36 @@ export function useLogOtherRoutineEditor({
     cancelPendingDraftRestore,
   });
 
-  const hasUnsavedOther = useMemo(() => {
-    if (!editingNoteId) return false;
-    if (editingNoteId === 'new') return editingTitle.trim() !== '' || editingFullText.trim() !== '';
-    if (!editingNote) return false;
-    const textChanged = editingTitle !== (editingNote.title || '') || editingFullText !== editingNote.raw_text;
-    const dateChanged = isEditingDeloadNote && editingDeloadHasLinkedRecord
-      ? deloadEditDate !== (editingNote.saved_at?.slice(0, 10) ?? '')
-      : false;
-    const ordinalChanged = isEditingDeloadNote && editingDeloadHasLinkedRecord
-      ? (() => {
-          const r = deloadHistory.find(h => h.note_id === editingNoteId);
-          const orig = r?.deload_session_ordinal != null ? String(r.deload_session_ordinal) : '';
-          return deloadEditOrdinal !== orig;
-        })()
-      : false;
-    return textChanged || dateChanged || ordinalChanged;
-  }, [editingNoteId, editingNote, editingTitle, editingFullText, isEditingDeloadNote, deloadEditDate, deloadEditOrdinal, editingDeloadHasLinkedRecord, deloadHistory]);
+  // #1500: every field the save persists, live vs canonical (see otherMetadata).
+  const editingCanonicalMetadata = useMemo(() => canonicalOtherMetadata({
+    note: editingNote, hasABWeeks: editingHasABWeeks, record: editingDeloadRecord,
+  }), [editingNote, editingHasABWeeks, editingDeloadRecord]);
+  const openDeloadDates = useOpenDeloadDates(editingNoteId, editingNote, editingDeloadRecord);
+  const editingLiveMetadata = liveOtherMetadata({
+    hasABWeeks: editingHasABWeeks, week: editingEffectiveWeek, record: editingDeloadRecord,
+    date: deloadEditDate, dateTouched: deloadEditDateTouched, ordinal: deloadEditOrdinal,
+    open: openDeloadDates, canonical: editingCanonicalMetadata,
+  });
+  const otherTextChanged = !!editingNote
+    && (editingTitle !== (editingNote.title || '') || editingFullText !== editingNote.raw_text);
+  const hasUnsavedOther = !editingNoteId ? false
+    : editingNoteId === 'new' ? editingTitle.trim() !== '' || editingFullText.trim() !== ''
+      : !!editingNote && (otherTextChanged || !metadataMatches(editingLiveMetadata, editingCanonicalMetadata));
+  // Gates the autosave: an unsavable partial value alone must not write.
+  const hasPersistableOther = otherTextChanged
+    || hasPersistableMetadataChange(editingLiveMetadata, editingCanonicalMetadata);
+  // Live save inputs (#1500): Done's retries call a save closure from an older render.
+  const liveSaveInputsRef = useRef(null);
+  liveSaveInputsRef.current = {
+    isDeload: isEditingDeloadNote, note: editingNote, record: editingDeloadRecord,
+    dateTouched: deloadEditDateTouched, hasABWeeks: editingHasABWeeks, week: editingEffectiveWeek,
+    canonical: editingCanonicalMetadata, persistable: hasPersistableOther, live: editingLiveMetadata,
+  };
+  const hasOtherConverged = (isNew) => otherDoneConverged({
+    isNew, liveText: editingFullTextRef.current, liveTitle: editingTitleRef.current,
+    liveMetadata: liveSaveInputsRef.current.live, savedText: lastSavedTextRef.current,
+    savedTitle: lastSavedTitleRef.current, savedMetadata: lastSubmittedMetadataRef.current,
+  });
   const hasUnsavedOtherRef = useRef(hasUnsavedOther);
   hasUnsavedOtherRef.current = hasUnsavedOther;
 
@@ -229,9 +233,8 @@ export function useLogOtherRoutineEditor({
     recoveryViewer.setViewingNoteId(prev => (prev === note.id ? null : note.id));
   };
 
-  // Leaving the editor is one of exactly three things that removes the adoption
-  // prompt (the others are `Not now` and a completed adoption). It writes
-  // nothing and the offer stays reachable afterwards (#745 Part 5 §A1.3).
+  // Leaving the editor removes the adoption prompt without writing anything
+  // (#745 Part 5 §A1.3); `Not now` and a completed adoption are the others.
   const clearAdoptionPrompt = () => {
     setAdoptionPrompt(null);
     setAdoptionError('');
@@ -240,13 +243,17 @@ export function useLogOtherRoutineEditor({
   const handleSaveOtherNote = ({ autosave = false } = {}) => {
     if (saveOtherNoteInFlightRef.current) return saveOtherNoteInFlightRef.current;
 
-    // Live refs, not closure state (#1474): Done's retries must see the created id and newer edits.
+    // Live refs, not closure state (#1474, #1500): Done's retries must see the
+    // created id, newer edits, and newer metadata.
+    const {
+      isDeload, note, record, dateTouched, hasABWeeks, week, canonical, live: snapshotMetadata,
+    } = liveSaveInputsRef.current;
     const savedNoteId = editingNoteIdRef.current;
-    const savedSource = editingSource;
+    const savedSource = editingSourceRef.current;
     const snapshotText = editingFullTextRef.current;
     const snapshotTitle = editingTitleRef.current;
-    const snapshotDeloadDate = deloadEditDate;
-    const snapshotDeloadOrdinal = deloadEditOrdinal;
+    const snapshotDeloadDate = deloadEditDateRef.current;
+    const snapshotDeloadOrdinal = deloadEditOrdinalRef.current;
 
     const run = async () => {
       savingOtherSnapshotRef.current = {
@@ -254,6 +261,7 @@ export function useLogOtherRoutineEditor({
         source: savedSource,
         title: snapshotTitle,
         raw_text: snapshotText,
+        metadata: snapshotMetadata,
       };
       setNoteIsSaving(true);
       setSaveError('');
@@ -264,21 +272,14 @@ export function useLogOtherRoutineEditor({
       try {
         let result;
         let titleToSave = snapshotTitle || 'Untitled Routine';
-        if (isEditingDeloadNote && !titleToSave.startsWith(DELOAD_NOTE_PREFIX)) {
-          titleToSave = DELOAD_NOTE_PREFIX + (deloadEditDate || titleToSave);
+        if (isDeload && !titleToSave.startsWith(DELOAD_NOTE_PREFIX)) {
+          titleToSave = DELOAD_NOTE_PREFIX + (snapshotDeloadDate || titleToSave);
         }
         if (savedNoteId === 'new') {
-          // Id-stable create (#997): the attempt token is durable before the
-          // create and retired only after it fully succeeds, so retrying a
-          // create whose cloud enqueue failed — with the title or body edited,
-          // and even after an app restart — completes the same note instead of
-          // saving a second copy of the routine.
-          //
-          // Neither attempt-store write is swallowed; both sit inside this
-          // function's try/catch so a rejection becomes a failed save. Creating
-          // without a durable token is an uncorrelated create, and leaving a
-          // completed attempt in the store would let the next new routine adopt
-          // this note's id and overwrite it.
+          // Id-stable create (#997): the durable attempt token is retired only
+          // after full success, so a retry (even after restart) completes the
+          // same note. Neither attempt-store write is swallowed — a rejection is
+          // a failed save, never an uncorrelated create or a reusable stale id.
           const attemptToken = createAttemptTokenRef.current
             || await ensureWorkoutNoteCreationAttempt(OTHER_CREATE_ATTEMPT_KEY);
           createAttemptTokenRef.current = attemptToken;
@@ -290,47 +291,42 @@ export function useLogOtherRoutineEditor({
           setEditingNoteId(result.id);
           // The one write this action performs is the `add` above. Adoption is
           // offered, never performed here (#748) — see `adoptionPrompt`.
-          if (!isEditingDeloadNote) {
+          if (!isDeload) {
             setAdoptionError('');
             setAdoptionPrompt({ id: result.id, title: titleToSave });
           }
-          // add() always creates the note with activeWeek: null, so a new note
-          // authored with a standalone --- must persist its selected week in a
-          // follow-up update — otherwise it silently reopens on Week A. A plain
-          // new note keeps the null activeWeek; currentId is never touched.
-          if (editingHasABWeeks && isValidActiveWeek(editingEffectiveWeek)) {
-            const withWeek = await update(result.id, { activeWeek: editingEffectiveWeek });
+          // add() creates with activeWeek: null, so a new A/B note persists its
+          // selected week in a follow-up update; currentId is never touched.
+          if (hasABWeeks && isValidActiveWeek(week)) {
+            const withWeek = await update(result.id, { activeWeek: week });
             if (withWeek) result = withWeek;
           }
         } else {
           const patch = { title: titleToSave, raw_text: snapshotText };
-          if (editingHasABWeeks && isValidActiveWeek(editingEffectiveWeek)) {
-            patch.activeWeek = editingEffectiveWeek;
-          } else if (!editingHasABWeeks && editingNote?.activeWeek != null) {
+          if (hasABWeeks && isValidActiveWeek(week)) {
+            patch.activeWeek = week;
+          } else if (!hasABWeeks && note?.activeWeek != null) {
             // The note used to be A/B but the separator is gone now (e.g.
             // handleMergeEditingWeeks): clear the stale selection so it can never
             // leak into a future A/B note.
             patch.activeWeek = null;
           }
-          if (isEditingDeloadNote) {
-            const histRecord = editingDeloadHasLinkedRecord
-              ? deloadHistory.find(r => r.note_id === editingNoteId)
-              : null;
+          if (isDeload) {
+            const histRecord = record;
             const deloadPatch = {};
-            if (deloadEditDateTouched && deloadEditDate) {
-              const newDate = deloadEditDate;
-              const savedDate = editingNote?.saved_at?.slice(0, 10) ?? '';
-              // The correctness property is a VALUE change, not mere interaction:
-              // deloadEditDateTouched only gates entry, so opening the picker and
-              // restoring the original date before saving must still leave
-              // saved_at untouched (#764) — deliberately no `else` branch.
-              if (newDate !== savedDate && histRecord) {
-                deloadPatch.completed_at = `${newDate}T12:00:00.000Z`;
-                patch.saved_at = `${newDate}T12:00:00.000Z`;
-              }
+            // History and note dates are separate writes (#1500): each is written
+            // only on a VALUE change, so restoring the opened date leaves both
+            // untouched (#764) yet repairs a history-only write.
+            const historyDate = snapshotMetadata.deloadHistoryDate;
+            if (histRecord && historyDate && historyDate !== canonical?.deloadHistoryDate) {
+              deloadPatch.completed_at = `${historyDate}T12:00:00.000Z`;
+            }
+            if (histRecord && dateTouched && snapshotDeloadDate
+              && snapshotDeloadDate !== (note?.saved_at?.slice(0, 10) ?? '')) {
+              patch.saved_at = `${snapshotDeloadDate}T12:00:00.000Z`;
             }
             if (histRecord) {
-              const newOrdinal = parseInt(deloadEditOrdinal, 10);
+              const newOrdinal = parseInt(snapshotDeloadOrdinal, 10);
               if (!isNaN(newOrdinal) && newOrdinal !== histRecord.deload_session_ordinal) {
                 deloadPatch.deload_session_ordinal = newOrdinal;
               }
@@ -360,8 +356,8 @@ export function useLogOtherRoutineEditor({
             // and Done convergence must use the payload itself.
             lastSavedTextRef.current = snapshotText;
             lastSavedTitleRef.current = titleToSave;
-            lastSavedDeloadDateRef.current = snapshotDeloadDate;
-            lastSavedDeloadOrdinalRef.current = snapshotDeloadOrdinal;
+            lastSubmittedMetadataRef.current = snapshotMetadata;
+            lastSavedMetadataRef.current = persistedOtherMetadata(snapshotMetadata, canonical, dateTouched);
             draftBaseUpdatedAtRef.current = result.updated_at ?? draftBaseUpdatedAtRef.current;
           }
           const contentUnchanged =
@@ -425,8 +421,7 @@ export function useLogOtherRoutineEditor({
     draftRestoreTokenRef, draftBaseUpdatedAtRef, preserveExistingDraftRef, draftRestorePendingRef,
     editingNoteIdRef, editingSourceRef, editingTitleRef, editingFullTextRef, notesRef,
     autosaveOtherTimerRef, saveOtherNoteInFlightRef, createAttemptTokenRef,
-    deloadEditDateRef, deloadEditOrdinalRef,
-    lastSavedTextRef, lastSavedTitleRef, lastSavedDeloadDateRef, lastSavedDeloadOrdinalRef,
+    hasOtherConverged,
     setEditingNoteId, setEditingSource, setEditingTitle, setEditingFullText, setEditingActiveWeek,
     setDeloadEditDate, setDeloadEditDateTouched, setDeloadEditOrdinal,
     setOriginalNoteState, setSaveError, setSaveSuccess,
@@ -448,11 +443,15 @@ export function useLogOtherRoutineEditor({
 
   // Debounced autosave for a non-current (existing) note while in edit mode.
   useEffect(() => {
-    if (!editingNoteId || editingNoteId === 'new' || !hasUnsavedOther) return;
+    if (!editingNoteId || editingNoteId === 'new' || !hasPersistableOther) return;
     if (autosaveOtherTimerRef.current) clearTimeout(autosaveOtherTimerRef.current);
     autosaveOtherTimerRef.current = setTimeout(async () => {
       autosaveOtherTimerRef.current = null;
-      await handleSaveOtherNote({ autosave: true });
+      await runOtherAutosave({
+        save: () => handleSaveOtherNote({ autosave: true }), inFlightRef: saveOtherNoteInFlightRef,
+        identity: () => `${editingNoteIdRef.current}|${editingSourceRef.current}`,
+        isStillPersistable: () => liveSaveInputsRef.current.persistable,
+      });
     }, AUTOSAVE_DEBOUNCE_MS);
     return () => {
       if (autosaveOtherTimerRef.current) {
@@ -461,7 +460,7 @@ export function useLogOtherRoutineEditor({
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingFullText, editingTitle, editingNoteId, deloadEditDate]);
+  }, [editingFullText, editingTitle, editingNoteId, deloadEditDate, deloadEditOrdinal, editingEffectiveWeek]);
 
   // Cheap draft persistence (#880): debounced write whenever the editor is open
   // (including editingNoteId === 'new', the gap the real autosave cannot cover)
@@ -509,7 +508,8 @@ export function useLogOtherRoutineEditor({
   const { boundSaveSuccess: boundOtherSaveSuccess, saveStatus } = deriveOtherSaveStatus({
     editingNoteId, editingSource, noteIsSaving, savingSnapshotRef: savingOtherSnapshotRef,
     editingTitle, editingFullText,
-    lastSavedNoteIdRef, lastSavedSourceRef, lastSavedTitleRef, lastSavedTextRef,
+    lastSavedNoteIdRef, lastSavedSourceRef, lastSavedTitleRef, lastSavedTextRef, lastSavedMetadataRef,
+    liveMetadata: editingLiveMetadata, canonicalMetadata: editingCanonicalMetadata,
     editingNote, pendingConvergence, saveSuccess,
   });
 

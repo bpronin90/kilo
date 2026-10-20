@@ -84,6 +84,17 @@ export function snapshotMatches(snapshot, title, rawText) {
   return !!snapshot && snapshot.title === title && snapshot.raw_text === rawText;
 }
 
+// #1500: the other-routine editor's persisted metadata (activeWeek, linked
+// deload note date, history date and ordinal; see otherMetadata in
+// ./otherRoutineEditing) is part of the saved-snapshot identity, so a
+// metadata-only edit invalidates `Saved`. Every key is compared, so a field
+// added to otherMetadata can never be left out of the identity.
+export function metadataMatches(a, b) {
+  if (!a || !b) return false;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  return [...keys].every((key) => a[key] === b[key]);
+}
+
 // #880 revised body, BLOCKER 1: `Saved on device` is a claim about the exact
 // {title, raw_text} the most recent successful save persisted, and must stop
 // showing the instant the LIVE editor no longer matches it — during the
@@ -148,7 +159,8 @@ export function deriveCurrentSaveStatus({
 // The other-routine editor's live-match booleans and save status. Same #880
 // BLOCKER-1 binding as the current editor, but keyed on (editingNoteId,
 // editingSource) and comparing against the FULL underlying text
-// (editingFullText/editingTitle), not just the projected A/B half.
+// (editingFullText/editingTitle), not just the projected A/B half, plus every
+// persisted metadata field (#1500).
 export function deriveOtherSaveStatus({
   editingNoteId,
   editingSource,
@@ -160,6 +172,9 @@ export function deriveOtherSaveStatus({
   lastSavedSourceRef,
   lastSavedTitleRef,
   lastSavedTextRef,
+  lastSavedMetadataRef,
+  liveMetadata,
+  canonicalMetadata,
   editingNote,
   pendingConvergence,
   saveSuccess,
@@ -167,19 +182,21 @@ export function deriveOtherSaveStatus({
   const liveMatchesSavingSnapshot = noteIsSaving
     && savingSnapshotRef.current?.noteId === editingNoteId
     && savingSnapshotRef.current?.source === editingSource
-    && snapshotMatches(savingSnapshotRef.current, editingTitle, editingFullText);
+    && snapshotMatches(savingSnapshotRef.current, editingTitle, editingFullText)
+    && metadataMatches(savingSnapshotRef.current.metadata, liveMetadata);
   const liveMatchesLastSave = lastSavedNoteIdRef.current === editingNoteId
     && lastSavedSourceRef.current === editingSource
     && snapshotMatches(
       { title: lastSavedTitleRef.current, raw_text: lastSavedTextRef.current },
       editingTitle,
       editingFullText,
-    );
+    )
+    && metadataMatches(lastSavedMetadataRef.current, liveMetadata);
   const liveMatchesCanonical = !!editingNote && snapshotMatches(
     { title: editingNote.title || '', raw_text: editingNote.raw_text || '' },
     editingTitle,
     editingFullText,
-  );
+  ) && metadataMatches(canonicalMetadata, liveMetadata);
   const liveIsLocallyDurable = liveMatchesLastSave || liveMatchesCanonical;
   return deriveSaveStatus({ liveMatchesSavingSnapshot, liveIsLocallyDurable, pendingConvergence, saveSuccess });
 }
