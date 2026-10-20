@@ -323,8 +323,8 @@ describe('ReminderSettingsCard', () => {
       const workout = { enabled: true, hour: 19, minute: 30, fallbackWeekdays: [3] };
       Storage.loadWorkoutReminder.mockResolvedValue(workout);
       reconcileWorkoutReminder
-        .mockRejectedValueOnce(new Error('alarm denied'))
-        .mockResolvedValueOnce({ workout: { ...workout, enabled: false }, inferredWeekdays: [] });
+        .mockRejectedValueOnce(new Error('alarm denied'));
+      // Turning off cancels directly; it must not depend on a reconcile.
       const tree = await mount();
       expect(find(tree, 'Workout day nudge').props.value).toBe(true);
       expect(find(tree, 'Nudge on Tuesday').props.accessibilityState.checked).toBe(true);
@@ -380,11 +380,12 @@ describe('ReminderSettingsCard', () => {
         .mockResolvedValue({ workout: base, inferredWeekdays: [] });
       const tree = await mount();
       await act(async () => { find(tree, 'Nudge on Monday').props.onPress(); });
-      expect(applyWorkoutReminder).toHaveBeenLastCalledWith({ ...base, fallbackWeekdays: [2] }, [2]);
+      // Disabled configs cancel directly and need no inferred days.
+      expect(applyWorkoutReminder).toHaveBeenLastCalledWith({ ...base, fallbackWeekdays: [2] }, []);
       applyWorkoutReminder.mockRejectedValueOnce(new Error('alarm denied'));
       await act(async () => { await find(tree, 'Workout day nudge').props.onValueChange(true); });
       expect(applyWorkoutReminder).toHaveBeenNthCalledWith(2, { ...base, enabled: true, fallbackWeekdays: [2] }, [2]);
-      expect(applyWorkoutReminder).toHaveBeenLastCalledWith({ ...base, enabled: false, fallbackWeekdays: [2] }, [2]);
+      expect(applyWorkoutReminder).toHaveBeenLastCalledWith({ ...base, enabled: false, fallbackWeekdays: [2] }, []);
       expect(find(tree, 'Workout day nudge').props.value).toBe(false);
     });
 

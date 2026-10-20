@@ -267,6 +267,11 @@ export function ReminderSettingsCard() {
   // the inferred days are unknown, reconcile is used solely to learn them; if
   // that fails the days stay unknown and nothing is applied with a guessed [].
   const applyWorkout = useCallback(async (value) => {
+    // Cancelling needs no inference; never gate it on a reconcile that can fail.
+    if (!value.enabled) {
+      await applyWorkoutReminder(value, []);
+      return;
+    }
     if (!inferredKnownRef.current) {
       const reconciled = await reconcileWorkoutReminder();
       inferredRef.current = reconciled.inferredWeekdays;

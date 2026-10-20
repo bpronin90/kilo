@@ -160,4 +160,25 @@ describe('ReminderSettingsCard edit during the initial reconcile (#1486)', () =>
     expect(last).toEqual(expect.objectContaining({ weekday: 2, hour: 18, minute: 30 }));
     await act(async () => { tree.unmount(); });
   });
+
+  test('turning the reminder off cancels the schedule even when the routine cannot be read', async () => {
+    const { ReminderSettingsCard } = require('../components/ReminderSettingsCard');
+    let stored = ENABLED_INFERRED_WORKOUT;
+    Storage.loadWorkoutReminder.mockImplementation(async () => stored);
+    Storage.saveWorkoutReminder.mockImplementation(async (value) => { stored = value; });
+    Storage.loadWorkoutNotes.mockRejectedValue(new Error('corrupt notebook'));
+    mockNotifications.getAllScheduledNotificationsAsync.mockResolvedValue([
+      { identifier: 'w1', content: { data: { kind: 'workout-reminder' } } },
+    ]);
+    let tree;
+    await act(async () => { tree = renderer.create(React.createElement(ReminderSettingsCard)); });
+    await act(async () => { await flushMicrotasks(); });
+    await act(async () => {
+      await tree.root.findByProps({ accessibilityLabel: 'Workout day nudge' }).props.onValueChange(false);
+      await flushMicrotasks();
+    });
+    expect(Storage.saveWorkoutReminder).toHaveBeenCalledWith({ ...ENABLED_INFERRED_WORKOUT, enabled: false });
+    expect(mockNotifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('w1');
+    await act(async () => { tree.unmount(); });
+  });
 });
