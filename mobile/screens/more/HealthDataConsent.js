@@ -1,9 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Button, SectionTitle } from '../../components/UI';
 import { useThemedStyles } from '../../theme/ThemeContext';
-import { CONSENT_COPY, fetchActiveConsentRevision, grantConsent } from '../../storage/cloud/consent';
+import {
+  CONSENT_COPY,
+  REVISION_INACTIVE,
+  REVISION_MATCH,
+  fetchActiveConsentRevision,
+  grantConsent,
+  matchConsentRevision,
+} from '../../storage/cloud/consent';
 import { TYPOGRAPHY } from '../../theme/typography';
 import { GEOMETRY } from '../../theme/spacing';
 
@@ -28,21 +35,43 @@ import { GEOMETRY } from '../../theme/spacing';
 // failed grant must leave sync off rather than optimistically queueing an upload.
 export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
   const styles = useThemedStyles(createStyles);
-  const [affirmed, setAffirmed] = useState(false);
+  // The affirmation is bound to the catalog revision it was given for, not a bare
+  // boolean (issue #1483): if the displayed revision changes, the earlier tick no
+  // longer counts and the user must affirm the new one.
+  const [affirmedRevision, setAffirmedRevision] = useState(null);
   const [revision, setRevision] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const mountedRef = useRef(true);
+
+  const loadRevision = useCallback(async () => {
+    setLoading(true);
+    let active = null;
+    try {
+      active = await fetchActiveConsentRevision();
+    } catch {
+      active = null;
+    }
+    if (!mountedRef.current) return;
+    setRevision(active);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const active = await fetchActiveConsentRevision();
-      if (!cancelled) setRevision(active);
-    })();
+    mountedRef.current = true;
+    loadRevision();
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
     };
-  }, []);
+  }, [loadRevision]);
+
+  // Only a revision whose server wording is exactly the copy rendered below may be
+  // affirmed or submitted. Loading, failed, and mismatched revisions block grant.
+  const match = loading ? null : matchConsentRevision(revision);
+  const supported = match === REVISION_MATCH.SUPPORTED;
+  const displayedRevision = supported ? revision.catalog_revision : null;
+  const affirmed = supported && affirmedRevision === displayedRevision;
 
   const handleAgree = async () => {
     if (!affirmed || busy) return;
@@ -53,7 +82,7 @@ export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
         // The revision that was actually on screen. The server re-resolves the
         // wording from this row, so the app cannot record a grant for copy it
         // never displayed.
-        catalogRevision: revision?.catalog_revision,
+        catalogRevision: displayedRevision,
         appVersion,
         platform: Platform.OS,
       });
@@ -61,6 +90,14 @@ export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
       if (!result.ok) {
         // Sync stays off and nothing is queued. Saying "enabled" here would be a
         // claim that Kilo has a lawful basis it does not have.
+        if (result.code === REVISION_INACTIVE) {
+          // The terms changed under us. Drop the affirmation and reload, so any
+          // new revision has to be read and affirmed afresh.
+          setAffirmedRevision(null);
+          setStatus('Cloud Sync was not enabled. The consent terms changed. Nothing was uploaded.');
+          await loadRevision();
+          return;
+        }
         setStatus(
           result.code === 'HEALTH_DATA_DELETION_PENDING'
             ? 'Your cloud health data is still being deleted. Try again once that finishes.'
@@ -70,11 +107,18 @@ export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
       }
       await onGranted?.(result);
     } finally {
-      setBusy(false);
+      if (mountedRef.current) setBusy(false);
     }
   };
 
-  const policyUrl = revision?.privacy_policy_url;
+  let revisionNotice = '';
+  if (match === REVISION_MATCH.MISSING || match === REVISION_MATCH.MALFORMED) {
+    revisionNotice = 'Cloud Sync is unavailable: the consent terms could not be loaded. Nothing was uploaded.';
+  } else if (match === REVISION_MATCH.UNSUPPORTED) {
+    revisionNotice = 'Cloud Sync is unavailable: the consent terms have changed. Update Kilo to review and accept them. Nothing was uploaded.';
+  }
+
+  const policyUrl = supported ? revision.privacy_policy_url : null;
 
   return (
     <View style={styles.block}>
@@ -98,9 +142,10 @@ export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
       {/* Unchecked by default. This tap is the affirmative act. */}
       <Pressable
         style={styles.affirmRow}
-        onPress={() => setAffirmed((v) => !v)}
+        onPress={() => setAffirmedRevision(affirmed ? null : displayedRevision)}
+        disabled={!supported}
         accessibilityRole="checkbox"
-        accessibilityState={{ checked: affirmed }}
+        accessibilityState={{ checked: affirmed, disabled: !supported }}
         accessibilityLabel={CONSENT_COPY.affirmation}
       >
         <View style={[styles.checkbox, affirmed && styles.checkboxChecked]}>
@@ -113,7 +158,7 @@ export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
         title={CONSENT_COPY.primaryAction}
         loadingTitle="Working…"
         loading={busy}
-        disabled={!affirmed || busy || !revision}
+        disabled={!affirmed || busy}
         onPress={handleAgree}
         accessibilityLabel={CONSENT_COPY.primaryAction}
       />
@@ -124,6 +169,12 @@ export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
         onPress={() => onDecline?.()}
         accessibilityLabel={CONSENT_COPY.secondaryAction}
       />
+
+      {revisionNotice ? (
+        <Text style={styles.status} accessibilityLabel="Consent revision status">
+          {revisionNotice}
+        </Text>
+      ) : null}
 
       {status ? (
         <Text style={styles.status} accessibilityLabel="Consent status">

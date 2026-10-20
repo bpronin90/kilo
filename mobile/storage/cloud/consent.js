@@ -77,6 +77,45 @@ export function canonicalConsentText(copy = CONSENT_COPY) {
   return [copy.title, copy.disclosure, copy.affirmation].join('\n\n');
 }
 
+// Can the app display this catalog revision? Only if the server's stored wording
+// is byte-for-byte the copy bundled in CONSENT_COPY (issue #1483). Otherwise the
+// screen would render one text while citing a revision that records another, and
+// the grant's evidence would describe copy the user never saw. Anything else —
+// missing, malformed, or a revision whose wording this build does not carry — is
+// not displayable, and the surface must block acceptance rather than submit it.
+export const REVISION_MATCH = Object.freeze({
+  SUPPORTED: 'supported',
+  MISSING: 'missing',
+  MALFORMED: 'malformed',
+  UNSUPPORTED: 'unsupported',
+});
+
+export function matchConsentRevision(revision, copy = CONSENT_COPY) {
+  if (revision == null) return REVISION_MATCH.MISSING;
+  if (
+    typeof revision !== 'object'
+    || !Number.isInteger(revision.catalog_revision)
+    || revision.catalog_revision < 1
+    || typeof revision.consent_title !== 'string'
+    || typeof revision.disclosure_copy !== 'string'
+    || typeof revision.affirmation_copy !== 'string'
+  ) {
+    return REVISION_MATCH.MALFORMED;
+  }
+  if (
+    revision.consent_title !== copy.title
+    || revision.disclosure_copy !== copy.disclosure
+    || revision.affirmation_copy !== copy.affirmation
+  ) {
+    return REVISION_MATCH.UNSUPPORTED;
+  }
+  return REVISION_MATCH.SUPPORTED;
+}
+
+// Client-side code for the server refusing a revision that is no longer active.
+// Not a DENIAL_CODES entry: consent_grant raises it as a plain check_violation.
+export const REVISION_INACTIVE = 'CONSENT_REVISION_INACTIVE';
+
 const SCHEMA = 'kilo';
 
 // Ask the server what this user may do. Returns { allowed, code, ... }.
@@ -129,7 +168,9 @@ export async function grantConsent(
   });
 
   if (error) {
-    return { ok: false, error: error.message, code: mapPostgrestError(error) };
+    const code = mapPostgrestError(error)
+      || (/not an active catalog revision/.test(error.message || '') ? REVISION_INACTIVE : null);
+    return { ok: false, error: error.message, code };
   }
   return { ok: true, ...data };
 }

@@ -56,9 +56,13 @@ jest.mock('../storage/cloud/consent', () => {
     withdrawConsent: jest.fn().mockResolvedValue({ ok: true, status: 'deletion_pending' }),
     requestHealthDataDeletion: jest.fn().mockResolvedValue({ ok: true }),
     grantConsent: jest.fn().mockResolvedValue({ ok: true, status: 'granted' }),
+    // The server row carries the wording the surface renders (#1483).
     fetchActiveConsentRevision: jest.fn().mockResolvedValue({
       catalog_revision: 1,
       material_version: 1,
+      consent_title: actual.CONSENT_COPY.title,
+      disclosure_copy: actual.CONSENT_COPY.disclosure,
+      affirmation_copy: actual.CONSENT_COPY.affirmation,
       privacy_policy_url: 'https://example.invalid/privacy.html',
     }),
   };
