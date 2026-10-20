@@ -12,10 +12,16 @@ import render from 'react-test-renderer';
 import { View, Text, Pressable } from 'react-native';
 
 const mockStore = new Map();
-const mockFailures = { setArchived: 0, enqueue: 0, removeGoal: 0 };
+const mockFailures = { getArchived: 0, setArchived: 0, enqueue: 0, removeGoal: 0 };
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
-  getItem: jest.fn(async (key) => (mockStore.has(key) ? mockStore.get(key) : null)),
+  getItem: jest.fn(async (key) => {
+    if (key === 'kilo_archived_weight_goals' && mockFailures.getArchived > 0) {
+      mockFailures.getArchived -= 1;
+      throw new Error('injected archive read failure');
+    }
+    return mockStore.has(key) ? mockStore.get(key) : null;
+  }),
   setItem: jest.fn(async (key, value) => {
     if (key === 'kilo_archived_weight_goals' && mockFailures.setArchived > 0) {
       mockFailures.setArchived -= 1;
@@ -98,7 +104,7 @@ async function archive() {
 beforeEach(() => {
   mockStore.clear();
   mockStore.set('kilo_weight_goal', JSON.stringify(GOAL));
-  Object.assign(mockFailures, { setArchived: 0, enqueue: 0, removeGoal: 0 });
+  Object.assign(mockFailures, { getArchived: 0, setArchived: 0, enqueue: 0, removeGoal: 0 });
   mockOnEnqueue = null;
   enqueueDirty.mockClear();
   Alert.alert.mockClear();
@@ -160,6 +166,22 @@ describe('archiveGoal partial-failure retries (#1477)', () => {
     expect(archived()[0].target_weight).toBe(175);
     expect(storedGoal()).toMatchObject({ target_weight: 165 });
     expect(read(component, 'goal')).toBe('165');
+  });
+
+  test('an unreadable archive list rejects without overwriting durable history', async () => {
+    const history = [{ id: 'previous-archive', target_weight: 180 }, { id: 'gone', deleted_at: '2026-05-01T00:00:00.000Z' }];
+    mockStore.set('kilo_archived_weight_goals', JSON.stringify(history));
+    const component = await mount();
+    mockFailures.getArchived = 1;
+
+    expect(await archive()).toBeInstanceOf(Error);
+    expect(archived()).toEqual(history);
+    expect(storedGoal()).toEqual(GOAL);
+    expect(enqueueDirty).not.toHaveBeenCalled();
+
+    expect(await archive()).toBeNull();
+    expect(archived().map((a) => a.id)).toEqual(['previous-archive', 'gone', expect.stringMatching(/^ag_/)]);
+    expect(read(component, 'goal')).toBe('no-goal');
   });
 
   test('a different goal archives as its own record', async () => {

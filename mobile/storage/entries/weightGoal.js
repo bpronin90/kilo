@@ -119,9 +119,14 @@ export function archivedWeightGoalIdFor(goal) {
 
 // Append `record` unless an archive with its id is already durable; either way
 // resolve the stored record, so a retry re-enqueues exactly what was persisted.
+// Reads strictly: loadArchivedWeightGoalsRaw collapses an unreadable list into
+// `[]`, and writing that back would replace the durable history (and its
+// tombstones) with one record, so a failed read rejects before any write.
 export function saveArchivedWeightGoalOnce(record) {
   return withLocalWriteLock(async () => {
-    const list = await loadArchivedWeightGoalsRaw();
+    const raw = await AsyncStorage.getItem(ARCHIVED_WEIGHT_GOALS_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(list)) throw new Error('Archived weight goals are unreadable.');
     const existing = list.find((r) => r?.id === record.id);
     if (existing) return existing;
     list.push(record);
