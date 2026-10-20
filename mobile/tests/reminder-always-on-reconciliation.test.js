@@ -23,6 +23,9 @@ jest.mock('expo-notifications', () => mockNotifications);
 jest.mock('../storage/entries', () => ({
   loadWorkoutReminder: jest.fn(),
   loadWorkoutNotes: jest.fn(),
+  loadWeighInReminder: jest.fn(async () => ({ enabled: false, hour: 8, minute: 0 })),
+  saveWeighInReminder: jest.fn(async () => {}),
+  saveWorkoutReminder: jest.fn(async () => {}),
   loadCurrentWorkoutId: jest.fn(),
   loadWorkoutNoteItem: jest.fn(),
   saveWorkoutNoteItem: jest.fn(async () => {}),
@@ -33,6 +36,17 @@ jest.mock('../storage/entries', () => ({
   getStorageAdapter: jest.fn(() => ({})),
 }));
 
+jest.mock('@react-native-community/datetimepicker', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return function MockDateTimePicker(props) {
+    return React.createElement(View, { testID: 'mock-datetimepicker', ...props });
+  };
+});
+
+const React = require('react');
+const renderer = require('react-test-renderer');
+const { act } = renderer;
 const Storage = require('../storage/entries');
 const { __resetWorkoutReminderReconciliationForTests } = require('../lib/reminderScheduler');
 // Importing workoutNoteHooks registers its permanent, module-level
@@ -110,5 +124,122 @@ describe('workout reminder reconciliation without the Settings screen mounted (#
 
     expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
     expect(mockNotifications.requestPermissionsAsync).not.toHaveBeenCalled();
+  });
+});
+
+// #1486: with the REAL scheduler, an edit made while the initial schedule is
+// still in flight must end with the edited time scheduled, not skipped by the
+// reconcile dedup key (enabled + inferred days only).
+describe('ReminderSettingsCard edit during the initial reconcile (#1486)', () => {
+  test('the last native trigger carries the edited time', async () => {
+    const { ReminderSettingsCard } = require('../components/ReminderSettingsCard');
+    let stored = ENABLED_INFERRED_WORKOUT;
+    Storage.loadWorkoutReminder.mockImplementation(async () => stored);
+    Storage.saveWorkoutReminder.mockImplementation(async (value) => { stored = value; });
+    let release;
+    mockNotifications.scheduleNotificationAsync.mockImplementationOnce(
+      () => new Promise((resolve) => { release = () => resolve('id'); }),
+    );
+    let tree;
+    await act(async () => { tree = renderer.create(React.createElement(ReminderSettingsCard)); });
+    await act(async () => { await flushMicrotasks(); });
+    await act(async () => {
+      tree.root.findByProps({ accessibilityLabel: 'Workout nudge time' }).props.onPress();
+    });
+    await act(async () => {
+      tree.root.findByProps({ testID: 'mock-datetimepicker' }).props.onChange({ type: 'set' }, new Date(2026, 0, 1, 18, 30));
+      await flushMicrotasks();
+    });
+    await act(async () => {
+      release();
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+    const calls = mockNotifications.scheduleNotificationAsync.mock.calls;
+    const last = calls[calls.length - 1][0].trigger;
+    expect(last).toEqual(expect.objectContaining({ weekday: 2, hour: 18, minute: 30 }));
+    await act(async () => { tree.unmount(); });
+  });
+
+  test('turning the reminder off cancels the schedule even when the routine cannot be read', async () => {
+    const { ReminderSettingsCard } = require('../components/ReminderSettingsCard');
+    let stored = ENABLED_INFERRED_WORKOUT;
+    Storage.loadWorkoutReminder.mockImplementation(async () => stored);
+    Storage.saveWorkoutReminder.mockImplementation(async (value) => { stored = value; });
+    Storage.loadWorkoutNotes.mockRejectedValue(new Error('corrupt notebook'));
+    mockNotifications.getAllScheduledNotificationsAsync.mockResolvedValue([
+      { identifier: 'w1', content: { data: { kind: 'workout-reminder' } } },
+    ]);
+    let tree;
+    await act(async () => { tree = renderer.create(React.createElement(ReminderSettingsCard)); });
+    await act(async () => { await flushMicrotasks(); });
+    await act(async () => {
+      await tree.root.findByProps({ accessibilityLabel: 'Workout day nudge' }).props.onValueChange(false);
+      await flushMicrotasks();
+    });
+    expect(Storage.saveWorkoutReminder).toHaveBeenCalledWith({ ...ENABLED_INFERRED_WORKOUT, enabled: false });
+    expect(mockNotifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('w1');
+    await act(async () => { tree.unmount(); });
+  });
+
+  // Stateful native mock + real scheduler: while the initial reconcile is held
+  // at its first native call, run a user edit, release, and assert the final
+  // native state equals the durable config (no late schedule outliving a cancel).
+  describe.each([
+    ['time edit', ENABLED_INFERRED_WORKOUT, 'time', [{ weekday: 2, hour: 18, minute: 30 }]],
+    ['disable', ENABLED_INFERRED_WORKOUT, 'off', []],
+    ['enable', { ...ENABLED_INFERRED_WORKOUT, enabled: false }, 'on', [{ weekday: 2, hour: 17, minute: 0 }]],
+  ])('interleaving: %s while the initial reconcile is pending', (_name, initial, action, expected) => {
+    test('final native state matches the durable config', async () => {
+      const { ReminderSettingsCard } = require('../components/ReminderSettingsCard');
+      let stored = initial;
+      Storage.loadWorkoutReminder.mockImplementation(async () => stored);
+      Storage.saveWorkoutReminder.mockImplementation(async (value) => { stored = value; });
+      const native = [];
+      let counter = 0;
+      let release;
+      const gate = new Promise((resolve) => { release = resolve; });
+      let firstList = true;
+      mockNotifications.getAllScheduledNotificationsAsync.mockImplementation(async () => {
+        if (firstList) {
+          firstList = false;
+          await gate;
+        }
+        return native.map((n) => ({ ...n }));
+      });
+      mockNotifications.scheduleNotificationAsync.mockImplementation(async ({ content, trigger }) => {
+        counter += 1;
+        native.push({ identifier: `n${counter}`, content, trigger });
+        return `n${counter}`;
+      });
+      mockNotifications.cancelScheduledNotificationAsync.mockImplementation(async (id) => {
+        const i = native.findIndex((n) => n.identifier === id);
+        if (i !== -1) native.splice(i, 1);
+      });
+      let tree;
+      await act(async () => { tree = renderer.create(React.createElement(ReminderSettingsCard)); });
+      await act(async () => { await flushMicrotasks(); });
+      const byLabel = (label) => tree.root.findByProps({ accessibilityLabel: label });
+      await act(async () => {
+        if (action === 'time') {
+          byLabel('Workout nudge time').props.onPress();
+        } else {
+          byLabel('Workout day nudge').props.onValueChange(action === 'on');
+        }
+        await flushMicrotasks();
+      });
+      if (action === 'time') {
+        await act(async () => {
+          tree.root.findByProps({ testID: 'mock-datetimepicker' }).props.onChange({ type: 'set' }, new Date(2026, 0, 1, 18, 30));
+          await flushMicrotasks();
+        });
+      }
+      await act(async () => {
+        release();
+        for (let i = 0; i < 4; i += 1) await flushMicrotasks();
+      });
+      expect(native.map((n) => n.trigger).map(({ weekday, hour, minute }) => ({ weekday, hour, minute }))).toEqual(expected);
+      await act(async () => { tree.unmount(); });
+    });
   });
 });
