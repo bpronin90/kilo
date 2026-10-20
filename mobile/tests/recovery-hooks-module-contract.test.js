@@ -339,11 +339,14 @@ describe('stale owner: a failed refresh keeps last-known-good, never swaps owner
 
 // ── Adversarial fixture: malformed records (handled, never thrown) ─────────────
 
-describe('malformed records are tolerated by the derivation engine', () => {
-  test('weeks/blocks with missing or non-string fields do not throw and derive sanely', async () => {
-    // Field-level malformation (missing/wrong-typed fields, tombstones). Null
-    // ARRAY ELEMENTS are intentionally not asserted: the shipped signature has
-    // never guarded them, and this split changes no such behavior.
+describe('malformed records are handled, never thrown, and never verified', () => {
+  test('weeks/blocks with missing or non-string fields do not throw and read as unknown', async () => {
+    // Field-level malformation (missing/wrong-typed fields, a non-timestamp
+    // tombstone marker). #1478 reverses the earlier tolerance deliberately: the
+    // sanitized reader drops the `'yes'` tombstone, so deriving from it would
+    // publish a READY set that silently readmits that note. Unverifiable raw
+    // records make the boundary unknown instead; the valid-tombstone case below
+    // keeps the tombstone coverage.
     const malformed = {
       blocks: [{ id: 'blkA', include_in_normal_analytics: false, deleted_at: null }, { id: 'orphan', include_in_normal_analytics: true }],
       weeks: [
@@ -356,17 +359,25 @@ describe('malformed records are tolerated by the derivation engine', () => {
     setReadSource(malformed);
     const { ref } = mountHook(barrel.useRecoveryAnalyticsFilter);
     await flush();
+    expect(ref.current.ready).toBe(false);
+    expect(ref.current.hasExclusions).toBe(false);
+  });
+
+  test('a well-formed tombstone is skipped and the boundary verifies', async () => {
+    const { blocks, weeks } = ownerASnapshot();
+    const tomb = { ...weeks[0], id: 'tomb', note_id: 'noteGhost', week_number: 2, deleted_at: '2026-01-01T00:00:00Z' };
+    setReadSource({ blocks, weeks: [...weeks, tomb] });
+    const { ref } = mountHook(barrel.useRecoveryAnalyticsFilter);
+    await flush();
     expect(ref.current.ready).toBe(true);
     expect(ref.current.isNoteExcluded('noteA1')).toBe(true); // valid live week excluded
     expect(ref.current.isNoteExcluded('noteGhost')).toBe(false); // tombstoned, skipped
   });
 
-  test('loadRecoveryExcludedNoteIds tolerates malformed records without throwing', async () => {
-    Storage.loadRecoveryBlocks.mockImplementation(async () => [{ id: 'blkA', include_in_normal_analytics: false }, null]);
-    Storage.loadRecoveryBlockWeeks.mockImplementation(async () => [{ note_id: 'noteA1', block_id: 'blkA', deleted_at: null }, { note_id: 42 }]);
-    const excluded = await barrel.loadRecoveryExcludedNoteIds();
-    expect(excluded.has('noteA1')).toBe(true);
-    expect(excluded.size).toBe(1);
+  test('loadRecoveryExcludedNoteIds rejects malformed raw records rather than guessing', async () => {
+    Storage.loadRecoveryBlocksRaw.mockImplementation(async () => [{ id: 'blkA', include_in_normal_analytics: false }, null]);
+    Storage.loadRecoveryBlockWeeksRaw.mockImplementation(async () => [{ note_id: 'noteA1', block_id: 'blkA', deleted_at: null }, { note_id: 42 }]);
+    await expect(barrel.loadRecoveryExcludedNoteIds()).rejects.toThrow('malformed');
   });
 });
 
@@ -622,11 +633,13 @@ describe('pure eligibility predicates', () => {
 // ── Persistence representation unchanged ──────────────────────────────────────
 
 describe('persistence representation is unchanged by the extraction', () => {
-  test('the exclusion read touches only the two recovery read entry points and writes nothing', async () => {
+  test('the exclusion read touches only the two raw recovery read entry points and writes nothing', async () => {
     setReadSource(ownerASnapshot());
     await barrel.loadRecoveryExcludedNoteIds();
-    expect(Storage.loadRecoveryBlocks).toHaveBeenCalledTimes(1);
-    expect(Storage.loadRecoveryBlockWeeks).toHaveBeenCalledTimes(1);
+    // #1478: the raw lists, tombstones included, are the authority.
+    expect(Storage.loadRecoveryBlocksRaw).toHaveBeenCalledTimes(1);
+    expect(Storage.loadRecoveryBlockWeeksRaw).toHaveBeenCalledTimes(1);
+    expect(Storage.loadRecoveryBlocks).not.toHaveBeenCalled();
     expect(Storage.createRecoveryBlock).not.toHaveBeenCalled();
     expect(Storage.updateRecoveryBlock).not.toHaveBeenCalled();
     expect(Storage.deleteRecoveryBlock).not.toHaveBeenCalled();
@@ -635,11 +648,11 @@ describe('persistence representation is unchanged by the extraction', () => {
 
   test('loadRecoveryExcludedNoteIds accepts an injected storage and reads through it', async () => {
     const injected = {
-      loadRecoveryBlocks: jest.fn(async () => ownerASnapshot().blocks),
-      loadRecoveryBlockWeeks: jest.fn(async () => ownerASnapshot().weeks),
+      loadRecoveryBlocksRaw: jest.fn(async () => ownerASnapshot().blocks),
+      loadRecoveryBlockWeeksRaw: jest.fn(async () => ownerASnapshot().weeks),
     };
     const excluded = await barrel.loadRecoveryExcludedNoteIds(injected);
-    expect(injected.loadRecoveryBlocks).toHaveBeenCalledTimes(1);
+    expect(injected.loadRecoveryBlocksRaw).toHaveBeenCalledTimes(1);
     expect(excluded.has('noteA1')).toBe(true);
     expect(Storage.loadRecoveryBlocks).not.toHaveBeenCalled(); // default not used
   });

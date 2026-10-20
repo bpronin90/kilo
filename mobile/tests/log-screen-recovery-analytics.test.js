@@ -442,7 +442,8 @@ describe('save-time exercise classifications respect the recovery boundary', () 
   });
 
   test('a recovery read failure saves the text but writes no classification at all', async () => {
-    jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks')
+    // #1478: the save-time read is of the RAW persisted lists.
+    jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocksRaw')
       .mockRejectedValue(new Error('storage unavailable'));
 
     const update = await saveOnce();
@@ -453,6 +454,29 @@ describe('save-time exercise classifications respect the recovery boundary', () 
     expect(patch.title).toBe('Push Day');
     // But no aggregate is written, so a possibly-leaky value cannot replace the
     // stored one. The next successful save repairs it.
+    expect('exercise_classifications' in patch).toBe(false);
+  });
+
+  // #1478: the sanitized reader drops a week whose tombstone marker is not a
+  // timestamp, which would readmit the rehab session. Unverified membership is
+  // unknown: the text saves, no classification overwrites the stored one, and
+  // the next save after the record reads valid again writes the filtered value.
+  test('a malformed week tombstone writes no classification until a later valid read', async () => {
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([block(false)]));
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([{ ...weeks[0], deleted_at: 'yes' }]));
+    const patch = (await saveOnce()).mock.calls[0][1];
+    expect(patch.raw_text).toBe(CURRENT_RAW);
+    expect('exercise_classifications' in patch).toBe(false);
+
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify(weeks));
+    const repaired = (await saveOnce()).mock.calls[0][1];
+    expect(repaired.exercise_classifications.squat).toBe('progressing');
+  });
+
+  test('a malformed block record writes no classification', async () => {
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([{ ...block(false), completed_at: 'nope' }]));
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify(weeks));
+    const patch = (await saveOnce()).mock.calls[0][1];
     expect('exercise_classifications' in patch).toBe(false);
   });
 });
@@ -569,5 +593,50 @@ describe('useRecoveryAnalyticsFilter freshness and fail-closed reads', () => {
 
     expect(latest().ready).toBe(true);
     expect(latest().isNoteExcluded('recoverynote')).toBe(true);
+  });
+
+  // #1478: raw records (tombstones included) are the authority, not the
+  // sanitized arrays. A malformed one is a failed read, never a verified set.
+  test('a malformed week tombstone on cold start is unknown, then ready after a valid read', async () => {
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([block]));
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([{ ...week, deleted_at: 'yes' }]));
+    await mountProbe();
+    expect(latest().ready).toBe(false);
+
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([week]));
+    await render.act(async () => { await new Promise(r => setTimeout(r, 600)); });
+    expect(latest().ready).toBe(true);
+    expect(latest().isNoteExcluded('recoverynote')).toBe(true);
+  });
+
+  test('a malformed block or week record on cold start is unknown', async () => {
+    for (const [blocks, weeks] of [
+      [[{ ...block, completed_at: 'nope' }], [week]],
+      [[block], [{ ...week, week_number: 0 }]],
+    ]) {
+      hooks._resetRecoveryAnalyticsFilterCache();
+      await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify(blocks));
+      await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify(weeks));
+      await mountProbe();
+      expect(latest().ready).toBe(false);
+    }
+  });
+
+  test('a malformed later read keeps the last verified boundary', async () => {
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([block]));
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([week]));
+    await mountProbe();
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([{ ...week, deleted_at: 'yes' }]));
+    await render.act(async () => { hooks.reloadRecoveryBlocks(); });
+    expect(latest().ready).toBe(true);
+    expect(latest().isNoteExcluded('recoverynote')).toBe(true);
+  });
+
+  test('a valid tombstone verifies and returns its note to ordinary analytics', async () => {
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([block]));
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([{ ...week, deleted_at: '2026-05-02T00:00:00.000Z' }]));
+    await mountProbe();
+    expect(latest().ready).toBe(true);
+    expect(latest().hasExclusions).toBe(false);
   });
 });
