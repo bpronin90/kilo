@@ -262,20 +262,18 @@ export function ReminderSettingsCard() {
     weighInChannel, setWeighIn, setWeighInError, applyWeighInReminder, Storage.saveWeighInReminder, build, revert,
   ), [commit]);
 
-  // Unknown inferred days: reconcile (which infers them itself from the
-  // persisted routine and config) instead of applying with a guessed [].
+  // An explicit edit is always applied directly (reconcile dedupes on
+  // enabled+days only, so it can skip an edited time or fallback days). While
+  // the inferred days are unknown, reconcile is used solely to learn them; if
+  // that fails the days stay unknown and nothing is applied with a guessed [].
   const applyWorkout = useCallback(async (value) => {
-    if (inferredKnownRef.current) {
-      await applyWorkoutReminder(value, resolveWorkoutWeekdays(inferredRef.current, value.fallbackWeekdays));
-      return;
+    if (!inferredKnownRef.current) {
+      const reconciled = await reconcileWorkoutReminder();
+      inferredRef.current = reconciled.inferredWeekdays;
+      inferredKnownRef.current = true;
+      if (mountedRef.current) setInferredWeekdays(reconciled.inferredWeekdays);
     }
-    const reconciled = await reconcileWorkoutReminder();
-    inferredRef.current = reconciled.inferredWeekdays;
-    inferredKnownRef.current = true;
-    if (mountedRef.current) setInferredWeekdays(reconciled.inferredWeekdays);
-    if (value.enabled && resolveWorkoutWeekdays(reconciled.inferredWeekdays, value.fallbackWeekdays).length === 0) {
-      throw new Error('no workout days to schedule');
-    }
+    await applyWorkoutReminder(value, resolveWorkoutWeekdays(inferredRef.current, value.fallbackWeekdays));
   }, []);
 
   const commitWorkout = useCallback((build, revert) => commit(

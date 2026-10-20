@@ -350,8 +350,9 @@ describe('ReminderSettingsCard', () => {
       expect(texts(tree).join('|')).toContain('Could not schedule the reminder');
       await changeWorkoutTime(tree);
       expect(Storage.saveWorkoutReminder).toHaveBeenCalledWith({ ...enabledWorkout, hour: 18, minute: 30 });
-      // Never applied with the unknown (empty) inferred days.
-      expect(applyWorkoutReminder).not.toHaveBeenCalled();
+      // Reconcile only learned the days; the edit itself is applied directly.
+      expect(applyWorkoutReminder).toHaveBeenCalledTimes(1);
+      expect(applyWorkoutReminder).toHaveBeenCalledWith({ ...enabledWorkout, hour: 18, minute: 30 }, [2]);
       expect(reconcileWorkoutReminder).toHaveBeenCalledTimes(2);
       expect(texts(tree).join('|')).not.toContain('Could not schedule');
       expect(texts(tree).join('|')).toContain('Mon');
@@ -369,6 +370,22 @@ describe('ReminderSettingsCard', () => {
       expect(applyWorkoutReminder).not.toHaveBeenCalled();
       expect(texts(tree).join('|')).toContain('Could not schedule the reminder');
       expect(texts(tree)).toContain('6:30 PM');
+    });
+
+    test('weekday, toggle and revert-off edits each end with a direct apply of the saved config', async () => {
+      const base = { enabled: false, hour: 17, minute: 0, fallbackWeekdays: [] };
+      Storage.loadWorkoutReminder.mockResolvedValue(base);
+      reconcileWorkoutReminder
+        .mockRejectedValueOnce(new Error('alarm denied'))
+        .mockResolvedValue({ workout: base, inferredWeekdays: [] });
+      const tree = await mount();
+      await act(async () => { find(tree, 'Nudge on Monday').props.onPress(); });
+      expect(applyWorkoutReminder).toHaveBeenLastCalledWith({ ...base, fallbackWeekdays: [2] }, [2]);
+      applyWorkoutReminder.mockRejectedValueOnce(new Error('alarm denied'));
+      await act(async () => { await find(tree, 'Workout day nudge').props.onValueChange(true); });
+      expect(applyWorkoutReminder).toHaveBeenNthCalledWith(2, { ...base, enabled: true, fallbackWeekdays: [2] }, [2]);
+      expect(applyWorkoutReminder).toHaveBeenLastCalledWith({ ...base, enabled: false, fallbackWeekdays: [2] }, [2]);
+      expect(find(tree, 'Workout day nudge').props.value).toBe(false);
     });
 
     test('weigh-in enable rejection restores the switch, reports a save error, and does not schedule', async () => {
