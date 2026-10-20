@@ -151,16 +151,51 @@ export function isRecentlyAuthenticated(authTime: number | null | undefined, now
 // Request parsing
 // ---------------------------------------------------------------------------
 
-export async function readJsonBody(req: Request): Promise<Record<string, unknown> | null> {
+// Content-Length is only a hint: the streamed byte count is authoritative, and
+// reading stops (and the stream is cancelled) as soon as it passes the limit.
+async function readBodyBytes(req: Request): Promise<Uint8Array | null> {
   const declared = Number(req.headers.get('content-length') ?? '0')
-  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return null
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+    await req.body?.cancel().catch(() => {})
+    return null
+  }
+  if (!req.body) return new Uint8Array(0)
+  const reader = req.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > MAX_BODY_BYTES) {
+        await reader.cancel().catch(() => {})
+        return null
+      }
+      chunks.push(value)
+    }
+  } catch {
+    await reader.cancel().catch(() => {})
+    return null
+  }
+  const bytes = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return bytes
+}
+
+export async function readJsonBody(req: Request): Promise<Record<string, unknown> | null> {
+  const bytes = await readBodyBytes(req)
+  if (!bytes) return null
   let text: string
   try {
-    text = await req.text()
+    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
   } catch {
     return null
   }
-  if (text.length > MAX_BODY_BYTES) return null
   if (text.trim() === '') return {}
   try {
     const parsed = JSON.parse(text)

@@ -621,6 +621,26 @@ Deno.test('malformed restore requests are rejected like any other failure', asyn
   }
 })
 
+Deno.test('a body over the byte limit is refused before any restore state changes', async () => {
+  const ctx = setup()
+  const { authenticator } = await enroll(ctx)
+  const issued = ctx.db.challenges.size
+  // Under the limit in string length, over it in UTF-8 bytes.
+  const padding = 'é'.repeat(9000)
+  const options = await ctx.call('restore-options', { version: 1, credentialId: authenticator.credentialId, padding })
+  assertEquals(options.status, 400, 'restore-options refuses the oversized body')
+  assertEquals(ctx.db.challenges.size, issued, 'no challenge is issued')
+
+  const valid = await restoreOptions(ctx, authenticator.credentialId)
+  const credential = await assertionResponse(authenticator, { challenge: valid.challenge, rpId: RP_ID, origin: ORIGIN })
+  const result = await ctx.call('restore-verification', { version: 1, credential, padding })
+  assertEquals({ status: result.status, body: result.body }, REJECTED, 'restore-verification refuses the oversized body')
+  assertEquals(ctx.db.challenges.get(valid.challenge)?.consumed, false, 'the challenge is not consumed')
+  assertEquals(ctx.revokedSessions.length, 0, 'no session is touched')
+  const retry = await ctx.call('restore-verification', { version: 1, credential })
+  assertEquals(retry.status, 200, 'the same assertion within the limit still restores')
+})
+
 // ---------------------------------------------------------------------------
 // Discovery mode (no credentialId in restore-options)
 // ---------------------------------------------------------------------------

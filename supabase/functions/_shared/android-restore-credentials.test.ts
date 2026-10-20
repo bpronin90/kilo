@@ -5,6 +5,7 @@ import {
   issueRestoreSession,
   loadRestoreConfig,
   lookupCredential,
+  MAX_BODY_BYTES,
   parseAssertionRequest,
   parseRegistrationRequest,
   parseRestoreOptionsRequest,
@@ -122,6 +123,89 @@ Deno.test('oversized and non-object bodies are refused', async () => {
   assertEquals(await readJsonBody(request('[1,2]')), null, 'array')
   assertEquals(await readJsonBody(request('{')), null, 'invalid JSON')
   assertEquals(await readJsonBody(request('')), {}, 'empty body is an empty object')
+})
+
+// A JSON object of exactly `bytes` UTF-8 bytes, padded with `fill` (1 or 2 bytes).
+function jsonOfBytes(bytes: number, fill: 'a' | 'é' = 'a') {
+  const overhead = '{"p":""}'.length
+  const width = new TextEncoder().encode(fill).length
+  const units = Math.floor((bytes - overhead) / width)
+  const text = `{"p":"${fill.repeat(units)}${'a'.repeat(bytes - overhead - units * width)}"}`
+  assertEquals(new TextEncoder().encode(text).length, bytes, 'fixture size')
+  return text
+}
+
+// A stream over `chunks` that records how many were pulled and whether it was cancelled.
+function trackedStream(chunks: Uint8Array[] | (() => Uint8Array)) {
+  const state = { pulled: 0, cancelled: false }
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (typeof chunks === 'function') {
+        controller.enqueue(chunks())
+      } else if (state.pulled < chunks.length) {
+        controller.enqueue(chunks[state.pulled])
+      } else {
+        controller.close()
+        return
+      }
+      state.pulled++
+    },
+    cancel() {
+      state.cancelled = true
+    },
+  }, { highWaterMark: 0 })
+  return { body, state }
+}
+
+const streamRequest = (body: BodyInit, headers: Record<string, string> = {}) =>
+  new Request('https://edge.test', { method: 'POST', body, headers })
+
+Deno.test('the body limit counts UTF-8 bytes, not string length', async () => {
+  const request = (body: string) => new Request('https://edge.test', { method: 'POST', body })
+  assertEquals(Object.keys(await readJsonBody(request(jsonOfBytes(MAX_BODY_BYTES))) ?? {}), ['p'], 'exact-limit ASCII is accepted')
+  assertEquals(await readJsonBody(request(jsonOfBytes(MAX_BODY_BYTES + 1))), null, 'limit + 1 ASCII is refused')
+  assertEquals(Object.keys(await readJsonBody(request(jsonOfBytes(MAX_BODY_BYTES, 'é'))) ?? {}), ['p'], 'exact-limit multibyte is accepted')
+  const multibyte = jsonOfBytes(MAX_BODY_BYTES + 1, 'é')
+  assert(multibyte.length <= MAX_BODY_BYTES, 'fixture is under the limit in string length')
+  assertEquals(await readJsonBody(request(multibyte)), null, 'limit + 1 multibyte is refused')
+})
+
+Deno.test('a code point split across chunks decodes intact', async () => {
+  const bytes = new TextEncoder().encode('{"p":"é€😀"}')
+  const chunks = Array.from(bytes, (byte) => new Uint8Array([byte]))
+  const { body } = trackedStream(chunks)
+  assertEquals(await readJsonBody(streamRequest(body)), { p: 'é€😀' }, 'byte-at-a-time stream')
+})
+
+Deno.test('an oversized stream is cancelled once the limit is passed', async () => {
+  const chunk = new Uint8Array(1024).fill(0x61)
+  const cases: [string, Record<string, string>][] = [
+    ['absent', {}],
+    ['understated', { 'content-length': '10' }],
+    ['invalid', { 'content-length': 'abc' }],
+  ]
+  for (const [label, headers] of cases) {
+    const { body, state } = trackedStream(() => chunk)
+    assertEquals(await readJsonBody(streamRequest(body, headers)), null, `${label} Content-Length is refused`)
+    assert(state.cancelled, `${label}: the body stream is cancelled`)
+    assert(state.pulled <= MAX_BODY_BYTES / chunk.length + 2, `${label}: read stopped near the limit (pulled ${state.pulled})`)
+  }
+})
+
+Deno.test('an oversized Content-Length is refused without reading the body', async () => {
+  const { body, state } = trackedStream([new TextEncoder().encode('{}')])
+  assertEquals(await readJsonBody(streamRequest(body, { 'content-length': String(MAX_BODY_BYTES + 1) })), null, 'refused')
+  assertEquals(state.pulled, 0, 'no chunk was read')
+  assert(state.cancelled, 'the body stream is cancelled')
+})
+
+Deno.test('a rejected body stream is refused', async () => {
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      controller.error(new Error('connection reset'))
+    },
+  })
+  assertEquals(await readJsonBody(streamRequest(body)), null, 'stream error')
 })
 
 Deno.test('option payloads carry exactly the v1 fields', () => {
