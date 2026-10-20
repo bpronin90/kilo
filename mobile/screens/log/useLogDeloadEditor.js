@@ -27,6 +27,8 @@ export function useLogDeloadEditor({
   const liveTextRef = useRef('');
   const inflightSaveRef = useRef(null);
   const lastSavedTextRef = useRef(null);
+  // Bumped on every enter/exit so a Done loop from a closed session never writes.
+  const sessionRef = useRef(0);
 
   const setDeloadEditText = (next) => {
     liveTextRef.current = next;
@@ -51,6 +53,7 @@ export function useLogDeloadEditor({
   const enterDeloadEditor = () => {
     setOriginalNoteState({ text: deloadNote?.raw_text || '' });
     lastSavedTextRef.current = null;
+    sessionRef.current += 1;
     setDeloadEditText(deloadNote?.raw_text || '');
     setDeloadMode('edit');
     requestAnimationFrame(() => {
@@ -60,6 +63,7 @@ export function useLogDeloadEditor({
 
   const exitDeloadEditor = () => {
     setDeloadMode('read');
+    sessionRef.current += 1;
     setDeloadEditText('');
     lastSavedTextRef.current = null;
     setSaveSuccess('');
@@ -109,11 +113,13 @@ export function useLogDeloadEditor({
           text: 'Save',
           onPress: async () => {
             // Close only once the latest live draft is the one that persisted.
+            const session = sessionRef.current;
             const ok = await runDoneConvergenceLoop({
-              save: handleSaveDeload,
+              // Once the editor was left (Discard/Cancel/exit), never write again.
+              save: async () => (sessionRef.current === session ? handleSaveDeload() : false),
               hasConverged: () => liveTextRef.current === lastSavedTextRef.current,
             });
-            if (ok) exitDeloadEditor();
+            if (ok && sessionRef.current === session) exitDeloadEditor();
           },
         },
       ]

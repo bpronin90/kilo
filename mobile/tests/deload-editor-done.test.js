@@ -114,6 +114,24 @@ describe('deload editor Done persists trailing edits (#1481)', () => {
     expect(api.saveError).toBe('Save failed');
   });
 
+  test('Discard during a pending Done-save never writes an empty draft afterwards', async () => {
+    const g = deferred();
+    const save = jest.fn().mockImplementationOnce(() => g.promise).mockResolvedValue({});
+    mount(save);
+    type(`${BASE}1`);
+    const p = pressDoneSave();
+    await flush();
+    Alert.alert.mockClear();
+    render.act(() => { api.handleDoneDeload(); });
+    const discard = Alert.alert.mock.calls[0][2].find((b) => b.text === 'Discard');
+    render.act(() => { discard.onPress(); });
+    expect(api.deloadMode).toBe('read');
+    await render.act(async () => { g.resolve(); await p; });
+    await flush();
+    expect(save.mock.calls.map((c) => c[0])).toEqual([`${BASE}1`]);
+    expect(api.deloadMode).toBe('read');
+  });
+
   test('Discard still exits without saving', () => {
     const save = jest.fn();
     mount(save);
