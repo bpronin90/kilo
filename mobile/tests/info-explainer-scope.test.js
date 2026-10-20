@@ -48,18 +48,14 @@ describe('Home — Exercise Progress explainer (#1356)', () => {
     />
   );
 
-  test('Home carries no info icon; a first tracked session reads as an inline caption (#1456)', async () => {
-    const root = await mount(header({ newlyTrackedCount: 1, hasInheritedTracking: false }));
-    expect(button(root.root, 'home-classif-info')).toBeUndefined();
-    expect(texts(root.root)).toContain('1 exercise is in its first tracked session. Log it again to see a trend.');
-  });
-
-  test('inherited tracking reads in plain language, not "tracked before this update"', async () => {
-    const root = await mount(header({ newlyTrackedCount: 0, hasInheritedTracking: true }));
-    const all = texts(root.root);
-    expect(all).toContain('Some exercises use their existing workout history for these counts.');
-    expect(all.some(t => t.includes('before this update'))).toBe(false);
-    expect(all.some(t => /Track tap|Deload|1RM/.test(t))).toBe(false);
+  test('Home carries no info icon and no first-session or inherited-tracking caption (#1533)', async () => {
+    for (const ws of [{ newlyTrackedCount: 1, hasInheritedTracking: false }, { newlyTrackedCount: 0, hasInheritedTracking: true }]) {
+      const root = await mount(header(ws));
+      expect(button(root.root, 'home-classif-info')).toBeUndefined();
+      expect(root.root.findAll(n => n.props.testID === 'home-classif-caption')).toHaveLength(0);
+      const all = texts(root.root);
+      expect(all.some(t => /first tracked session|existing workout history|before this update/.test(t))).toBe(false);
+    }
   });
 
   test('no unusual state, no info icon and no caption', async () => {
