@@ -355,11 +355,11 @@ export function useRecoveryBlockState() {
       // `Retry recovery` is the same call every other read path makes.
       retryRecovery: refresh,
       // Display-only UNRECONCILED read (#1366), offered while the first pass is
-      // pending; never feeds `ready`/`mutationsAllowed`. A FAILED plain read is
-      // offered as unreadable (null arrays): unknown, never Normal.
+      // pending; never feeds `ready`/`mutationsAllowed`. A FAILED or malformed
+      // (#1478) plain read is offered as unreadable (null arrays): unknown.
       provisional: verified || status === RECOVERY_STATUS.ERROR ? null
-        : view.filterRead && view.filter.wellFormed ? { blocks: view.filter.blocks, weeks: view.filter.weeks }
-          : view.filterRead || view.filterFailed ? { blocks: null, weeks: null } : null,
+        : view.filterFailed ? { blocks: null, weeks: null }
+          : view.filterRead ? { blocks: view.filter.blocks, weeks: view.filter.weeks } : null,
     };
   }, [view, refresh]);
 }
@@ -468,16 +468,14 @@ function publishRecoverySnapshot(blocks, weeks) {
   return lastAuthoritativeSnapshot;
 }
 
-// Filter-only publish: called by the read-only `useRecoveryAnalyticsFilter`
-// refresh. Touches ONLY `lastFilterSnapshot`, so an unreconciled filter read
-// can neither grant mutation trust nor evict last-known-good data.
-// `wellFormed` (#1366): whether the RAW persisted records passed validation;
-// only then may it back a provisional display.
-function publishRecoveryFilterSnapshot(blocks, weeks, wellFormed = false) {
+// Filter-only publish from the read-only `useRecoveryAnalyticsFilter` refresh,
+// for a read whose RAW records validated (#1478). Touches ONLY
+// `lastFilterSnapshot`: it cannot grant mutation trust or evict last-known-good.
+function publishRecoveryFilterSnapshot(blocks, weeks) {
   const signature = _recoverySignature(blocks, weeks);
-  if (signature !== lastFilterSignature || !recoveryFilterVerified || lastFilterSnapshot.wellFormed !== wellFormed) {
+  if (signature !== lastFilterSignature || !recoveryFilterVerified) {
     lastFilterSignature = signature;
-    lastFilterSnapshot = { blocks, weeks, wellFormed };
+    lastFilterSnapshot = { blocks, weeks };
   }
   recoveryFilterVerified = true;
   recoveryFilterReadFailed = false;
@@ -515,10 +513,13 @@ export function runRecoveryFilterRead() {
         // The authoritative pass already publishes (and reconciles) the
         // shared snapshot; just wait for it rather than re-reading.
         ? recoveryReadInFlight
+        // #1478: malformed raw records (tombstones too) fail the read; unknown.
         : loadRecoveryLists()
-          .then(([blocks, weeks, wellFormed]) => (
-            generation === recoveryReadGeneration ? publishRecoveryFilterSnapshot(blocks, weeks, wellFormed) : lastFilterSnapshot
-          ), (e) => {
+          .then(([blocks, weeks, wellFormed]) => {
+            if (!wellFormed) throw new Error('Recovery records on this device are malformed.');
+            return generation === recoveryReadGeneration ? publishRecoveryFilterSnapshot(blocks, weeks) : lastFilterSnapshot;
+          })
+          .catch((e) => {
             if (generation === recoveryReadGeneration && !recoveryFilterReadFailed) {
               recoveryFilterReadFailed = true;
               safeNotify(recoverySnapshotSubscribers);

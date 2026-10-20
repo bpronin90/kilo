@@ -13,7 +13,10 @@ import {
   buildRecoveryAnalyticsFilter,
   deriveRecoveryExcludedNoteIds,
 } from '../../lib/data/recoveryAnalyticsFilter';
-import { resolveActiveTrainingContext } from '../../lib/data/activeTrainingContext';
+import {
+  arePersistedRecoveryRecordsWellFormed,
+  resolveActiveTrainingContext,
+} from '../../lib/data/activeTrainingContext';
 import { SYNC_PHASE, SYNC_STATUS, subscribeSyncState } from '../../storage/syncRecovery';
 import {
   addRecoveryListener,
@@ -169,10 +172,19 @@ export function useActiveTrainingContext({ currentId = null, notes = [], allowPr
 // render that scheduled them, so they deliberately do NOT subscribe. Rejects on
 // a storage failure; the caller decides what an unknown boundary means for its
 // own write.
+//
+// #1478: reads the RAW persisted lists, tombstones included, and rejects when
+// any record is malformed — the same rule the authoritative and filter reads
+// apply. The sanitized readers drop a record with a malformed tombstone marker,
+// which would silently readmit its note; unverified membership is unknown, so
+// the caller writes no classification rather than overwrite trusted analytics.
 export async function loadRecoveryExcludedNoteIds(storage = Storage) {
   const [blocks, weeks] = await Promise.all([
-    storage.loadRecoveryBlocks(),
-    storage.loadRecoveryBlockWeeks(),
+    storage.loadRecoveryBlocksRaw(),
+    storage.loadRecoveryBlockWeeksRaw(),
   ]);
+  if (!arePersistedRecoveryRecordsWellFormed(blocks, weeks)) {
+    throw new Error('Recovery records on this device are malformed.');
+  }
   return deriveRecoveryExcludedNoteIds(blocks, weeks);
 }
