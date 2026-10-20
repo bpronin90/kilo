@@ -656,12 +656,13 @@ describe('AnalyticsRecoverySection — completed-block history', () => {
 
   test('history defaults collapsed with a meaningful summary, and expands on demand', () => {
     const completed = completedBlock('rb-old', '2026-04-01T00:00:00Z', 'Old Routine');
-    const component = setup({ blocks: [completed], weeks: [], notes: [] });
+    const older = completedBlock('rb-older', '2026-03-01T00:00:00Z', 'Older Routine');
+    const component = setup({ blocks: [completed, older], weeks: [], notes: [] });
     const root = component.root;
 
     // Collapsed by default (#758), but never silent: the count and the latest
     // block are stated without a tap.
-    expect(hasText(root, '1 completed block')).toBe(true);
+    expect(hasText(root, '2 completed blocks')).toBe(true);
     expect(hasText(root, 'Latest:')).toBe(true);
     expect(hasText(root, 'Old Routine')).toBe(true);
 
@@ -1017,11 +1018,17 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
 
   // Every assertion in this block reads the completed-block week index, which
   // lives inside the history panel — collapsed by default since #758.
+  // With exactly one completed block and nothing else selectable the History
+  // list is omitted (#1536), so a lone-block fixture gets an older, week-less
+  // sibling to keep the index reachable.
   function setupWithNavigate(props, onNavigate) {
     let component;
+    const blocks = props.blocks.length === 1
+      ? [...props.blocks, completedBlock('rb-sibling', '2020-01-01T00:00:00Z', 'Sibling Routine')]
+      : props.blocks;
     act(() => {
       component = render.create(
-        <AnalyticsRecoverySection onNavigate={onNavigate} {...props} />
+        <AnalyticsRecoverySection onNavigate={onNavigate} {...props} blocks={blocks} />
       );
     });
     expandHistory(component.root);
@@ -1160,7 +1167,6 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const component = setupWithNavigate({ blocks: [b], weeks: [], notes: [] }, jest.fn());
     const root = component.root;
 
-    expect(hasText(root, '1 completed block')).toBe(true);
     expect(root.findAll(inst => typeof inst.props.accessibilityLabel === 'string' && inst.props.accessibilityLabel.includes('Recovery Week')).length).toBe(0);
   });
 
@@ -3256,5 +3262,166 @@ describe('AnalyticsRecoverySection — ended block starts collapsed (#1425)', ()
     act(() => { byLabel(c.root, /^Collapse ended recovery block/).props.onPress(); });
     act(() => { byLabel(c.root, /^View recovery evidence for Old Routine/).props.onPress(); });
     expect(hostById(c.root, 'recovery-footer-row').length).toBeGreaterThan(0);
+  });
+});
+
+// ── #1536: one completed-block disclosure, no redundant single-block history ──
+
+describe('AnalyticsRecoverySection — completed disclosure and single-block history (#1536)', () => {
+  const done = (id, completedAt, title, extra = {}) => block({ id, baseline_note_title: title, completed_at: completedAt, ...extra });
+  const wk = (n, blockId, noteId, extra = {}) => week(n, noteId, { block_id: blockId, id: `rw-${blockId}-${n}`, ...extra });
+  const mountWith = (props) => {
+    require('../lib/data/recoverySnapshot')._resetRecoverySnapshotStore();
+    let c;
+    act(() => { c = render.create(<AnalyticsRecoverySection {...props} />); });
+    return c;
+  };
+  const historyToggle = (root) => root.findAll(n => typeof n.props.onPress === 'function' && /recovery history$/.test(n.props.accessibilityLabel || ''))[0];
+  const endedHeader = (root) => root.findAll(n => typeof n.props.onPress === 'function' && /ended recovery block/.test(n.props.accessibilityLabel || ''))[0];
+  // Every percentage HEADLINE on screen: the header outcome and the evidence summary number.
+  const headlines = (root) => [
+    ...findAllText(root).filter(t => /% total recovery$/.test(t)),
+    ...hostById(root, 'recovery-strength-number').map(n => [].concat(n.props.children).join('')),
+  ];
+  const rbA = () => done('rb-a', '2026-09-01T00:00:00Z', 'Routine A', { reason: 'shoulder' });
+  const rbB = () => done('rb-b', '2026-08-01T00:00:00Z', 'Routine B');
+  const wA = () => [wk(1, 'rb-a', 'nA1'), wk(2, 'rb-a', 'nA2')];
+  const nA = () => [note('nA1', BASELINE_TEXT), note('nA2', BASELINE_TEXT)];
+
+  test('zero completed blocks: no disclosure and no history (active only)', () => {
+    const { root } = mountWith({ blocks: [block({ id: 'rb-act' })], weeks: [], notes: [] });
+    expect(endedHeader(root)).toBeUndefined();
+    expect(historyToggle(root)).toBeUndefined();
+  });
+
+  test('one completed block: compact, one percentage when expanded, history omitted, week access kept, context once', () => {
+    const { root } = mountWith({ blocks: [rbA()], weeks: wA(), notes: nA() });
+    expect(historyToggle(root)).toBeUndefined();
+    expect(hasText(root, 'completed block')).toBe(false);
+    // Collapsed: the header carries the single outcome and identifies the block.
+    expect(headlines(root)).toEqual(['100% total recovery']);
+    expect(findAllText(endedHeader(root))).toContain('shoulder · Routine A');
+    act(() => { endedHeader(root).props.onPress(); });
+    // Expanded: exactly one percentage headline (the evidence summary), header has none.
+    expect(headlines(root)).toEqual(['100%']);
+    expect(findAllText(endedHeader(root))).toEqual(['Completed · 2 weeks']);
+    expect(endedHeader(root).props.accessibilityLabel).toBe('Collapse ended recovery block. Routine A, completed, 2 weeks');
+    // Week navigation stays in the main evidence view.
+    expect(weekRow(root, 1)).toBeDefined();
+    expect(weekRow(root, 2)).toBeDefined();
+    // Reason / Baseline / Dates appear exactly once, in the context group.
+    expect(findAllText(root).filter(t => t === 'shoulder')).toHaveLength(1);
+    expect(findAllText(root).filter(t => t === 'Routine A')).toHaveLength(1);
+    expect(findAllText(root).filter(t => t === '09-01-2026')).toHaveLength(1);
+    // Collapse again restores the header outcome.
+    act(() => { endedHeader(root).props.onPress(); });
+    expect(headlines(root)).toEqual(['100% total recovery']);
+  });
+
+  test('one completed block: week switching inside the main view still works', () => {
+    const { root } = mountWith({ blocks: [rbA()], weeks: wA(), notes: [note('nA1', BASELINE_TEXT), note('nA2', '-Bench\n- 135 5\n-Pull-up\n- 8')] });
+    act(() => { endedHeader(root).props.onPress(); });
+    expect(summaryLabel(root)).toMatch(/^Week 2:/);
+    pickWeek(root, 1);
+    expect(summaryLabel(root)).toMatch(/^Week 1: 100%/);
+    expect(headlines(root)).toEqual(['100%']);
+  });
+
+  test('many completed blocks: selector retained; switching resets week and shows that block\'s context once', () => {
+    const { root } = mountWith({
+      blocks: [rbA(), rbB()],
+      weeks: [...wA(), wk(1, 'rb-b', 'nB1')],
+      notes: [...nA(), note('nB1', BASELINE_TEXT)],
+    });
+    expect(historyToggle(root)).toBeDefined();
+    expect(hasText(root, '2 completed blocks')).toBe(true);
+    act(() => { endedHeader(root).props.onPress(); });
+    pickWeek(root, 1);
+    expect(summaryLabel(root)).toMatch(/^Week 1:/);
+    act(() => { historyToggle(root).props.onPress(); });
+    act(() => { byLabel(root, /^View recovery evidence for Routine B/).props.onPress(); });
+    expect(summaryLabel(root)).toMatch(/Routine B baseline/);
+    expect(hostById(root, 'recovery-context-routine').length).toBeGreaterThan(0);
+    expect(findAllText(hostById(root, 'recovery-context-routine')[0])).toContain('Routine B');
+    expect(headlines(root)).toHaveLength(1);
+    // Back to A: the week selection made earlier was scoped to A and was reset.
+    act(() => { byLabel(root, /^View recovery evidence for Routine A/).props.onPress(); });
+    expect(summaryLabel(root)).toMatch(/^Week 2:/);
+  });
+
+  test('active plus one completed: history kept, both reachable', () => {
+    const { root } = mountWith({
+      blocks: [block({ id: 'rb-act', baseline_note_title: 'Current' }), rbB()],
+      weeks: [wk(1, 'rb-b', 'nB1')], notes: [note('nB1', BASELINE_TEXT)],
+    });
+    expect(historyToggle(root)).toBeDefined();
+    act(() => { historyToggle(root).props.onPress(); });
+    act(() => { byLabel(root, /^View recovery evidence for Routine B/).props.onPress(); });
+    expect(byLabel(root, 'View active recovery block')).toBeDefined();
+    act(() => { byLabel(root, 'View active recovery block').props.onPress(); });
+    expect(hasText(root, 'Current')).toBe(true);
+    expect(endedHeader(root)).toBeUndefined();
+  });
+
+  test('selected block removal: history disappears for the survivor and the open disclosure resets', () => {
+    const weeks = [...wA(), wk(1, 'rb-b', 'nB1')];
+    const notes = [...nA(), note('nB1', BASELINE_TEXT)];
+    require('../lib/data/recoverySnapshot')._resetRecoverySnapshotStore();
+    let c;
+    act(() => { c = render.create(<AnalyticsRecoverySection blocks={[rbA(), rbB()]} weeks={weeks} notes={notes} />); });
+    act(() => { historyToggle(c.root).props.onPress(); });
+    act(() => { byLabel(c.root, /^View recovery evidence for Routine B/).props.onPress(); });
+    expect(endedHeader(c.root).props.accessibilityState.expanded).toBe(true);
+    act(() => { c.update(<AnalyticsRecoverySection blocks={[rbA(), { ...rbB(), deleted_at: '2026-09-02T00:00:00Z' }]} weeks={weeks} notes={notes} />); });
+    // Falls back to the remaining block, collapsed, with no redundant history.
+    expect(endedHeader(c.root).props.accessibilityState.expanded).toBe(false);
+    expect(findAllText(endedHeader(c.root))).toContain('shoulder · Routine A');
+    expect(historyToggle(c.root)).toBeUndefined();
+  });
+
+  test('reopen then recomplete: back to active, then a collapsed completed header', () => {
+    const weeks = wA(); const notes = nA();
+    require('../lib/data/recoverySnapshot')._resetRecoverySnapshotStore();
+    let c;
+    act(() => { c = render.create(<AnalyticsRecoverySection blocks={[rbA()]} weeks={weeks} notes={notes} />); });
+    act(() => { endedHeader(c.root).props.onPress(); });
+    act(() => { c.update(<AnalyticsRecoverySection blocks={[{ ...rbA(), completed_at: null }]} weeks={weeks} notes={notes} />); });
+    expect(endedHeader(c.root)).toBeUndefined();
+    expect(historyToggle(c.root)).toBeUndefined();
+    act(() => { c.update(<AnalyticsRecoverySection blocks={[{ ...rbA(), completed_at: '2026-09-09T00:00:00Z' }]} weeks={weeks} notes={notes} />); });
+    expect(endedHeader(c.root).props.accessibilityState.expanded).toBe(false);
+    expect(headlines(c.root)).toEqual(['100% total recovery']);
+  });
+
+  test('notes read failure stays distinct from empty, collapsed and expanded, and never shows 0%', () => {
+    const failed = mountWith({ blocks: [rbA()], weeks: wA(), notes: [], notesError: new Error('x') }).root;
+    expect(hasText(failed, 'Workout notes couldn’t be loaded')).toBe(true);
+    act(() => { endedHeader(failed).props.onPress(); });
+    expect(hasText(failed, 'Workout notes couldn’t be loaded')).toBe(true);
+    expect(endedHeader(failed).props.accessibilityLabel).toContain('Workout notes couldn’t be loaded');
+    expect(hasText(failed, '0%')).toBe(false);
+    const empty = mountWith({ blocks: [rbA()], weeks: [], notes: [] }).root;
+    expect(hasText(empty, 'Workout notes couldn’t be loaded')).toBe(false);
+  });
+
+  test('stale, unverified, loading and missing snapshots stay truthful', () => {
+    const stale = mountWith({ blocks: [rbA()], weeks: wA(), notes: nA(), stateStale: true, onRetry: jest.fn() }).root;
+    expect(hasText(stale, 'From last saved data')).toBe(true);
+    expect(byLabel(stale, 'Retry recovery')).toBeDefined();
+    act(() => { endedHeader(stale).props.onPress(); });
+    expect(hasText(stale, 'From last saved data')).toBe(true);
+    const unverified = mountWith({ blocks: [rbA()], weeks: wA(), notes: nA(), stateReady: false, stateError: new Error('x'), onRetry: jest.fn() }).root;
+    expect(endedHeader(unverified)).toBeUndefined();
+    expect(byLabel(unverified, 'Retry recovery')).toBeDefined();
+    expect(hasText(unverified, '%')).toBe(false);
+    const loading = mountWith({ blocks: [rbA()], weeks: wA(), notes: nA(), stateReady: false, stateLoading: true }).root;
+    expect(endedHeader(loading)).toBeUndefined();
+    expect(hasText(loading, '%')).toBe(false);
+    // Missing note for the only week: unavailable, never 0%.
+    const missing = mountWith({ blocks: [rbA()], weeks: [wk(1, 'rb-a', 'ghost')], notes: [] }).root;
+    expect(hasText(missing, '0%')).toBe(false);
+    act(() => { endedHeader(missing).props.onPress(); });
+    expect(hasText(missing, '0%')).toBe(false);
+    expect(headlines(missing)).toEqual([]);
   });
 });

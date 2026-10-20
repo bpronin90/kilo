@@ -732,7 +732,7 @@ describe('AnalyticsRecoverySection: completed history carries the reason', () =>
   });
 
   test('the history list shows the reason and announces it in the row label', () => {
-    const component = renderSection([completed({ reason: 'torn hamstring' })]);
+    const component = renderSection([completed({ reason: 'torn hamstring' }), completed({ id: 'rb-sib', completed_at: '2020-01-01T00:00:00Z' })]);
     renderer.act(() => {
       byLabel(component.root, 'Expand recovery history').props.onPress();
     });
@@ -744,7 +744,7 @@ describe('AnalyticsRecoverySection: completed history carries the reason', () =>
   });
 
   test('a history row for a block with no reason keeps its original label', () => {
-    const component = renderSection([completed()]);
+    const component = renderSection([completed(), completed({ id: 'rb-sib', completed_at: '2020-01-01T00:00:00Z' })]);
     renderer.act(() => {
       byLabel(component.root, 'Expand recovery history').props.onPress();
     });

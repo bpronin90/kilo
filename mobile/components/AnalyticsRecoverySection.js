@@ -213,6 +213,21 @@ export function AnalyticsRecoverySection({
   const ended = !!focusedBlock.completed_at;
   const expanded = !ended || openKey === _blockKey(focusedBlock);
 
+  // The percentage is shown ONCE (#1536): collapsed it is the header's outcome;
+  // expanded the evidence's own summary carries it, so the header drops it. A
+  // failed notes read has no evidence summary to state it, so that message stays.
+  const notesFailed = !!(notesError && notes.length === 0);
+  const showHeaderOutcome = !!endedSummary && (!expanded || notesFailed);
+  const endedLabel = ended
+    ? (expanded
+      ? `Collapse ended recovery block. ${focusedBlock.baseline_note_title || 'Untitled Routine'}, completed, ${endedSummary.weeks} ${endedSummary.weeks === 1 ? 'week' : 'weeks'}${notesFailed ? `. ${NOTES_UNREAD}` : ''}`
+      : `Expand ended recovery block. ${endedSummary.a11y}`)
+    : undefined;
+  // One completed block and nothing else selectable: the History list would only
+  // repeat the block already shown, and its weeks are the evidence's own week
+  // rows. With any other block (active or completed) it stays (#1536).
+  const showHistory = completedBlocks.length > 0 && (completedBlocks.length > 1 || !!activeBlock);
+
   return (
     <View style={styles.container}>
       <SectionTitle>Recovery</SectionTitle>
@@ -239,19 +254,23 @@ export function AnalyticsRecoverySection({
             onPress={() => setOpenKey(expanded ? null : _blockKey(focusedBlock))}
             style={[styles.historyHeader, expanded && styles.historyHeaderBordered]}
             accessibilityRole="button"
-            accessibilityLabel={`${expanded ? 'Collapse' : 'Expand'} ended recovery block. ${endedSummary.a11y}`}
+            accessibilityLabel={endedLabel}
             accessibilityState={{ expanded }}
           >
             <View style={styles.historyHeaderContent}>
-              <Text style={styles.endedSummary}>{endedSummary.primary}</Text>
+              {showHeaderOutcome && <Text style={styles.endedSummary}>{endedSummary.primary}</Text>}
               {endedSummary.qualifiers.map(q => <Text key={q} style={styles.endedMeta}>{q}</Text>)}
               <Text style={styles.endedStatus}>
                 {`Completed · ${endedSummary.weeks} ${endedSummary.weeks === 1 ? 'week' : 'weeks'}`}
               </Text>
-              {/* Dates live in the expanded context only, so they never repeat here. */}
-              <Text style={styles.endedMeta} numberOfLines={1}>
-                {[focusedBlock.reason, focusedBlock.baseline_note_title || 'Untitled Routine'].filter(Boolean).join(' · ')}
-              </Text>
+              {/* Collapsed, the header IDENTIFIES the block (reason/routine). Expanded,
+                  Reason/Baseline/Dates live once in the evidence context group, so
+                  this line is not repeated (#1536). */}
+              {!expanded && (
+                <Text style={styles.endedMeta} numberOfLines={1}>
+                  {[focusedBlock.reason, focusedBlock.baseline_note_title || 'Untitled Routine'].filter(Boolean).join(' · ')}
+                </Text>
+              )}
             </View>
             <MaterialIcons
               name={expanded ? 'expand-less' : 'expand-more'}
@@ -278,7 +297,7 @@ export function AnalyticsRecoverySection({
         />
       )}
 
-      {completedBlocks.length > 0 && (
+      {showHistory && (
         <View style={styles.historyPanel}>
           <Pressable
             onPress={() => setHistoryCollapsed(c => !c)}
