@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Alert } from '../lib/platformAlert';
-import { convertWeightDraft } from '../lib/parser/weightEntry';
+import { convertWeightDraft, retainedDraftLb } from '../lib/parser/weightEntry';
 
 // One month out, local calendar day (not UTC) so the pre-filled date never
 // lands a day off near midnight.
@@ -88,11 +88,17 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
       return;
     }
     try {
+      // Retained lb provenance (#1476): untouched seeded/converted text saves its
+      // exact lb value instead of re-rounding the display text.
+      const lbOverrides = {
+        target_weight: retainedDraftLb(goalTargetWeight, unit, targetProvRef.current),
+        start_weight: currentWeight ? null : retainedDraftLb(goalStartWeight, unit, startProvRef.current),
+      };
       await saveGoal({
         target_weight: tw,
         target_date: goalTargetDate,
         start_weight: !isNaN(startW) && startW > 0 ? startW : null,
-      });
+      }, lbOverrides);
     } catch {
       // Keep the draft open so the user can retry; never imply success.
       setGoalError('Could not save your goal. Try again.');

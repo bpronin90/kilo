@@ -39,3 +39,13 @@ export function convertWeightDraft(text, fromUnit, toUnit, known) {
     : inputWeightToLb(value, fromUnit);
   return { text: formatGoalWeightValue(lb, toUnit), unit: toUnit, lb };
 }
+
+// Save-boundary counterpart of convertWeightDraft (#1476): while the draft text
+// is still exactly the seeded/converted text in the unit it was retained for,
+// return the retained canonical lb value so saving never re-rounds the display
+// text. Returns null when the user has typed since (callers then parse the text).
+export function retainedDraftLb(text, unit, known) {
+  return known && known.text === text && known.unit === unit && Number.isFinite(known.lb)
+    ? known.lb
+    : null;
+}

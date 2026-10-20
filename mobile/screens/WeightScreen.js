@@ -7,7 +7,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { useWeightEntries, useWeightGoal, useUserProfile } from '../hooks/useEntries';
 import { getWeightDeltaSeverity } from '../lib/format';
 import { parseWeightEntry } from '../lib/parser';
-import { convertWeightDraft } from '../lib/parser/weightEntry';
+import { convertWeightDraft, retainedDraftLb } from '../lib/parser/weightEntry';
 import { deriveWeightGoalAnalytics } from '../lib/data';
 import { isGoalMet as computeIsGoalMet, isWeightThresholdMet } from '../lib/data/weightGoal';
 import { useArchivedWeightGoals } from '../hooks/entries/weightHooks';
@@ -109,10 +109,10 @@ export function WeightScreen({
   }, [goal, unit]);
 
   const saveGoalCanonical = useMemo(() => (
-    (g) => saveGoal({
+    (g, lbOverrides) => saveGoal({
       ...g,
-      target_weight: g.target_weight != null ? inputWeightToLb(g.target_weight, unit) : g.target_weight,
-      start_weight: g.start_weight != null ? inputWeightToLb(g.start_weight, unit) : g.start_weight,
+      target_weight: lbOverrides?.target_weight ?? (g.target_weight != null ? inputWeightToLb(g.target_weight, unit) : g.target_weight),
+      start_weight: lbOverrides?.start_weight ?? (g.start_weight != null ? inputWeightToLb(g.start_weight, unit) : g.start_weight),
     })
   ), [saveGoal, unit]);
 
@@ -263,7 +263,7 @@ export function WeightScreen({
         }
         let ok;
         try {
-          ok = await update(editingId, parsed.weight_value, weightNote.trim() || undefined, editDate);
+          ok = await update(editingId, retainedDraftLb(weightValue, unit, draftProvRef.current) ?? parsed.weight_value, weightNote.trim() || undefined, editDate);
         } catch {
           ok = false;
         }
@@ -275,7 +275,9 @@ export function WeightScreen({
           setLocalError('Could not update weight entry. Please try again.');
         }
       } else {
-        const ok = await onSaveWeight(newEntryDateTouched ? newEntryDate : undefined);
+        const newDate = newEntryDateTouched ? newEntryDate : undefined;
+        const retainedLb = retainedDraftLb(weightValue, unit, draftProvRef.current);
+        const ok = retainedLb == null ? await onSaveWeight(newDate) : await onSaveWeight(newDate, retainedLb);
         if (ok) {
           setNewEntryDate(localDateToday());
           setNewEntryDateTouched(false);

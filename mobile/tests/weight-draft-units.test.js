@@ -141,7 +141,22 @@ describe('weigh-in drafts across unit changes', () => {
     setUnit('kg');
     await render.act(async () => { press(c, 'Update entry'); });
     const saved = update.mock.calls[0][1];
-    expect(saved).toBeCloseTo(180, 0);
+    expect(saved).toBe(180);
+  });
+
+  test('converted new entry saves its exact lb value through onSaveWeight', async () => {
+    const onSave = jest.fn().mockResolvedValue(true);
+    useEntries.useWeightEntries.mockReturnValue({ entries: [], remove: jest.fn(), update: jest.fn() });
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    useEntries.useUserProfile.mockReturnValue({ profile: null });
+    weightHooks.useArchivedWeightGoals.mockReturnValue({ archivedGoals: [], loading: false, refresh: jest.fn() });
+    let c;
+    render.act(() => { c = render.create(<Host onSaveWeight={onSave} />); });
+    mounted = c;
+    type(inputs(c)[0], '180.4');
+    setUnit('kg');
+    await render.act(async () => { press(c, 'Save weigh-in'); });
+    expect(onSave.mock.calls[0][1]).toBe(180.4);
   });
 
   test('rejected edit save keeps the converted dirty draft for retry', async () => {
@@ -178,7 +193,7 @@ describe('goal drafts across unit changes', () => {
     expect(goalInputs(c)[1].props.value).toBe('74.8');
     await render.act(async () => { press(c, 'Save goal'); });
     expect(save).toHaveBeenCalledTimes(1);
-    expect(save.mock.calls[0][0].target_weight).toBeCloseTo(165, 0);
+    expect(save.mock.calls[0][0].target_weight).toBe(165);
   });
 
   test('rejected goal save keeps draft and it follows a later unit change', async () => {
@@ -189,6 +204,24 @@ describe('goal drafts across unit changes', () => {
     await render.act(async () => { press(c, 'Save goal'); });
     setUnit('kg');
     expect(goalInputs(c)[1].props.value).toBe('74.8');
+  });
+
+  test('unchanged goal edit switched to kg saves exact stored target and start lb', async () => {
+    const c = mount({ goal: { ...GOAL, target_weight: 170.4, start_weight: 180.4 }, entries: [] });
+    press(c, 'Edit');
+    setUnit('kg');
+    await render.act(async () => { press(c, 'Save goal'); });
+    expect(save.mock.calls[0][0].target_weight).toBe(170.4);
+    expect(save.mock.calls[0][0].start_weight).toBe(180.4);
+  });
+
+  test('typed goal text after a switch is parsed, not the stale retained value', async () => {
+    const c = mount({ goal: GOAL, entries: [] });
+    press(c, 'Edit');
+    setUnit('kg');
+    type(goalInputs(c)[1], '75');
+    await render.act(async () => { press(c, 'Save goal'); });
+    expect(save.mock.calls[0][0].target_weight).toBe(165.3);
   });
 
   test('cancel then re-edit under the new unit starts clean from the stored goal', () => {
