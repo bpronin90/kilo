@@ -534,16 +534,17 @@ export function runRecoveryFilterRead() {
   return recoveryFilterReadInFlight;
 }
 
-// Everything the boundary decision depends on, and nothing else. A reload with
-// the same signature republishes the SAME snapshot object, so consumers bail
-// out instead of re-rendering Home, Analytics, and the Log editor.
+// Everything displayed (#1488): content fields, not timestamps alone. An equal
+// signature republishes the SAME snapshot object so consumers bail out.
 function _recoverySignature(blocks, weeks) {
-  const blockPart = (blocks || []).map(
-    b => `${b.id}|${b.updated_at}|${b.include_in_normal_analytics === true ? 1 : 0}|${b.deleted_at ? 1 : 0}`
-  );
-  const weekPart = (weeks || []).map(
-    w => `${w.id}|${w.block_id}|${w.note_id}|${w.updated_at}|${w.deleted_at ? 1 : 0}`
-  );
+  const blockPart = (blocks || []).map(b => JSON.stringify([
+    b.id, b.updated_at, b.include_in_normal_analytics === true, !!b.deleted_at, b.reason ?? null,
+    b.baseline ?? null, b.baseline_note_id ?? null, b.baseline_note_title ?? null,
+    b.started_at ?? null, b.completed_at ?? null,
+  ]));
+  const weekPart = (weeks || []).map(w => JSON.stringify([
+    w.id, w.block_id, w.note_id, w.updated_at, !!w.deleted_at, w.week_number ?? null, w.completed_at ?? null,
+  ]));
   return `${blockPart.join(',')}~${weekPart.join(',')}`;
 }
 
