@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { parseWorkoutNote } from '../../lib/parser';
 import { deriveSessionAlignmentIssue } from '../../lib/parser/sessions.js';
-import { sliceWeekText, spliceWeekText } from './editorWeekText';
+import { sliceWeekText, spliceWeekText, isValidActiveWeek } from './editorWeekText';
 
 // The other-routine editor's A/B projection onto the note currently open in the
 // editor, extracted from useLogOtherRoutineEditor (#1055). Mirrors the
@@ -73,5 +73,56 @@ export function useOtherEditingProjection({
     setEditingText,
     handleToggleEditingWeek,
     handleMergeEditingWeeks,
+  };
+}
+
+// #1500 field matrix: besides title/raw_text, handleSaveOtherNote persists the
+// A/B activeWeek (A/B notes only) and, for a deload note with a linked history
+// record, its date and session ordinal. Values are held as the editor holds
+// them; a field the save never writes for this note is null.
+export function otherMetadata({ hasABWeeks, week, linked, date, ordinal }) {
+  return {
+    activeWeek: hasABWeeks ? week : null,
+    deloadDate: linked ? date : null,
+    deloadOrdinal: linked ? ordinal : null,
+  };
+}
+
+// The canonical note/history record in the same shape. A missing or invalid
+// persisted week opens as Week A, so it is normalized the same way here.
+export function canonicalOtherMetadata({ note, hasABWeeks, record }) {
+  if (!note) return null;
+  return otherMetadata({
+    hasABWeeks,
+    week: isValidActiveWeek(note.activeWeek) ? note.activeWeek : 'A',
+    linked: !!record,
+    date: note.saved_at?.slice(0, 10) ?? '',
+    ordinal: record?.deload_session_ordinal != null ? String(record.deload_session_ordinal) : '',
+  });
+}
+
+const parsesOrdinal = (value) => !isNaN(parseInt(value, 10));
+
+// Whether the live metadata holds a change the save would actually write. The
+// save ignores a cleared date and an unparseable ordinal (existing validation
+// policy), so such a value alone must not schedule an autosave.
+export function hasPersistableMetadataChange(live, canonical) {
+  if (!live || !canonical) return false;
+  if (live.activeWeek !== canonical.activeWeek) return true;
+  if (live.deloadDate && live.deloadDate !== canonical.deloadDate) return true;
+  return parsesOrdinal(live.deloadOrdinal)
+    && String(parseInt(live.deloadOrdinal, 10)) !== canonical.deloadOrdinal;
+}
+
+// What a successful save made durable: the submitted metadata, except a date
+// the save did not write (never touched, or cleared) or an unparseable ordinal,
+// which stay at their canonical value so status never claims them saved.
+export function persistedOtherMetadata(submitted, canonical, dateTouched) {
+  return {
+    activeWeek: submitted.activeWeek,
+    deloadDate: dateTouched && submitted.deloadDate ? submitted.deloadDate : (canonical?.deloadDate ?? null),
+    deloadOrdinal: parsesOrdinal(submitted.deloadOrdinal)
+      ? submitted.deloadOrdinal
+      : (canonical?.deloadOrdinal ?? null),
   };
 }
