@@ -260,7 +260,7 @@ describe('ReminderSettingsCard', () => {
     });
   });
   describe('storage failures (#1486)', () => {
-    const SAVE_ERROR = 'Could not save the reminder setting. Your previous setting was kept. Please try again.';
+    const SAVE_ERROR = 'Could not save the reminder setting. Your last saved setting was kept. Please try again.';
     const texts = (tree) => tree.root.findAllByType(Text).map(textContent);
     const deferred = () => {
       let resolve;
@@ -446,7 +446,12 @@ describe('ReminderSettingsCard', () => {
       const tree = await mount();
       await act(async () => { await find(tree, 'Daily weigh-in reminder').props.onValueChange(true); });
       expect(find(tree, 'Daily weigh-in reminder').props.value).toBe(true);
-      expect(texts(tree)).toContain(SAVE_ERROR);
+      const joined = texts(tree).join('|');
+      expect(joined).toContain('Could not schedule the reminder');
+      expect(joined).toContain('alarm denied');
+      expect(joined).toContain('still on because turning it off could not be saved');
+      expect(joined).not.toContain('previous setting');
+      expect(joined).not.toContain('last saved setting was kept');
     });
   });
 });

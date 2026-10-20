@@ -40,7 +40,7 @@ function scheduleFailureMessage(e) {
 // A storage-write rejection is a different boundary from an OS scheduling
 // failure (#1486): the setting did not persist, so the control reverts to the
 // last durable value instead of showing an unsaved draft as if it were saved.
-const SAVE_ERROR_MESSAGE = 'Could not save the reminder setting. Your previous setting was kept. Please try again.';
+const SAVE_ERROR_MESSAGE = 'Could not save the reminder setting. Your last saved setting was kept. Please try again.';
 const LOAD_ERROR_MESSAGE = 'Could not load your saved reminder settings, so changes are disabled. Reopen Settings to try again.';
 const WORKOUT_DAYS_REQUIRED_MESSAGE = 'Pick at least one workout day before enabling the nudge.';
 
@@ -208,9 +208,10 @@ export function ReminderSettingsCard() {
         try {
           await save(off);
         } catch {
+          // The enabled value is the durable one and has no schedule: say both.
           if (ch.rev === offRev) {
             restore();
-            report(SAVE_ERROR_MESSAGE);
+            report(`${scheduleFailureMessage(e)} The reminder is still on because turning it off could not be saved.`);
           }
           return;
         }
