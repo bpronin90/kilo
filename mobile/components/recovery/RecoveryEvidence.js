@@ -106,8 +106,8 @@ export function BlockEvidence({
   // The counted header names exactly what the body lists: the scored strength
   // rows and, when the week is readable, every raw evidence row.
   const liftsCaption = [
-    scored > 0 ? `${scored} scored` : null,
-    showDetails ? `${totalRows} in details` : null,
+    scored > 0 ? `${scored} scored for strength` : null,
+    showDetails ? `${totalRows} ${totalRows === 1 ? 'lift' : 'lifts'} in details` : null,
   ].filter(Boolean).join(' · ');
   // One per-lift list: strength % and the raw evidence on demand live in the same row.
   const hasLifts = showDetails;

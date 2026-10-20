@@ -82,5 +82,10 @@ export const createStrengthStyles = (colors, kua = null) => {
     discTitle: { fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '700', color: ink },
     discBody: { gap: 8, paddingBottom: 8 },
     infoLine: caption,
+    // Reason-grouped exercise lists (#1537): a quiet heading, then one indented
+    // line per exercise; the lines never truncate and the card grows with them.
+    reasonGroup: { gap: 2, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: border },
+    reasonHeading: { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '700', color: inkMuted },
+    reasonItem: { fontSize: TYPOGRAPHY['body-md'].fontSize, color: ink, paddingVertical: 2 },
   });
 };

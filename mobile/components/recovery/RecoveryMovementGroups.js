@@ -27,7 +27,37 @@ export function groupCountsText(g) {
 // The short line printed in the row; `groupCountsText` keeps the full meaning for
 // the accessibility label.
 export function groupCountsCompact(g) {
-  return `${g.cohort_count > 0 ? `${g.scored_count}/${g.cohort_count} scored` : 'none scored'} · ${g.baseline_count} baseline`;
+  return `${g.cohort_count > 0 ? `${g.scored_count} of ${g.cohort_count} scored` : 'None scored'} · ${g.baseline_count} in baseline`;
+}
+
+// One exercise: name and strength value on the first line, the status below. The
+// value and bar are STRENGTH (% of baseline best set), never the work total.
+function ExerciseRow({ ex, styles }) {
+  const scored = ex.origin !== 'added' && ex.in_cohort && ex.percent != null;
+  const pct = scored ? displayPercent(ex.percent) : null;
+  const status = ex.origin === 'added' ? 'Added during recovery, not scored'
+    : (ex.in_cohort ? (scored ? 'In the average' : 'In the average, no score this week') : 'Not in the average');
+  const value = scored ? `${pct}%` : 'No score';
+  const source = ex.source === 'override' ? 'Your choice' : 'Automatic';
+  return (
+    <View
+      testID={`movement-group-exercise-${ex.key}`}
+      style={styles.exercise}
+      accessible
+      accessibilityLabel={`${ex.name}: ${scored ? `${pct}% of baseline strength` : 'no score'}. ${status}. ${source}.`}
+    >
+      <View style={styles.exerciseHead}>
+        <Text style={styles.exerciseName}>{ex.name}</Text>
+        <Text testID={`movement-group-exercise-value-${ex.key}`} style={scored ? styles.exerciseValue : styles.exerciseValueEmpty}>{value}</Text>
+      </View>
+      {scored ? (
+        <View style={styles.exerciseTrack}>
+          <View style={[styles.exerciseFill, { width: `${Math.max(0, Math.min(100, pct))}%` }]} />
+        </View>
+      ) : null}
+      <Text style={styles.exerciseMeta}>{`${status} · ${source}`}</Text>
+    </View>
+  );
 }
 
 function GroupRow({ group, styles, kua, colors }) {
@@ -37,7 +67,7 @@ function GroupRow({ group, styles, kua, colors }) {
   const compact = groupCountsCompact(group);
   const valueText = pct == null ? 'No score' : `${pct}%`;
   return (
-    <View testID={`movement-group-${group.id}`}>
+    <View testID={`movement-group-${group.id}`} style={styles.group}>
       <Pressable
         testID={`movement-group-row-${group.id}`}
         onPress={() => setOpen(o => !o)}
@@ -55,19 +85,7 @@ function GroupRow({ group, styles, kua, colors }) {
       </Pressable>
       {open ? (
         <View style={styles.exerciseList}>
-          {group.exercises.map(ex => (
-            <View key={ex.key} testID={`movement-group-exercise-${ex.key}`} style={styles.exercise}>
-              <View style={styles.exerciseHead}>
-                <Text style={styles.exerciseName}>{ex.name}</Text>
-              </View>
-              <Text style={styles.exerciseMeta}>
-                {[
-                  ex.source === 'override' ? 'Your choice' : 'Automatic',
-                  ex.origin === 'added' ? 'added during recovery, not scored' : (ex.in_cohort ? (ex.percent == null ? 'in the average, no score this week' : `${displayPercent(ex.percent)}% of baseline`) : 'not in the average'),
-                ].join(' · ')}
-              </Text>
-            </View>
-          ))}
+          {group.exercises.map(ex => <ExerciseRow key={ex.key} ex={ex} styles={styles} />)}
         </View>
       ) : null}
     </View>

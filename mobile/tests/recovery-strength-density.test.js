@@ -89,9 +89,9 @@ describe('one consistent disclosure rule', () => {
   test('expanding shows the complete named lists with their reasons', () => {
     const root = mount();
     tap(root, 'Expand 2 not retested lifts');
-    expect(texts(root)).toEqual(expect.arrayContaining(['Deadlift, Curl: not logged in any week yet']));
+    expect(texts(root)).toEqual(expect.arrayContaining(['Not logged in any week yet · 2 lifts', 'Deadlift', 'Curl']));
     tap(root, 'Expand 1 lifts not scored for strength');
-    expect(texts(root)).toContain('Plank: Timed work has no load and reps to score');
+    expect(texts(root)).toEqual(expect.arrayContaining(['Timed work has no load and reps to score · 1 lift', 'Plank']));
   });
 
   test('every disclosure resets to collapsed when the selected week changes', () => {
@@ -172,7 +172,7 @@ describe('movement groups and the explainer', () => {
     const root = mount();
     tap(root, 'Expand movement groups');
     const row = host(root, 'movement-group-row-push')[0];
-    expect(texts(row)).toContain('1/1 scored · 1 baseline');
+    expect(texts(row)).toContain('1 of 1 scored · 1 in baseline');
     expect(row.props.accessibilityLabel).toContain('1 of 1 lift in the average scored · 1 lift in the baseline');
   });
 
@@ -242,5 +242,193 @@ describe('movement groups and the explainer', () => {
     expect(host(root, 'recovery-about-note')).toHaveLength(0);
     tap(root, 'Expand lifts');
     expect(root.findAll(n => /^About .*lift/i.test(n.props.accessibilityLabel || ''))).toHaveLength(0);
+  });
+});
+
+// ── #1537: nested groups, reason lists, large complete lists ─────────────────
+
+const StyleSheetFlat = (n) => require('react-native').StyleSheet.flatten(n.props.style) || {};
+const press = (root, id) => act(() => { root.findAll(n => typeof n.type !== 'string' && n.props.testID === id && n.props.onPress)[0].props.onPress(); });
+const flat = (n) => [].concat(n.props.children).join('');
+
+// 40 baseline lifts "Lift 01".."Lift 40" plus a bodyweight Pull-up and a timed Plank.
+const LIFT_NAMES = Array.from({ length: 40 }, (_, i) => `Lift ${String(i + 1).padStart(2, '0')}`);
+const BIG_BASE = `${LIFT_NAMES.map(n => `-${n}\n- 100 5`).join('\n')}\n-Pull-up\n- 8,8\n-Plank: 2x45s\n- 45,45`;
+const wlog = (names2, w = 80) => names2.map(n => `-${n}\n- ${w} 5`).join('\n');
+function mountBig(weekTexts, { numbers = null, extra = {} } = {}) {
+  const block = { ...mkBlock(), baseline: captureRecoveryBaselineFromText(BIG_BASE) };
+  const ns = [note('nb', BIG_BASE), ...weekTexts.map((t, i) => note(`bw${i + 1}`, t))].filter((n2, i) => i === 0 || n2.raw_text !== null);
+  const ws = weekTexts.map((_, i) => ({ ...wk(i + 1), id: `bw${i + 1}`, note_id: `bw${i + 1}`, week_number: numbers ? numbers[i] : i + 1 }));
+  return mount({ blocks: [block], weeks: ws, notes: ns, ...extra });
+}
+const itemNames = (root, reasonId) => host(root, `recovery-reason-${reasonId}`)[0]
+  .findAll(n => typeof n.type === 'string' && /^recovery-reason-item-/.test(n.props.testID || '')).map(flat);
+
+describe('reason-grouped exercise lists (#1537)', () => {
+  test('a large complete never-logged list shows every exercise, in baseline order, one per line, with no truncation', () => {
+    const root = mountBig([wlog(LIFT_NAMES.slice(0, 10))]);
+    // 30 untouched scoreable lifts + 0 others (Pull-up / Plank are not retested too: 32).
+    tap(root, 'Expand 32 not retested lifts');
+    const heading = host(root, 'recovery-reason-heading-retest-never_logged')[0];
+    expect(flat(heading)).toBe('Not logged in any week yet · 32 lifts');
+    const listed = itemNames(root, 'retest-never_logged');
+    expect(listed).toEqual([...LIFT_NAMES.slice(10), 'Pull-up', 'Plank']);
+    expect(host(root, 'recovery-reason-retest-never_logged')[0].props.accessibilityLabel).toBe('Not logged in any week yet: 32 lifts');
+    expect(host(root, 'recovery-reason-retest-never_logged')[0].props.accessibilityRole).toBe('list');
+    // No ellipsis cap and no comma-joined paragraph anywhere in the list.
+    for (const item of host(root, 'recovery-reason-item-lift 40')) expect(item.props.numberOfLines).toBeUndefined();
+    expect(texts(root).some(t => t.includes('Lift 11, Lift 12'))).toBe(false);
+    expect(itemNames(root, 'retest-never_logged')).toContain('Lift 40');
+  });
+
+  test('absent-this-week and never-logged are separate headings with their own counts and members', () => {
+    const root = mountBig([wlog(LIFT_NAMES.slice(0, 10)), wlog(LIFT_NAMES.slice(0, 4))]);
+    tap(root, 'Expand 38 not retested lifts');
+    expect(flat(host(root, 'recovery-reason-heading-retest-absent_this_week')[0])).toBe('Not logged this week · 6 lifts');
+    expect(itemNames(root, 'retest-absent_this_week')).toEqual(LIFT_NAMES.slice(4, 10));
+    expect(flat(host(root, 'recovery-reason-heading-retest-never_logged')[0])).toBe('Not logged in any week yet · 32 lifts');
+    expect(itemNames(root, 'retest-never_logged')).toEqual([...LIFT_NAMES.slice(10), 'Pull-up', 'Plank']);
+  });
+
+  test('an unreadable earlier week turns never-logged into "Not in any readable week"', () => {
+    // Week 1 has no note, so a "never" claim cannot be made for lifts missing from week 2.
+    const root = mountBig([null, wlog(LIFT_NAMES.slice(0, 3))]);
+    tap(root, 'Expand 39 not retested lifts');
+    expect(flat(host(root, 'recovery-reason-heading-retest-unknown')[0])).toBe('Not in any readable week · 39 lifts');
+    expect(host(root, 'recovery-reason-heading-retest-never_logged')).toHaveLength(0);
+    expect(itemNames(root, 'retest-unknown')).toHaveLength(39);
+  });
+
+  test('every unscoreable reason gets its own heading and its members', () => {
+    const root = mountBig([`${wlog(LIFT_NAMES.slice(0, 3))}\n-Lift 04\n- 10,10`]);
+    // Plank + Pull-up are baseline-level; Lift 04 changed class this week.
+    tap(root, 'Expand 3 lifts not scored for strength');
+    expect(flat(host(root, 'recovery-reason-heading-unscored-class_changed')[0])).toBe('Logged without load this week · 1 lift');
+    expect(itemNames(root, 'unscored-class_changed')).toEqual(['Lift 04']);
+    expect(itemNames(root, 'unscored-reps_only')).toEqual(['Pull-up']);
+    expect(itemNames(root, 'unscored-time_based')).toEqual(['Plank']);
+    expect(host(root, 'recovery-reason-unscored-time_based')[0].props.accessibilityLabel).toBe('Timed work has no load and reps to score: 1 lift');
+  });
+
+  test('the lists collapse again and the counts do not change when the week changes', () => {
+    const root = mountBig([wlog(LIFT_NAMES.slice(0, 10)), wlog(LIFT_NAMES.slice(0, 4))]);
+    tap(root, 'Expand 38 not retested lifts');
+    act(() => { root.findAll(n => typeof n.type !== 'string' && n.props.testID === 'recovery-strength-week-1' && n.props.onPress)[0].props.onPress(); });
+    expect(byLabel(root, 'Expand 32 not retested lifts').props.accessibilityState).toEqual({ expanded: false });
+    expect(host(root, 'recovery-reason-heading-retest-absent_this_week')).toHaveLength(0);
+    tap(root, 'Expand 32 not retested lifts');
+    expect(itemNames(root, 'retest-never_logged')).toEqual([...LIFT_NAMES.slice(10), 'Pull-up', 'Plank']);
+  });
+
+  test('stale state keeps the lists and their reasons (no claim is added or dropped)', () => {
+    const root = mountBig([wlog(LIFT_NAMES.slice(0, 10))], { extra: { stateStale: true } });
+    tap(root, 'Expand 32 not retested lifts');
+    expect(itemNames(root, 'retest-never_logged')).toHaveLength(32);
+  });
+});
+
+describe('Lifts caption (#1537)', () => {
+  test('says what is scored for strength and how many lifts the details hold', () => {
+    const root = mountBig([wlog(LIFT_NAMES.slice(0, 11))]);
+    const caption = texts(host(root, 'recovery-strength-lifts-header')[0]);
+    expect(caption).toContain('11 scored for strength · 42 lifts in details');
+    expect(byLabel(root, 'Expand lifts')).toBeDefined();
+  });
+});
+
+describe('nested movement groups (#1537)', () => {
+  const MG_BASE = '-Bench\n- 100 5\n-Incline Bench Press\n- 100 5\n-Squat\n- 100 5\n-Curl\n- 30 10\n-Plank: 2x45s\n- 45,45';
+  function mountMG(weekTexts, props = {}) {
+    const block = { ...mkBlock(), baseline: captureRecoveryBaselineFromText(MG_BASE) };
+    const ns = [note('nb', MG_BASE), ...weekTexts.map((t, i) => note(`mw${i + 1}`, t))];
+    const ws = weekTexts.map((_, i) => ({ ...wk(i + 1), id: `mw${i + 1}`, note_id: `mw${i + 1}` }));
+    return mount({ blocks: [block], weeks: ws, notes: ns, ...props });
+  }
+
+  test('groups are quieter than the top-level header, indented, and independently operable', () => {
+    const root = mountMG(['-Bench\n- 80 5\n-Squat\n- 60 5']);
+    tap(root, 'Expand movement groups');
+    const group = host(root, 'movement-group-push')[0];
+    const header = StyleSheetFlat(host(root, 'recovery-movement-groups-header')[0]);
+    const titleStyle = StyleSheetFlat(host(root, 'recovery-movement-groups')[0].findAllByType('Text')[0]);
+    const nameStyle = StyleSheetFlat(group.findAllByType('Text')[0]);
+    expect(nameStyle.fontWeight).toBe('600');
+    expect(titleStyle.fontWeight).toBe('700');
+    expect(StyleSheetFlat(group).marginLeft).toBeGreaterThan(0);
+    expect(StyleSheetFlat(group).borderLeftWidth).toBeGreaterThan(0);
+    expect(header.minHeight).toBeGreaterThanOrEqual(44);
+    expect(StyleSheetFlat(host(root, 'movement-group-row-push')[0]).minHeight).toBeGreaterThanOrEqual(44);
+    // Opening one group does not open another; each is independently operable.
+    press(root, 'movement-group-row-push');
+    expect(host(root, 'movement-group-exercise-bench')).toHaveLength(1);
+    expect(host(root, 'movement-group-exercise-squat')).toHaveLength(0);
+    press(root, 'movement-group-row-legs');
+    expect(host(root, 'movement-group-exercise-squat')).toHaveLength(1);
+    press(root, 'movement-group-row-push');
+    expect(host(root, 'movement-group-exercise-bench')).toHaveLength(0);
+    expect(host(root, 'movement-group-exercise-squat')).toHaveLength(1);
+  });
+
+  test('mixed scored and unscored: values align, missing scores are "No score" never 0%, labels carry the counts', () => {
+    const root = mountMG(['-Bench\n- 80 5\n-Squat\n- 60 5']);
+    tap(root, 'Expand movement groups');
+    expect(host(root, 'movement-group-value-push')[0].props.children).toBe('80%');
+    expect(host(root, 'movement-group-value-legs')[0].props.children).toBe('60%');
+    expect(host(root, 'movement-group-value-arms')[0].props.children).toBe('No score');
+    expect(host(root, 'movement-group-value-core')[0].props.children).toBe('No score');
+    expect(texts(host(root, 'movement-group-row-arms')[0])).toEqual(['Arms', 'None scored · 1 in baseline', 'No score']);
+    expect(texts(host(root, 'movement-group-row-push')[0])).toEqual(['Push', '1 of 1 scored · 2 in baseline', '80%']);
+    expect(host(root, 'movement-group-row-push')[0].props.accessibilityLabel).toBe('Push: 80% of baseline strength. 1 of 1 lift in the average scored · 2 lifts in the baseline.');
+    expect(host(root, 'movement-group-row-arms')[0].props.accessibilityLabel).toMatch(/^Arms: no score\./);
+    expect(texts(root).join('|')).not.toMatch(/\b0%/);
+    // The group chevrons do not overlap the value: value box is fixed-width and right aligned.
+    expect(StyleSheetFlat(host(root, 'movement-group-value-push')[0]).minWidth).toBeGreaterThan(0);
+    expect(StyleSheetFlat(host(root, 'movement-group-value-arms')[0]).minWidth).toBeGreaterThan(0);
+  });
+
+  test('exercise rows: name, strength value, bar, status, in the snapshot order, with accessible labels', () => {
+    const root = mountMG(['-Bench\n- 80 5\n-Squat\n- 60 5']);
+    tap(root, 'Expand movement groups');
+    press(root, 'movement-group-row-push');
+    const ids = host(root, 'movement-group-push')[0].findAll(n => typeof n.type === 'string' && /^movement-group-exercise-(?!value)/.test(n.props.testID || '')).map(n => n.props.testID);
+    expect(ids).toEqual(['movement-group-exercise-bench', 'movement-group-exercise-incline bench press']);
+    const bench = host(root, 'movement-group-exercise-bench')[0];
+    expect(texts(bench)).toEqual(['Bench', '80%', 'In the average · Automatic']);
+    expect(bench.props.accessibilityLabel).toBe('Bench: 80% of baseline strength. In the average. Automatic.');
+    expect(StyleSheetFlat(bench.findAll(n => n.props.style && StyleSheetFlat(n).width === '80%')[0]).width).toBe('80%');
+    const ohp = host(root, 'movement-group-exercise-incline bench press')[0];
+    expect(texts(ohp)).toEqual(['Incline Bench Press', 'No score', 'Not in the average · Automatic']);
+    expect(ohp.props.accessibilityLabel).toBe('Incline Bench Press: no score. Not in the average. Automatic.');
+    expect(ohp.findAll(n => n.props.style && StyleSheetFlat(n).height === 6)).toHaveLength(0);
+  });
+
+  test('block/week switch collapses nested groups', () => {
+    const root = mountMG(['-Bench\n- 80 5', '-Bench\n- 90 5']);
+    tap(root, 'Expand movement groups');
+    press(root, 'movement-group-row-push');
+    expect(host(root, 'movement-group-exercise-bench')).toHaveLength(1);
+    act(() => { root.findAll(n => typeof n.type !== 'string' && n.props.testID === 'recovery-strength-week-1' && n.props.onPress)[0].props.onPress(); });
+    expect(host(root, 'recovery-movement-groups')[0]).toBeDefined();
+    expect(host(root, 'movement-group-push')).toHaveLength(0);
+    expect(host(root, 'movement-group-exercise-bench')).toHaveLength(0);
+  });
+
+  test('stale evidence keeps the group numbers and never shows a missing score as 0%', () => {
+    const root = mountMG(['-Bench\n- 80 5'], { stateStale: true });
+    tap(root, 'Expand movement groups');
+    expect(host(root, 'movement-group-value-arms')[0].props.children).toBe('No score');
+    expect(host(root, 'movement-group-value-push')[0].props.children).toBe('80%');
+  });
+});
+
+describe('raw detail expansion keeps raw evidence (#1537)', () => {
+  test('a lift row still opens its raw Load vs baseline and total work evidence', () => {
+    const root = mount();
+    tap(root, 'Expand lifts');
+    act(() => { root.findAll(n => typeof n.type !== 'string' && n.props.testID === 'recovery-exercise-row' && n.props.onPress && texts(n)[0] === 'Squat')[0].props.onPress(); });
+    const opened = host(root, 'recovery-exercise-row').find(r => texts(r)[0] === 'Squat');
+    expect(host(opened, 'recovery-exercise-detail')).toHaveLength(1);
+    expect(opened.props.accessibilityLabel).toMatch(/Load .* of baseline/);
+    expect(opened.props.accessibilityLabel).toMatch(/\d+% of baseline strength/);
   });
 });
