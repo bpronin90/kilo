@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import * as Storage from '../../storage/entries';
+import { loadUserProfileStrict } from '../../storage/entries/profileStorage';
 import { safeNotify } from './shared';
 
 let profileListeners = [];
@@ -7,7 +8,9 @@ const notifyProfile = () => safeNotify(profileListeners);
 
 // Reload fan-out for external writes (sync pull, backup import) (#1480). The
 // listeners are the instances' read-only refresh, so this cannot write or loop.
-export const reloadUserProfile = () => safeNotify(profileListeners);
+// Separate registry of strict readers so only external refreshes use them.
+let profileStrictListeners = [];
+export const reloadUserProfile = () => safeNotify(profileStrictListeners);
 
 export function useUserProfile() {
   const [profile, setProfile] = useState(null);
@@ -18,9 +21,11 @@ export function useUserProfile() {
   const seq = useRef(0);
   const mounted = useRef(true);
 
-  const refresh = useCallback(() => {
+  // `strict` (external refresh) keeps the last value on a failed read instead
+  // of treating the lenient loader's null as an absent profile (#1480).
+  const reload = useCallback((strict) => {
     const mine = ++seq.current;
-    return Storage.loadUserProfile()
+    return (strict ? loadUserProfileStrict() : Storage.loadUserProfile())
       .then((next) => {
         if (mounted.current && mine === seq.current) setProfile(next);
       })
@@ -29,16 +34,20 @@ export function useUserProfile() {
         if (mounted.current && mine === seq.current) setLoading(false);
       });
   }, []);
+  const refresh = useCallback(() => reload(false), [reload]);
+  const refreshStrict = useCallback(() => reload(true), [reload]);
 
   useEffect(() => {
     mounted.current = true;
     refresh();
     profileListeners.push(refresh);
+    profileStrictListeners.push(refreshStrict);
     return () => {
       mounted.current = false;
       profileListeners = profileListeners.filter(l => l !== refresh);
+      profileStrictListeners = profileStrictListeners.filter(l => l !== refreshStrict);
     };
-  }, [refresh]);
+  }, [refresh, refreshStrict]);
 
   const save = useCallback(async (profile_data) => {
     const saved = await Storage.saveUserProfile(profile_data);

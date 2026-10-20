@@ -14,6 +14,7 @@ jest.mock('../storage/entries', () => {
 });
 
 import * as Storage from '../storage/entries';
+import { secureStorage } from '../storage/secureStorage';
 import { saveArchivedWeightGoal } from '../storage/entries/weightGoal';
 import * as ProfileStorage from '../storage/entries/profileStorage';
 import { useArchivedWeightGoals } from '../hooks/entries/weightHooks';
@@ -113,30 +114,55 @@ describe('mounted domain refresh (#1480)', () => {
     r.unmount();
   });
 
-  it('a read rejection keeps the last durable values and does not throw', async () => {
-    await Storage.saveUserProfile({ unit_system: 'metric' });
-    const r = await mountTwo();
-    jest.spyOn(ProfileStorage, 'loadUserProfile').mockRejectedValue(new Error('read failed'));
-    mockOverrides.loadUserProfile = () => Promise.reject(new Error('read failed'));
-    await act(async () => { reloadPersistedSettingsDomains(); });
-    await flush();
-    expect(latest.a.profile.profile.unit_system).toBe('metric');
-    expect(latest.a.unit).toBe('kg');
-    r.unmount();
+  // Real storage layer (#1480): the lenient loaders turn a failed or corrupt
+  // read into null/default, which a refresh must not adopt as "absent".
+  const failures = {
+    'getItem rejects': () => Promise.reject(new Error('keystore unavailable')),
+    'corrupt JSON': () => Promise.resolve('{not json'),
+  };
+  Object.entries(failures).forEach(([label, fail]) => {
+    it(`keeps last durable profile, unit, archive, goal and toggles when the read fails (${label})`, async () => {
+      await Storage.saveWeightGoal({ target_weight: 170 });
+      await saveArchivedWeightGoal({ id: 'g1', target_weight: 180, archived_at: '2026-01-01', saved_at: '2026-01-01' });
+      await Storage.saveUserProfile({ display_name: 'Ben', unit_system: 'metric' });
+      await Storage.saveFatigueTrackingEnabled(true);
+      await Storage.saveDeloadModeEnabled(true);
+      const r = await mountTwo();
+      await act(async () => { reloadPersistedSettingsDomains(); });
+      await flush();
+      expect(latest.a.unit).toBe('kg');
+      expect(latest.a.toggles.deloadModeEnabled).toBe(true);
+      const real = secureStorage.getItem.bind(secureStorage);
+      jest.spyOn(secureStorage, 'getItem').mockImplementation((key) => (
+        /profile|archived|goal|fatigue|deload/.test(key) ? fail() : real(key)));
+      await act(async () => { reloadPersistedSettingsDomains(); });
+      await flush();
+      ['a', 'b'].forEach((id) => {
+        expect(latest[id].profile.profile.display_name).toBe('Ben');
+        expect(latest[id].unit).toBe('kg');
+        expect(latest[id].archive.archivedGoals.map((g) => g.id)).toEqual(['g1']);
+        expect(latest[id].goal.goal.target_weight).toBe(170);
+        expect(latest[id].toggles.fatigueTrackingEnabled).toBe(true);
+        expect(latest[id].toggles.deloadModeEnabled).toBe(true);
+      });
+      r.unmount();
+    });
   });
 
   it('a stale slower profile read cannot overwrite a newer one', async () => {
     await Storage.saveUserProfile({ display_name: 'old' });
     const r = await mountTwo();
     const slow = deferred();
-    mockOverrides.loadUserProfile = () => slow.promise;
+    const real = secureStorage.getItem.bind(secureStorage);
+    const spy = jest.spyOn(secureStorage, 'getItem').mockImplementation((key) => (
+      /profile/.test(key) ? slow.promise : real(key)));
     await act(async () => { reloadPersistedSettingsDomains(); });
-    delete mockOverrides.loadUserProfile;
+    spy.mockImplementation(real);
     await Storage.saveUserProfile({ display_name: 'new' });
     await act(async () => { reloadPersistedSettingsDomains(); });
     await flush();
     expect(latest.a.profile.profile.display_name).toBe('new');
-    await act(async () => { slow.resolve({ display_name: 'old' }); });
+    await act(async () => { slow.resolve(JSON.stringify({ display_name: 'old' })); });
     await flush();
     expect(latest.a.profile.profile.display_name).toBe('new');
     r.unmount();
@@ -158,7 +184,7 @@ describe('mounted domain refresh (#1480)', () => {
     await Storage.saveUserProfile({ unit_system: 'metric' });
     const r = await mountTwo();
     const slow = deferred();
-    jest.spyOn(ProfileStorage, 'loadUserProfile').mockImplementation(() => slow.promise);
+    jest.spyOn(ProfileStorage, 'loadUserProfileStrict').mockImplementation(() => slow.promise);
     await act(async () => { reloadPersistedSettingsDomains(); });
     await act(async () => { setWeightUnitPreference('lb'); });
     await act(async () => { slow.resolve({ unit_system: 'metric' }); });

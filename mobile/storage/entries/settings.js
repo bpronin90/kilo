@@ -346,6 +346,17 @@ export async function loadFatigueTrackingEnabled() {
   }
 }
 
+// Strict refresh reads (#1480): rethrow failures; lenient loaders unchanged.
+export async function loadFatigueTrackingEnabledStrict() {
+  const raw = await AsyncStorage.getItem(FATIGUE_TRACKING_KEY);
+  return raw == null ? false : JSON.parse(raw);
+}
+
+export async function loadDeloadModeEnabledStrict() {
+  const raw = await AsyncStorage.getItem(DELOAD_MODE_KEY);
+  return raw == null ? false : JSON.parse(raw);
+}
+
 export async function saveFatigueTrackingEnabledUnlocked(enabled, store = AsyncStorage) {
   await store.setItem(FATIGUE_TRACKING_KEY, JSON.stringify(enabled));
   noteIntentWrite(FATIGUE_TRACKING_KEY);

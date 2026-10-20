@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import * as Storage from '../../storage/entries';
 import {
   loadArchivedWeightGoals,
+  loadArchivedWeightGoalsStrict,
   archivedWeightGoalIdFor,
   saveArchivedWeightGoalOnce,
   clearWeightGoalIfMatches,
@@ -17,6 +18,7 @@ import { refreshWeightUnitPreference } from '../../lib/unitPreference';
 let goalListeners = [];
 const notifyGoal = () => safeNotify(goalListeners);
 let archivedGoalListeners = [];
+let archivedStrictListeners = [];
 const notifyArchivedGoals = () => safeNotify(archivedGoalListeners);
 
 // Re-read every settings-like domain mirror after persisted storage changed
@@ -26,7 +28,7 @@ const notifyArchivedGoals = () => safeNotify(archivedGoalListeners);
 // only persisted-data state is replaced.
 export function reloadPersistedSettingsDomains() {
   notifyGoal();
-  notifyArchivedGoals();
+  safeNotify(archivedStrictListeners);
   reloadUserProfile();
   refreshWeightUnitPreference();
   refreshFeatureToggles();
@@ -147,9 +149,9 @@ export function useArchivedWeightGoals() {
 
   // A failed read keeps the last good list (stale but true) rather than
   // rejecting unhandled; only the newest read applies, never after unmount.
-  const refresh = useCallback(() => {
+  const reload = useCallback((strict) => {
     const mine = ++seq.current;
-    return loadArchivedWeightGoals()
+    return (strict ? loadArchivedWeightGoalsStrict() : loadArchivedWeightGoals())
       .then((next) => {
         if (mounted.current && mine === seq.current) setArchivedGoals(next);
       })
@@ -159,15 +161,20 @@ export function useArchivedWeightGoals() {
       });
   }, []);
 
+  const refresh = useCallback(() => reload(false), [reload]);
+  const refreshStrict = useCallback(() => reload(true), [reload]);
+
   useEffect(() => {
     mounted.current = true;
     refresh();
     archivedGoalListeners.push(refresh);
+    archivedStrictListeners.push(refreshStrict);
     return () => {
       mounted.current = false;
       archivedGoalListeners = archivedGoalListeners.filter(l => l !== refresh);
+      archivedStrictListeners = archivedStrictListeners.filter(l => l !== refreshStrict);
     };
-  }, [refresh]);
+  }, [refresh, refreshStrict]);
 
   return { archivedGoals, loading, refresh };
 }

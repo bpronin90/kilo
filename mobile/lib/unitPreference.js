@@ -12,7 +12,7 @@
 // selector writes the profile itself) always wins over in-flight hydration.
 
 import { useSyncExternalStore } from 'react';
-import { loadUserProfile } from '../storage/entries/profileStorage';
+import { loadUserProfile, loadUserProfileStrict } from '../storage/entries/profileStorage';
 import { unitFromUnitSystem } from './units';
 
 let currentUnit = 'lb';
@@ -53,7 +53,9 @@ export function setWeightUnitPreference(unit) {
 function readPersistedUnit({ authoritative }) {
   const generation = ++readGeneration;
   const epoch = explicitEpoch;
-  return loadUserProfile()
+  // Refresh must tell a failed read from an absent profile; hydration keeps
+  // the lenient loader.
+  return (authoritative ? loadUserProfileStrict() : loadUserProfile())
     .then((profile) => {
       if (generation < lastAppliedGeneration) return;
       if (epoch !== explicitEpoch) return;

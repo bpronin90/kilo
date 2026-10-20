@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../../storage/entries';
+import { loadFatigueTrackingEnabledStrict, loadDeloadModeEnabledStrict } from '../../storage/entries/settings';
 import { safeNotify } from './shared';
 
 const DEFAULT_FEATURE_TOGGLES = { fatigueTrackingEnabled: false, deloadModeEnabled: false };
@@ -33,12 +34,13 @@ const SAVERS = {
 // applied one (e.g. a slow initial load finishing after a refresh) is dropped.
 let readGeneration = 0;
 let lastAppliedGeneration = 0;
-async function readDurableToggles() {
+// `strict` (external refresh) rethrows a failed/corrupt read so the caller keeps
+// current state instead of adopting the lenient loaders' defaults (#1480).
+async function readDurableToggles(strict = false) {
   const generation = ++readGeneration;
-  const [fatigueTrackingEnabled, deloadModeEnabled] = await Promise.all([
-    Storage.loadFatigueTrackingEnabled(),
-    Storage.loadDeloadModeEnabled(),
-  ]);
+  const [fatigueTrackingEnabled, deloadModeEnabled] = await Promise.all(strict
+    ? [loadFatigueTrackingEnabledStrict(), loadDeloadModeEnabledStrict()]
+    : [Storage.loadFatigueTrackingEnabled(), Storage.loadDeloadModeEnabled()]);
   return { toggles: { fatigueTrackingEnabled, deloadModeEnabled }, generation };
 }
 
@@ -73,7 +75,7 @@ export function refreshFeatureToggles() {
   const snapshot = { ...latestRequest };
   const run = async () => {
     try {
-      applyLoadedToggles(await readDurableToggles(), snapshot);
+      applyLoadedToggles(await readDurableToggles(true), snapshot);
     } catch { /* keep current state */ }
   };
   writeQueue = writeQueue.then(run);
