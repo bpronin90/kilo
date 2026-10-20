@@ -956,8 +956,12 @@ describe('App.handleImport broadcasts the recovery reload', () => {
   test('a successful import reloads recovery records alongside notes and weights', () => {
     const src = fs.readFileSync(path.join(__dirname, '../App.js'), 'utf8');
     expect(src).toMatch(/import \{ reloadRecoveryBlocks \} from '\.\/hooks\/entries\/recoveryBlockHooks'/);
+    // Orchestration moved to app/import.js (#1495): the committed-only gate lives
+    // there; App.js supplies the refreshers in order.
+    const importSrc = fs.readFileSync(path.join(__dirname, '../app/import.js'), 'utf8');
+    expect(importSrc).toMatch(/if \(result\.ok\) \{[\s\S]*?refresh\(\);[\s\S]*?\}/);
     expect(src).toMatch(
-      /if \(result\.ok\) \{[\s\S]*?weightHook\.refresh\(\);[\s\S]*?noteHook\.refresh\(\);[\s\S]*?reloadRecoveryBlocks\(\);[\s\S]*?\}/
+      /refreshers: \[\s*weightHook\.refresh,\s*noteHook\.refresh,\s*reloadRecoveryBlocks,/
     );
   });
 });
