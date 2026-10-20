@@ -24,6 +24,7 @@ import { invalidateRecoveryReadState } from './hooks/entries/recoveryReadState';
 import { importBackup, getStorageMode } from './storage/entries';
 import { RestTimerBanner } from './components/RestTimerBanner';
 import { useAppShell } from './app/AppShell';
+import { runBackupImport } from './app/import';
 import { AppStartupOverlay, AppLocalReadyContext, useAppLocalReadyLatch } from './components/AppStartupOverlay';
 
 // The module's public surface is preserved by re-exporting the pure helpers
@@ -199,39 +200,23 @@ function ShellView({ onDeviceDataWiped }) {
     [noteHook.add],
   );
 
-  const handleImport = useCallback(async (payload) => {
-    // Import has a local contract and a cloud contract (#526), and this is the
-    // seam that knows which one applies. Passing the active storage mode through
-    // is what makes a signed-in user's "replace" stamp and queue the imported
-    // rows and tombstone the records the backup dropped; before #526 every
-    // import silently took the local path, so a cloud restore reported success
-    // while the account kept the old data (#522 claim 5).
-    //
-    // Resolved defensively for the same reason useAutoSync is destructured with
-    // `|| {}` above: app-shell tests mock './storage/entries' with a partial
-    // object. An unresolvable mode falls back to the local contract, which never
-    // fabricates sync intent.
-    const mode = typeof getStorageMode === 'function' ? getStorageMode() : undefined;
-    const result = await importBackup(payload, 'replace', { mode });
-    if (result.ok) {
-      weightHook.refresh();
-      noteHook.refresh();
-      // A restored backup replaces the recovery blocks and week memberships
-      // wholesale without going through any recovery lifecycle action, so
-      // nothing else broadcasts the change (#699). Without this, a mounted Home
-      // or Analytics keeps filtering ordinary analytics by the PRE-import
-      // memberships and inclusion preferences until an unrelated recovery
-      // mutation, a cloud sync, or a restart — indefinitely for a local-only
-      // user.
-      reloadRecoveryBlocks();
-      // Goal (replaced or deleted), archive history, profile unit and toggles
-      // are replaced wholesale too (#1480). Only on a committed import.
-      reloadPersistedSettingsDomains();
-    }
-    return result;
+  const handleImport = useCallback((payload) => runBackupImport(payload, {
+    importBackup,
+    getStorageMode,
+    // Post-commit refresh, in order (only on a committed import — see
+    // ./app/import): weight and notes; then recovery blocks and week
+    // memberships, which a restore replaces wholesale without any recovery
+    // lifecycle action (#699); then goal, archive history, profile unit and
+    // toggles, replaced wholesale too (#1480).
+    refreshers: [
+      weightHook.refresh,
+      noteHook.refresh,
+      reloadRecoveryBlocks,
+      reloadPersistedSettingsDomains,
+    ],
   // weightHook.refresh/noteHook.refresh, not the whole hook objects (#592
   // review follow-up) — see the comment on saveWeight's dependency list.
-  }, [weightHook.refresh, noteHook.refresh]);
+  }), [weightHook.refresh, noteHook.refresh]);
 
   const renderContent = () => {
     return (
