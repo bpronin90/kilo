@@ -384,3 +384,142 @@ describe('PlateCalculatorModal — editable target mode (#1375)', () => {
     act(() => { root.unmount(); });
   });
 });
+
+// #1485: rejected plate-profile writes are surfaced and retryable, and a stale
+// completion can never claim or undo a newer choice.
+describe('PlateCalculatorModal — persistence failures (#1485)', () => {
+  const press = (root, label) => act(() => {
+    root.root.find((n) => n.props.accessibilityLabel === label && typeof n.props.onPress === 'function').props.onPress();
+  });
+  const pressText = (root, text) => {
+    let n = findByText(root.root, text)[0];
+    while (n && typeof n.props.onPress !== 'function') n = n.parent;
+    act(() => { n.props.onPress(); });
+  };
+  const failed = (root) => findByText(root.root, "Couldn't save your plate setup").length > 0;
+  const deferred = () => {
+    let resolve; let reject;
+    const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+    return { promise, resolve, reject };
+  };
+  async function open(visible = true) {
+    mockLoad.mockResolvedValue(defaultPlateCalculatorProfile());
+    mockSave.mockReset();
+    mockSave.mockImplementation(async () => {});
+    let root;
+    const el = (v) => (
+      <ThemeProvider>
+        <PlateCalculatorModal visible={v} weightLb={225} onClose={() => {}} />
+      </ThemeProvider>
+    );
+    await act(async () => { root = renderer.create(el(visible)); });
+    await flush();
+    root.rerenderWith = async (v) => { await act(async () => { root.update(el(v)); }); await flush(); };
+    return root;
+  }
+  const typeBar = (root, v) => act(() => {
+    root.root.find((n) => n.props.accessibilityLabel === 'Bar weight in lb' && typeof n.props.onChangeText === 'function').props.onChangeText(v);
+  });
+
+  test('a rejected unit switch shows feedback, keeps the choice, and Retry persists it', async () => {
+    const root = await open();
+    mockSave.mockRejectedValueOnce(new Error('disk'));
+    press(root, 'Use kg bar and plates');
+    await flush();
+    expect(failed(root)).toBe(true);
+    expect(findByText(root.root, 'Edit kg bar').length).toBe(1);
+    press(root, 'Retry saving plate setup');
+    await flush();
+    expect(failed(root)).toBe(false);
+    expect(mockSave).toHaveBeenCalledTimes(2);
+    expect(mockSave.mock.calls[1][0].activeUnit).toBe('kg');
+    act(() => { root.unmount(); });
+  });
+
+  test('a rejected inventory Save keeps the entered inventory unsaved and Retry saves it', async () => {
+    const root = await open();
+    pressText(root, 'Edit lb bar');
+    typeBar(root, '30');
+    mockSave.mockRejectedValueOnce(new Error('disk'));
+    pressText(root, 'Save');
+    await flush();
+    expect(failed(root)).toBe(true);
+    expect(findByText(root.root, '30 lb').length).toBeGreaterThan(0);
+    press(root, 'Retry saving plate setup');
+    await flush();
+    expect(failed(root)).toBe(false);
+    expect(mockSave.mock.calls[1][0].profiles.lb.barWeight).toBe(30);
+    act(() => { root.unmount(); });
+  });
+
+  test('a rejected Reset to default reports failure and Retry persists the defaults', async () => {
+    const root = await open();
+    pressText(root, 'Edit lb bar');
+    mockSave.mockRejectedValueOnce(new Error('disk'));
+    pressText(root, 'Reset to default');
+    await flush();
+    expect(failed(root)).toBe(true);
+    press(root, 'Retry saving plate setup');
+    await flush();
+    expect(failed(root)).toBe(false);
+    expect(mockSave.mock.calls[1][0].profiles).toEqual(defaultPlateCalculatorProfile().profiles);
+    act(() => { root.unmount(); });
+  });
+
+  test('a stale rejection cannot flag or roll back a newer successful choice', async () => {
+    const root = await open();
+    const first = deferred();
+    mockSave.mockImplementationOnce(() => first.promise);
+    press(root, 'Use kg bar and plates');
+    press(root, 'Use lb bar and plates');
+    expect(mockSave).toHaveBeenCalledTimes(2);
+    await flush();
+    await act(async () => { first.reject(new Error('late')); });
+    await flush();
+    expect(failed(root)).toBe(false);
+    expect(findByText(root.root, 'Edit lb bar').length).toBe(1);
+    expect(mockSave.mock.calls[1][0].activeUnit).toBe('lb');
+    act(() => { root.unmount(); });
+  });
+
+  test('rapid changes build on each other and a newer rejection is reported despite an older success', async () => {
+    const root = await open();
+    const first = deferred();
+    mockSave.mockImplementationOnce(() => first.promise);
+    press(root, 'Use kg bar and plates');
+    pressText(root, 'Edit kg bar');
+    mockSave.mockRejectedValueOnce(new Error('disk'));
+    pressText(root, 'Reset to default');
+    await act(async () => { first.resolve(); });
+    await flush();
+    expect(failed(root)).toBe(true);
+    expect(mockSave.mock.calls[1][0].activeUnit).toBe('kg');
+    act(() => { root.unmount(); });
+  });
+
+  test('closing and reopening shows storage, not the earlier optimistic unsaved profile', async () => {
+    const root = await open();
+    mockSave.mockRejectedValueOnce(new Error('disk'));
+    press(root, 'Use kg bar and plates');
+    await flush();
+    expect(failed(root)).toBe(true);
+    await root.rerenderWith(false);
+    await root.rerenderWith(true);
+    expect(failed(root)).toBe(false);
+    expect(findByText(root.root, 'Edit lb bar').length).toBe(1);
+    act(() => { root.unmount(); });
+  });
+
+  test('a rejection that lands after close does not surface on reopen', async () => {
+    const root = await open();
+    const pending = deferred();
+    mockSave.mockImplementationOnce(() => pending.promise);
+    press(root, 'Use kg bar and plates');
+    await root.rerenderWith(false);
+    await root.rerenderWith(true);
+    await act(async () => { pending.reject(new Error('late')); });
+    await flush();
+    expect(failed(root)).toBe(false);
+    act(() => { root.unmount(); });
+  });
+});
