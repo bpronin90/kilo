@@ -28,6 +28,14 @@ export async function loadUserProfile() {
   }
 }
 
+// Strict read for refresh paths (#1480): rethrows storage and parse failures so
+// a caller can tell "no profile stored" (null) from "could not read". Additive;
+// loadUserProfile keeps its swallow-to-null contract for every other caller.
+export async function loadUserProfileStrict() {
+  const raw = await AsyncStorage.getItem(USER_PROFILE_KEY);
+  return raw ? JSON.parse(raw) : null;
+}
+
 export function saveUserProfile(profile, store = AsyncStorage) {
   return withLocalWriteLock(async () => {
     const record = { ...profile, saved_at: new Date().toISOString() };

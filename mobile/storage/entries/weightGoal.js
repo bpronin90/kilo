@@ -77,6 +77,13 @@ export async function loadArchivedWeightGoals() {
   }
 }
 
+// Strict read for refresh paths (#1480): rethrows read/parse failures instead
+// of reporting an empty list. loadArchivedWeightGoals is unchanged.
+export async function loadArchivedWeightGoalsStrict() {
+  const raw = await AsyncStorage.getItem(ARCHIVED_WEIGHT_GOALS_KEY);
+  return raw ? JSON.parse(raw) : [];
+}
+
 export async function saveArchivedWeightGoal(archivedGoal) {
   const list = await loadArchivedWeightGoals();
   list.push(archivedGoal);

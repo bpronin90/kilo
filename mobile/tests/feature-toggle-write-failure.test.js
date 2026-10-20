@@ -32,6 +32,14 @@ jest.mock('../storage/entries', () => {
   };
 });
 
+// Refresh reads go through the strict loaders (#1480); route them to the same
+// controllable fakes as the lenient ones.
+jest.mock('../storage/entries/settings', () => ({
+  ...jest.requireActual('../storage/entries/settings'),
+  loadFatigueTrackingEnabledStrict: () => mockLoadFatigue(),
+  loadDeloadModeEnabledStrict: async () => mockStore.deload,
+}));
+
 let hooks;
 let Settings;
 // The hook keeps module state, so every test needs fresh modules (including a

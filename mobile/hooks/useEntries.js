@@ -150,7 +150,7 @@ export function useCloudSyncSummary() {
 }
 
 export { getNoteSections } from './entries/noteSections';
-export { useWeightGoal, useWeightEntries, reloadWeightEntries } from './entries/weightHooks';
+export { useWeightGoal, useWeightEntries, reloadWeightEntries, reloadPersistedSettingsDomains } from './entries/weightHooks';
 export { useWorkoutNotes, reloadWorkoutNotes } from './entries/workoutNoteHooks';
 export { useTrackedLifts } from './entries/trackedLiftHooks';
 export { useDeloadNote, useDeloadHistory } from './entries/deloadHooks';
