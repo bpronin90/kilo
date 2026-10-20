@@ -76,7 +76,6 @@ export function LogScreen({
   setWorkoutNoteTitle,
   isCollapsed,
   toggleCollapsed,
-  onSaveWorkout,
   onCheckInPrompt,
   isActive,
   registerBackConsumer,

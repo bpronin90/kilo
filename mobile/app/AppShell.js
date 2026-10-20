@@ -18,7 +18,7 @@ import { useUpdates } from 'expo-updates';
 import { TAB_BAR_HEIGHT_FALLBACK } from '../components/TabBarLayout';
 import { useCloudSyncStatus, useSyncRecovery, useWeightEntries, useWorkoutNotes, useAutoSync, reloadWeightEntries, reloadWorkoutNotes, reloadPersistedSettingsDomains } from '../hooks/useEntries';
 import { useAuthSession } from '../hooks/useAuthSession';
-import { parseWeightEntry, buildSessionsFromNote } from '../lib/parser';
+import { parseWeightEntry } from '../lib/parser';
 import { PRODUCT_MEASUREMENT_EVENTS } from '../lib/productMeasurement';
 import { migrateSensitiveDeviceData } from '../storage/secureStorage';
 import { makeWeightEntry } from '../lib/data';
@@ -326,7 +326,6 @@ export function useAppShell({ onDeviceDataWiped }) {
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
   const [weightSaving, setWeightSaving] = useState(false);
-  const [workoutSaving, setWorkoutSaving] = useState(false);
 
   // Pending-entry identity for a failed add (#596 review follow-up): the cloud
   // adapter writes the raw row before enqueueDirty(), so a thrown/false result
@@ -506,61 +505,6 @@ export function useAppShell({ onDeviceDataWiped }) {
 
   const handleExport = useCallback(() => buildExportPayload(buildCloudExport), []);
 
-  const saveWorkout = useCallback(async () => {
-    if (workoutSaving) return { ok: false, error: 'Save already in progress' };
-
-    const startedAt = Date.now();
-    // Warning count from the same parse that governs logging; emitted both as a
-    // standalone parse_warning_summary and folded into the save outcome (#672).
-    let warningCount = 0;
-    try {
-      warningCount = buildSessionsFromNote(workoutNoteText).warnings.length;
-    } catch {
-      warningCount = 0;
-    }
-    emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.WORKOUT_SAVE_ATTEMPTED, {});
-    emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.PARSE_WARNING_SUMMARY, {
-      warning_count: warningCount,
-    });
-
-    if (!workoutNoteText.trim()) {
-      emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.WORKOUT_SAVE_COMPLETED, {
-        ok: false,
-        duration_ms: Date.now() - startedAt,
-        warning_count: warningCount,
-      });
-      return { ok: false, error: 'Workout notes are required' };
-    }
-    setWorkoutSaving(true);
-    try {
-      if (noteHook.currentId) {
-        await noteHook.update(noteHook.currentId, { raw_text: workoutNoteText.trim() });
-      } else {
-        const note = await noteHook.add('My Workout', workoutNoteText.trim());
-        await noteHook.selectCurrent(note.id);
-      }
-      emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.WORKOUT_SAVE_COMPLETED, {
-        ok: true,
-        duration_ms: Date.now() - startedAt,
-        warning_count: warningCount,
-      });
-      return { ok: true };
-    } catch {
-      emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.WORKOUT_SAVE_COMPLETED, {
-        ok: false,
-        duration_ms: Date.now() - startedAt,
-        warning_count: warningCount,
-      });
-      return { ok: false, error: 'Failed to save workout notes' };
-    } finally {
-      setWorkoutSaving(false);
-    }
-  // noteHook.currentId/update/add/selectCurrent individually, not the whole
-  // noteHook object (#592 review follow-up) — see the comment on saveWeight's
-  // dependency list. currentId is a plain value (fine to depend on directly);
-  // update/add/selectCurrent are each useCallback-memoized inside the hook.
-  }, [workoutSaving, workoutNoteText, noteHook.currentId, noteHook.update, noteHook.add, noteHook.selectCurrent]);
-
   // Stable callbacks for MoreScreen's toggle props (#592): these were
   // previously passed as fresh inline arrow functions on every App render, so
   // MemoMoreScreen's shallow prop comparison never matched — defeating the
@@ -591,7 +535,7 @@ export function useAppShell({ onDeviceDataWiped }) {
     weightValue, setWeightValue, weightNote, setWeightNote, workoutNoteText,
     setWorkoutNoteText, workoutNoteTitle, setWorkoutNoteTitle, isWorkoutCollapsed,
     toggleWorkoutCollapsed, fatigueMultiplier, saveError, saveSuccess, weightSaving,
-    homeLoadError, saveWeight, saveWorkout, handleTabPress, handleExport,
+    homeLoadError, saveWeight, handleTabPress, handleExport,
     handleUpdateFatigueMultiplier, handleRetryHomeData, ownershipPrompt, canRestore,
     confirmOwnershipUpload, downloadAccountData, startFreshOnDevice, dismissOwnershipPrompt,
     analyticsTarget, analyticsTargetKey, logNoteTarget, logNoteTargetKey, logRecoveryTarget,
