@@ -383,8 +383,11 @@ describe('SessionCheckInModal — title selection and copy', () => {
     await act(async () => { okBtn.props.onPress(); });
     await act(async () => { findSubmitButton(instance.root).props.onPress(); });
 
-    expect(update).toHaveBeenCalledWith('note-1', {
-      session_checkins: { 0: expect.objectContaining({ status: 'ok' }) },
+    // #1475: the patch is resolved against the latest stored note.
+    const [id, patch] = update.mock.calls[0];
+    expect(id).toBe('note-1');
+    expect(patch({ session_checkins: { 1: { status: 'ok' } } })).toEqual({
+      session_checkins: { 0: expect.objectContaining({ status: 'ok' }), 1: { status: 'ok' } },
     });
   });
 
@@ -399,8 +402,11 @@ describe('SessionCheckInModal — title selection and copy', () => {
     expect(submit.props.disabled).toBeFalsy();
 
     await act(async () => { submit.props.onPress(); });
-    expect(update).toHaveBeenCalledWith('note-1', {
-      session_checkins: { 0: expect.objectContaining({ status: 'rough', reasons: [] }) },
+    // #1475: the patch is resolved against the latest stored note.
+    const [id, patch] = update.mock.calls[0];
+    expect(id).toBe('note-1');
+    expect(patch({ session_checkins: { 1: { status: 'ok' } } })).toEqual({
+      session_checkins: { 0: expect.objectContaining({ status: 'rough', reasons: [] }), 1: { status: 'ok' } },
     });
   });
 });

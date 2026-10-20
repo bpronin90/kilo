@@ -92,14 +92,16 @@ export function saveWorkoutNoteItem(note) {
   });
 }
 
-// Cloud read-merge-write under the notebook lock (#1172); see the local one.
+// Cloud read-merge-write under the notebook lock (#1172); see the local one,
+// including the function patch resolved against the locked note (#1475).
 export function updateWorkoutNoteItem(id, patch) {
   return withWorkoutNotebookLock(async () => {
     const list = await Storage.loadWorkoutNotesRaw();
     const idx = list.findIndex((n) => n.id === id && !isTombstone(n));
     if (idx < 0) return false;
     const clientId = await getClientId();
-    const stamped = stampWrite({ ...list[idx], ...patch, updated_at: new Date().toISOString() }, clientId);
+    const resolved = typeof patch === 'function' ? patch(list[idx]) : patch;
+    const stamped = stampWrite({ ...list[idx], ...resolved, updated_at: new Date().toISOString() }, clientId);
     list[idx] = stamped;
     await Storage.replaceWorkoutNotesRaw(list);
     await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, stamped);

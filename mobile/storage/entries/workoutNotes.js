@@ -137,14 +137,14 @@ export function saveWorkoutNoteItem(note) {
   });
 }
 
-// Read-merge-write of one live note under the notebook lock (#1172). Returns the
-// updated note, or false when it is missing.
+// Read-merge-write of one live note under the notebook lock (#1172); a function patch is resolved
+// against that locked note (#1475). Returns the updated note, or false when it is missing.
 export function updateWorkoutNoteItem(id, patch) {
   return withWorkoutNotebookLock(async () => {
     const list = await readNotebook();
     const idx = list.findIndex(n => n.id === id && !n.deleted_at);
     if (idx < 0) return false;
-    const updated = { ...list[idx], ...patch, updated_at: new Date().toISOString() };
+    const updated = { ...list[idx], ...(typeof patch === 'function' ? patch(list[idx]) : patch), updated_at: new Date().toISOString() };
     list[idx] = updated;
     await writeNotebook(list);
     return updated;
