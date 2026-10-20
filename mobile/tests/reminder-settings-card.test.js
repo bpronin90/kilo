@@ -438,6 +438,63 @@ describe('ReminderSettingsCard', () => {
       errorSpy.mockRestore();
     });
 
+    test('a discarded apply failure is still reported when the newer save fails, and the durable config is re-applied', async () => {
+      Storage.loadWeighInReminder.mockResolvedValue({ enabled: true, hour: 8, minute: 0 });
+      const firstApply = deferred();
+      applyWeighInReminder
+        .mockImplementationOnce(() => firstApply.promise)
+        .mockRejectedValueOnce(new Error('alarm still denied'));
+      Storage.saveWeighInReminder
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('disk full'));
+      const tree = await mount();
+      await pickTime(tree, 'Weigh-in reminder time', new Date(2026, 0, 1, 9, 30));
+      await pickTime(tree, 'Weigh-in reminder time', new Date(2026, 0, 1, 10, 30));
+      await act(async () => {
+        firstApply.reject(new Error('alarm denied'));
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(texts(tree)).toContain('9:30 AM');
+      const joined = texts(tree).join('|');
+      expect(joined).toContain(SAVE_ERROR);
+      expect(joined).toContain('alarm still denied');
+      // The durable 09:30 config was re-applied after the failed 10:30 save.
+      expect(applyWeighInReminder).toHaveBeenCalledTimes(2);
+      expect(applyWeighInReminder).toHaveBeenLastCalledWith({ enabled: true, hour: 9, minute: 30 });
+    });
+
+    test('a reconcile that succeeds after a failed newer save clears the schedule warning', async () => {
+      Storage.loadWeighInReminder.mockResolvedValue({ enabled: true, hour: 8, minute: 0 });
+      applyWeighInReminder.mockRejectedValueOnce(new Error('alarm denied'));
+      Storage.saveWeighInReminder
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('disk full'));
+      const tree = await mount();
+      await pickTime(tree, 'Weigh-in reminder time', new Date(2026, 0, 1, 9, 30));
+      await pickTime(tree, 'Weigh-in reminder time', new Date(2026, 0, 1, 10, 30));
+      const joined = texts(tree).join('|');
+      expect(joined).toContain(SAVE_ERROR);
+      expect(joined).not.toContain('Could not schedule the reminder');
+    });
+
+    test('both applies succeed but the second save fails: save error only, no spurious schedule warning', async () => {
+      Storage.loadWeighInReminder.mockResolvedValue({ enabled: true, hour: 8, minute: 0 });
+      Storage.saveWeighInReminder
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('disk full'));
+      const tree = await mount();
+      await pickTime(tree, 'Weigh-in reminder time', new Date(2026, 0, 1, 9, 30));
+      await pickTime(tree, 'Weigh-in reminder time', new Date(2026, 0, 1, 10, 30));
+      expect(texts(tree)).toContain('9:30 AM');
+      const joined = texts(tree).join('|');
+      expect(joined).toContain(SAVE_ERROR);
+      expect(joined).not.toContain('Could not schedule');
+      expect(applyWeighInReminder).toHaveBeenCalledTimes(1);
+    });
+
     test('a failed enable that cannot be scheduled and cannot be turned off restores the durable value', async () => {
       applyWeighInReminder.mockRejectedValueOnce(new Error('alarm denied'));
       Storage.saveWeighInReminder

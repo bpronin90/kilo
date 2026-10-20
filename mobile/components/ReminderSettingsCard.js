@@ -63,9 +63,11 @@ const WORKOUT_DAYS_REQUIRED_MESSAGE = 'Pick at least one workout day before enab
 // controls show (and the base for the next edit, so rapid edits compose);
 // `durable` is the last value whose storage write succeeded; `rev` identifies
 // the newest request so a stale failure/completion cannot overwrite newer
-// state; `chain` serializes writes so they land in request order.
+// state; `chain` serializes writes so they land in request order;
+// `scheduleError` is the unresolved scheduling failure (if any) of the DURABLE
+// config, so it survives a newer request that never became durable.
 function createChannel(initial) {
-  return { latest: initial, durable: initial, rev: 0, chain: Promise.resolve() };
+  return { latest: initial, durable: initial, rev: 0, chain: Promise.resolve(), scheduleError: null };
 }
 
 export function ReminderSettingsCard() {
@@ -172,56 +174,70 @@ export function ReminderSettingsCard() {
     if (!hydratedRef.current) return Promise.resolve();
     const ch = channelRef.current;
     const next = build(ch.latest);
-    const rev = ++ch.rev;
+    let rev = ++ch.rev;
     ch.latest = next;
     setState(next);
     setError(null);
-    const report = (message) => {
-      if (mountedRef.current) setError(message);
-    };
     const restore = () => {
       ch.latest = ch.durable;
       if (mountedRef.current) setState(ch.durable);
+    };
+    // Only the newest request reports, and its message is derived from the
+    // final state: the save outcome plus the schedule outcome of the config
+    // that is durable now (never an apply result a newer request discarded).
+    const finish = (message) => {
+      if (ch.rev !== rev || !mountedRef.current) return;
+      const parts = [message, ch.scheduleError].filter(Boolean);
+      setError(parts.length ? parts.join(' ') : null);
+    };
+    const applyDurable = async (value) => {
+      try {
+        await apply(value);
+        ch.scheduleError = null;
+        return true;
+      } catch (e) {
+        ch.scheduleError = scheduleFailureMessage(e);
+        return false;
+      }
     };
     const step = async () => {
       try {
         await save(next);
       } catch {
-        if (ch.rev === rev) {
-          restore();
-          report(SAVE_ERROR_MESSAGE);
-        }
+        // A newer queued request owns the draft and will save/apply itself.
+        if (ch.rev !== rev) return;
+        restore();
+        // The durable config stays effective; a failed or discarded apply
+        // for it may have left no schedule, so reconcile it again.
+        if (ch.scheduleError) await applyDurable(ch.durable);
+        finish(SAVE_ERROR_MESSAGE);
         return;
       }
       ch.durable = next;
-      try {
-        await apply(next);
-      } catch (e) {
-        // A newer request owns the schedule and will re-apply its own value.
-        if (ch.rev !== rev) return;
-        report(scheduleFailureMessage(e));
-        if (!revertOnScheduleFailure) return;
-        const off = { ...next, enabled: false };
-        const offRev = ++ch.rev;
-        ch.latest = off;
-        if (mountedRef.current) setState(off);
-        try {
-          await save(off);
-        } catch {
-          // The enabled value is the durable one and has no schedule: say both.
-          if (ch.rev === offRev) {
-            restore();
-            report(`${scheduleFailureMessage(e)} The reminder is still on because turning it off could not be saved.`);
-          }
-          return;
-        }
-        ch.durable = off;
-        try {
-          await apply(off);
-        } catch {
-          // Cancelling a schedule that never started: nothing further to report.
-        }
+      if (await applyDurable(next) || !revertOnScheduleFailure || ch.rev !== rev) {
+        finish(null);
+        return;
       }
+      const failure = ch.scheduleError;
+      const off = { ...next, enabled: false };
+      rev = ++ch.rev;
+      const offRev = rev;
+      ch.latest = off;
+      if (mountedRef.current) setState(off);
+      try {
+        await save(off);
+      } catch {
+        if (ch.rev === offRev) {
+          restore();
+          // The enabled value is the durable one and has no schedule: say both.
+          finish('The reminder is still on because turning it off could not be saved.');
+        }
+        return;
+      }
+      ch.durable = off;
+      // Cancelling the failed enable: a failure here is its own schedule error.
+      await applyDurable(off);
+      finish(ch.scheduleError ? null : failure);
     };
     const run = ch.chain.then(step);
     ch.chain = run.catch(() => {});
