@@ -2,6 +2,8 @@ import React from 'react';
 import render from 'react-test-renderer';
 import { LogScreen } from '../../screens/LogScreen';
 import { LogPreviousRoutines } from '../../components/LogPreviousRoutines';
+import { useLogCurrentRoutineEditor } from '../../screens/log/useLogCurrentRoutineEditor';
+import { useLogOtherRoutineEditor } from '../../screens/log/useLogOtherRoutineEditor';
 
 // ── Undo escape hatch: integration tests ───────────────────────────
 
@@ -114,7 +116,77 @@ function ControlledLogScreen(props) {
   );
 }
 
-export { finishSheetDismiss, openRecoveryManagement, findPressableByText, openCurrentRoutineMenu, expandRoutineManagement, expandManageRecovery, ControlledPreviousRoutines, ControlledLogScreen };
+// Mounts the real current-routine editor hook behind a stateful text/title
+// owner (what LogScreen provides). `get()` returns the latest hook value;
+// `unmount()` runs effect cleanup so debounce timers never outlive the test.
+function mountCurrentRoutineEditorHook({ update, note, ...overrides }) {
+  let latest = null;
+  function Harness() {
+    const [text, setText] = React.useState(note.raw_text);
+    const [title, setTitle] = React.useState(note.title);
+    latest = useLogCurrentRoutineEditor({
+      workoutNoteText: text,
+      setWorkoutNoteText: setText,
+      workoutNoteTitle: title,
+      setWorkoutNoteTitle: setTitle,
+      currentId: note.id,
+      currentNote: note,
+      notes: [note],
+      trackedLifts: [],
+      update,
+      add: jest.fn(),
+      selectCurrent: jest.fn(),
+      fatigueTrackingEnabled: false,
+      notesLoading: false,
+      notesError: null,
+      otherModalOwnsScreen: false,
+      editorScrollRef: { current: { scrollTo: jest.fn() } },
+      readScrollRef: { current: { scrollTo: jest.fn() } },
+      ...overrides,
+    });
+    return null;
+  }
+  let renderer;
+  render.act(() => { renderer = render.create(<Harness />); });
+  return {
+    get: () => latest,
+    unmount: () => { render.act(() => { renderer.unmount(); }); },
+  };
+}
+
+// Same for the non-current ("other") routine editor hook.
+function mountOtherRoutineEditorHook({ notes, update, updateDeload, deloadHistory = [], ...overrides }) {
+  let latest = null;
+  function Harness() {
+    latest = useLogOtherRoutineEditor({
+      notes,
+      currentId: 'other',
+      currentNote: { id: 'other' },
+      deloadHistory,
+      update,
+      add: jest.fn(),
+      remove: jest.fn(),
+      selectCurrent: jest.fn(),
+      updateDeload: updateDeload || jest.fn(),
+      deleteDeloadNote: jest.fn(),
+      autosaveCurrentTimerRef: { current: null },
+      handleSave: jest.fn(),
+      currentEditorMode: 'read',
+      hasUnsavedCurrent: false,
+      editorScrollRef: { current: { scrollTo: jest.fn() } },
+      ...overrides,
+    });
+    return null;
+  }
+  let renderer;
+  render.act(() => { renderer = render.create(<Harness />); });
+  return {
+    get: () => latest,
+    unmount: () => { render.act(() => { renderer.unmount(); }); },
+  };
+}
+
+export { mountCurrentRoutineEditorHook, mountOtherRoutineEditorHook, finishSheetDismiss, openRecoveryManagement, findPressableByText, openCurrentRoutineMenu, expandRoutineManagement, expandManageRecovery, ControlledPreviousRoutines, ControlledLogScreen };
 
 // Some legacy cases leave renderers mounted. Each suite owns those renderers
 // so pending editor effects cannot survive into the next case or Jest shutdown.

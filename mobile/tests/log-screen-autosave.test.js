@@ -1,4 +1,4 @@
-import { installRendererCleanup } from './helpers/log-screen';
+import { installRendererCleanup, mountCurrentRoutineEditorHook, mountOtherRoutineEditorHook } from './helpers/log-screen';
 import React from 'react';
 import render from 'react-test-renderer';
 import { Alert } from 'react-native';
@@ -69,61 +69,72 @@ jest.mock('../components/ScreenShell', () => {
 
 jest.mock('../hooks/useEntries');
 
-// ── deload ordinal prompt: prefill and editability contract (#284) ────────────
-// These legacy source-level assertions check the prefill formula, editable
-// input, and forwarding to completeDeload. Rendered screen coverage uses the
-// ControlledLogScreen harness below.
+// ── autosave vs explicit save: observable contract ──────────────────────────
+// The debounce timers must save through the autosave path, which persists the
+// text WITHOUT raising the "Saved on device" confirmation (raising it on every
+// pause in typing made the status region flicker). An explicit save must still
+// confirm, and must confirm as a device-local save, never a cloud-sync claim.
+// These drive the real hooks on fake timers and assert the persisted payload
+// and the user-visible saveSuccess state rather than how the call sites spell
+// the option.
 
-const fs = require('fs');
+describe('autosave debounce versus explicit save (behavior)', () => {
+  const { AUTOSAVE_DEBOUNCE_MS } = require('../lib/LogScreenHelpers');
+  let harness;
 
-const path = require('path');
-
-function readLogScreenSource() {
-  const main = fs.readFileSync(path.join(__dirname, '../screens/LogScreen.js'), 'utf8');
-  const deload = fs.readFileSync(path.join(__dirname, '../components/LogDeloadSection.js'), 'utf8');
-  const editor = fs.readFileSync(path.join(__dirname, '../components/LogScreenEditorCard.js'), 'utf8');
-  const active = fs.readFileSync(path.join(__dirname, '../components/LogActiveRoutineCard.js'), 'utf8');
-  const previous = fs.readFileSync(path.join(__dirname, '../components/LogPreviousRoutines.js'), 'utf8');
-  const helpers = fs.readFileSync(path.join(__dirname, '../lib/LogScreenHelpers.js'), 'utf8');
-  const currentEditorHook = fs.readFileSync(path.join(__dirname, '../screens/log/useLogCurrentRoutineEditor.js'), 'utf8');
-  const otherEditorHook = fs.readFileSync(path.join(__dirname, '../screens/log/useLogOtherRoutineEditor.js'), 'utf8');
-  const deloadEditorHook = fs.readFileSync(path.join(__dirname, '../screens/log/useLogDeloadEditor.js'), 'utf8');
-  const logHelpersLocal = fs.readFileSync(path.join(__dirname, '../screens/log/logScreenHelpers.js'), 'utf8');
-  return main + '\n' + deload + '\n' + editor + '\n' + active + '\n' + previous + '\n' + helpers + '\n' + currentEditorHook + '\n' + otherEditorHook + '\n' + deloadEditorHook + '\n' + logHelpersLocal;
-}
-
-// ── autosave vs explicit save: call-site contract ────────────────────────────
-// React Native components cannot be rendered in this test environment, so these
-// tests assert the source-level contract directly: both debounce timer callbacks
-// must pass { autosave: true } to their respective save handlers.  If either
-// call site is changed back to a bare call, the test will fail and the flicker
-// will return.
-
-describe('autosave call sites: debounce timers pass { autosave: true }', () => {
-  let src;
-  beforeAll(() => {
-    src = readLogScreenSource();
+  beforeEach(() => { jest.useFakeTimers(); });
+  afterEach(() => {
+    if (harness) { harness.unmount(); harness = null; }
+    jest.useRealTimers();
   });
 
-  test('current-note debounce timer calls handleSave({ autosave: true })', () => {
-    expect(src).toMatch(/handleSave\(\s*\{\s*autosave\s*:\s*true\s*\}\s*\)/);
+  const echoUpdate = () => jest.fn().mockImplementation(async (id, patch) => ({
+    id, title: patch.title, raw_text: patch.raw_text,
+  }));
+  const elapse = (ms) => render.act(async () => { jest.advanceTimersByTime(ms); });
+
+  test('current routine: the debounce timer persists the draft without a saved confirmation; explicit Save confirms as device-local', async () => {
+    const update = echoUpdate();
+    harness = mountCurrentRoutineEditorHook({
+      update, note: { id: 'note1', title: 'Routine A', raw_text: 'ORIGINAL', activeWeek: null },
+    });
+
+    render.act(() => { harness.get().enterCurrentEditor(); });
+    render.act(() => { harness.get().handleCurrentTextChange('TYPED'); });
+    // Nothing is written before the debounce elapses.
+    await elapse(AUTOSAVE_DEBOUNCE_MS - 1);
+    expect(update).not.toHaveBeenCalled();
+
+    await elapse(1);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenLastCalledWith('note1', expect.objectContaining({ raw_text: 'TYPED' }));
+    expect(harness.get().saveSuccess).toBe('');
+
+    render.act(() => { harness.get().handleCurrentTextChange('EXPLICIT'); });
+    await render.act(async () => { await harness.get().handleSave(); });
+    expect(update).toHaveBeenLastCalledWith('note1', expect.objectContaining({ raw_text: 'EXPLICIT' }));
+    expect(harness.get().saveSuccess).toBe('Saved on device');
   });
 
-  test('other-note debounce timer calls handleSaveOtherNote({ autosave: true })', () => {
-    expect(src).toMatch(/handleSaveOtherNote\(\s*\{\s*autosave\s*:\s*true\s*\}\s*\)/);
-  });
+  test('other routine: the debounce timer persists the draft without a saved confirmation; explicit Save confirms as device-local', async () => {
+    const note = { id: 'n1', title: 'R', raw_text: 'A0' };
+    const update = echoUpdate();
+    harness = mountOtherRoutineEditorHook({ notes: [note], update });
 
-  test('handleSave suppresses setSaveSuccess when autosave is true', () => {
-    // The guarded call must be present: if (!autosave) setSaveSuccess(...)
-    expect(src).toMatch(/if\s*\(\s*!autosave\s*\)\s*setSaveSuccess\s*\(\s*'Saved on device'\s*\)/);
-  });
+    render.act(() => { harness.get().handleOpenOtherNote(note); });
+    render.act(() => { harness.get().setEditingText('TYPED'); });
+    await elapse(AUTOSAVE_DEBOUNCE_MS - 1);
+    expect(update).not.toHaveBeenCalled();
 
-  test('current editor save message clearly indicates device-local save', () => {
-    // The save confirmation must say "Saved on device", not "Saved!" or any cloud-sync claim.
-    expect(src).toMatch(/setSaveSuccess\s*\(\s*'Saved on device'\s*\)/);
-    // Verify that the old generic message is not present in the updated section.
-    const currentEditorHookStart = src.indexOf("'Saved on device'");
-    expect(currentEditorHookStart).toBeGreaterThan(-1);
+    await elapse(1);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenLastCalledWith('n1', expect.objectContaining({ raw_text: 'TYPED' }));
+    expect(harness.get().saveSuccess).toBe('');
+
+    render.act(() => { harness.get().setEditingText('EXPLICIT'); });
+    await render.act(async () => { await harness.get().handleSaveOtherNote(); });
+    expect(update).toHaveBeenLastCalledWith('n1', expect.objectContaining({ raw_text: 'EXPLICIT' }));
+    expect(harness.get().saveSuccess).toBe('Saved on device');
   });
 });
 

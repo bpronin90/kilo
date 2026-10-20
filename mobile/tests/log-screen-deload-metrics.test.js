@@ -6,7 +6,7 @@ import { parseWorkoutNote, weeksSinceLastDeload, sessionsSinceLastDeload } from 
 import { deriveRoutineStatus } from '../lib/data';
 import { Alert } from 'react-native';
 import { LogDeloadSection } from '../components/LogDeloadSection';
-import { finishSheetDismiss, findPressableByText, ControlledLogScreen } from './helpers/log-screen';
+import { finishSheetDismiss, findPressableByText, ControlledLogScreen, mountOtherRoutineEditorHook } from './helpers/log-screen';
 
 installRendererCleanup();
 
@@ -177,155 +177,354 @@ describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', (
 });
 
 // ── deload ordinal prompt: prefill and editability contract (#284) ────────────
-// These legacy source-level assertions check the prefill formula, editable
-// input, and forwarding to completeDeload. Rendered screen coverage uses the
-// ControlledLogScreen harness below.
+// Rendered LogDeloadSection: the prompt is prefilled from the pre-deload
+// session count, the input is editable, and the confirmed (integer) value is
+// what reaches completeDeload.
 
-const fs = require('fs');
-
-const path = require('path');
-
-function readLogScreenSource() {
-  const main = fs.readFileSync(path.join(__dirname, '../screens/LogScreen.js'), 'utf8');
-  const deload = fs.readFileSync(path.join(__dirname, '../components/LogDeloadSection.js'), 'utf8');
-  const editor = fs.readFileSync(path.join(__dirname, '../components/LogScreenEditorCard.js'), 'utf8');
-  const active = fs.readFileSync(path.join(__dirname, '../components/LogActiveRoutineCard.js'), 'utf8');
-  const previous = fs.readFileSync(path.join(__dirname, '../components/LogPreviousRoutines.js'), 'utf8');
-  const helpers = fs.readFileSync(path.join(__dirname, '../lib/LogScreenHelpers.js'), 'utf8');
-  const currentEditorHook = fs.readFileSync(path.join(__dirname, '../screens/log/useLogCurrentRoutineEditor.js'), 'utf8');
-  const otherEditorHook = fs.readFileSync(path.join(__dirname, '../screens/log/useLogOtherRoutineEditor.js'), 'utf8');
-  const deloadEditorHook = fs.readFileSync(path.join(__dirname, '../screens/log/useLogDeloadEditor.js'), 'utf8');
-  const logHelpersLocal = fs.readFileSync(path.join(__dirname, '../screens/log/logScreenHelpers.js'), 'utf8');
-  return main + '\n' + deload + '\n' + editor + '\n' + active + '\n' + previous + '\n' + helpers + '\n' + currentEditorHook + '\n' + otherEditorHook + '\n' + deloadEditorHook + '\n' + logHelpersLocal;
+function mountDeloadSection({ completeDeload, logSessionCount = 5 }) {
+  let component;
+  render.act(() => {
+    component = render.create(
+      <LogDeloadSection
+        deloadNote={{ raw_text: 'test deload' }}
+        deloadLoading={false}
+        deloadDayGroups={[]}
+        enterDeloadEditor={jest.fn()}
+        handleDeloadBodyPress={jest.fn()}
+        deloadMode="read"
+        completeDeload={completeDeload}
+        clearDeloadNote={jest.fn()}
+        handleGenerateDeload={jest.fn()}
+        isGenerating={false}
+        workoutNoteText="test"
+        saveError={null}
+        deloadNotes={[]}
+        deloadHistory={[]}
+        deleteDeloadNote={jest.fn()}
+        deleteDeload={jest.fn()}
+        viewingNoteId={null}
+        handleViewOtherNote={jest.fn()}
+        viewingNote={null}
+        viewingNoteDayGroups={[]}
+        handleOpenOtherNote={jest.fn()}
+        logSessionCount={logSessionCount}
+      />
+    );
+  });
+  const root = component.root;
+  const ordinalInput = () => root.findAllByType('TextInput').find(ti => ti.props.accessibilityLabel === 'Deload session number');
+  return {
+    root,
+    ordinalInput,
+    openPrompt: () => { render.act(() => { root.findByProps({ title: 'Deload complete' }).props.onPress(); }); },
+    typeOrdinal: (text) => { render.act(() => { ordinalInput().props.onChangeText(text); }); },
+    confirm: async () => {
+      const confirm = root.findAll(n => n.props && n.props.accessibilityLabel === 'Confirm deload complete' && typeof n.props.onPress === 'function')[0];
+      await render.act(async () => { await confirm.props.onPress(); });
+    },
+  };
 }
 
 describe('deload ordinal prompt: prefill and editability contract (#284)', () => {
-  let src;
-  beforeAll(() => {
-    src = readLogScreenSource();
+  test('prompt is prefilled with logSessionCount and confirming forwards it to completeDeload', async () => {
+    const completeDeload = jest.fn();
+    const section = mountDeloadSection({ completeDeload, logSessionCount: 5 });
+    section.openPrompt();
+    expect(section.ordinalInput().props.value).toBe('5');
+
+    await section.confirm();
+    expect(completeDeload).toHaveBeenCalledTimes(1);
+    expect(completeDeload).toHaveBeenCalledWith({ sessionCount: 5, deloadSessionOrdinal: 5 });
   });
 
-  test('prompt is prefilled with logSessionCount (pre-deload session count)', () => {
-    expect(src).toMatch(/setDeloadOrdinalInput\(String\(logSessionCount\)\)/);
+  test('the input is editable and the edited value is parsed as an integer ordinal', async () => {
+    const completeDeload = jest.fn();
+    const section = mountDeloadSection({ completeDeload, logSessionCount: 5 });
+    section.openPrompt();
+    section.typeOrdinal('12');
+    expect(section.ordinalInput().props.value).toBe('12');
+
+    await section.confirm();
+    // The session count stays the real pre-deload count; only the ordinal is edited.
+    expect(completeDeload).toHaveBeenCalledWith({ sessionCount: 5, deloadSessionOrdinal: 12 });
   });
 
-  test('prompt input is editable: onChangeText wired to setDeloadOrdinalInput', () => {
-    expect(src).toMatch(/onChangeText\s*=\s*\{setDeloadOrdinalInput\}/);
-  });
+  test('an empty or non-positive ordinal is not forwarded and keeps the prompt open', async () => {
+    const completeDeload = jest.fn();
+    const section = mountDeloadSection({ completeDeload, logSessionCount: 5 });
+    section.openPrompt();
+    section.typeOrdinal('');
+    await section.confirm();
+    section.typeOrdinal('0');
+    await section.confirm();
 
-  test('confirm handler parses user input as integer', () => {
-    expect(src).toMatch(/parseInt\(deloadOrdinalInput,\s*10\)/);
-  });
-
-  test('confirm handler forwards parsed ordinal to completeDeload', () => {
-    expect(src).toMatch(/deloadSessionOrdinal\s*:\s*ordinal/);
+    expect(completeDeload).not.toHaveBeenCalled();
+    expect(section.ordinalInput()).toBeTruthy();
   });
 });
 
 // ── deload date edit: save-flow stuck-state prevention ───────────────────────
-// These source-level assertions prove that the save path cannot remain stuck in
-// a pending state when the user presses Done while an autosave is in flight.
-// The component cannot be rendered in this env, so we assert the code structure.
+// Pressing Done while an autosave is in flight must chain onto the running
+// save (not receive undefined), and the save machinery must always settle back
+// to "not saving" so a later save can start. Driven through the real hook.
 
 describe('deload date edit: save flow does not get stuck in pending state', () => {
-  let src;
-  beforeAll(() => {
-    src = readLogScreenSource();
+  const { DELOAD_NOTE_PREFIX } = require('../lib/LogScreenHelpers');
+  let harness;
+
+  afterEach(() => {
+    if (harness) { harness.unmount(); harness = null; }
   });
 
-  test('handleSaveOtherNote uses an in-flight ref guard, not a bare noteIsSaving return', () => {
-    // The old guard `if (noteIsSaving) return;` returned undefined, causing
-    // handleDoneOther to treat the in-flight autosave as a failure. The fix
-    // replaces it with an in-flight promise ref so callers can chain on the
-    // running save rather than receiving undefined.
-    expect(src).toMatch(/saveOtherNoteInFlightRef\.current/);
-    expect(src).not.toMatch(/if\s*\(\s*noteIsSaving\s*\)\s*return\s*;/);
+  const settle = () => render.act(async () => {
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
   });
 
-  test('in-flight ref is returned when a concurrent save is already running', () => {
-    // When saveOtherNoteInFlightRef.current is non-null, the function must return
-    // it so the caller awaits the real result rather than undefined.
-    expect(src).toMatch(/if\s*\(\s*saveOtherNoteInFlightRef\.current\s*\)\s*return\s+saveOtherNoteInFlightRef\.current/);
+  const openNote = (note, extra) => {
+    harness = mountOtherRoutineEditorHook({ notes: [note], ...extra });
+    render.act(() => { harness.get().handleOpenOtherNote(note); });
+  };
+
+  test('a save requested while one is running coalesces onto it and resolves with the real result', async () => {
+    const note = { id: 'n1', title: 'R', raw_text: 'A0' };
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const update = jest.fn().mockImplementation(async (id, patch) => {
+      await gate;
+      return { id, title: patch.title, raw_text: patch.raw_text };
+    });
+    openNote(note, { update });
+    render.act(() => { harness.get().setEditingText('A1'); });
+
+    let first;
+    let second;
+    render.act(() => { first = harness.get().handleSaveOtherNote(); });
+    await settle();
+    render.act(() => { second = harness.get().handleSaveOtherNote(); });
+    expect(harness.get().noteIsSaving).toBe(true);
+
+    await render.act(async () => { release(); await first; await second; });
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(await first).toBe(true);
+    expect(await second).toBe(true);
+    expect(harness.get().noteIsSaving).toBe(false);
   });
 
-  test('in-flight ref is cleared in the finally block so it never leaks', () => {
-    // Leak would leave saveOtherNoteInFlightRef.current non-null after the save,
-    // preventing any future save from starting.
-    expect(src).toMatch(/finally[\s\S]{0,200}saveOtherNoteInFlightRef\.current\s*=\s*null/);
+  test('after a save settles the next save starts (the in-flight guard does not leak)', async () => {
+    const note = { id: 'n1', title: 'R', raw_text: 'A0' };
+    const update = jest.fn().mockImplementation(async (id, patch) => ({ id, title: patch.title, raw_text: patch.raw_text }));
+    openNote(note, { update });
+
+    render.act(() => { harness.get().setEditingText('A1'); });
+    await render.act(async () => { await harness.get().handleSaveOtherNote(); });
+    render.act(() => { harness.get().setEditingText('A2'); });
+    await render.act(async () => { await harness.get().handleSaveOtherNote(); });
+
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenLastCalledWith('n1', expect.objectContaining({ raw_text: 'A2' }));
+    expect(harness.get().noteIsSaving).toBe(false);
   });
 
-  test('setNoteIsSaving(false) is in a finally block in the deload save path', () => {
-    // Guarantees noteIsSaving is always reset regardless of success or failure,
-    // preventing the save-spinner state from getting permanently stuck.
-    expect(src).toMatch(/finally[\s\S]{0,200}setNoteIsSaving\s*\(\s*false\s*\)/);
+  test('a rejected write resets the saving state, surfaces the failure, and a retry can succeed', async () => {
+    const note = { id: 'n1', title: 'R', raw_text: 'A0' };
+    let calls = 0;
+    const update = jest.fn().mockImplementation(async (id, patch) => {
+      calls += 1;
+      if (calls === 1) throw new Error('disk full');
+      return { id, title: patch.title, raw_text: patch.raw_text };
+    });
+    openNote(note, { update });
+    render.act(() => { harness.get().setEditingText('A1'); });
+
+    let result;
+    await render.act(async () => { result = await harness.get().handleSaveOtherNote(); });
+    expect(result).toBe(false);
+    expect(harness.get().noteIsSaving).toBe(false);
+    expect(harness.get().saveError).toBe('Save failed');
+
+    await render.act(async () => { result = await harness.get().handleSaveOtherNote(); });
+    expect(result).toBe(true);
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenLastCalledWith('n1', expect.objectContaining({ raw_text: 'A1' }));
   });
 
-  test('deload date save path calls updateDeload before update on date change', () => {
-    // Both the history record and the note record must be updated. If updateDeload
-    // is absent the history anchor drifts from the note saved_at date.
-    expect(src).toMatch(/await\s+updateDeload\s*\([\s\S]{0,700}await\s+update\s*\(\s*(?:editingNoteId|savedNoteId)/);
-  });
+  test('a changed deload date and Session # reach the linked history record before the note is written', async () => {
+    const note = { id: 'd1', title: `${DELOAD_NOTE_PREFIX}2026-01-01`, raw_text: 'body', saved_at: '2026-01-01T12:00:00.000Z' };
+    const record = { id: 'h1', note_id: 'd1', deload_session_ordinal: 1, completed_at: '2026-01-01T12:00:00.000Z' };
+    const update = jest.fn().mockResolvedValue({ id: 'd1', title: note.title, raw_text: 'body', saved_at: '2026-02-02T12:00:00.000Z' });
+    const updateDeload = jest.fn().mockResolvedValue(true);
+    openNote(note, { update, updateDeload, deloadHistory: [record] });
 
-  test('deload save path writes deload_session_ordinal into the deloadPatch', () => {
-    // The ordinal field must flow through the consolidated deloadPatch so that
-    // a single updateDeload call carries both date and ordinal changes.
-    expect(src).toMatch(/deload_session_ordinal/);
-    expect(src).toMatch(/deloadPatch\.deload_session_ordinal/);
-  });
+    render.act(() => { harness.get().setDeloadEditDate('2026-02-02'); });
+    render.act(() => { harness.get().setDeloadEditOrdinal('4'); });
+    await render.act(async () => { await harness.get().handleSaveOtherNote(); });
 
-  test('deload ordinal input strips non-numeric characters', () => {
-    // The TextInput onChangeText handler must sanitize to digits only so the
-    // parseInt call downstream always receives a clean integer string.
-    expect(src).toMatch(/replace\s*\(\s*\/\[.*\^.*0-9.*\].*\/.*,\s*''\s*\)/);
-  });
-
-  test('deload date picker uses onChange callback prop', () => {
-    // Assert that the deload DateTimePicker uses onChange prop rather than onValueChange
-    expect(src).toMatch(/<DateTimePicker[\s\S]*?onChange\s*=\s*\{/);
-    expect(src).not.toMatch(/<DateTimePicker[\s\S]*?onValueChange\s*=\s*\{/);
+    // One consolidated history patch carries both the date and the ordinal.
+    expect(updateDeload).toHaveBeenCalledTimes(1);
+    expect(updateDeload).toHaveBeenCalledWith('h1', expect.objectContaining({
+      completed_at: '2026-02-02T12:00:00.000Z',
+      deload_session_ordinal: 4,
+    }));
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(updateDeload.mock.invocationCallOrder[0]).toBeLessThan(update.mock.invocationCallOrder[0]);
   });
 });
 
-// ── Web deload-date fallback: web-compatible date editing path (#314) ─────────
-// The native @react-native-community/datetimepicker has no usable web rendering,
-// so the Log deload-date editor must render a real DOM <input type="date"> on
-// web while keeping the native Android Pressable + DateTimePicker modal path.
-describe('Log deload date web fallback renders a DOM date input (#314)', () => {
-  const fsLocal = require('fs');
-  const pathLocal = require('path');
-  let editorSrc;
-  beforeAll(() => {
-    editorSrc = fsLocal.readFileSync(
-      pathLocal.join(__dirname, '../components/LogScreenEditorCard.js'),
-      'utf8'
-    );
+// ── Deload date editor: native picker and web fallback (#314) ────────────────
+// The native @react-native-community/datetimepicker has no usable web
+// rendering, so the Log deload-date editor must render a real DOM
+// <input type="date"> on web while keeping the native Pressable + picker path.
+// Both are driven through the rendered LogScreenEditorCard.
+describe('Log deload date editor: native picker and web DOM input (#314)', () => {
+  const { Platform } = require('react-native');
+  const { LogScreenEditorCard } = require('../components/LogScreenEditorCard');
+  const { DELOAD_NOTE_PREFIX } = require('../lib/LogScreenHelpers');
+  const noop = () => {};
+
+  let spies;
+  let platformSpy;
+  afterEach(() => { if (platformSpy) { platformSpy.restore(); platformSpy = null; } });
+
+  const setPlatform = (os) => { platformSpy = jest.replaceProperty(Platform, 'OS', os); };
+
+  function mountEditor({ linked = true } = {}) {
+    spies = {
+      setDeloadEditDate: jest.fn(),
+      setDeloadEditOrdinal: jest.fn(),
+      setEditingTitle: jest.fn(),
+      setShowDeloadDatePicker: jest.fn(),
+    };
+    function Harness() {
+      const [showPicker, setShowPicker] = React.useState(false);
+      const [isLinked, setIsLinked] = React.useState(linked);
+      spies.setLinked = setIsLinked;
+      return (
+        <LogScreenEditorCard
+          deloadMode={null}
+          isEditingDeloadNote
+          editingNoteId="d1"
+          currentId="cur"
+          activeEditText=""
+          handleCurrentTextChange={noop}
+          editingText="body"
+          setEditingText={noop}
+          workoutNoteTitle=""
+          setWorkoutNoteTitle={noop}
+          editingTitle={`${DELOAD_NOTE_PREFIX}2026-01-01`}
+          setEditingTitle={spies.setEditingTitle}
+          editingDeloadHasLinkedRecord={isLinked}
+          deloadEditDate="2026-01-01"
+          setDeloadEditDate={spies.setDeloadEditDate}
+          deloadEditOrdinal="3"
+          setDeloadEditOrdinal={spies.setDeloadEditOrdinal}
+          showDeloadDatePicker={showPicker}
+          setShowDeloadDatePicker={(v) => { spies.setShowDeloadDatePicker(v); setShowPicker(v); }}
+          handleSave={noop}
+          handleSaveOtherNote={noop}
+          handleSwitchCurrent={noop}
+          handleDeleteRoutine={noop}
+          handleDeleteDeloadNoteFromEditor={noop}
+        />
+      );
+    }
+    let component;
+    render.act(() => { component = render.create(<Harness />); });
+    return component.root;
+  }
+
+  const byLabel = (root, label, startsWith = false) => root.findAll(n => n.props
+    && typeof n.props.onPress === 'function'
+    && typeof n.props.accessibilityLabel === 'string'
+    && (startsWith ? n.props.accessibilityLabel.startsWith(label) : n.props.accessibilityLabel === label))[0];
+  const openDateRow = (root) => { render.act(() => { byLabel(root, 'Date,', true).props.onPress(); }); };
+  const sessionInput = (root) => root.findAll(n => n.props && n.props.accessibilityLabel === 'Deload session number' && typeof n.props.onChangeText === 'function')[0];
+
+  test('the date and Session # controls stay hidden until the date row is opened, and only for a linked record', () => {
+    const root = mountEditor();
+    expect(sessionInput(root)).toBeUndefined();
+    openDateRow(root);
+    expect(sessionInput(root)).toBeTruthy();
+
+    // Without a linked history record the row stays visible but inert.
+    const unlinked = mountEditor({ linked: false });
+    const row = unlinked.findAll(n => n.props && typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith('Date,'))[0];
+    expect(row.props.accessibilityState.disabled).toBe(true);
+    expect(row.props.onPress).toBeUndefined();
+    expect(sessionInput(unlinked)).toBeUndefined();
   });
 
-  test('branches the deload date control on Platform.OS === "web"', () => {
-    // The web/native branch renders only once the linked-record safety
-    // boundary (editingDeloadHasLinkedRecord) has already gated the reveal
-    // (#764: the compact "Date · <value>" row).
-    expect(editorSrc).toMatch(/editingDeloadHasLinkedRecord\s*&&\s*dateFieldOpen[\s\S]{0,400}Platform\.OS\s*===\s*'web'/);
+  test('losing the linked record while the row is open removes the date and Session # controls', () => {
+    const root = mountEditor();
+    openDateRow(root);
+    expect(sessionInput(root)).toBeTruthy();
+
+    render.act(() => { spies.setLinked(false); });
+    expect(sessionInput(root)).toBeUndefined();
+    expect(byLabel(root, 'Deload date')).toBeUndefined();
   });
 
-  test('web path renders a real <input type="date"> via WebDateInput', () => {
-    expect(editorSrc).toMatch(/function\s+WebDateInput/);
-    expect(editorSrc).toMatch(/createElement\(\s*'input'/);
-    expect(editorSrc).toMatch(/type:\s*'date'/);
+  test('the Session # input strips non-numeric characters before updating', () => {
+    const root = mountEditor();
+    openDateRow(root);
+    render.act(() => { sessionInput(root).props.onChangeText('1a2-3 '); });
+    expect(spies.setDeloadEditOrdinal).toHaveBeenCalledWith('123');
   });
 
-  test('web date input is capped at today via max', () => {
-    expect(editorSrc).toMatch(/max:\s*localDateToday\(\)/);
+  test('native: the date control opens the picker and a picked date updates date and title', () => {
+    setPlatform('android');
+    const root = mountEditor();
+    openDateRow(root);
+    expect(root.findAll(n => n.type === 'input')).toHaveLength(0);
+    expect(root.findAll(n => n.props && n.props.testID === 'mock-datetimepicker')).toHaveLength(0);
+
+    render.act(() => { byLabel(root, 'Deload date').props.onPress(); });
+    expect(spies.setShowDeloadDatePicker).toHaveBeenLastCalledWith(true);
+    const picker = root.findAll(n => n.props && n.props.testID === 'mock-datetimepicker')[0];
+    expect(picker).toBeTruthy();
+    // The picker reports through onChange (not the web-only onValueChange).
+    expect(typeof picker.props.onChange).toBe('function');
+    expect(picker.props.onValueChange).toBeUndefined();
+    // Future dates cannot be picked, and the picker opens on the stored date.
+    expect(picker.props.maximumDate).toBeInstanceOf(Date);
+    expect(picker.props.maximumDate.getTime()).toBeLessThanOrEqual(Date.now());
+    expect(picker.props.value).toEqual(new Date(2026, 0, 1));
+
+    render.act(() => { picker.props.onChange({}, new Date(2026, 1, 3)); });
+    expect(spies.setDeloadEditDate).toHaveBeenCalledWith('2026-02-03');
+    expect(spies.setEditingTitle).toHaveBeenCalledWith(`${DELOAD_NOTE_PREFIX}2026-02-03`);
+    expect(spies.setShowDeloadDatePicker).toHaveBeenLastCalledWith(false);
+
+    // Dismissing without a date changes nothing.
+    spies.setDeloadEditDate.mockClear();
+    render.act(() => { byLabel(root, 'Deload date').props.onPress(); });
+    const reopened = root.findAll(n => n.props && n.props.testID === 'mock-datetimepicker')[0];
+    render.act(() => { reopened.props.onChange({}, undefined); });
+    expect(spies.setDeloadEditDate).not.toHaveBeenCalled();
   });
 
-  test('web date input writes the new date back through the existing setters', () => {
-    expect(editorSrc).toMatch(/onChangeDate=\{\(newDateStr\)\s*=>\s*\{[\s\S]*?setDeloadEditDate\(newDateStr\)/);
-    expect(editorSrc).toMatch(/setEditingTitle\(DELOAD_NOTE_PREFIX\s*\+\s*newDateStr\)/);
-  });
+  test('web: renders a real date <input> capped at today that writes back through the existing setters', () => {
+    setPlatform('web');
+    const root = mountEditor();
+    openDateRow(root);
+    expect(byLabel(root, 'Deload date')).toBeUndefined();
 
-  test('native Android path keeps the Pressable + DateTimePicker modal', () => {
-    expect(editorSrc).toMatch(/onPress=\{\(\)\s*=>\s*setShowDeloadDatePicker\(true\)/);
-    expect(editorSrc).toMatch(/<DateTimePicker[\s\S]*?onChange\s*=\s*\{/);
+    const input = root.findAll(n => n.type === 'input')[0];
+    expect(input).toBeTruthy();
+    expect(input.props.type).toBe('date');
+    expect(input.props.value).toBe('2026-01-01');
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    expect(input.props.max).toBe(today);
+
+    render.act(() => { input.props.onChange({ target: { value: '2026-02-03' } }); });
+    expect(spies.setDeloadEditDate).toHaveBeenCalledWith('2026-02-03');
+    expect(spies.setEditingTitle).toHaveBeenCalledWith(`${DELOAD_NOTE_PREFIX}2026-02-03`);
+
+    // Clearing the field must not wipe the stored date.
+    spies.setDeloadEditDate.mockClear();
+    render.act(() => { input.props.onChange({ target: { value: '' } }); });
+    expect(spies.setDeloadEditDate).not.toHaveBeenCalled();
   });
 });
 
@@ -430,6 +629,87 @@ describe('active deload deletion (#560)', () => {
     render.act(() => { findPressableByText(root, 'Edit').props.onPress({ stopPropagation: jest.fn() }); });
 
     expect(findPressableByText(root, 'Delete active deload')).toBeNull();
+  });
+});
+
+// ── LogScreen wiring to the deload surfaces ─────────────────────────────────
+// The section and editor card are covered above in isolation; these mount the
+// real LogScreen so a dropped or misrouted prop between the screen, its hooks
+// and those surfaces is caught.
+describe('LogScreen wires the deload surfaces to its hooks', () => {
+  const { DELOAD_NOTE_PREFIX } = require('../lib/LogScreenHelpers');
+  let update;
+  let completeDeload;
+  let updateDeload;
+
+  const THREE_SESSIONS = 'Monday\n+Lifting\n-Bench\n135 5,5,5\n135 5,5,5\n135 5,5,5';
+  const currentNote = {
+    id: 'note1', title: 'Routine A', raw_text: THREE_SESSIONS, saved_at: '2026-06-01T12:00:00.000Z',
+  };
+  const deloadNote = {
+    id: 'd1', title: `${DELOAD_NOTE_PREFIX}2026-01-01`, raw_text: 'old deload body', saved_at: '2026-01-01T12:00:00.000Z',
+  };
+  const record = { id: 'h1', note_id: 'd1', deload_session_ordinal: 4, completed_at: '2026-01-01T12:00:00.000Z' };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    update = jest.fn().mockImplementation(async (id, patch) => ({ id, ...deloadNote, ...patch }));
+    completeDeload = jest.fn();
+    updateDeload = jest.fn().mockResolvedValue(true);
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [currentNote, deloadNote], currentId: 'note1', currentNote, deloadNotes: [deloadNote],
+      loading: false, error: null, refresh: jest.fn(), selectCurrent: jest.fn(), update, add: jest.fn(), remove: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({
+      note: { raw_text: 'deload note text', saved_at: '2026-06-01T12:00:00.000Z' }, loading: false, save: jest.fn(), clear: jest.fn(),
+    });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [record], completeDeload, deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload,
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: true });
+  });
+
+  const mount = () => {
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen initialText={THREE_SESSIONS} />); });
+    const root = component.root;
+    render.act(() => { findPressableByText(root, 'Deload').props.onPress(); });
+    return root;
+  };
+  const sessionInput = (root) => root.findAll(n => n.props && n.props.accessibilityLabel === 'Deload session number' && typeof n.props.onChangeText === 'function')[0];
+
+  test('Deload complete forwards the screen\'s session count and the edited ordinal to completeDeload', async () => {
+    const root = mount();
+    render.act(() => { root.findByProps({ title: 'Deload complete' }).props.onPress(); });
+    const prefill = sessionInput(root).props.value;
+    expect(prefill).toBe('3');
+
+    render.act(() => { sessionInput(root).props.onChangeText('42'); });
+    const confirm = root.findAll(n => n.props && n.props.accessibilityLabel === 'Confirm deload complete' && typeof n.props.onPress === 'function')[0];
+    await render.act(async () => { await confirm.props.onPress(); });
+
+    expect(completeDeload).toHaveBeenCalledWith({ sessionCount: Number(prefill), deloadSessionOrdinal: 42 });
+  });
+
+  test('editing a past deload\'s Session # in the editor reaches the linked history record on Done', async () => {
+    const root = mount();
+    render.act(() => { findPressableByText(root, deloadNote.title).props.onPress(); });
+    const body = findPressableByText(root, 'old deload body');
+    render.act(() => { body.props.onPress(); body.props.onPress(); });
+
+    const dateRow = root.findAll(n => n.props && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith('Date,') && typeof n.props.onPress === 'function')[0];
+    render.act(() => { dateRow.props.onPress(); });
+    expect(sessionInput(root).props.value).toBe('4');
+    render.act(() => { sessionInput(root).props.onChangeText('9x'); });
+    // Pick a new date through the native picker the screen wires in.
+    render.act(() => { root.findAll(n => n.props && n.props.accessibilityLabel === 'Deload date' && typeof n.props.onPress === 'function')[0].props.onPress(); });
+    const picker = root.findAll(n => n.props && n.props.testID === 'mock-datetimepicker')[0];
+    render.act(() => { picker.props.onChange({}, new Date(2026, 1, 3)); });
+    await render.act(async () => { await findPressableByText(root, 'Done').props.onPress(); });
+
+    expect(updateDeload).toHaveBeenCalledWith('h1', expect.objectContaining({ deload_session_ordinal: 9, completed_at: '2026-02-03T12:00:00.000Z' }));
   });
 });
 
