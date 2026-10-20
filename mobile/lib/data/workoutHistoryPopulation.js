@@ -41,11 +41,13 @@ export function isExcludedByNoteIds(excludedNoteIds) {
 }
 
 // Membership only — no parsing. `included[i]` is true when `notes[i]` feeds
-// progression (normal and not a deload).
-export function classifyWorkoutHistoryMembers(notes, { isExcluded = null } = {}) {
+// progression (normal and not a deload). `isDeload` defaults to the canonical
+// `isDeloadNote`; a caller with its own historical predicate (and failure
+// policy) injects it. It is consulted only for normal notes, in note order.
+export function classifyWorkoutHistoryMembers(notes, { isExcluded = null, isDeload = isDeloadNote } = {}) {
   const all = notes || [];
   const normalFlags = all.map(n => !(isExcluded && isExcluded(n)));
-  const included = all.map((n, i) => normalFlags[i] && !isDeloadNote(n));
+  const included = all.map((n, i) => normalFlags[i] && !isDeload(n));
   const normalNotes = isExcluded ? all.filter((_, i) => normalFlags[i]) : all;
   const progressionNotes = all.filter((_, i) => included[i]);
   return { notes: all, normalFlags, included, normalNotes, progressionNotes };
@@ -54,11 +56,11 @@ export function classifyWorkoutHistoryMembers(notes, { isExcluded = null } = {})
 // The full projection. `noteSectionsList` stays aligned with the WHOLE notebook
 // (the anchor provenance `deriveProgressionAnchorSource` builds), while the
 // normal/progression lists are its order-preserving subsets.
-export function projectWorkoutHistoryPopulation(notes, { sectionsOf, isExcluded = null } = {}) {
+export function projectWorkoutHistoryPopulation(notes, { sectionsOf, isExcluded = null, isDeload = isDeloadNote } = {}) {
   if (typeof sectionsOf !== 'function') {
     throw new TypeError('projectWorkoutHistoryPopulation requires sectionsOf');
   }
-  const members = classifyWorkoutHistoryMembers(notes, { isExcluded });
+  const members = classifyWorkoutHistoryMembers(notes, { isExcluded, isDeload });
   const noteSectionsList = members.notes.map((n, i) => sectionsOf(n, i) || []);
   const normalNoteSectionsList = noteSectionsList.filter((_, i) => members.normalFlags[i]);
   const progressionSections = noteSectionsList.filter((_, i) => members.included[i]).flat();

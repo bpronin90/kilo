@@ -244,7 +244,7 @@ export function useLogScreenController(params) {
     // to suggest from — the same outcome Analytics reaches).
     const { anchorSource, progressionSections: allSections } = projectWorkoutHistoryPopulation(notes, {
       sectionsOf: (n) => {
-        const text = n?.id === currentId ? workoutNoteText : n?.raw_text;
+        const text = n.id === currentId ? workoutNoteText : n.raw_text;
         if (!text) return [];
         try {
           return parseWorkoutNote(text).sections;
@@ -252,7 +252,7 @@ export function useLogScreenController(params) {
           return [];
         }
       },
-      isExcluded: (n) => !!progressionRecoveryFilter.isNoteExcluded?.(n?.id),
+      isExcluded: (n) => !!progressionRecoveryFilter.isNoteExcluded?.(n.id),
     });
     try {
       const { progressionSuggestions, nameDisplayMap } = deriveWorkoutNoteAnalytics(

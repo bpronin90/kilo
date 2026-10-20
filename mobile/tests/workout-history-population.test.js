@@ -339,3 +339,173 @@ describe('PR-moment eligible population equivalence', () => {
     expect(await computePendingPRCandidate(base)).toBeNull();
   });
 });
+
+// --- Malformed inputs: every migrated caller keeps its own failure policy ----
+
+function outcome(fn) {
+  try { return { ok: true, value: fn() }; } catch (e) { return { ok: false, error: e?.constructor?.name }; }
+}
+async function asyncOutcome(fn) {
+  try { return { ok: true, value: await fn() }; } catch (e) { return { ok: false, error: e?.constructor?.name }; }
+}
+
+const MALFORMED = [
+  ['non-string title', () => [...notebook().slice(0, 2), { id: 'old', title: 42, raw_text: 'Monday\n-Bench\n150 5' }, notebook()[8]]],
+  ['non-string raw_text', () => [notebook()[0], { id: 'num', title: 'Num', raw_text: 42 }, notebook()[8]]],
+  ['object raw_text', () => [notebook()[0], { id: 'obj', title: 'Obj', raw_text: { a: 1 } }, notebook()[8]]],
+  ['null note entry', () => [notebook()[0], null, notebook()[8]]],
+  ['excluded note with non-string title', () => [notebook()[0], { id: 'r1', title: 7, raw_text: 'Monday\n-Bench\n60 5' }, notebook()[8]]],
+];
+const MALFORMED_EXCLUSIONS = [['none', null], ['r1 excluded', new Set(['r1'])]];
+
+describe('malformed inputs — Analytics', () => {
+  describe.each(MALFORMED)('%s', (_l, make) => {
+    test.each(MALFORMED_EXCLUSIONS)('%s', (_c, excluded) => {
+      const legacy = outcome(() => LEGACY_analytics(make(), excluded));
+      const next = outcome(() => {
+        const p = deriveParsedSections(make(), null, excluded);
+        return { allSections: p.allSections, signalSections: p.signalSections, noteSectionsList: p.noteSectionsList, normalNotes: p.normalNotes, anchorSource: p.anchorSource };
+      });
+      expect(next).toEqual(legacy);
+    });
+  });
+  test('a null notebook', () => {
+    expect(outcome(() => deriveParsedSections(null, null, null).anchorSource)).toEqual(outcome(() => LEGACY_analytics(null, null).anchorSource));
+  });
+});
+
+describe('malformed inputs — Log progression population', () => {
+  const draft = 'Monday\n-Bench\n155 5';
+  const LOG_CALL = (notes, isNoteExcluded) => projectWorkoutHistoryPopulation(notes, {
+    sectionsOf: (n) => {
+      const text = n.id === 'cur' ? draft : n.raw_text;
+      if (!text) return [];
+      try { return parseWorkoutNote(text).sections; } catch { return []; }
+    },
+    isExcluded: (n) => !!isNoteExcluded?.(n.id),
+  });
+  describe.each(MALFORMED)('%s', (_l, make) => {
+    test.each(MALFORMED_EXCLUSIONS)('%s', (_c, excluded) => {
+      const isNoteExcluded = excluded ? (id) => !!id && excluded.has(id) : undefined;
+      const legacy = outcome(() => LEGACY_log(make(), 'cur', draft, isNoteExcluded));
+      const next = outcome(() => {
+        const p = LOG_CALL(make(), isNoteExcluded);
+        return { anchorSource: p.anchorSource, allSections: p.progressionSections };
+      });
+      expect(next).toEqual(legacy);
+    });
+  });
+});
+
+describe('malformed inputs — Home anchor source', () => {
+  describe.each(MALFORMED)('%s', (_l, make) => {
+    test.each(MALFORMED_EXCLUSIONS)('%s', (_c, excluded) => {
+      const notes = make();
+      const normalNotes = filterNotesForNormalAnalytics(notes, excluded);
+      // The screen-supplied aggregate; a parse failure there is the screen's own.
+      const noteSectionsList = normalNotes.map(n => { try { return getNoteSections(n); } catch { return []; } });
+      const legacy = outcome(() => deriveProgressionAnchorSource(notes, notes.map(n => getNoteSections(n)), normalNotes));
+      const spy = jest.spyOn(ExerciseProgress, 'deriveExerciseProgress');
+      const run = outcome(() => deriveHomeDashboardData({
+        weightEntries: [], workoutNote: notes[notes.length - 1], weightGoal: null,
+        allSections: noteSectionsList.flat(), noteSectionsList, normalNotes, notes,
+        trackedLifts: { bench: true }, trackedLiftActivations: null, deloadHistory: null,
+        sourceNoteId: 'cur', recoveryBlocks: [], referenceDate: new Date('2024-01-06T00:00:00.000Z'),
+      }));
+      const next = run.ok ? { ok: true, value: spy.mock.calls[0][0].anchorSource } : run;
+      spy.mockRestore();
+      expect(next).toEqual(legacy);
+    });
+  });
+});
+
+describe('malformed inputs — save-time classification', () => {
+  beforeEach(() => jest.spyOn(DeloadStorage, 'loadDeloadHistory').mockResolvedValue(null));
+  afterEach(() => jest.restoreAllMocks());
+  const trackedLifts = { bench: true };
+  const textToSave = 'Monday\n-Bench\n160 5';
+
+  async function run(notes, excluded) {
+    loadRecoveryExcludedNoteIds.mockResolvedValue(excluded || new Set());
+    const reconcile = jest.fn(() => Promise.resolve());
+    const res = await asyncOutcome(() => computeSaveClassifications({
+      textToSave, currentId: 'cur', notes, trackedLifts, trackedLiftActivations: null, reconcileTrackedLiftActivations: reconcile,
+    }));
+    return res.ok ? { ok: true, value: { patch: res.value.classificationsPatch, reconciled: reconcile.mock.calls.map(c => c[0]) } } : res;
+  }
+  function legacy(notes, excluded) {
+    const r = outcome(() => LEGACY_save(notes, 'cur', textToSave, excluded || new Set()));
+    if (!r.ok) return r;
+    const defaults = getDefaultTrackedNames();
+    const normalized = new Set(defaults.map(n => normalizeLiftName(n)));
+    const names = [...defaults, ...listTrackedLifts(trackedLifts).filter(n => !normalized.has(normalizeLiftName(n)))];
+    const { classifications } = deriveWorkoutNoteAnalytics(r.value.allSections, names, undefined, null, { deloadHistory: null, sourceNoteId: 'cur' });
+    return { ok: true, value: { patch: { exercise_classifications: classifications }, reconciled: [r.value.unfilteredSections] } };
+  }
+
+  describe.each(MALFORMED)('%s', (_l, make) => {
+    test.each(MALFORMED_EXCLUSIONS)('%s', async (_c, excluded) => {
+      expect(await run(make(), excluded)).toEqual(legacy(make(), excluded));
+    });
+  });
+  test.each([['null notes', null], ['undefined notes', undefined]])('%s still rejects', async (_l, notes) => {
+    expect((await run(notes, null)).ok).toBe(false);
+    expect(legacy(notes, null).ok).toBe(false);
+  });
+});
+
+describe('malformed inputs — PR-moment candidate keeps its own deload predicate', () => {
+  const prBase = (notes) => ({
+    currentId: 'cur',
+    originalNoteState: { title: 'Current', text: 'Monday\n-Bench\n150 5\n-Squat\n200 5', activeWeek: null },
+    effectiveActiveWeek: null,
+    hasABWeeks: false,
+    notes,
+    trackedLifts: { bench: true },
+    trackedLiftActivations: null,
+    lastSavedTitle: 'Current',
+    liveTitle: 'Current',
+    lastSavedText: 'Monday\n-Bench\n150 5\n300 5\n-Squat\n200 5',
+    liveText: 'Monday\n-Bench\n150 5\n300 5\n-Squat\n200 5',
+    consumedPRKeys: new Set(),
+  });
+
+  test("Codex fixture: a note {id:'old', title:42} aborts detection (null), as before", async () => {
+    const notes = [
+      { id: 'old', title: 42, raw_text: 'Monday\n-Bench\n150 5' },
+      { id: 'cur', title: 'Current', raw_text: 'Monday\n-Bench\n150 5\n-Squat\n200 5' },
+    ];
+    loadRecoveryExcludedNoteIds.mockResolvedValueOnce(new Set());
+    expect(await computePendingPRCandidate(prBase(notes))).toBeNull();
+    // Control: the same notebook with a string title does produce a candidate.
+    loadRecoveryExcludedNoteIds.mockResolvedValueOnce(new Set());
+    const ok = await computePendingPRCandidate(prBase([{ ...notes[0], title: 'Old' }, notes[1]]));
+    expect(ok?.weight_value).toBe(300);
+  });
+
+  test('an excluded note with a malformed title is never consulted, as before', async () => {
+    const notes = [
+      { id: 'old', title: 'Old', raw_text: 'Monday\n-Bench\n150 5' },
+      { id: 'r1', title: 42, raw_text: 'Monday\n-Bench\n60 5' },
+      { id: 'cur', title: 'Current', raw_text: 'Monday\n-Bench\n150 5\n-Squat\n200 5' },
+    ];
+    loadRecoveryExcludedNoteIds.mockResolvedValueOnce(new Set(['r1']));
+    expect((await computePendingPRCandidate(prBase(notes)))?.weight_value).toBe(300);
+  });
+
+  test('a null note entry aborts detection (null), as before', async () => {
+    loadRecoveryExcludedNoteIds.mockResolvedValueOnce(new Set());
+    expect(await computePendingPRCandidate(prBase([null, { id: 'cur', title: 'Current', raw_text: 'Monday\n-Bench\n150 5' }]))).toBeNull();
+  });
+
+  describe.each(MALFORMED)('eligibility: %s', (_l, make) => {
+    test.each(MALFORMED_EXCLUSIONS)('%s', (_c, excluded) => {
+      const legacyOut = outcome(() => LEGACY_prEligible(make(), excluded));
+      const nextOut = outcome(() => classifyWorkoutHistoryMembers(make(), {
+        isExcluded: isExcludedByNoteIds(excluded),
+        isDeload: (n) => !!n.title?.startsWith(DELOAD),
+      }).progressionNotes);
+      expect(nextOut).toEqual(legacyOut);
+    });
+  });
+});

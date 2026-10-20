@@ -124,6 +124,8 @@ export async function computeSaveClassifications({
     // #1492: one canonical projection over the notebook, the saved text
     // replacing the current note's persisted text in place. Membership is the
     // fresh read above, never a render-time snapshot.
+    // A non-array notebook rejects, as the inline flatMap it replaced did.
+    if (!Array.isArray(notes)) throw new TypeError('computeSaveClassifications requires a notes array');
     const population = projectWorkoutHistoryPopulation(notes, {
       sectionsOf: (n) => {
         const text = n.id === currentId ? textToSave : n.raw_text;
@@ -193,8 +195,10 @@ export async function computePendingPRCandidate({
     // notebook order, so the current note's live (before/after) content replaces
     // its own entry IN PLACE, preserving every other note's position.
     const excludedNoteIds = await loadRecoveryExcludedNoteIds();
+    // Own deload predicate: a malformed title throws into the catch (no candidate).
     const { progressionNotes: eligibleNotes } = classifyWorkoutHistoryMembers(notes, {
       isExcluded: isExcludedByNoteIds(excludedNoteIds),
+      isDeload: (n) => !!n.title?.startsWith(DELOAD_NOTE_PREFIX),
     });
 
     const buildFullSections = (ownRawText) => eligibleNotes.flatMap((n, noteOrdinal) => {
