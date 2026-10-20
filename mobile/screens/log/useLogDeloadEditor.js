@@ -3,6 +3,7 @@ import { Alert } from '../../lib/platformAlert';
 import { parseWorkoutNote, generateDeloadNote } from '../../lib/parser';
 import { captureDeloadWorkingContext } from '../../lib/parser/deloadHistory';
 import { buildDayGroups } from './logScreenHelpers';
+import { runDoneConvergenceLoop } from './useLogEditorSave';
 
 export function useLogDeloadEditor({
   deloadNote,
@@ -12,7 +13,7 @@ export function useLogDeloadEditor({
   currentId = null,
 }) {
   const [deloadMode, setDeloadMode] = useState('read');
-  const [deloadEditText, setDeloadEditText] = useState('');
+  const [deloadEditText, setDeloadEditTextState] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -20,6 +21,19 @@ export function useLogDeloadEditor({
   const [originalNoteState, setOriginalNoteState] = useState(null);
 
   const deloadLastTapRef = useRef(0);
+  // #1481: the live draft is mirrored synchronously so an async Done/Save can
+  // see text typed while a write was pending; the in-flight save and the text it
+  // persisted let Done converge on the latest draft before closing.
+  const liveTextRef = useRef('');
+  const inflightSaveRef = useRef(null);
+  const lastSavedTextRef = useRef(null);
+  // Bumped on every enter/exit so a Done loop from a closed session never writes.
+  const sessionRef = useRef(0);
+
+  const setDeloadEditText = (next) => {
+    liveTextRef.current = next;
+    setDeloadEditTextState(next);
+  };
 
   const deloadParsed = useMemo(
     () => parseWorkoutNote(deloadNote?.raw_text || ''),
@@ -38,6 +52,8 @@ export function useLogDeloadEditor({
 
   const enterDeloadEditor = () => {
     setOriginalNoteState({ text: deloadNote?.raw_text || '' });
+    lastSavedTextRef.current = null;
+    sessionRef.current += 1;
     setDeloadEditText(deloadNote?.raw_text || '');
     setDeloadMode('edit');
     requestAnimationFrame(() => {
@@ -47,28 +63,40 @@ export function useLogDeloadEditor({
 
   const exitDeloadEditor = () => {
     setDeloadMode('read');
+    sessionRef.current += 1;
     setDeloadEditText('');
+    lastSavedTextRef.current = null;
     setSaveSuccess('');
     setSaveError('');
     setOriginalNoteState(null);
   };
 
-  const handleSaveDeload = async () => {
-    if (isSaving) return;
+  const startDeloadSave = (text) => {
     setIsSaving(true);
     setSaveError('');
     setSaveSuccess('');
-    try {
-      await saveDeloadNote(deloadEditText);
-      setSaveSuccess('Saved!');
-      return true;
-    } catch {
-      setSaveError('Save failed');
-      return false;
-    } finally {
-      setIsSaving(false);
-    }
+    const run = (async () => {
+      await Promise.resolve();
+      try {
+        await saveDeloadNote(text);
+        lastSavedTextRef.current = text;
+        setSaveSuccess('Saved!');
+        return true;
+      } catch {
+        setSaveError('Save failed');
+        return false;
+      } finally {
+        if (inflightSaveRef.current === run) inflightSaveRef.current = null;
+        setIsSaving(false);
+      }
+    })();
+    inflightSaveRef.current = run;
+    return run;
   };
+
+  // A save requested while one is pending coalesces onto it and reports its
+  // real outcome rather than an empty result.
+  const handleSaveDeload = () => inflightSaveRef.current || startDeloadSave(liveTextRef.current);
 
   const handleDoneDeload = () => {
     if (!hasUnsavedDeload) {
@@ -84,8 +112,14 @@ export function useLogDeloadEditor({
         {
           text: 'Save',
           onPress: async () => {
-            const ok = await handleSaveDeload();
-            if (ok) exitDeloadEditor();
+            // Close only once the latest live draft is the one that persisted.
+            const session = sessionRef.current;
+            const ok = await runDoneConvergenceLoop({
+              // Once the editor was left (Discard/Cancel/exit), never write again.
+              save: async () => (sessionRef.current === session ? handleSaveDeload() : false),
+              hasConverged: () => liveTextRef.current === lastSavedTextRef.current,
+            });
+            if (ok && sessionRef.current === session) exitDeloadEditor();
           },
         },
       ]
