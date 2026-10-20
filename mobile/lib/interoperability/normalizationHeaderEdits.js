@@ -137,7 +137,7 @@ function isSetRow(line) {
   if (/^-\d/.test(t)) return Boolean(_dashContentAsSetRow(t.slice(1)));
   if (!/^\d/.test(t)) return false;
   const row = parseWorkoutRow(t);
-  return row.ok && !row.blank;
+  return (row.ok && !row.blank) || row.limitExceeded === true;
 }
 
 /**

@@ -49,7 +49,9 @@ const _IMPORT_NOTE_RE = /^--\s+@import-note(?:\s+(.*))?$/;
 export function _dashContentAsSetRow(content, declaration = null) {
   if (!/^\d/.test(content)) return null;
   const r = parseWorkoutRow(content, declaration);
-  return (r.ok && !r.blank && !r.skipped) ? r : null;
+  // An over-limit row (#1482) is still a set row: callers must not fall back to
+  // exercise-header classification for it. They check `limitExceeded`.
+  return ((r.ok && !r.blank && !r.skipped) || r.limitExceeded) ? r : null;
 }
 
 function _normalizeExerciseName(raw) {
@@ -296,7 +298,11 @@ export function parseWorkoutNote(noteText) {
         // logged set, not an exercise-name header. Never mint a numeric-named
         // phantom exercise for it.
         if (currentExercise) {
-          if (recovery.preserved) {
+          if (recovery.limitExceeded) {
+            currentExercise.unparsed_rows.push(dashContent);
+            currentExercise.session_entries.push({ skipped: false, raw: dashContent, sets: [], unparsed: true, error: recovery.error, category: recovery.category ?? null });
+            problems.push({ line: lineNumber, message: recovery.error, exerciseName: currentExercise.name, severity: 'error' });
+          } else if (recovery.preserved) {
             // #854/G1-p: recognized bare integer, no governing declaration —
             // preserved, not structured data.
             currentExercise.unparsed_rows.push(dashContent);
