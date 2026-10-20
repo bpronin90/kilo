@@ -6,6 +6,7 @@ import * as Storage from '../storage/entries';
 import { notifyWorkoutNotes } from '../hooks/entries/workoutNoteHooks';
 import {
   requestReminderPermission,
+  applyWeighInReminder,
   applyWorkoutReminder,
   reconcileWorkoutReminder,
 } from '../lib/reminderScheduler';
@@ -256,6 +257,169 @@ describe('ReminderSettingsCard', () => {
       expect(workoutSwitch.props.value).toBe(false);
       expect(applyWorkoutReminder).not.toHaveBeenCalled();
       expect(requestReminderPermission).not.toHaveBeenCalled();
+    });
+  });
+  describe('storage failures (#1486)', () => {
+    const SAVE_ERROR = 'Could not save the reminder setting. Your previous setting was kept. Please try again.';
+    const texts = (tree) => tree.root.findAllByType(Text).map(textContent);
+    const deferred = () => {
+      let resolve;
+      let reject;
+      const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+      return { promise, resolve, reject };
+    };
+    const find = (tree, label) => tree.root.findByProps({ accessibilityLabel: label });
+    const mount = async () => {
+      let tree;
+      await act(async () => { tree = createCard(); });
+      return tree;
+    };
+    const pickTime = async (tree, label, date) => {
+      await act(async () => { find(tree, label).props.onPress(); });
+      await act(async () => {
+        tree.root.findByProps({ testID: 'mock-datetimepicker' }).props.onChange({ type: 'set' }, date);
+      });
+    };
+
+    test('weigh-in enable rejection restores the switch, reports a save error, and does not schedule', async () => {
+      Storage.saveWeighInReminder.mockRejectedValueOnce(new Error('disk full'));
+      const tree = await mount();
+      await act(async () => { await find(tree, 'Daily weigh-in reminder').props.onValueChange(true); });
+      expect(find(tree, 'Daily weigh-in reminder').props.value).toBe(false);
+      expect(texts(tree)).toContain(SAVE_ERROR);
+      expect(applyWeighInReminder).not.toHaveBeenCalled();
+    });
+
+    test('workout disable rejection keeps the durable enabled setting', async () => {
+      setReconciled({ enabled: true, hour: 17, minute: 0, fallbackWeekdays: [] }, [2]);
+      Storage.saveWorkoutReminder.mockRejectedValueOnce(new Error('disk full'));
+      const tree = await mount();
+      await act(async () => { await find(tree, 'Workout day nudge').props.onValueChange(false); });
+      expect(find(tree, 'Workout day nudge').props.value).toBe(true);
+      expect(texts(tree)).toContain(SAVE_ERROR);
+      expect(applyWorkoutReminder).not.toHaveBeenCalled();
+    });
+
+    test('time change rejection restores the last durable time', async () => {
+      Storage.loadWeighInReminder.mockResolvedValue({ enabled: true, hour: 8, minute: 0 });
+      Storage.saveWeighInReminder.mockRejectedValueOnce(new Error('disk full'));
+      const tree = await mount();
+      await pickTime(tree, 'Weigh-in reminder time', new Date(2026, 0, 1, 9, 30));
+      expect(texts(tree)).toContain(SAVE_ERROR);
+      expect(texts(tree)).toContain('8:00 AM');
+      expect(applyWeighInReminder).not.toHaveBeenCalled();
+    });
+
+    test('fallback-day rejection restores the chip, then a retry succeeds and clears the error', async () => {
+      Storage.saveWorkoutReminder.mockRejectedValueOnce(new Error('disk full'));
+      const tree = await mount();
+      await act(async () => { await find(tree, 'Nudge on Monday').props.onPress(); });
+      expect(find(tree, 'Nudge on Monday').props.accessibilityState.checked).toBe(false);
+      expect(texts(tree)).toContain(SAVE_ERROR);
+      await act(async () => { await find(tree, 'Nudge on Monday').props.onPress(); });
+      expect(find(tree, 'Nudge on Monday').props.accessibilityState.checked).toBe(true);
+      expect(texts(tree)).not.toContain(SAVE_ERROR);
+      expect(Storage.saveWorkoutReminder).toHaveBeenLastCalledWith(
+        expect.objectContaining({ fallbackWeekdays: [2] }),
+      );
+    });
+
+    test('a scheduling failure after a successful write is not reported as a save failure', async () => {
+      applyWeighInReminder.mockRejectedValueOnce(new Error('alarm denied'));
+      const tree = await mount();
+      await act(async () => { await find(tree, 'Daily weigh-in reminder').props.onValueChange(true); });
+      expect(Storage.saveWeighInReminder).toHaveBeenCalledTimes(2);
+      expect(texts(tree).join('|')).toContain('Could not schedule the reminder');
+      expect(texts(tree)).not.toContain(SAVE_ERROR);
+      expect(find(tree, 'Daily weigh-in reminder').props.value).toBe(false);
+    });
+
+    test('a time edit whose schedule fails keeps the saved time and reports the schedule error', async () => {
+      Storage.loadWeighInReminder.mockResolvedValue({ enabled: true, hour: 8, minute: 0 });
+      applyWeighInReminder.mockRejectedValueOnce(new Error('alarm denied'));
+      const tree = await mount();
+      await pickTime(tree, 'Weigh-in reminder time', new Date(2026, 0, 1, 9, 30));
+      expect(Storage.saveWeighInReminder).toHaveBeenCalledWith({ enabled: true, hour: 9, minute: 30 });
+      expect(texts(tree)).toContain('9:30 AM');
+      expect(texts(tree).join('|')).toContain('Could not schedule the reminder');
+    });
+
+    test('an earlier failed write cannot overwrite a newer durable change', async () => {
+      const first = deferred();
+      Storage.saveWorkoutReminder.mockImplementationOnce(() => first.promise);
+      const tree = await mount();
+      await act(async () => { find(tree, 'Nudge on Monday').props.onPress(); });
+      await act(async () => { find(tree, 'Nudge on Tuesday').props.onPress(); });
+      // Tuesday's draft composes on Monday's, so its write carries both days.
+      await act(async () => {
+        first.reject(new Error('disk full'));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(Storage.saveWorkoutReminder).toHaveBeenLastCalledWith(
+        expect.objectContaining({ fallbackWeekdays: [2, 3] }),
+      );
+      expect(find(tree, 'Nudge on Monday').props.accessibilityState.checked).toBe(true);
+      expect(find(tree, 'Nudge on Tuesday').props.accessibilityState.checked).toBe(true);
+      expect(texts(tree)).not.toContain(SAVE_ERROR);
+    });
+
+    test('when the newest of two overlapping writes fails, the last durable value is restored', async () => {
+      Storage.saveWorkoutReminder
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('disk full'));
+      const tree = await mount();
+      await act(async () => {
+        find(tree, 'Nudge on Monday').props.onPress();
+        find(tree, 'Nudge on Tuesday').props.onPress();
+      });
+      expect(find(tree, 'Nudge on Monday').props.accessibilityState.checked).toBe(true);
+      expect(find(tree, 'Nudge on Tuesday').props.accessibilityState.checked).toBe(false);
+      expect(texts(tree)).toContain(SAVE_ERROR);
+    });
+
+    test('writes are serialized in request order', async () => {
+      const first = deferred();
+      Storage.saveWorkoutReminder.mockImplementationOnce(() => first.promise);
+      const tree = await mount();
+      await act(async () => {
+        find(tree, 'Nudge on Monday').props.onPress();
+        find(tree, 'Nudge on Tuesday').props.onPress();
+      });
+      expect(Storage.saveWorkoutReminder).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        first.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(Storage.saveWorkoutReminder).toHaveBeenCalledTimes(2);
+    });
+
+    test('a rejection that settles after unmount is swallowed without touching state', async () => {
+      const pending = deferred();
+      Storage.saveWeighInReminder.mockImplementationOnce(() => pending.promise);
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const tree = await mount();
+      await act(async () => { find(tree, 'Daily weigh-in reminder').props.onValueChange(true); });
+      await act(async () => { tree.unmount(); });
+      await act(async () => {
+        pending.reject(new Error('disk full'));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(errorSpy).not.toHaveBeenCalled();
+      errorSpy.mockRestore();
+    });
+
+    test('a failed enable that cannot be scheduled and cannot be turned off restores the durable value', async () => {
+      applyWeighInReminder.mockRejectedValueOnce(new Error('alarm denied'));
+      Storage.saveWeighInReminder
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('disk full'));
+      const tree = await mount();
+      await act(async () => { await find(tree, 'Daily weigh-in reminder').props.onValueChange(true); });
+      expect(find(tree, 'Daily weigh-in reminder').props.value).toBe(true);
+      expect(texts(tree)).toContain(SAVE_ERROR);
     });
   });
 });

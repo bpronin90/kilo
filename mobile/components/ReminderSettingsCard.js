@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card } from './UI';
@@ -37,6 +37,10 @@ function scheduleFailureMessage(e) {
   const detail = e?.message ? ` (${String(e.message).slice(0, 160)})` : '';
   return `${SCHEDULE_ERROR_MESSAGE}${detail}`;
 }
+// A storage-write rejection is a different boundary from an OS scheduling
+// failure (#1486): the setting did not persist, so the control reverts to the
+// last durable value instead of showing an unsaved draft as if it were saved.
+const SAVE_ERROR_MESSAGE = 'Could not save the reminder setting. Your previous setting was kept. Please try again.';
 const WORKOUT_DAYS_REQUIRED_MESSAGE = 'Pick at least one workout day before enabling the nudge.';
 
 // Reminders settings card (issue #440): two independent opt-in local
@@ -54,6 +58,15 @@ const WORKOUT_DAYS_REQUIRED_MESSAGE = 'Pick at least one workout day before enab
 // reconcileWorkoutReminder() for its own read of the active routine; its
 // dedup cache means that call is a no-op for scheduling whenever the
 // always-on subscriber already reconciled the same change.
+// Per-reminder write channel (#1486). `latest` is the optimistic value the
+// controls show (and the base for the next edit, so rapid edits compose);
+// `durable` is the last value whose storage write succeeded; `rev` identifies
+// the newest request so a stale failure/completion cannot overwrite newer
+// state; `chain` serializes writes so they land in request order.
+function createChannel(initial) {
+  return { latest: initial, durable: initial, rev: 0, chain: Promise.resolve() };
+}
+
 export function ReminderSettingsCard() {
   const styles = useThemedStyles(createStyles);
   const typography = useKuaTypography();
@@ -66,6 +79,21 @@ export function ReminderSettingsCard() {
   const [showWeighInPicker, setShowWeighInPicker] = useState(false);
   const [showWorkoutPicker, setShowWorkoutPicker] = useState(false);
 
+  const weighInChannel = useRef(null);
+  if (!weighInChannel.current) weighInChannel.current = createChannel({ ...DEFAULT_WEIGH_IN_REMINDER });
+  const workoutChannel = useRef(null);
+  if (!workoutChannel.current) {
+    workoutChannel.current = createChannel({ ...DEFAULT_WORKOUT_REMINDER, fallbackWeekdays: [] });
+  }
+  const inferredRef = useRef([]);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -74,8 +102,18 @@ export function ReminderSettingsCard() {
         reconcileWorkoutReminder(),
       ]);
       if (cancelled) return;
-      setWeighIn(weighInSettings);
-      setWorkout(reconciled.workout);
+      // An edit made before the initial load finished already owns the channel.
+      if (weighInChannel.current.rev === 0) {
+        weighInChannel.current.latest = weighInSettings;
+        weighInChannel.current.durable = weighInSettings;
+        setWeighIn(weighInSettings);
+      }
+      if (workoutChannel.current.rev === 0) {
+        workoutChannel.current.latest = reconciled.workout;
+        workoutChannel.current.durable = reconciled.workout;
+        setWorkout(reconciled.workout);
+      }
+      inferredRef.current = reconciled.inferredWeekdays;
       setInferredWeekdays(reconciled.inferredWeekdays);
     })().catch(() => {});
     return () => {
@@ -92,6 +130,7 @@ export function ReminderSettingsCard() {
     const onNoteChange = () => {
       reconcileWorkoutReminder()
         .then((reconciled) => {
+          inferredRef.current = reconciled.inferredWeekdays;
           setInferredWeekdays(reconciled.inferredWeekdays);
         })
         .catch(() => {});
@@ -118,70 +157,116 @@ export function ReminderSettingsCard() {
     return granted;
   }, []);
 
-  const persistWeighIn = useCallback(async (next) => {
-    setWeighIn(next);
-    await Storage.saveWeighInReminder(next);
-    try {
-      await applyWeighInReminder(next);
-      return null;
-    } catch (e) {
-      return scheduleFailureMessage(e);
-    }
+  // Optimistically show `build(latest)`, then write it. Storage rejection
+  // restores the last durable value (only if this is still the newest request);
+  // a scheduling failure after a successful write keeps the saved setting and
+  // reports the schedule problem separately. `revertOnScheduleFailure` turns an
+  // enable back off (its own durable write) when it could not be scheduled.
+  const commit = useCallback((channelRef, setState, setError, apply, save, build, revertOnScheduleFailure = false) => {
+    const ch = channelRef.current;
+    const next = build(ch.latest);
+    const rev = ++ch.rev;
+    ch.latest = next;
+    setState(next);
+    setError(null);
+    const report = (message) => {
+      if (mountedRef.current) setError(message);
+    };
+    const restore = () => {
+      ch.latest = ch.durable;
+      if (mountedRef.current) setState(ch.durable);
+    };
+    const step = async () => {
+      try {
+        await save(next);
+      } catch {
+        if (ch.rev === rev) {
+          restore();
+          report(SAVE_ERROR_MESSAGE);
+        }
+        return;
+      }
+      ch.durable = next;
+      try {
+        await apply(next);
+      } catch (e) {
+        // A newer request owns the schedule and will re-apply its own value.
+        if (ch.rev !== rev) return;
+        report(scheduleFailureMessage(e));
+        if (!revertOnScheduleFailure) return;
+        const off = { ...next, enabled: false };
+        const offRev = ++ch.rev;
+        ch.latest = off;
+        if (mountedRef.current) setState(off);
+        try {
+          await save(off);
+        } catch {
+          if (ch.rev === offRev) {
+            restore();
+            report(SAVE_ERROR_MESSAGE);
+          }
+          return;
+        }
+        ch.durable = off;
+        try {
+          await apply(off);
+        } catch {
+          // Cancelling a schedule that never started: nothing further to report.
+        }
+      }
+    };
+    const run = ch.chain.then(step);
+    ch.chain = run.catch(() => {});
+    return run;
   }, []);
 
-  const persistWorkout = useCallback(async (next, inferred) => {
-    setWorkout(next);
-    await Storage.saveWorkoutReminder(next);
-    try {
-      await applyWorkoutReminder(next, resolveWorkoutWeekdays(inferred, next.fallbackWeekdays));
-      return null;
-    } catch (e) {
-      return scheduleFailureMessage(e);
-    }
-  }, []);
+  const commitWeighIn = useCallback((build, revert) => commit(
+    weighInChannel, setWeighIn, setWeighInError, applyWeighInReminder, Storage.saveWeighInReminder, build, revert,
+  ), [commit]);
+
+  const commitWorkout = useCallback((build, revert) => commit(
+    workoutChannel, setWorkout, setWorkoutError,
+    (value) => applyWorkoutReminder(value, resolveWorkoutWeekdays(inferredRef.current, value.fallbackWeekdays)),
+    Storage.saveWorkoutReminder, build, revert,
+  ), [commit]);
 
   const handleWeighInToggle = useCallback(async (enabled) => {
     setWeighInError(null);
     if (enabled && !(await ensurePermission(setWeighInError))) return;
-    const failure = await persistWeighIn({ ...weighIn, enabled });
-    if (failure && enabled) {
-      setWeighInError(failure);
-      await persistWeighIn({ ...weighIn, enabled: false });
-    }
-  }, [weighIn, ensurePermission, persistWeighIn]);
+    await commitWeighIn((base) => ({ ...base, enabled }), enabled);
+  }, [ensurePermission, commitWeighIn]);
 
   const handleWorkoutToggle = useCallback(async (enabled) => {
     setWorkoutError(null);
-    if (enabled && resolveWorkoutWeekdays(inferredWeekdays, workout.fallbackWeekdays).length === 0) {
+    const days = workoutChannel.current.latest.fallbackWeekdays;
+    if (enabled && resolveWorkoutWeekdays(inferredRef.current, days).length === 0) {
       setWorkoutError(WORKOUT_DAYS_REQUIRED_MESSAGE);
       return;
     }
     if (enabled && !(await ensurePermission(setWorkoutError))) return;
-    const failure = await persistWorkout({ ...workout, enabled }, inferredWeekdays);
-    if (failure && enabled) {
-      setWorkoutError(failure);
-      await persistWorkout({ ...workout, enabled: false }, inferredWeekdays);
-    }
-  }, [workout, inferredWeekdays, ensurePermission, persistWorkout]);
+    await commitWorkout((base) => ({ ...base, enabled }), enabled);
+  }, [ensurePermission, commitWorkout]);
 
   const handleWeighInTime = useCallback((event, date) => {
     setShowWeighInPicker(false);
     if (event?.type === 'dismissed' || !date) return;
-    persistWeighIn({ ...weighIn, hour: date.getHours(), minute: date.getMinutes() }).catch(() => {});
-  }, [weighIn, persistWeighIn]);
+    commitWeighIn((base) => ({ ...base, hour: date.getHours(), minute: date.getMinutes() })).catch(() => {});
+  }, [commitWeighIn]);
 
   const handleWorkoutTime = useCallback((event, date) => {
     setShowWorkoutPicker(false);
     if (event?.type === 'dismissed' || !date) return;
-    persistWorkout({ ...workout, hour: date.getHours(), minute: date.getMinutes() }, inferredWeekdays).catch(() => {});
-  }, [workout, inferredWeekdays, persistWorkout]);
+    commitWorkout((base) => ({ ...base, hour: date.getHours(), minute: date.getMinutes() })).catch(() => {});
+  }, [commitWorkout]);
 
   const handleToggleWeekday = useCallback((value) => {
-    const selected = workout.fallbackWeekdays.includes(value)
-      ? workout.fallbackWeekdays.filter((day) => day !== value)
-      : [...workout.fallbackWeekdays, value].sort((a, b) => a - b);
-    persistWorkout({ ...workout, fallbackWeekdays: selected }, inferredWeekdays).catch(() => {});
-  }, [workout, inferredWeekdays, persistWorkout]);
+    commitWorkout((base) => {
+      const selected = base.fallbackWeekdays.includes(value)
+        ? base.fallbackWeekdays.filter((day) => day !== value)
+        : [...base.fallbackWeekdays, value].sort((x, y) => x - y);
+      return { ...base, fallbackWeekdays: selected };
+    }).catch(() => {});
+  }, [commitWorkout]);
 
   const usesInference = inferredWeekdays.length > 0;
   const workoutHelp = usesInference
