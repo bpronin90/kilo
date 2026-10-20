@@ -91,7 +91,7 @@ function deriveTitle(detectors, flagged) {
   return CHECKIN_FALLBACK_TITLE;
 }
 
-export function SessionCheckInModal({ visible, checkInData, currentId, currentNote, update, onClose, isEdit = false }) {
+export function SessionCheckInModal({ visible, checkInData, currentId, update, onClose, isEdit = false }) {
   const { colors, kuaPalette: kua, mode } = useTheme();
   const styles = React.useMemo(() => createStyles(kua, mode, colors), [kua, mode, colors]);
   const [tier, setTier] = useState(null);
@@ -149,10 +149,11 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
         volume_decline_pct: checkInData.metrics.volume_decline_pct,
         responded_at: (isEdit && checkInData.responded_at) ? checkInData.responded_at : new Date().toISOString(),
       };
-      const prevCheckins = currentNote?.session_checkins || {};
-      const result = await update(currentId, {
-        session_checkins: { ...prevCheckins, [checkInData.sessionIndex]: record },
-      });
+      // #1475: merged into the latest note under the notebook lock, never the
+      // screen's copy, so a sibling session's check-in saved meanwhile survives.
+      const result = await update(currentId, latest => ({
+        session_checkins: { ...(latest.session_checkins || {}), [checkInData.sessionIndex]: record },
+      }));
       if (result === false) {
         setSaveError('Could not save. Please try again.');
         return;
