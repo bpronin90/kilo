@@ -43,18 +43,28 @@ export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const [loadFailed, setLoadFailed] = useState(false);
   const mountedRef = useRef(true);
+  const busyRef = useRef(false);
+  const loadSeqRef = useRef(0);
 
+  // A rejected fetch is a transport failure, not a revision: it leaves acceptance
+  // blocked and offers a retry. Only the newest request may update state, so a
+  // slow stale fetch cannot overwrite a retry (or land after unmount).
   const loadRevision = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     let active = null;
+    let failed = false;
     try {
       active = await fetchActiveConsentRevision();
     } catch {
       active = null;
+      failed = true;
     }
-    if (!mountedRef.current) return;
+    if (!mountedRef.current || seq !== loadSeqRef.current) return;
     setRevision(active);
+    setLoadFailed(failed);
     setLoading(false);
   }, []);
 
@@ -74,18 +84,29 @@ export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
   const affirmed = supported && affirmedRevision === displayedRevision;
 
   const handleAgree = async () => {
-    if (!affirmed || busy) return;
+    if (!affirmed || busy || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setStatus('');
     try {
-      const result = await grantConsent({
-        // The revision that was actually on screen. The server re-resolves the
-        // wording from this row, so the app cannot record a grant for copy it
-        // never displayed.
-        catalogRevision: displayedRevision,
-        appVersion,
-        platform: Platform.OS,
-      });
+      let result;
+      try {
+        result = await grantConsent({
+          // The revision that was actually on screen. The server re-resolves the
+          // wording from this row, so the app cannot record a grant for copy it
+          // never displayed.
+          catalogRevision: displayedRevision,
+          appVersion,
+          platform: Platform.OS,
+        });
+      } catch {
+        // Transport uncertainty is never consent: do not activate. The tick is
+        // kept (the displayed revision is unchanged) so the user can retry.
+        if (mountedRef.current) {
+          setStatus('Cloud Sync was not enabled. Kilo could not reach the server to record your consent. Check your connection and try again. Nothing was uploaded.');
+        }
+        return;
+      }
 
       if (!result.ok) {
         // Sync stays off and nothing is queued. Saying "enabled" here would be a
@@ -105,8 +126,17 @@ export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
         );
         return;
       }
-      await onGranted?.(result);
+      try {
+        await onGranted?.(result);
+      } catch {
+        // The server confirmed the grant; only turning sync on failed. Do not
+        // claim that no consent was recorded.
+        if (mountedRef.current) {
+          setStatus('Your consent was recorded, but Cloud Sync could not be turned on. Try again.');
+        }
+      }
     } finally {
+      busyRef.current = false;
       if (mountedRef.current) setBusy(false);
     }
   };
@@ -174,6 +204,15 @@ export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
         <Text style={styles.status} accessibilityLabel="Consent revision status">
           {revisionNotice}
         </Text>
+      ) : null}
+
+      {!loading && (loadFailed || match === REVISION_MATCH.MISSING) ? (
+        <Button
+          title="Retry"
+          disabled={busy}
+          onPress={loadRevision}
+          accessibilityLabel="Retry loading consent terms"
+        />
       ) : null}
 
       {status ? (
