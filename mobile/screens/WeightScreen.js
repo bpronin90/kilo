@@ -14,6 +14,7 @@ import { useArchivedWeightGoals } from '../hooks/entries/weightHooks';
 import { useWeightUnit } from '../lib/unitPreference';
 import { formatBodyweightValue, inputWeightToLb } from '../lib/units';
 
+import { useLocalCalendarDay, localDayToDate } from '../hooks/useLocalCalendarDay';
 import { localDateToday, buildTrendSections } from '../lib/WeightScreenHelpers';
 
 import { TrendSection } from '../components/WeightTrendSection';
@@ -86,24 +87,11 @@ export function WeightScreen({
   const [goalHistoryCollapsed, setGoalHistoryCollapsed] = useState(true);
   const scrollRef = useRef(null);
 
-  // Local calendar day used to gate goal completion on target_date (#549).
-  // Refreshes itself at the next local midnight (and re-schedules) so a goal
-  // whose weight threshold was already reached becomes "Goal Met!" on its
-  // target_date without requiring a remount or another state change.
-  const [today, setToday] = useState(localDateToday);
-  useEffect(() => {
-    let timeoutId;
-    const scheduleMidnightRefresh = () => {
-      const now = new Date();
-      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
-      timeoutId = setTimeout(() => {
-        setToday(localDateToday());
-        scheduleMidnightRefresh();
-      }, nextMidnight.getTime() - now.getTime());
-    };
-    scheduleMidnightRefresh();
-    return () => clearTimeout(timeoutId);
-  }, []);
+  // Local calendar day (#549/#1484): gates goal completion on target_date and
+  // is the reference day for trends/pace/goal projections, so they refresh at
+  // midnight and on foreground without a remount.
+  const today = useLocalCalendarDay();
+  const referenceDate = useMemo(() => localDayToDate(today), [today]);
 
   // Display-unit bridge for the goal form (#441): the form's text fields hold
   // values in the SELECTED unit, but canonical storage is lb. The form seeds
@@ -153,7 +141,7 @@ export function WeightScreen({
           goalTargetDate: goalForm.goalTargetDate,
           goalStartWeight: draftToLbString(goalForm.goalStartWeight),
         },
-        new Date(),
+        referenceDate,
         profile
       ),
     [
@@ -165,6 +153,7 @@ export function WeightScreen({
       goalForm.goalStartWeight,
       profile,
       unit,
+      referenceDate,
     ]
   );
 
@@ -172,9 +161,8 @@ export function WeightScreen({
   const trendSections = useMemo(() => buildTrendSections(trends, paceInfo, unit), [trends, paceInfo, unit]);
 
   const isGoalMet = useMemo(() => {
-    const [y, m, d] = today.split('-').map(Number);
-    return computeIsGoalMet(goal, trends.currentWeight, new Date(y, m - 1, d));
-  }, [goal, trends.currentWeight, today]);
+    return computeIsGoalMet(goal, trends.currentWeight, referenceDate);
+  }, [goal, trends.currentWeight, referenceDate]);
 
   // Weight threshold reached before target_date: positive progress, not yet
   // completion. Shown as "On Track" instead of "Goal Met!"/Archive.

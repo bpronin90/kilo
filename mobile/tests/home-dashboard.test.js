@@ -719,3 +719,48 @@ describe('deriveHomeDashboardData — weight chart labels stay with their points
     expect(new Set(labels).size).toBe(labels.length);
   });
 });
+
+// #1484: mounted midnight / foreground crossing. Stable entries and goal; only
+// the clock moves. Fixture: one 195 lb entry dated 2025-06-10, mounted at
+// 2025-06-16 23:59 local, so the 7-day window still holds it until 06-17.
+const MOUNT_AT = () => new Date(2025, 5, 16, 23, 59, 0);
+function captureAppState() {
+  const { AppState } = require('react-native');
+  const listeners = [];
+  const spy = jest.spyOn(AppState, 'addEventListener').mockImplementation((_t, fn) => {
+    listeners.push(fn);
+    return { remove: jest.fn() };
+  });
+  return { listeners, restore: () => spy.mockRestore() };
+}
+
+describe('HomeScreen — calendar-day projection refresh (#1484)', () => {
+  const E = [{ id: 'w1', date: '2025-06-10', logged_at: '2025-06-10T08:00:00', weight_value: 195, weight_unit: 'lb' }];
+  // 25 days left on 06-16 (3.57 -> "4 weeks left"), 24 on 06-17 (3.43 -> "3").
+  const GOAL = { target_weight: 180, start_weight: 200, target_date: '2025-07-11' };
+  let app;
+  beforeEach(() => { app = captureAppState(); });
+  afterEach(() => app.restore());
+  const mount = () => {
+    setupHooks({ goal: GOAL });
+    jest.setSystemTime(MOUNT_AT());
+    let c;
+    render.act(() => { c = render.create(<HomeScreen {...makeHomeProps({ weightEntries: E })} />); });
+    return c;
+  };
+
+  test('goal weeks remaining updates past local midnight without remount', () => {
+    const c = mount();
+    expect(hasText(c.root, '4 weeks left')).toBe(true);
+    render.act(() => { jest.advanceTimersByTime(70 * 1000); });
+    expect(hasText(c.root, '3 weeks left')).toBe(true);
+  });
+
+  test('foreground after a suspended-timer clock jump refreshes the projection', () => {
+    const c = mount();
+    expect(hasText(c.root, '4 weeks left')).toBe(true);
+    jest.setSystemTime(new Date(2025, 5, 17, 8, 0, 0));
+    render.act(() => { app.listeners.forEach(fn => fn('active')); });
+    expect(hasText(c.root, '3 weeks left')).toBe(true);
+  });
+});
