@@ -1311,8 +1311,9 @@ describe('settings writers vs the ack write-back (#1399)', () => {
     let writes = [];
     let outcomes;
     let timeout;
+    let pass = Promise.resolve();
     try {
-      const pass = cloudAdapter.sync();
+      pass = cloudAdapter.sync();
       // The parked point is signalled by the mocked read itself. A pass that
       // settles first never reached it, so fail instead of waiting. The timer
       // only guards a missing event; it never decides readiness.
@@ -1350,7 +1351,10 @@ describe('settings writers vs the ack write-back (#1399)', () => {
     } finally {
       clearTimeout(timeout);
       if (gate) gate.resolve();
+      // Settle the pass and writers before shared state is restored so a failed
+      // case cannot leak storage work into the next one.
       await Promise.all(writes);
+      await pass.catch(() => {});
       jest.restoreAllMocks();
     }
     await cloudAdapter.sync();
