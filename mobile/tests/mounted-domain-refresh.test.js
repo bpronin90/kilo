@@ -13,7 +13,13 @@ jest.mock('../storage/entries', () => {
   return { ...actual, loadUserProfile: wrap('loadUserProfile'), loadWeightGoalResult: wrap('loadWeightGoalResult') };
 });
 
+jest.mock('@expo/vector-icons/MaterialIcons', () => ({ __esModule: true, default: () => null }), { virtual: true });
+jest.mock('@react-native-community/datetimepicker', () => () => null);
+jest.mock('../lib/platformAlert', () => ({ Alert: { alert: jest.fn() } }));
+
 import * as Storage from '../storage/entries';
+import { ProfileScreen } from '../components/ProfileScreen';
+import { useWeightGoalForm } from '../hooks/useWeightGoalForm';
 import { secureStorage } from '../storage/secureStorage';
 import { saveArchivedWeightGoal } from '../storage/entries/weightGoal';
 import * as ProfileStorage from '../storage/entries/profileStorage';
@@ -190,6 +196,95 @@ describe('mounted domain refresh (#1480)', () => {
     await act(async () => { slow.resolve({ unit_system: 'metric' }); });
     await flush();
     expect(latest.a.unit).toBe('lb');
+    r.unmount();
+  });
+});
+
+// Pristine form copies follow the persisted data; dirty drafts survive (#1480).
+describe('form copies of refreshed data (#1480)', () => {
+  const sexSelected = (root, label) =>
+    root.findAll((n) => n.props?.accessibilityLabel === label && n.props?.accessibilityState)[0]
+      .props.accessibilityState.selected;
+  const press = (root, label) =>
+    root.findAll((n) => n.props?.accessibilityLabel === label && typeof n.props?.onPress === 'function')[0];
+
+  const renderProfile = async () => {
+    let r;
+    await act(async () => { r = TestRenderer.create(<ProfileScreen onBack={() => {}} />); });
+    await flush();
+    return r;
+  };
+
+  it('ProfileScreen: a pristine form follows an external profile change', async () => {
+    await Storage.saveUserProfile({ sex: 'male' });
+    const r = await renderProfile();
+    expect(sexSelected(r.root, 'Male')).toBe(true);
+    await Storage.saveUserProfile({ sex: 'female' });
+    await act(async () => { reloadPersistedSettingsDomains(); });
+    await flush();
+    expect(sexSelected(r.root, 'Female')).toBe(true);
+    expect(sexSelected(r.root, 'Male')).toBe(false);
+    r.unmount();
+  });
+
+  it('ProfileScreen: a dirty draft survives a refresh', async () => {
+    await Storage.saveUserProfile({ sex: 'male' });
+    const r = await renderProfile();
+    await act(async () => { press(r.root, 'Female').props.onPress(); });
+    await Storage.saveUserProfile({ sex: 'male', display_name: 'Other' });
+    await act(async () => { reloadPersistedSettingsDomains(); });
+    await flush();
+    expect(sexSelected(r.root, 'Female')).toBe(true);
+    r.unmount();
+  });
+
+  it('ProfileScreen: external deletion clears a pristine form', async () => {
+    await Storage.saveUserProfile({ sex: 'male' });
+    const r = await renderProfile();
+    await Storage.clearUserProfile();
+    await act(async () => { reloadPersistedSettingsDomains(); });
+    await flush();
+    expect(sexSelected(r.root, 'Male')).toBe(false);
+    r.unmount();
+  });
+
+  function GoalProbe({ out }) {
+    const { goal } = useWeightGoal();
+    out.form = useWeightGoalForm(goal, jest.fn(), jest.fn(), jest.fn(), true, undefined, 'lb', goal);
+    return null;
+  }
+  const renderGoal = async () => {
+    const out = {};
+    let r;
+    await act(async () => { r = TestRenderer.create(<GoalProbe out={out} />); });
+    await flush();
+    return { out, r };
+  };
+
+  it('goal form: pristine seed follows external replacement and deletion', async () => {
+    await Storage.saveWeightGoal({ target_weight: 170, target_date: '2026-12-01' });
+    const { out, r } = await renderGoal();
+    expect(out.form.goalTargetWeight).toBe('170');
+    await Storage.saveWeightGoal({ target_weight: 160, target_date: '2026-11-01' });
+    await act(async () => { reloadPersistedSettingsDomains(); });
+    await flush();
+    expect(out.form.goalTargetWeight).toBe('160');
+    await Storage.clearWeightGoal();
+    await act(async () => { reloadPersistedSettingsDomains(); });
+    await flush();
+    expect(out.form.goalTargetWeight).toBe('');
+    r.unmount();
+  });
+
+  it('goal form: a draft typed while editing survives a refresh', async () => {
+    await Storage.saveWeightGoal({ target_weight: 170, target_date: '2026-12-01' });
+    const { out, r } = await renderGoal();
+    await act(async () => { out.form.startEditGoal(); });
+    await act(async () => { out.form.setGoalTargetWeight('155'); });
+    await Storage.clearWeightGoal();
+    await act(async () => { reloadPersistedSettingsDomains(); });
+    await flush();
+    expect(out.form.goalTargetWeight).toBe('155');
     r.unmount();
   });
 });

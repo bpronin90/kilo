@@ -32,13 +32,17 @@ export function ProfileScreen({ onBack }) {
     };
   }, []);
 
+  // Pristine form follows the persisted profile (incl. external sync/import and
+  // deletion, #1480); a dirty draft is never overwritten.
+  const [dirty, setDirty] = useState(false);
+  const editCount = React.useRef(0);
   useEffect(() => {
-    if (profile && !localProfile) {
-      setLocalProfile(profile);
-    }
-  }, [profile, localProfile]);
+    if (!dirty) setLocalProfile(profile);
+  }, [profile, dirty]);
 
   const updateField = useCallback((field, value) => {
+    editCount.current += 1;
+    setDirty(true);
     setLocalProfile(prev => ({ ...(prev || {}), [field]: value }));
     setSaveSuccess(false);
   }, []);
@@ -49,9 +53,11 @@ export function ProfileScreen({ onBack }) {
     setSaveSuccess(false);
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
+    const editsAtSave = editCount.current;
     try {
       Keyboard.dismiss();
       await save(localProfile);
+      if (editCount.current === editsAtSave) setDirty(false);
       setSaveSuccess(true);
       saveTimeoutRef.current = setTimeout(() => {
         setSaveSuccess(false);
@@ -80,6 +86,8 @@ export function ProfileScreen({ onBack }) {
         // Clearing the profile removes unit_system, so the display preference
         // falls back to the lb default (#441).
         setWeightUnitPreference('lb');
+        editCount.current += 1;
+        setDirty(false);
         setLocalProfile({});
         setSaveSuccess(false);
       }}

@@ -63,11 +63,27 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
     }
   }, [unit]);
 
+  // Last persisted values copied into the form. While the form still equals
+  // them it is pristine and follows the persisted goal, including an external
+  // deletion (sync/import, #1480); a draft the user changed is left alone.
+  const seededRef = useRef(null);
   useEffect(() => {
     if (goal && !goalEditing) {
-      setGoalTargetWeight(String(goal.target_weight));
+      const t = String(goal.target_weight);
+      const s = goal.start_weight ? String(goal.start_weight) : '';
+      seededRef.current = { t, d: goal.target_date, s };
+      setGoalTargetWeight(t);
       setGoalTargetDate(goal.target_date);
-      setGoalStartWeight(goal.start_weight ? String(goal.start_weight) : '');
+      setGoalStartWeight(s);
+    } else if (!goal && !goalEditing && seededRef.current) {
+      const seeded = seededRef.current;
+      seededRef.current = null;
+      if (goalTargetWeight === seeded.t && goalTargetDate === seeded.d && goalStartWeight === seeded.s) {
+        setGoalTargetWeight('');
+        setGoalTargetDate(defaultTargetDate());
+        setGoalStartWeight('');
+        dropProvenance();
+      }
     }
   }, [goal, goalEditing]);
 
