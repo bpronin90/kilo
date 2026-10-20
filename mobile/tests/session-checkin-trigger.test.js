@@ -485,7 +485,8 @@ describe('LogScreen supplies the ownership predicate and the toggle gate', () =>
   let screen;
 
   const modalProps = () => mockCheckInSheet.props;
-  const screenElement = () => <ControlledLogScreen initialText={note.raw_text} initialTitle={note.title} />;
+  const onCheckInPrompt = jest.fn();
+  const screenElement = () => <ControlledLogScreen initialText={note.raw_text} initialTitle={note.title} onCheckInPrompt={onCheckInPrompt} />;
 
   const mountScreen = () => {
     render.act(() => { screen = render.create(screenElement()); });
@@ -534,6 +535,7 @@ describe('LogScreen supplies the ownership predicate and the toggle gate', () =>
     expect(modalProps().visible).toBe(true);
     expect(modalProps().currentId).toBe('note1');
     expect(modalProps().checkInData.detectors).toEqual(['volume_drop']);
+    expect(onCheckInPrompt).toHaveBeenCalledTimes(1);
 
     // Turning the feature off closes the sheet on the very next render: no
     // render after the toggle flips may show it, not even a transient one
@@ -560,6 +562,22 @@ describe('LogScreen supplies the ownership predicate and the toggle gate', () =>
     toggles = { ...toggles, fatigueTrackingEnabled: true };
     refresh();
     expect(modalProps().visible).toBe(false);
+    expect(checkInWrites(update)).toHaveLength(0);
+  });
+
+  test.each([
+    ['a notes read error', { error: 'offline' }],
+    ['a notes reload in progress', { loading: true }],
+  ])('%s withdraws a raised sheet (the screen passes the read state to the hook)', async (_label, readState) => {
+    const root = mountScreen();
+    await pressDone(root);
+    expect(modalProps().visible).toBe(true);
+
+    useEntries.useWorkoutNotes.mockReturnValue({ ...useEntries.useWorkoutNotes(), ...readState });
+    refresh();
+
+    expect(modalProps().visible).toBe(false);
+    expect(modalProps().checkInData).toBeNull();
     expect(checkInWrites(update)).toHaveLength(0);
   });
 

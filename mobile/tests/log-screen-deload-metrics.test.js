@@ -616,6 +616,87 @@ describe('active deload deletion (#560)', () => {
   });
 });
 
+// ── LogScreen wiring to the deload surfaces ─────────────────────────────────
+// The section and editor card are covered above in isolation; these mount the
+// real LogScreen so a dropped or misrouted prop between the screen, its hooks
+// and those surfaces is caught.
+describe('LogScreen wires the deload surfaces to its hooks', () => {
+  const { DELOAD_NOTE_PREFIX } = require('../lib/LogScreenHelpers');
+  let update;
+  let completeDeload;
+  let updateDeload;
+
+  const THREE_SESSIONS = 'Monday\n+Lifting\n-Bench\n135 5,5,5\n135 5,5,5\n135 5,5,5';
+  const currentNote = {
+    id: 'note1', title: 'Routine A', raw_text: THREE_SESSIONS, saved_at: '2026-06-01T12:00:00.000Z',
+  };
+  const deloadNote = {
+    id: 'd1', title: `${DELOAD_NOTE_PREFIX}2026-01-01`, raw_text: 'old deload body', saved_at: '2026-01-01T12:00:00.000Z',
+  };
+  const record = { id: 'h1', note_id: 'd1', deload_session_ordinal: 4, completed_at: '2026-01-01T12:00:00.000Z' };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    update = jest.fn().mockImplementation(async (id, patch) => ({ id, ...deloadNote, ...patch }));
+    completeDeload = jest.fn();
+    updateDeload = jest.fn().mockResolvedValue(true);
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [currentNote, deloadNote], currentId: 'note1', currentNote, deloadNotes: [deloadNote],
+      loading: false, error: null, refresh: jest.fn(), selectCurrent: jest.fn(), update, add: jest.fn(), remove: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({
+      note: { raw_text: 'deload note text', saved_at: '2026-06-01T12:00:00.000Z' }, loading: false, save: jest.fn(), clear: jest.fn(),
+    });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [record], completeDeload, deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload,
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: true });
+  });
+
+  const mount = () => {
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen initialText={THREE_SESSIONS} />); });
+    const root = component.root;
+    render.act(() => { findPressableByText(root, 'Deload').props.onPress(); });
+    return root;
+  };
+  const sessionInput = (root) => root.findAll(n => n.props && n.props.accessibilityLabel === 'Deload session number' && typeof n.props.onChangeText === 'function')[0];
+
+  test('Deload complete forwards the screen\'s session count and the edited ordinal to completeDeload', async () => {
+    const root = mount();
+    render.act(() => { root.findByProps({ title: 'Deload complete' }).props.onPress(); });
+    const prefill = sessionInput(root).props.value;
+    expect(prefill).toBe('3');
+
+    render.act(() => { sessionInput(root).props.onChangeText('42'); });
+    const confirm = root.findAll(n => n.props && n.props.accessibilityLabel === 'Confirm deload complete' && typeof n.props.onPress === 'function')[0];
+    await render.act(async () => { await confirm.props.onPress(); });
+
+    expect(completeDeload).toHaveBeenCalledWith({ sessionCount: Number(prefill), deloadSessionOrdinal: 42 });
+  });
+
+  test('editing a past deload\'s Session # in the editor reaches the linked history record on Done', async () => {
+    const root = mount();
+    render.act(() => { findPressableByText(root, deloadNote.title).props.onPress(); });
+    const body = findPressableByText(root, 'old deload body');
+    render.act(() => { body.props.onPress(); body.props.onPress(); });
+
+    const dateRow = root.findAll(n => n.props && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith('Date,') && typeof n.props.onPress === 'function')[0];
+    render.act(() => { dateRow.props.onPress(); });
+    expect(sessionInput(root).props.value).toBe('4');
+    render.act(() => { sessionInput(root).props.onChangeText('9x'); });
+    // Pick a new date through the native picker the screen wires in.
+    render.act(() => { root.findAll(n => n.props && n.props.accessibilityLabel === 'Deload date' && typeof n.props.onPress === 'function')[0].props.onPress(); });
+    const picker = root.findAll(n => n.props && n.props.testID === 'mock-datetimepicker')[0];
+    render.act(() => { picker.props.onChange({}, new Date(2026, 1, 3)); });
+    await render.act(async () => { await findPressableByText(root, 'Done').props.onPress(); });
+
+    expect(updateDeload).toHaveBeenCalledWith('h1', expect.objectContaining({ deload_session_ordinal: 9, completed_at: '2026-02-03T12:00:00.000Z' }));
+  });
+});
+
 describe('LogDeloadSection deload ordinal input has autocorrect disabled', () => {
   test('deload ordinal modal TextInput has autoCorrect={false}, autoCapitalize="none", spellCheck={false}', () => {
     let component;
