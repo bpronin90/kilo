@@ -37,9 +37,14 @@ const { HealthDataConsent } = require('../screens/more/HealthDataConsent');
 const SEEDED_COPY_SHA256 =
   '4a4eb51eea8df80e1eec7355f3c44a1dd06705583a64841061aa24d5788396fa';
 
+// The server row carries the same wording the app renders; the surface refuses a
+// revision whose copy does not match (issue #1483).
 const ACTIVE_REVISION = {
   catalog_revision: 1,
   material_version: 1,
+  consent_title: CONSENT_COPY.title,
+  disclosure_copy: CONSENT_COPY.disclosure,
+  affirmation_copy: CONSENT_COPY.affirmation,
   privacy_policy_url: 'https://bpronin90.github.io/kilo/privacy.html',
 };
 
