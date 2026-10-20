@@ -66,6 +66,9 @@ function scriptWrites(script) {
   });
 }
 
+// The core re-reads notes after a rejected note delete; back that read with a notebook.
+const withNotes = (book) => ({ ...storage, loadWorkoutNotes: async () => book.notes });
+
 // An in-memory notebook standing in for LogScreen's `add`/`remove` wiring.
 function makeNotebook(initial = []) {
   const notes = [...initial];
@@ -167,12 +170,12 @@ describe('Recovery Week 1 partial start: block create failures', () => {
     expect((await durable()).activeBlocks).toHaveLength(1);
   });
 
-  test('block write fails AND note delete fails: the kept note is reported, not hidden', async () => {
+  test('block write fails AND note delete rejects before deleting: the confirmed-present note is reported as kept', async () => {
     const book = makeNotebook();
     book.removeWeekNote.mockRejectedValueOnce(new Error('note delete failed'));
     scriptWrites({ [RECOVERY_BLOCKS_KEY]: ['fail'] });
 
-    const result = await startRecoveryBlockCore(storage, { ...BASELINE, createWeekNote: book.createWeekNote, removeWeekNote: book.removeWeekNote });
+    const result = await startRecoveryBlockCore(withNotes(book), { ...BASELINE, createWeekNote: book.createWeekNote, removeWeekNote: book.removeWeekNote });
 
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/Injected/);
@@ -188,6 +191,35 @@ describe('Recovery Week 1 partial start: block create failures', () => {
     const state = await durable();
     expect(state.activeBlocks).toHaveLength(1);
     expect(state.liveWeeks).toEqual([expect.objectContaining({ note_id: 'wn_new_1', week_number: 1 })]);
+  });
+
+  test('block write fails AND note delete lands then rejects: the gone note is never claimed as kept', async () => {
+    const book = makeNotebook();
+    const remove = book.removeWeekNote.getMockImplementation();
+    book.removeWeekNote.mockImplementationOnce(async (id) => { await remove(id); throw new Error('selection clear failed'); });
+    scriptWrites({ [RECOVERY_BLOCKS_KEY]: ['fail'] });
+
+    const result = await startRecoveryBlockCore(withNotes(book), { ...BASELINE, createWeekNote: book.createWeekNote, removeWeekNote: book.removeWeekNote });
+
+    expect(result.ok).toBe(false);
+    expect(book.notes).toEqual([]);
+    expect(result.keptNoteId).toBeUndefined();
+    expect(result.error).not.toMatch(/Week 1 note/);
+    expect((await durable()).blocks).toEqual([]);
+  });
+
+  test('block write fails, note delete rejects, and the note re-read fails: uncertain wording, no keptNoteId', async () => {
+    const book = makeNotebook();
+    book.removeWeekNote.mockRejectedValueOnce(new Error('note delete failed'));
+    scriptWrites({ [RECOVERY_BLOCKS_KEY]: ['fail'] });
+    const unreadable = { ...storage, loadWorkoutNotes: async () => { throw new Error('notes unreadable'); } };
+
+    const result = await startRecoveryBlockCore(unreadable, { ...BASELINE, createWeekNote: book.createWeekNote, removeWeekNote: book.removeWeekNote });
+
+    expect(result.ok).toBe(false);
+    expect(result.keptNoteId).toBeUndefined();
+    expect(result.error).toMatch(/new Week 1 note may still be in your notes/);
+    expect(result.error).not.toMatch(/was kept/);
   });
 
   test('block write lands then rejects: the stranded active block is reported; retry cannot duplicate it; Add week recovers', async () => {
