@@ -106,13 +106,13 @@ const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
     textAlign: 'right',
   },
   // Hierarchy (#1460): small muted label -> primary bold value -> status/caption.
-  // The value takes the metric role (bold mono) at the 20pt size the three-column
-  // grid can hold; neither line truncates, so large text wraps instead of
-  // clipping units or status.
+  // The value takes the metric role (bold mono) at the 18pt size the three-column
+  // grid can hold (#1534: modestly down from 20); neither line truncates, so
+  // large text wraps instead of clipping units or status.
   trendValue: {
     ...monoRole(typo, 'metric-display-mobile'),
-    fontSize: 20,
-    lineHeight: 24,
+    fontSize: 18,
+    lineHeight: 22,
     letterSpacing: -0.2,
     color: kua ? kua.onSurface : colors.text,
   },
@@ -121,10 +121,14 @@ const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   // truncated off the end of the value string.
   trendCaption: {
     ...monoRole(typo, 'label-md'),
+    fontSize: 11,
+    lineHeight: 14,
     marginTop: 2,
   },
   trendStatus: {
     ...monoRole(typo, 'label-md'),
+    fontSize: 11,
+    lineHeight: 14,
     fontWeight: '800',
   },
   trendLabel: {

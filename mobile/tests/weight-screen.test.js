@@ -1821,6 +1821,89 @@ describe('TrendSection goal-direction aware colors (#406, H-3)', () => {
       }
     });
 
+    // #1534: modestly smaller value/status text, hierarchy and semantics intact.
+    describe('modestly reduced value and status sizes (#1534)', () => {
+      const byText = (root, text) => root.findAll(
+        n => n.type === 'Text' && [].concat(n.props.children).join('') === text
+      )[0];
+      const style = (root, text) => StyleSheet.flatten(byText(root, text).props.style);
+
+      test('value is 18/22, status and caption 11/14, below the previous 20/24 and 12/16', () => {
+        const root = renderSection({
+          goalDirection: 'loss',
+          direction: 'down',
+          col3: { label: 'Trend', value: '↓ -12.5 lb', caption: 'over 5 days' },
+        });
+        ['184.0 lb', '+1.0 lb', '↓ -12.5 lb'].forEach((t) => {
+          expect(style(root, t).fontSize).toBe(18);
+          expect(style(root, t).lineHeight).toBe(22);
+        });
+        ['✓ On goal', 'over 5 days'].forEach((t) => {
+          expect(style(root, t).fontSize).toBe(11);
+          expect(style(root, t).lineHeight).toBe(14);
+        });
+        expect(style(root, '✓ On goal').fontWeight).toBe('800');
+        expect(style(root, '↓ -12.5 lb').textAlign).toBe('right');
+        // Relative emphasis: value stays larger than status, status above label.
+        expect(style(root, '184.0 lb').fontSize).toBeGreaterThan(style(root, '✓ On goal').fontSize);
+        expect(style(root, '✓ On goal').fontSize).toBeGreaterThanOrEqual(style(root, 'Average').fontSize);
+      });
+
+      test.each([
+        ['gain goal, up', 'gain', 'up', '↑ Gaining', '✓ On goal', LightColors.success],
+        ['gain goal, down', 'gain', 'down', '↓ Losing', '✗ Off goal', LightColors.error],
+        ['loss goal, down', 'loss', 'down', '↓ Losing', '✓ On goal', LightColors.success],
+        ['loss goal, up', 'loss', 'up', '↑ Gaining', '✗ Off goal', LightColors.error],
+      ])('%s keeps value, status word and color', (_n, goalDirection, direction, value, status, color) => {
+        const root = renderSection({ goalDirection, direction, col3: { label: 'Trend', value } });
+        expect(style(root, value).color).toBe(color);
+        expect(style(root, status).color).toBe(color);
+        expect(style(root, value).fontSize).toBe(18);
+      });
+
+      test.each([
+        ['lb', '184.0 lb', '+1.0 lb'],
+        ['kg', '83.5 kg', '-0.5 kg'],
+        ['long values', '1234.5 lb', '+123.4 lb'],
+      ])('units and long values render verbatim and uncapped (%s)', (_n, v1, v2) => {
+        const root = renderSection({
+          col1: { label: 'Average', value: v1 },
+          col2: { label: 'Vs Prior 7d', value: v2 },
+        });
+        [v1, v2].forEach((t) => {
+          expect(byText(root, t)).toBeTruthy();
+          expect(byText(root, t).props.numberOfLines).toBeUndefined();
+          expect(style(root, t).fontSize).toBe(18);
+        });
+      });
+
+      test('no-data placeholders render at the same size with neutral color and no status', () => {
+        const root = renderSection({
+          direction: null,
+          col1: { label: 'Average', value: '—' },
+          col2: { label: 'Vs Prior 7d', value: '—' },
+          col3: { label: 'Trend', value: '—' },
+        });
+        const dashes = root.findAll(n => n.type === 'Text' && n.props.children === '—');
+        expect(dashes).toHaveLength(3);
+        dashes.forEach(d => expect(StyleSheet.flatten(d.props.style).fontSize).toBe(18));
+        expect(root.findAllByProps({ testID: 'trend-status' })).toHaveLength(0);
+        expect(StyleSheet.flatten(dashes[2].props.style).color)
+          .toBe(StyleSheet.flatten(dashes[0].props.style).color);
+      });
+
+      test('subsection order and column order are unchanged', () => {
+        const sections = buildTrendSections({
+          recentDateWeight: 190, priorDateWeight: 189, avg7: 184, priorAvg7: 183, avg30: 185, priorAvg30: 186,
+        }, null);
+        expect(sections.map(s => s.title)).toEqual(['Today', '7-day rolling', '30-day rolling']);
+        const root = renderSection({});
+        const labels = root.findAll(n => n.type === 'Text').map(n => n.props.children);
+        expect(labels.indexOf('Average')).toBeLessThan(labels.indexOf('Vs Prior 7d'));
+        expect(labels.indexOf('Vs Prior 7d')).toBeLessThan(labels.indexOf('Trend'));
+      });
+    });
+
     test('positive, negative and neutral keep their tone on the larger value', () => {
       const pos = renderSection({ goalDirection: 'loss', direction: 'down', col3: { label: 'Trend', value: 'A' } });
       const neg = renderSection({ goalDirection: 'loss', direction: 'up', col3: { label: 'Trend', value: 'B' } });
