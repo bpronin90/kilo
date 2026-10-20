@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { parseWorkoutNote } from '../../lib/parser';
 import { deriveSessionAlignmentIssue } from '../../lib/parser/sessions.js';
 import { sliceWeekText, spliceWeekText, isValidActiveWeek } from './editorWeekText';
+import { metadataMatches } from './editorConvergence';
+import { newRoutineTitleConverged } from './useLogEditorSave';
 
 // The other-routine editor's A/B projection onto the note currently open in the
 // editor, extracted from useLogOtherRoutineEditor (#1055). Mirrors the
@@ -140,4 +142,17 @@ export async function runOtherAutosave({ save, inFlightRef, identity, isStillPer
   if (!coalesced || !ok) return ok;
   if (identity() !== scheduledIdentity || !isStillPersistable()) return ok;
   return save();
+}
+
+// Done's convergence test (#1500): the live editor matches what the last save
+// SUBMITTED for every persisted field — text, title (a new routine's blank
+// title saves as 'Untitled Routine'), and otherMetadata. Submitted rather than
+// durable metadata, so an unparseable ordinal the save ignores still converges.
+export function otherDoneConverged({
+  isNew, liveText, liveTitle, liveMetadata, savedText, savedTitle, savedMetadata,
+}) {
+  const titleConverged = isNew
+    ? newRoutineTitleConverged(liveTitle, savedTitle)
+    : liveTitle === savedTitle;
+  return liveText === savedText && titleConverged && metadataMatches(liveMetadata, savedMetadata);
 }

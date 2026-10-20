@@ -23,7 +23,7 @@ import {
 import { useNoteViewer, toggleViewingWeek } from './otherRoutineViewers';
 import {
   useOtherEditingProjection, otherMetadata, canonicalOtherMetadata,
-  hasPersistableMetadataChange, persistedOtherMetadata, runOtherAutosave,
+  hasPersistableMetadataChange, persistedOtherMetadata, runOtherAutosave, otherDoneConverged,
 } from './otherRoutineEditing';
 import { useOtherEditorLifecycle } from './otherRoutineLifecycle';
 import { createOtherAdoptionHandlers } from './otherRoutineAdoption';
@@ -104,14 +104,11 @@ export function useLogOtherRoutineEditor({
   const savingOtherSnapshotRef = useRef(null);
   const lastSavedNoteIdRef = useRef(null);
   const lastSavedSourceRef = useRef(null);
-
-  // Fields most recently persisted by handleSaveOtherNote; Done compares the
-  // live editor against them to catch edits an in-flight save did not cover.
+  // Last save's text/title, its submitted metadata (Done convergence) and its
+  // durable metadata (status), #1500.
   const lastSavedTextRef = useRef(null);
   const lastSavedTitleRef = useRef(null);
-  const lastSavedDeloadDateRef = useRef(null);
-  const lastSavedDeloadOrdinalRef = useRef(null);
-  // What the last save made durable for every persisted metadata field (#1500).
+  const lastSubmittedMetadataRef = useRef(null);
   const lastSavedMetadataRef = useRef(null);
 
   // Live-value refs so async save callbacks read current state without stale closures.
@@ -211,8 +208,13 @@ export function useLogOtherRoutineEditor({
   liveSaveInputsRef.current = {
     isDeload: isEditingDeloadNote, note: editingNote, record: editingDeloadRecord,
     dateTouched: deloadEditDateTouched, hasABWeeks: editingHasABWeeks, week: editingEffectiveWeek,
-    canonical: editingCanonicalMetadata, persistable: hasPersistableOther,
+    canonical: editingCanonicalMetadata, persistable: hasPersistableOther, live: editingLiveMetadata,
   };
+  const hasOtherConverged = (isNew) => otherDoneConverged({
+    isNew, liveText: editingFullTextRef.current, liveTitle: editingTitleRef.current,
+    liveMetadata: liveSaveInputsRef.current.live, savedText: lastSavedTextRef.current,
+    savedTitle: lastSavedTitleRef.current, savedMetadata: lastSubmittedMetadataRef.current,
+  });
   const hasUnsavedOtherRef = useRef(hasUnsavedOther);
   hasUnsavedOtherRef.current = hasUnsavedOther;
 
@@ -354,8 +356,7 @@ export function useLogOtherRoutineEditor({
             // and Done convergence must use the payload itself.
             lastSavedTextRef.current = snapshotText;
             lastSavedTitleRef.current = titleToSave;
-            lastSavedDeloadDateRef.current = snapshotDeloadDate;
-            lastSavedDeloadOrdinalRef.current = snapshotDeloadOrdinal;
+            lastSubmittedMetadataRef.current = snapshotMetadata;
             lastSavedMetadataRef.current = persistedOtherMetadata(snapshotMetadata, canonical, dateTouched);
             draftBaseUpdatedAtRef.current = result.updated_at ?? draftBaseUpdatedAtRef.current;
           }
@@ -420,8 +421,7 @@ export function useLogOtherRoutineEditor({
     draftRestoreTokenRef, draftBaseUpdatedAtRef, preserveExistingDraftRef, draftRestorePendingRef,
     editingNoteIdRef, editingSourceRef, editingTitleRef, editingFullTextRef, notesRef,
     autosaveOtherTimerRef, saveOtherNoteInFlightRef, createAttemptTokenRef,
-    deloadEditDateRef, deloadEditOrdinalRef,
-    lastSavedTextRef, lastSavedTitleRef, lastSavedDeloadDateRef, lastSavedDeloadOrdinalRef,
+    hasOtherConverged,
     setEditingNoteId, setEditingSource, setEditingTitle, setEditingFullText, setEditingActiveWeek,
     setDeloadEditDate, setDeloadEditDateTouched, setDeloadEditOrdinal,
     setOriginalNoteState, setSaveError, setSaveSuccess,

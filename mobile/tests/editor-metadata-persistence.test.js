@@ -22,7 +22,7 @@ function deferred() {
 
 // A stateful store: successful writes flow back into `notes`/`deloadHistory`,
 // as useWorkoutNotes/useDeloadHistory do, so canonical comparisons are real.
-function mountEditor({ notes: initialNotes, deloadHistory: initialHistory = [], updateImpl, updateDeloadImpl }) {
+function mountEditor({ notes: initialNotes, deloadHistory: initialHistory = [], updateImpl, updateDeloadImpl, addImpl }) {
   const ref = { current: null };
   const update = jest.fn(async (id, patch) => {
     const ok = updateImpl ? await updateImpl(id, patch) : true;
@@ -44,6 +44,11 @@ function mountEditor({ notes: initialNotes, deloadHistory: initialHistory = [], 
     });
     return true;
   });
+  const add = jest.fn(async (title, raw_text) => {
+    const created = await addImpl(title, raw_text);
+    act(() => { ref.setNotes((ns) => [...ns, created]); });
+    return created;
+  });
   function Probe() {
     const [notes, setNotes] = useState(initialNotes);
     const [deloadHistory, setHistory] = useState(initialHistory);
@@ -57,7 +62,7 @@ function mountEditor({ notes: initialNotes, deloadHistory: initialHistory = [], 
       currentNote: { id: 'current', title: 'C', raw_text: 'x' },
       deloadHistory,
       update,
-      add: jest.fn(),
+      add,
       remove: jest.fn(),
       selectCurrent: jest.fn(),
       updateDeload,
@@ -73,7 +78,7 @@ function mountEditor({ notes: initialNotes, deloadHistory: initialHistory = [], 
   let tree;
   act(() => { tree = renderer.create(React.createElement(Probe)); });
   mounted.push(tree);
-  return { ref, update, updateDeload };
+  return { ref, update, updateDeload, add };
 }
 
 async function flush(times = 4) {
@@ -397,6 +402,62 @@ describe('Done converges on metadata edited after Done is pressed (#1500)', () =
 
     expect(updateDeload).toHaveBeenLastCalledWith('h1', { deload_session_ordinal: 9 });
     expect(ref.history[0].deload_session_ordinal).toBe(9);
+    expect(ref.current.editingNoteId).toBe(null);
+  });
+
+  test('an A/B week toggled while Done awaits a title save is persisted before close', async () => {
+    const gate = deferred();
+    let calls = 0;
+    const note = { id: 'r1', title: 'R', raw_text: AB_RAW, activeWeek: 'A' };
+    const { ref, update } = mountEditor({
+      notes: [note],
+      updateImpl: async () => { calls += 1; if (calls === 1) await gate.promise; return true; },
+    });
+    act(() => { ref.current.handleOpenOtherNote(ref.notes[0]); });
+    act(() => { ref.current.setEditingTitle('R2'); });
+
+    let donePromise;
+    act(() => { donePromise = ref.current.handleDoneOther(); });
+    await flush();
+    expect(update).toHaveBeenLastCalledWith('r1', expect.objectContaining({ title: 'R2', activeWeek: 'A' }));
+    // Toggle before the held update resolves and before any debounce.
+    act(() => { ref.current.handleToggleEditingWeek(); });
+
+    await act(async () => { gate.resolve(); await donePromise; });
+    await flush();
+
+    expect(update).toHaveBeenLastCalledWith('r1', expect.objectContaining({ title: 'R2', activeWeek: 'B' }));
+    expect(ref.notes[0].activeWeek).toBe('B');
+    expect(ref.current.editingNoteId).toBe(null);
+  });
+
+  test('an A/B week toggled while a new routine is being created on Done is persisted before close', async () => {
+    const gate = deferred();
+    const { ref, update, add } = mountEditor({
+      notes: [],
+      addImpl: async (title, raw_text) => {
+        await gate.promise;
+        return { id: 'new1', title, raw_text, activeWeek: null };
+      },
+    });
+    act(() => { ref.current.handleCreateRoutine(); });
+    expect(ref.current.editingNoteId).toBe('new');
+    act(() => { ref.current.setEditingTitle('New AB'); });
+    act(() => { ref.current.setEditingText('MONDAY\n-Squat 3x5\n---\nMONDAY\n-Deadlift 3x5'); });
+    expect(ref.current.editingEffectiveWeek).toBe('A');
+
+    let donePromise;
+    act(() => { donePromise = ref.current.handleDoneOther(); });
+    await flush();
+    expect(add).toHaveBeenCalledTimes(1);
+    act(() => { ref.current.handleToggleEditingWeek(); });
+
+    await act(async () => { gate.resolve(); await donePromise; });
+    await flush();
+
+    expect(add).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenLastCalledWith('new1', expect.objectContaining({ activeWeek: 'B' }));
+    expect(ref.notes.find((n) => n.id === 'new1').activeWeek).toBe('B');
     expect(ref.current.editingNoteId).toBe(null);
   });
 });
