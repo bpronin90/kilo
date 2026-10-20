@@ -511,3 +511,128 @@ describe('LineChart — deload points (#1248)', () => {
     expect(marker.props.y + marker.props.height / 2).toBeGreaterThan(40);
   });
 });
+
+describe('LineChart — selection survives data replacement without remount (#1479)', () => {
+  const pts = (n) =>
+    Array.from({ length: n }, (_, i) => ({ value: 100 + i * 5, label: `D${i}`, unit: 'lb' }));
+
+  function rerender(component, props) {
+    act(() => {
+      component.update(
+        <ThemeProvider>
+          <LineChart {...props} />
+        </ThemeProvider>
+      );
+    });
+  }
+  const plot = (c) => c.root.findByProps({ accessibilityRole: 'adjustable' });
+  const announce = (c) => plot(c).props.accessibilityValue.text;
+  const press = (c, x) => act(() => plot(c).props.onPress({ nativeEvent: { locationX: x } }));
+  const key = (c, k) =>
+    act(() => plot(c).props.onKeyDown({ nativeEvent: { key: k }, preventDefault: jest.fn() }));
+  const texts = (c) => {
+    const out = [];
+    const walk = (n) => {
+      if (n == null) return;
+      if (typeof n === 'string') out.push(n);
+      else (n.children || []).forEach(walk);
+    };
+    walk(c.toJSON());
+    return out;
+  };
+  const selectLast = (c) => {
+    key(c, 'ArrowLeft'); // enters at latest (index 4)
+    expect(announce(c)).toContain('Selected, D4');
+  };
+
+  test('selecting the last of five then shrinking to two falls back to latest everywhere', () => {
+    const onSelect = jest.fn();
+    const c = mountChart({ data: pts(5), onSelect });
+    selectLast(c);
+    const two = pts(2);
+    expect(() => rerender(c, { data: two, onSelect })).not.toThrow();
+    expect(announce(c)).toBe('Latest, D1, 105 lb');
+    expect(plot(c).props.accessibilityActions.map((a) => a.name)).toEqual(['decrement', 'increment']);
+    expect(c.root.findByProps({ testID: 'line-chart-select-hint' }).props.children).toBe('Tap a point to select');
+    expect(onSelect).toHaveBeenLastCalledWith(null);
+    // latest marker is the only enlarged one
+    const radii = c.root.findAll((n) => typeof n.type === 'string' && n.props.r !== undefined).map((n) => n.props.r);
+    expect(radii).toEqual([3, 5]);
+  });
+
+  test('actions after the shrink behave against the new series', () => {
+    const onSelect = jest.fn();
+    const c = mountChart({ data: pts(5), onSelect });
+    selectLast(c);
+    rerender(c, { data: pts(2), onSelect });
+    key(c, 'ArrowRight'); // entering from no selection lands on latest
+    expect(announce(c)).toBe('Selected, D1, 105 lb');
+    key(c, 'ArrowLeft');
+    expect(announce(c)).toBe('Selected, D0, 100 lb');
+    key(c, 'Escape');
+    expect(announce(c)).toBe('Latest, D1, 105 lb');
+    press(c, 10); // pointer still works
+    expect(announce(c)).toContain('Selected, D0');
+  });
+
+  test('hidden-header selection text and header use the fallback point', () => {
+    const c = mountChart({ data: pts(5), onSelect: jest.fn(), hideHeader: true });
+    selectLast(c);
+    rerender(c, { data: pts(2), onSelect: jest.fn(), hideHeader: true });
+    const joined = texts(c).join('|');
+    expect(joined).not.toContain('D4');
+    expect(joined).toContain('D1');
+  });
+
+  test('visible header reads Latest with the new latest value', () => {
+    const c = mountChart({ data: pts(5), onSelect: jest.fn() });
+    selectLast(c);
+    rerender(c, { data: pts(2), onSelect: jest.fn() });
+    const t = texts(c);
+    expect(t).toContain('Latest');
+    expect(t).not.toContain('Selected');
+    expect(t).toContain('105');
+  });
+
+  test('a stale index is not resurrected when the series expands again', () => {
+    const c = mountChart({ data: pts(5), onSelect: jest.fn() });
+    selectLast(c);
+    rerender(c, { data: pts(2), onSelect: jest.fn() });
+    rerender(c, { data: pts(6), onSelect: jest.fn() });
+    expect(announce(c)).toBe('Latest, D5, 125 lb');
+  });
+
+  test('a still-valid selection is preserved when the series grows or is replaced in range', () => {
+    const onSelect = jest.fn();
+    const c = mountChart({ data: pts(5), onSelect });
+    key(c, 'ArrowLeft');
+    key(c, 'ArrowLeft'); // index 3
+    rerender(c, { data: pts(7), onSelect });
+    expect(announce(c)).toContain('Selected, D3');
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ label: 'D3' }));
+  });
+
+  test('empty and single-point replacement clear selection; chart recovers on expansion', () => {
+    for (const small of [[], pts(1), undefined]) {
+      const onSelect = jest.fn();
+      const c = mountChart({ data: pts(5), onSelect });
+      selectLast(c);
+      expect(() => rerender(c, { data: small, onSelect })).not.toThrow();
+      expect(onSelect).toHaveBeenLastCalledWith(null);
+      rerender(c, { data: pts(3), onSelect });
+      expect(announce(c)).toBe('Latest, D2, 110 lb');
+    }
+  });
+
+  test('no state is set during render and the caller is notified once', () => {
+    const err = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const onSelect = jest.fn();
+    const c = mountChart({ data: pts(5), onSelect });
+    selectLast(c);
+    onSelect.mockClear();
+    rerender(c, { data: pts(2), onSelect });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(err).not.toHaveBeenCalled();
+    err.mockRestore();
+  });
+});
