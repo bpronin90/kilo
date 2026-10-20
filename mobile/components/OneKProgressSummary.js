@@ -57,8 +57,8 @@ export function OneKProgressSummary({
           <Text testID={id('total')} style={[styles.oneKValue, totalColor ? { color: totalColor } : null]}>
             {total.toFixed(0)}<Text style={styles.oneKUnit}> {unit}</Text>
           </Text>
-          <View style={styles.oneKProgressBarContainer}>
-            <View style={[styles.oneKProgressBar, { width: `${Math.min(100, (total / target) * 100)}%` }]} />
+          <View testID={id('progress-track')} style={styles.oneKProgressBarContainer}>
+            <View testID={id('progress-fill')} style={[styles.oneKProgressBar, { width: `${Math.min(100, (total / target) * 100)}%` }]} />
           </View>
         </>
       ) : emptyText ? (
@@ -111,7 +111,9 @@ export const createOneKSummaryStyles = (colors, kua = null) => StyleSheet.create
   oneKSummary: {
     alignItems: 'center',
     alignSelf: 'stretch',
-    gap: 8,
+    // #1535: one 4dp rhythm from heading to values; the bar and breakdown add
+    // their own 4dp so total -> bar and bar -> lifts read as 8dp groups.
+    gap: 4,
   },
   // Card identity: a real heading (heading → metric → evidence), sized below
   // the hero value so it never competes with it.
@@ -154,14 +156,13 @@ export const createOneKSummaryStyles = (colors, kua = null) => StyleSheet.create
     fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
-    marginBottom: 4,
   },
   oneKProgressBarContainer: {
     width: '100%',
     height: 8,
     backgroundColor: kua ? kua.surfaceBorder : colors.divider,
     borderRadius: GEOMETRY['radius-sm'],
-    marginVertical: 4,
+    marginTop: 4,
     overflow: 'hidden',
   },
   oneKProgressBar: {
@@ -175,7 +176,7 @@ export const createOneKSummaryStyles = (colors, kua = null) => StyleSheet.create
     flexWrap: 'wrap',
     width: '100%',
     justifyContent: 'space-between',
-    marginTop: 8,
+    marginTop: 4,
   },
   oneKItem: {
     alignItems: 'center',

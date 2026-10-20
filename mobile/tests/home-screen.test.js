@@ -942,6 +942,42 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     }
     await render.act(async () => { local.unmount(); });
   });
+
+  // #1535: tightened shared 1K spacing, one collective bar, unchanged values/deep-link.
+  test('a 1K total keeps one collective bar, tight spacing and the deep-link (#1535)', async () => {
+    const NOTE_1K = { id: 'n1', title: 'A', raw_text: ORDINARY_TEXT, one_k_exercises: ONE_K, saved_at: '2026-06-01T12:00:00.000Z' };
+    useEntriesModule.useTrackedLifts.mockReturnValue({ trackedLifts: TRACKED, loading: false, save: jest.fn(), toggle: jest.fn() });
+    const onNavigate = jest.fn();
+    let local;
+    await render.act(async () => {
+      local = render.create(<HomeScreen {...populatedProps(onNavigate)} workoutNote={NOTE_1K} notes={[NOTE_1K]} currentId="n1" />);
+    });
+    const root = local.root;
+    expect(root.findAll(n => n.type === 'View' && n.props.testID === 'home-one-k-progress-track')).toHaveLength(1);
+    expect(root.findAll(n => n.type === 'View' && n.props.testID === 'home-one-k-progress-fill')).toHaveLength(1);
+    const track0 = root.findAll(n => n.type === 'View' && n.props.testID === 'home-one-k-progress-track')[0];
+    let summary = track0.parent;
+    while (summary && flatStyle(summary).alignSelf !== 'stretch') summary = summary.parent;
+    expect(flatStyle(summary).gap).toBe(4);
+    const track = root.findAll(n => n.type === 'View' && n.props.testID === 'home-one-k-progress-track')[0];
+    expect(flatStyle(track).marginTop).toBe(4);
+    expect(flatStyle(track).marginVertical).toBeUndefined();
+    expect(flatStyle(root.findByProps({ testID: 'home-one-k-big3' })).marginTop).toBe(4);
+    for (const slot of ['squat', 'bench', 'deadlift']) {
+      expect(root.findAllByProps({ testID: `home-one-k-lift-${slot}-value` }).length).toBeGreaterThan(0);
+      expect(root.findAllByProps({ testID: `home-one-k-lift-${slot}-track` })).toHaveLength(0);
+    }
+    expect(flatStyle(root.findByProps({ testID: 'home-one-k-link' })).minHeight).toBe(44);
+    render.act(() => { root.findByProps({ testID: 'home-one-k-link' }).props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Analytics', 'strength');
+    await render.act(async () => { local.unmount(); });
+  });
+
+  test('the empty 1K state keeps the compact setup row with no extra bottom margin (#1535)', () => {
+    const setup = component.root.findAllByProps({ testID: 'home-one-k-setup' })[0];
+    expect(flatStyle(setup).marginBottom).toBeUndefined();
+    expect(component.root.findAll(n => n.props.testID === 'home-one-k-progress-track')).toHaveLength(0);
+  });
 });
 
 // The App-level call site for the same boundary. `importBackup` replaces the

@@ -797,6 +797,31 @@ describe('AnalyticsScreen 1K Progress Card', () => {
     expect(hasText(root, 'Deload sessions')).toBe(true);
     expect(hasText(root, 'Kilo Max')).toBe(false);
   });
+
+  // #1535: tightened shared spacing; exactly one collective bar, no per-lift targets.
+  test('keeps one collective progress bar and tight shared spacing (#1535)', () => {
+    const oneK = { total: 558, squat: 200, bench: 158, deadlift: 200 };
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals: [],
+      nameDisplayMap: new Map(),
+      repDropOffFlags: {},
+    });
+    jest.spyOn(data, 'derive1kTotalFromSectionsList').mockReturnValue(oneK);
+
+    const root = setup().root;
+    const flat = n => [].concat(n.props.style ?? []).reduce((acc, s) => (s ? Object.assign(acc, s) : acc), {});
+    const fills = root.findAll(n => n.type === 'View' && flat(n).height === '100%' && /%$/.test(String(flat(n).width)));
+    expect(fills).toHaveLength(1);
+    expect(parseFloat(flat(fills[0]).width)).toBeCloseTo(55.8, 5);
+    const up = (n, pred) => { let c = n.parent; while (c && !pred(flat(c))) c = c.parent; return c; };
+    const track = up(fills[0], st => st.height === 8 && st.width === '100%');
+    expect(flat(track).marginTop).toBe(4);
+    expect(flat(track).marginVertical).toBeUndefined();
+    expect(flat(up(track, st => st.alignSelf === 'stretch')).gap).toBe(4);
+    expect(hasText(root, '558')).toBe(true);
+    for (const v of ['200', '158']) expect(hasText(root, v)).toBe(true);
+    expect(hasText(root, '%')).toBe(false);
+  });
 });
 
 describe('AnalyticsScreen non-weighted exercise cards — minimal layout', () => {
