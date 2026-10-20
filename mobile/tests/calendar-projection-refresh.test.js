@@ -76,6 +76,23 @@ describe('useLocalCalendarDay (#1484)', () => {
     expect(days[days.length - 1]).toBe('2025-11-03');
   });
 
+  it('a timer armed before a DST transition night still rolls the day correctly', () => {
+    // Armed 23:30 on 2025-03-08 (evening before spring-forward night); the next
+    // midnight is 24.5h away on the wall clock. Ticking through the offset
+    // change must neither fire early nor skip a day.
+    jest.setSystemTime(new Date(2025, 2, 8, 23, 30, 0));
+    render.act(() => { render.create(<Probe />); });
+    expect(days[days.length - 1]).toBe('2025-03-08');
+    render.act(() => { jest.advanceTimersByTime(31 * 60 * 1000); });
+    expect(days[days.length - 1]).toBe('2025-03-09');
+    // Re-armed at 2025-03-09 00:00:05 local; the following midnight spans the
+    // offset change itself (23h day) and lands on 03-10.
+    render.act(() => { jest.advanceTimersByTime(22 * 3600 * 1000); });
+    expect(days[days.length - 1]).toBe('2025-03-09');
+    render.act(() => { jest.advanceTimersByTime(3600 * 1000 + 10 * 1000); });
+    expect(days[days.length - 1]).toBe('2025-03-10');
+  });
+
   it('localDayToDate yields local midnight', () => {
     const d = localDayToDate('2025-03-09');
     expect([d.getFullYear(), d.getMonth(), d.getDate(), d.getHours()]).toEqual([2025, 2, 9, 0]);

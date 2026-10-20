@@ -3096,3 +3096,44 @@ describe('AnalyticsScreen — progression-suggestion cards (#960)', () => {
     render.act(() => component.unmount());
   });
 });
+
+// #1484: mounted midnight / foreground crossing. Stable entries and goal; only
+// the clock moves. Fixture: one 195 lb entry dated 2025-06-10, mounted at
+// 2025-06-16 23:59 local, so the 7-day window still holds it until 06-17.
+const MOUNT_AT = () => new Date(2025, 5, 16, 23, 59, 0);
+function captureAppState() {
+  const { AppState } = require('react-native');
+  const listeners = [];
+  const spy = jest.spyOn(AppState, 'addEventListener').mockImplementation((_t, fn) => {
+    listeners.push(fn);
+    return { remove: jest.fn() };
+  });
+  return { listeners, restore: () => spy.mockRestore() };
+}
+
+describe('AnalyticsScreen — calendar-day projection refresh (#1484)', () => {
+  const E = [{ id: 'w1', date: '2025-06-10', logged_at: '2025-06-10T08:00:00', weight_value: 195, weight_unit: 'lb' }];
+  let app;
+  beforeEach(() => { app = captureAppState(); });
+  afterEach(() => app.restore());
+  const mount = () => {
+    jest.setSystemTime(MOUNT_AT());
+    return setup({ entries: E });
+  };
+
+  test('7-day average becomes unavailable past local midnight without remount', () => {
+    const c = mount();
+    expect(hasText(c.root, '195.0 lb')).toBe(true);
+    expect(hasText(c.root, 'N/A')).toBe(false);
+    render.act(() => { jest.advanceTimersByTime(70 * 1000); });
+    expect(hasText(c.root, 'N/A')).toBe(true);
+  });
+
+  test('foreground after a suspended-timer clock jump refreshes the projection', () => {
+    const c = mount();
+    expect(hasText(c.root, 'N/A')).toBe(false);
+    jest.setSystemTime(new Date(2025, 5, 17, 8, 0, 0));
+    render.act(() => { app.listeners.forEach(fn => fn('active')); });
+    expect(hasText(c.root, 'N/A')).toBe(true);
+  });
+});

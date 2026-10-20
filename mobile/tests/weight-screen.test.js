@@ -2503,3 +2503,52 @@ describe('WeightScreen error banners use KUA tokens when a KUA palette is active
     expect(banners.length).toBeGreaterThan(0);
   });
 });
+
+// #1484: mounted midnight / foreground crossing. Stable entries and goal; only
+// the clock moves. Fixture: one 195 lb entry dated 2025-06-10, mounted at
+// 2025-06-16 23:59 local, so the 7-day window still holds it until 06-17.
+const MOUNT_AT = () => new Date(2025, 5, 16, 23, 59, 0);
+function captureAppState() {
+  const { AppState } = require('react-native');
+  const listeners = [];
+  const spy = jest.spyOn(AppState, 'addEventListener').mockImplementation((_t, fn) => {
+    listeners.push(fn);
+    return { remove: jest.fn() };
+  });
+  return { listeners, restore: () => spy.mockRestore() };
+}
+
+describe('WeightScreen — calendar-day projection refresh (#1484)', () => {
+  const E = [{ id: 'w1', date: '2025-06-10', logged_at: '2025-06-10T08:00:00', weight_value: 195, weight_unit: 'lb' }];
+  const GOAL = { target_weight: 180, start_weight: 200, target_date: '2025-07-31' };
+  let app;
+  beforeEach(() => {
+    app = captureAppState();
+    useEntries.useWeightEntries.mockReturnValue({ entries: E, remove: jest.fn(), update: jest.fn() });
+    useEntries.useWeightGoal.mockReturnValue({ goal: GOAL, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+  });
+  afterEach(() => app.restore());
+  const count = (root, t) => root.findAll(n => n.type === 'Text' && [].concat(n.props.children).join('') === t).length;
+  const mount = () => {
+    jest.setSystemTime(MOUNT_AT());
+    let c;
+    render.act(() => { c = render.create(<ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />); });
+    return c;
+  };
+
+  test('7-day average drops out past local midnight without remount', () => {
+    const c = mount();
+    const before = count(c.root, '195.0 lb');
+    expect(before).toBeGreaterThan(0);
+    render.act(() => { jest.advanceTimersByTime(70 * 1000); });
+    expect(count(c.root, '195.0 lb')).toBeLessThan(before);
+  });
+
+  test('foreground after a suspended-timer clock jump refreshes the projection', () => {
+    const c = mount();
+    const before = count(c.root, '195.0 lb');
+    jest.setSystemTime(new Date(2025, 5, 17, 8, 0, 0));
+    render.act(() => { app.listeners.forEach(fn => fn('active')); });
+    expect(count(c.root, '195.0 lb')).toBeLessThan(before);
+  });
+});
