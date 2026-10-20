@@ -461,3 +461,66 @@ describe('Done converges on metadata edited after Done is pressed (#1500)', () =
     expect(ref.current.editingNoteId).toBe(null);
   });
 });
+
+describe('linked deload history date is tracked separately from the note date (#1500)', () => {
+  async function partialFailureThenRestore() {
+    let failNote = true;
+    const env = mountEditor({
+      notes: [deloadNote()],
+      deloadHistory: [linkedRecord()],
+      updateImpl: async () => !failNote,
+    });
+    const { ref } = env;
+    act(() => { ref.current.handleOpenOtherNote(ref.notes[0]); });
+    act(() => { ref.current.setDeloadEditDate('2026-01-07'); });
+    await act(async () => { await ref.current.handleSaveOtherNote(); });
+    // History write succeeded, note write rejected.
+    expect(ref.history[0].completed_at).toBe('2026-01-07T12:00:00.000Z');
+    expect(ref.notes[0].saved_at).toBe('2026-01-01T12:00:00.000Z');
+    failNote = false;
+    act(() => { ref.current.setDeloadEditDate('2026-01-01'); });
+    return env;
+  }
+
+  test('restoring the note date after a history-only write stays unsaved and autosave repairs the history', async () => {
+    const { ref, updateDeload, update } = await partialFailureThenRestore();
+    expect(ref.current.hasUnsavedOther).toBe(true);
+    expect(ref.current.saveStatus).toBe(null);
+
+    await fireAutosave();
+
+    expect(updateDeload).toHaveBeenLastCalledWith('h1', { completed_at: '2026-01-01T12:00:00.000Z' });
+    expect(ref.history[0].completed_at).toBe('2026-01-01T12:00:00.000Z');
+    expect(update).toHaveBeenLastCalledWith('d1', expect.not.objectContaining({ saved_at: expect.anything() }));
+    expect(ref.current.hasUnsavedOther).toBe(false);
+  });
+
+  test('an explicit retry after restoring the date writes the history back before claiming saved', async () => {
+    const { ref, updateDeload } = await partialFailureThenRestore();
+    await act(async () => { await ref.current.handleSaveOtherNote(); });
+    expect(updateDeload).toHaveBeenLastCalledWith('h1', { completed_at: '2026-01-01T12:00:00.000Z' });
+    expect(ref.history[0].completed_at).toBe('2026-01-01T12:00:00.000Z');
+    expect(ref.current.saveStatus).toBe('saved');
+  });
+
+  test('Done after restoring the date repairs the history before closing', async () => {
+    const { ref } = await partialFailureThenRestore();
+    await act(async () => { await ref.current.handleDoneOther(); });
+    await flush();
+    expect(ref.history[0].completed_at).toBe('2026-01-01T12:00:00.000Z');
+    expect(ref.current.editingNoteId).toBe(null);
+  });
+
+  test('a history date that already differed from the note date is never written by opening or a touch-and-restore', async () => {
+    const record = { ...linkedRecord(), completed_at: '2026-01-03T18:00:00.000Z' };
+    const { ref, update, updateDeload } = mountEditor({ notes: [deloadNote()], deloadHistory: [record] });
+    act(() => { ref.current.handleOpenOtherNote(ref.notes[0]); });
+    expect(ref.current.hasUnsavedOther).toBe(false);
+    act(() => { ref.current.setDeloadEditDate('2026-01-05'); });
+    act(() => { ref.current.setDeloadEditDate('2026-01-01'); });
+    expect(ref.current.hasUnsavedOther).toBe(false);
+    await fireAutosave();
+    expect(update).not.toHaveBeenCalled();
+    expect(updateDeload).not.toHaveBeenCalled();
+  });
+});

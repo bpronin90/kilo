@@ -22,7 +22,7 @@ import {
 } from './useLogEditorSave';
 import { useNoteViewer, toggleViewingWeek } from './otherRoutineViewers';
 import {
-  useOtherEditingProjection, otherMetadata, canonicalOtherMetadata,
+  useOtherEditingProjection, liveOtherMetadata, canonicalOtherMetadata, useOpenDeloadDates,
   hasPersistableMetadataChange, persistedOtherMetadata, runOtherAutosave, otherDoneConverged,
 } from './otherRoutineEditing';
 import { useOtherEditorLifecycle } from './otherRoutineLifecycle';
@@ -188,13 +188,15 @@ export function useLogOtherRoutineEditor({
   });
 
   // #1500: every field the save persists, live vs canonical (see otherMetadata).
-  const editingLiveMetadata = useMemo(() => otherMetadata({
-    hasABWeeks: editingHasABWeeks, week: editingEffectiveWeek, linked: editingDeloadHasLinkedRecord,
-    date: deloadEditDate, ordinal: deloadEditOrdinal,
-  }), [editingHasABWeeks, editingEffectiveWeek, editingDeloadHasLinkedRecord, deloadEditDate, deloadEditOrdinal]);
   const editingCanonicalMetadata = useMemo(() => canonicalOtherMetadata({
     note: editingNote, hasABWeeks: editingHasABWeeks, record: editingDeloadRecord,
   }), [editingNote, editingHasABWeeks, editingDeloadRecord]);
+  const openDeloadDates = useOpenDeloadDates(editingNoteId, editingNote, editingDeloadRecord);
+  const editingLiveMetadata = liveOtherMetadata({
+    hasABWeeks: editingHasABWeeks, week: editingEffectiveWeek, record: editingDeloadRecord,
+    date: deloadEditDate, dateTouched: deloadEditDateTouched, ordinal: deloadEditOrdinal,
+    open: openDeloadDates, canonical: editingCanonicalMetadata,
+  });
   const otherTextChanged = !!editingNote
     && (editingTitle !== (editingNote.title || '') || editingFullText !== editingNote.raw_text);
   const hasUnsavedOther = !editingNoteId ? false
@@ -243,16 +245,15 @@ export function useLogOtherRoutineEditor({
 
     // Live refs, not closure state (#1474, #1500): Done's retries must see the
     // created id, newer edits, and newer metadata.
-    const { isDeload, note, record, dateTouched, hasABWeeks, week, canonical } = liveSaveInputsRef.current;
+    const {
+      isDeload, note, record, dateTouched, hasABWeeks, week, canonical, live: snapshotMetadata,
+    } = liveSaveInputsRef.current;
     const savedNoteId = editingNoteIdRef.current;
     const savedSource = editingSourceRef.current;
     const snapshotText = editingFullTextRef.current;
     const snapshotTitle = editingTitleRef.current;
     const snapshotDeloadDate = deloadEditDateRef.current;
     const snapshotDeloadOrdinal = deloadEditOrdinalRef.current;
-    const snapshotMetadata = otherMetadata({
-      hasABWeeks, week, linked: !!record, date: snapshotDeloadDate, ordinal: snapshotDeloadOrdinal,
-    });
 
     const run = async () => {
       savingOtherSnapshotRef.current = {
@@ -313,17 +314,16 @@ export function useLogOtherRoutineEditor({
           if (isDeload) {
             const histRecord = record;
             const deloadPatch = {};
-            if (dateTouched && snapshotDeloadDate) {
-              const newDate = snapshotDeloadDate;
-              const savedDate = note?.saved_at?.slice(0, 10) ?? '';
-              // The correctness property is a VALUE change, not mere interaction:
-              // deloadEditDateTouched only gates entry, so opening the picker and
-              // restoring the original date before saving must still leave
-              // saved_at untouched (#764) — deliberately no `else` branch.
-              if (newDate !== savedDate && histRecord) {
-                deloadPatch.completed_at = `${newDate}T12:00:00.000Z`;
-                patch.saved_at = `${newDate}T12:00:00.000Z`;
-              }
+            // History and note dates are separate writes (#1500): each is written
+            // only on a VALUE change, so restoring the opened date leaves both
+            // untouched (#764) yet repairs a history-only write.
+            const historyDate = snapshotMetadata.deloadHistoryDate;
+            if (histRecord && historyDate && historyDate !== canonical?.deloadHistoryDate) {
+              deloadPatch.completed_at = `${historyDate}T12:00:00.000Z`;
+            }
+            if (histRecord && dateTouched && snapshotDeloadDate
+              && snapshotDeloadDate !== (note?.saved_at?.slice(0, 10) ?? '')) {
+              patch.saved_at = `${snapshotDeloadDate}T12:00:00.000Z`;
             }
             if (histRecord) {
               const newOrdinal = parseInt(snapshotDeloadOrdinal, 10);

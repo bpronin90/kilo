@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { parseWorkoutNote } from '../../lib/parser';
 import { deriveSessionAlignmentIssue } from '../../lib/parser/sessions.js';
 import { sliceWeekText, spliceWeekText, isValidActiveWeek } from './editorWeekText';
@@ -80,14 +80,43 @@ export function useOtherEditingProjection({
 
 // #1500 field matrix: besides title/raw_text, handleSaveOtherNote persists the
 // A/B activeWeek (A/B notes only) and, for a deload note with a linked history
-// record, its date and session ordinal. Values are held as the editor holds
-// them; a field the save never writes for this note is null.
-export function otherMetadata({ hasABWeeks, week, linked, date, ordinal }) {
+// record, the note date (saved_at), the history date (completed_at, a separate
+// write that can succeed while the note write fails), and the history session
+// ordinal. A field the save never writes for this note is null.
+export function otherMetadata({ hasABWeeks, week, linked, date, historyDate, ordinal }) {
   return {
     activeWeek: hasABWeeks ? week : null,
     deloadDate: linked ? date : null,
+    deloadHistoryDate: linked ? historyDate : null,
     deloadOrdinal: linked ? ordinal : null,
   };
+}
+
+// The note and history dates as the linked deload note was opened, captured
+// once per editing session (the history record may arrive a render later).
+export function useOpenDeloadDates(noteId, note, record) {
+  const ref = useRef({ noteId: null });
+  if (ref.current.noteId !== noteId) ref.current = { noteId, noteDate: undefined, historyDate: undefined };
+  if (ref.current.noteDate === undefined && note) ref.current.noteDate = note.saved_at?.slice(0, 10) ?? '';
+  if (ref.current.historyDate === undefined && record) {
+    ref.current.historyDate = record.completed_at?.slice(0, 10) ?? '';
+  }
+  return ref.current;
+}
+
+// The history date the live editor intends. Untouched (or cleared): whatever
+// is stored, so opening never writes. Touched: the picked date, except that
+// restoring the opened note date means "as opened" — the opened history date —
+// which also repairs a history write left behind by a failed note write.
+export function liveOtherMetadata({
+  hasABWeeks, week, record, date, dateTouched, ordinal, open, canonical,
+}) {
+  const storedHistoryDate = canonical?.deloadHistoryDate ?? null;
+  let historyDate = storedHistoryDate;
+  if (dateTouched && date) {
+    historyDate = date === open?.noteDate && open?.historyDate !== undefined ? open.historyDate : date;
+  }
+  return otherMetadata({ hasABWeeks, week, linked: !!record, date, historyDate, ordinal });
 }
 
 // The canonical note/history record in the same shape. A missing or invalid
@@ -99,6 +128,7 @@ export function canonicalOtherMetadata({ note, hasABWeeks, record }) {
     week: isValidActiveWeek(note.activeWeek) ? note.activeWeek : 'A',
     linked: !!record,
     date: note.saved_at?.slice(0, 10) ?? '',
+    historyDate: record?.completed_at?.slice(0, 10) ?? '',
     ordinal: record?.deload_session_ordinal != null ? String(record.deload_session_ordinal) : '',
   });
 }
@@ -112,17 +142,20 @@ export function hasPersistableMetadataChange(live, canonical) {
   if (!live || !canonical) return false;
   if (live.activeWeek !== canonical.activeWeek) return true;
   if (live.deloadDate && live.deloadDate !== canonical.deloadDate) return true;
+  if (live.deloadHistoryDate && live.deloadHistoryDate !== canonical.deloadHistoryDate) return true;
   return parsesOrdinal(live.deloadOrdinal)
     && String(parseInt(live.deloadOrdinal, 10)) !== canonical.deloadOrdinal;
 }
 
-// What a successful save made durable: the submitted metadata, except a date
-// the save did not write (never touched, or cleared) or an unparseable ordinal,
-// which stay at their canonical value so status never claims them saved.
+// What a successful save made durable: the submitted metadata, except a note
+// date the save did not write (never touched, or cleared) or an unparseable
+// ordinal, which stay at their canonical value so status never claims them
+// saved. The submitted history date is written whenever it differs.
 export function persistedOtherMetadata(submitted, canonical, dateTouched) {
   return {
     activeWeek: submitted.activeWeek,
     deloadDate: dateTouched && submitted.deloadDate ? submitted.deloadDate : (canonical?.deloadDate ?? null),
+    deloadHistoryDate: submitted.deloadHistoryDate,
     deloadOrdinal: parsesOrdinal(submitted.deloadOrdinal)
       ? submitted.deloadOrdinal
       : (canonical?.deloadOrdinal ?? null),

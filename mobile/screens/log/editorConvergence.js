@@ -84,14 +84,15 @@ export function snapshotMatches(snapshot, title, rawText) {
   return !!snapshot && snapshot.title === title && snapshot.raw_text === rawText;
 }
 
-// #1500: the other-routine editor's persisted metadata (activeWeek and linked
-// deload date/ordinal; see otherMetadata in ./otherRoutineEditing) is part of
-// the saved-snapshot identity, so a metadata-only edit invalidates `Saved`.
+// #1500: the other-routine editor's persisted metadata (activeWeek, linked
+// deload note date, history date and ordinal; see otherMetadata in
+// ./otherRoutineEditing) is part of the saved-snapshot identity, so a
+// metadata-only edit invalidates `Saved`. Every key is compared, so a field
+// added to otherMetadata can never be left out of the identity.
 export function metadataMatches(a, b) {
-  return !!a && !!b
-    && a.activeWeek === b.activeWeek
-    && a.deloadDate === b.deloadDate
-    && a.deloadOrdinal === b.deloadOrdinal;
+  if (!a || !b) return false;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  return [...keys].every((key) => a[key] === b[key]);
 }
 
 // #880 revised body, BLOCKER 1: `Saved on device` is a claim about the exact
