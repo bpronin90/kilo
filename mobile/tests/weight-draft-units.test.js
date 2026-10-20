@@ -4,7 +4,7 @@ import { WeightScreen } from '../screens/WeightScreen';
 import * as useEntries from '../hooks/useEntries';
 import * as weightHooks from '../hooks/entries/weightHooks';
 import { setWeightUnitPreference } from '../lib/unitPreference';
-import { convertWeightDraft } from '../lib/parser/weightEntry';
+import { convertWeightDraft, parseStrictWeightText } from '../lib/parser/weightEntry';
 import { parseWeightEntry } from '../lib/parser';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -87,6 +87,12 @@ describe('convertWeightDraft', () => {
   });
   test('typed text without provenance parses in its entry unit', () => {
     expect(convertWeightDraft('81.6', 'kg', 'lb', { text: '99', unit: 'kg', lb: 1 }).text).toBe('179.9');
+  });
+  test('strict parser rejects prefix-only numerics', () => {
+    for (const t of ['165..', '12a', '1.2.3', '1e3', '-5', '', '  ', '0', '.']) expect(parseStrictWeightText(t)).toBeNull();
+    expect(parseStrictWeightText(' 165. ')).toBe(165);
+    expect(parseStrictWeightText('.5')).toBe(0.5);
+    expect(parseWeightEntry('165..', 'kg').ok).toBe(false);
   });
   test('invalid, empty and zero drafts are not converted', () => {
     for (const t of ['', 'abc', '0', '1e3', '-5']) expect(convertWeightDraft(t, 'lb', 'kg', null)).toBeNull();
@@ -204,6 +210,17 @@ describe('weigh-in drafts across unit changes', () => {
     expect(update.mock.calls[0][1]).toBe(179.9);
   });
 
+  test('invalid weigh-in edit draft survives a unit switch and is rejected at save', async () => {
+    const c = mount();
+    startEdit(c);
+    type(inputs(c)[0], '165..');
+    setUnit('kg');
+    expect(latestWeightValue).toBe('165..');
+    await render.act(async () => { press(c, 'Update entry'); });
+    expect(update).not.toHaveBeenCalled();
+    expect(c.root.findAllByType('Text').some((n) => /number only/.test(String(n.props.children)))).toBe(true);
+  });
+
   test('rejected edit save keeps the converted dirty draft for retry', async () => {
     const c = mount();
     startEdit(c);
@@ -280,6 +297,39 @@ describe('goal drafts across unit changes', () => {
     type(goalInputs(c)[1], '77.2');
     await render.act(async () => { press(c, 'Save goal'); });
     expect(save.mock.calls[1][0].target_weight).toBe(170.2);
+  });
+
+  const hasText = (c, t) => c.root.findAllByType('Text').some((n) => String(n.props.children) === t);
+
+  test('invalid goal target survives a unit switch and is rejected at save (no prefix write)', async () => {
+    const c = mount({ goal: GOAL, entries: [] });
+    press(c, 'Edit');
+    type(goalInputs(c)[1], '165..');
+    setUnit('kg');
+    expect(goalInputs(c)[1].props.value).toBe('165..');
+    await render.act(async () => { press(c, 'Save goal'); });
+    expect(save).not.toHaveBeenCalled();
+    expect(hasText(c, 'Enter a valid target weight.')).toBe(true);
+  });
+
+  test('invalid manual start weight is rejected at save after a unit switch', async () => {
+    const c = mount({ goal: null, entries: [] });
+    const [start, target] = goalInputs(c);
+    type(start, '12a');
+    type(target, '180');
+    setUnit('kg');
+    expect(goalInputs(c)[0].props.value).toBe('12a');
+    await render.act(async () => { press(c, 'Save goal'); });
+    expect(save).not.toHaveBeenCalled();
+    expect(hasText(c, 'Enter your current weight.')).toBe(true);
+  });
+
+  test('currently valid goal inputs ("165.", ".5") are still accepted', async () => {
+    const c = mount({ goal: GOAL, entries: [] });
+    press(c, 'Edit');
+    type(goalInputs(c)[1], '165.');
+    await render.act(async () => { press(c, 'Save goal'); });
+    expect(save.mock.calls[0][0].target_weight).toBe(165);
   });
 
   test('cancel then re-edit under the new unit starts clean from the stored goal', () => {

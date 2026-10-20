@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Alert } from '../lib/platformAlert';
-import { convertWeightDraft, retainedDraftLb } from '../lib/parser/weightEntry';
+import { convertWeightDraft, retainedDraftLb, parseStrictWeightText } from '../lib/parser/weightEntry';
 
 // One month out, local calendar day (not UTC) so the pre-filled date never
 // lands a day off near midnight.
@@ -85,12 +85,12 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
 
   const handleSaveGoal = async (currentWeight) => {
     setGoalError('');
-    const tw = parseFloat(goalTargetWeight);
+    const tw = parseStrictWeightText(goalTargetWeight) ?? NaN;
     if (isNaN(tw) || tw <= 0) {
       setGoalError('Enter a valid target weight.');
       return;
     }
-    const startW = currentWeight ?? parseFloat(goalStartWeight);
+    const startW = currentWeight ?? (parseStrictWeightText(goalStartWeight) ?? NaN);
     if (!currentWeight && (isNaN(startW) || startW <= 0)) {
       setGoalError('Enter your current weight.');
       return;

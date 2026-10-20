@@ -21,6 +21,21 @@ export function parseWeightEntry(raw, unit = getWeightUnit()) {
   return { ok: true, raw, weight_value: inputWeightToLb(value, unit), weight_unit: 'lb', logged_at: new Date().toISOString() };
 }
 
+// Strict numeric parse shared by draft conversion and goal-form save (#1476):
+// optional surrounding whitespace, digits with at most one decimal point
+// ("165", "165.", "165.5", ".5"). Anything parseFloat would only partly read
+// ("165..", "12a", "1e3", "-5") yields null, so a draft that cannot be converted
+// can never be saved from its numeric prefix. Returns a positive number or null.
+// (parseWeightEntry's weigh-in grammar is a stricter subset: no trailing dot or
+// leading-dot forms, so everything accepted there is accepted here.)
+export function parseStrictWeightText(text) {
+  if (typeof text !== 'string') return null;
+  const trimmed = text.trim();
+  if (!/^(\d+\.?\d*|\.\d+)$/.test(trimmed)) return null;
+  const value = parseFloat(trimmed);
+  return value > 0 ? value : null;
+}
+
 // Re-express a dirty weight draft when the display unit changes (#1476).
 // `text` was typed in `fromUnit`; the result is the same physical weight in
 // `toUnit`. `known` ({ text, unit, lb }) is the draft's retained provenance: while
@@ -29,11 +44,9 @@ export function parseWeightEntry(raw, unit = getWeightUnit()) {
 // kg rounding. Returns null when the text is not a convertible number (empty,
 // non-numeric, zero); the caller then leaves the text untouched.
 export function convertWeightDraft(text, fromUnit, toUnit, known) {
-  if (fromUnit === toUnit || typeof text !== 'string') return null;
-  const trimmed = text.trim();
-  if (!/^\d+(\.\d*)?$/.test(trimmed)) return null;
-  const value = parseFloat(trimmed);
-  if (!(value > 0)) return null;
+  if (fromUnit === toUnit) return null;
+  const value = parseStrictWeightText(text);
+  if (value == null) return null;
   const lb = known && known.text === text && known.unit === fromUnit
     ? known.lb
     : inputWeightToLb(value, fromUnit);
