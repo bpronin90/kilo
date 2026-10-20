@@ -46,7 +46,8 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
   const { colors, kuaPalette: kua, preference: appearance, setPreference: setAppearance } = useTheme();
   const typography = useKuaTypography();
   const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
-  const { fatigueTrackingEnabled, deloadModeEnabled, setFatigueTrackingEnabled, setDeloadModeEnabled } = useFeatureToggles();
+  const { fatigueTrackingEnabled, deloadModeEnabled, setFatigueTrackingEnabled, setDeloadModeEnabled, saveFailures, retryToggleSave } = useFeatureToggles();
+  const toggleFailures = saveFailures || {};
 
   // Progression suggestions (#960). The persisted global flag from #958 is the
   // authority and defaults off. It is read through the settings store's
@@ -161,6 +162,12 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
             accessibilityRole="switch"
           />
         </View>
+        {toggleFailures.fatigueTrackingEnabled && (
+          <ErrorBanner
+            message={`Couldn't save Fatigue tracking. It is still ${fatigueTrackingEnabled ? 'on' : 'off'} and will stay that way until this saves.`}
+            onRetry={() => retryToggleSave('fatigueTrackingEnabled')}
+          />
+        )}
         <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Deload mode</Text>
@@ -174,6 +181,12 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
             accessibilityRole="switch"
           />
         </View>
+        {toggleFailures.deloadModeEnabled && (
+          <ErrorBanner
+            message={`Couldn't save Deload mode. It is still ${deloadModeEnabled ? 'on' : 'off'} and will stay that way until this saves.`}
+            onRetry={() => retryToggleSave('deloadModeEnabled')}
+          />
+        )}
         <View style={[styles.settingRow, { marginBottom: 0 }]}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Progression suggestions</Text>
