@@ -148,7 +148,7 @@ function ShellView({ onDeviceDataWiped }) {
     weightValue, setWeightValue, weightNote, setWeightNote, workoutNoteText,
     setWorkoutNoteText, workoutNoteTitle, setWorkoutNoteTitle, isWorkoutCollapsed,
     toggleWorkoutCollapsed, fatigueMultiplier, saveError, saveSuccess, weightSaving,
-    homeLoadError, saveWeight, saveWorkout, handleTabPress, handleExport,
+    homeLoadError, saveWeight, handleTabPress, handleExport,
     handleUpdateFatigueMultiplier, handleRetryHomeData, ownershipPrompt, canRestore,
     confirmOwnershipUpload, downloadAccountData, startFreshOnDevice, dismissOwnershipPrompt,
     analyticsTarget, analyticsTargetKey, logNoteTarget, logNoteTargetKey, logRecoveryTarget,
@@ -267,7 +267,6 @@ function ShellView({ onDeviceDataWiped }) {
             setWorkoutNoteTitle={setWorkoutNoteTitle}
             isCollapsed={isWorkoutCollapsed}
             toggleCollapsed={toggleWorkoutCollapsed}
-            onSaveWorkout={saveWorkout}
             isActive={activeTab === 'Log'}
             registerBackConsumer={registerBackConsumer}
             // Flattened to primitives, not the target object (#718): a fresh
