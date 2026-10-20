@@ -181,4 +181,65 @@ describe('ReminderSettingsCard edit during the initial reconcile (#1486)', () =>
     expect(mockNotifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('w1');
     await act(async () => { tree.unmount(); });
   });
+
+  // Stateful native mock + real scheduler: while the initial reconcile is held
+  // at its first native call, run a user edit, release, and assert the final
+  // native state equals the durable config (no late schedule outliving a cancel).
+  describe.each([
+    ['time edit', ENABLED_INFERRED_WORKOUT, 'time', [{ weekday: 2, hour: 18, minute: 30 }]],
+    ['disable', ENABLED_INFERRED_WORKOUT, 'off', []],
+    ['enable', { ...ENABLED_INFERRED_WORKOUT, enabled: false }, 'on', [{ weekday: 2, hour: 17, minute: 0 }]],
+  ])('interleaving: %s while the initial reconcile is pending', (_name, initial, action, expected) => {
+    test('final native state matches the durable config', async () => {
+      const { ReminderSettingsCard } = require('../components/ReminderSettingsCard');
+      let stored = initial;
+      Storage.loadWorkoutReminder.mockImplementation(async () => stored);
+      Storage.saveWorkoutReminder.mockImplementation(async (value) => { stored = value; });
+      const native = [];
+      let counter = 0;
+      let release;
+      const gate = new Promise((resolve) => { release = resolve; });
+      let firstList = true;
+      mockNotifications.getAllScheduledNotificationsAsync.mockImplementation(async () => {
+        if (firstList) {
+          firstList = false;
+          await gate;
+        }
+        return native.map((n) => ({ ...n }));
+      });
+      mockNotifications.scheduleNotificationAsync.mockImplementation(async ({ content, trigger }) => {
+        counter += 1;
+        native.push({ identifier: `n${counter}`, content, trigger });
+        return `n${counter}`;
+      });
+      mockNotifications.cancelScheduledNotificationAsync.mockImplementation(async (id) => {
+        const i = native.findIndex((n) => n.identifier === id);
+        if (i !== -1) native.splice(i, 1);
+      });
+      let tree;
+      await act(async () => { tree = renderer.create(React.createElement(ReminderSettingsCard)); });
+      await act(async () => { await flushMicrotasks(); });
+      const byLabel = (label) => tree.root.findByProps({ accessibilityLabel: label });
+      await act(async () => {
+        if (action === 'time') {
+          byLabel('Workout nudge time').props.onPress();
+        } else {
+          byLabel('Workout day nudge').props.onValueChange(action === 'on');
+        }
+        await flushMicrotasks();
+      });
+      if (action === 'time') {
+        await act(async () => {
+          tree.root.findByProps({ testID: 'mock-datetimepicker' }).props.onChange({ type: 'set' }, new Date(2026, 0, 1, 18, 30));
+          await flushMicrotasks();
+        });
+      }
+      await act(async () => {
+        release();
+        for (let i = 0; i < 4; i += 1) await flushMicrotasks();
+      });
+      expect(native.map((n) => n.trigger).map(({ weekday, hour, minute }) => ({ weekday, hour, minute }))).toEqual(expected);
+      await act(async () => { tree.unmount(); });
+    });
+  });
 });

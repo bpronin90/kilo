@@ -67,7 +67,20 @@ const WORKOUT_DAYS_REQUIRED_MESSAGE = 'Pick at least one workout day before enab
 // `scheduleError` is the unresolved scheduling failure (if any) of the DURABLE
 // config, so it survives a newer request that never became durable.
 function createChannel(initial) {
-  return { latest: initial, durable: initial, rev: 0, chain: Promise.resolve(), scheduleError: null, hydrated: false };
+  return { latest: initial, durable: initial, rev: 0, chain: Promise.resolve(), scheduleError: null, hydrated: false, nativeChain: Promise.resolve() };
+}
+
+// One ordering mechanism for every native schedule operation a channel issues
+// (initial reconcile, display-refresh reconcile, explicit applies, revert-off,
+// durable retries): each runs after its predecessor settles, so the last
+// native operation always reflects the latest saved config and a late
+// schedule from an earlier operation can never outlive a later cancel. A
+// predecessor's failure does not block the queue; each caller still gets its
+// own operation's outcome.
+function runNative(ch, fn) {
+  const run = ch.nativeChain.catch(() => {}).then(fn);
+  ch.nativeChain = run;
+  return run;
 }
 
 export function ReminderSettingsCard() {
@@ -124,7 +137,7 @@ export function ReminderSettingsCard() {
     Storage.loadWorkoutReminder().then((value) => {
       if (!cancelled) install(workoutChannel.current, value, setWorkout);
       else return null;
-      return reconcileWorkoutReminder().then((reconciled) => {
+      return runNative(workoutChannel.current, () => reconcileWorkoutReminder()).then((reconciled) => {
         if (cancelled) return;
         inferredRef.current = reconciled.inferredWeekdays;
         inferredKnownRef.current = true;
@@ -149,7 +162,7 @@ export function ReminderSettingsCard() {
   // what the card shows.
   useEffect(() => {
     const onNoteChange = () => {
-      reconcileWorkoutReminder()
+      runNative(workoutChannel.current, () => reconcileWorkoutReminder())
         .then((reconciled) => {
           inferredRef.current = reconciled.inferredWeekdays;
           inferredKnownRef.current = true;
@@ -206,7 +219,7 @@ export function ReminderSettingsCard() {
     };
     const applyDurable = async (value) => {
       try {
-        await apply(value);
+        await runNative(ch, () => apply(value));
         ch.scheduleError = null;
         return true;
       } catch (e) {
@@ -301,7 +314,7 @@ export function ReminderSettingsCard() {
     if (enabled && !inferredKnownRef.current) {
       // Try to learn the routine's days before judging "no days".
       try {
-        const reconciled = await reconcileWorkoutReminder();
+        const reconciled = await runNative(workoutChannel.current, () => reconcileWorkoutReminder());
         inferredRef.current = reconciled.inferredWeekdays;
         inferredKnownRef.current = true;
         setInferredWeekdays(reconciled.inferredWeekdays);
