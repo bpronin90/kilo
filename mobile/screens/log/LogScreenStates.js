@@ -7,7 +7,7 @@ import { createStyles } from './logScreenStyles';
 import { countWorkoutSessionsFromSections, parseWorkoutNote, normalizeExerciseKey } from '../../lib/parser';
 import { deriveFirstUseState, pickAdoptableRoutine, FIRST_USE_S1 } from '../../lib/guidedEntry';
 import { normalizeLiftName, listTrackedLifts, deriveWorkoutNoteAnalytics } from '../../lib/data';
-import { deriveProgressionAnchorSource } from '../../lib/data/exerciseProgress';
+import { projectWorkoutHistoryPopulation } from '../../lib/data/workoutHistoryPopulation';
 import { setProgressionSuggestionMuted } from '../../storage/entries/settings';
 import { isRenderableProgressionSuggestion, progressionSuggestionInstanceId } from '../../components/ProgressionSuggestionCard';
 import { DELOAD_NOTE_PREFIX } from '../../lib/LogScreenHelpers';
@@ -242,19 +242,18 @@ export function useLogScreenController(params) {
     // exact and independent of which routine is current, so an excluded note is
     // dropped even when it is the current one (then there is simply no history
     // to suggest from — the same outcome Analytics reaches).
-    const noteSectionsList = notes.map(n => {
-      const text = n.id === currentId ? workoutNoteText : n.raw_text;
-      if (!text) return [];
-      try {
-        return parseWorkoutNote(text).sections;
-      } catch {
-        return [];
-      }
+    const { anchorSource, progressionSections: allSections } = projectWorkoutHistoryPopulation(notes, {
+      sectionsOf: (n) => {
+        const text = n.id === currentId ? workoutNoteText : n.raw_text;
+        if (!text) return [];
+        try {
+          return parseWorkoutNote(text).sections;
+        } catch {
+          return [];
+        }
+      },
+      isExcluded: (n) => !!progressionRecoveryFilter.isNoteExcluded?.(n.id),
     });
-    const anchorSource = deriveProgressionAnchorSource(
-      notes, noteSectionsList, notes.filter(n => !progressionRecoveryFilter.isNoteExcluded?.(n.id)),
-    );
-    const allSections = noteSectionsList.filter((_, i) => anchorSource.included[i]).flat();
     try {
       const { progressionSuggestions, nameDisplayMap } = deriveWorkoutNoteAnalytics(
         allSections,

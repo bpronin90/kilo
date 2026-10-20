@@ -9,7 +9,7 @@ import {
   deriveSessionCheckIn,
 } from '../../lib/data';
 import { loadRecoveryExcludedNoteIds } from '../../hooks/entries/recoveryBlockHooks';
-import { filterNotesForNormalAnalytics } from '../../lib/data/recoveryAnalyticsFilter';
+import { projectWorkoutHistoryPopulation, classifyWorkoutHistoryMembers, isExcludedByNoteIds } from '../../lib/data/workoutHistoryPopulation';
 import { deriveTrackedPROccurrences } from '../../lib/data/workoutAnalytics';
 import { detectPRMoment } from '../../lib/prMoment';
 import { loadDeloadHistory } from '../../storage/entries';
@@ -121,14 +121,20 @@ export async function computeSaveClassifications({
   if (recoveryBoundaryKnown) {
     // A brand-new note (no currentId) has no id yet, so it cannot hold a
     // recovery membership and its own sections are always in scope.
-    const allSections = [
-      ...notes.flatMap(n => {
-        if (n.id && excludedNoteIds.has(n.id)) return [];
+    // #1492: one canonical projection over the notebook, the saved text
+    // replacing the current note's persisted text in place. Membership is the
+    // fresh read above, never a render-time snapshot.
+    // A non-array notebook rejects, as the inline flatMap it replaced did.
+    if (!Array.isArray(notes)) throw new TypeError('computeSaveClassifications requires a notes array');
+    const population = projectWorkoutHistoryPopulation(notes, {
+      sectionsOf: (n) => {
         const text = n.id === currentId ? textToSave : n.raw_text;
         return text ? parseWorkoutNote(text).sections : [];
-      }),
-      ...(currentId ? [] : savedSections),
-    ];
+      },
+      isExcluded: isExcludedByNoteIds(excludedNoteIds),
+    });
+    const newNoteSections = currentId ? [] : savedSections;
+    const allSections = [...population.normalSections, ...newNoteSections];
     const { classifications } = deriveWorkoutNoteAnalytics(allSections, trackedNames, undefined, trackedLiftActivations, { deloadHistory, sourceNoteId: currentId ?? null });
     classificationsPatch = { exercise_classifications: classifications };
 
@@ -141,13 +147,7 @@ export async function computeSaveClassifications({
     // boundary read means the population is UNKNOWN, and "could not read" must
     // never be acted on as "the movement is gone". Awaited, but never allowed to
     // fail the save.
-    const unfilteredSections = [
-      ...notes.flatMap(n => {
-        const text = n.id === currentId ? textToSave : n.raw_text;
-        return text ? parseWorkoutNote(text).sections : [];
-      }),
-      ...(currentId ? [] : savedSections),
-    ];
+    const unfilteredSections = [...population.unfilteredSections, ...newNoteSections];
     if (reconcileTrackedLiftActivations) {
       await reconcileTrackedLiftActivations(unfilteredSections).catch(() => {});
     }
@@ -195,8 +195,11 @@ export async function computePendingPRCandidate({
     // notebook order, so the current note's live (before/after) content replaces
     // its own entry IN PLACE, preserving every other note's position.
     const excludedNoteIds = await loadRecoveryExcludedNoteIds();
-    const eligibleNotes = filterNotesForNormalAnalytics(notes || [], excludedNoteIds)
-      .filter((n) => !n.title?.startsWith(DELOAD_NOTE_PREFIX));
+    // Own deload predicate: a malformed title throws into the catch (no candidate).
+    const { progressionNotes: eligibleNotes } = classifyWorkoutHistoryMembers(notes, {
+      isExcluded: isExcludedByNoteIds(excludedNoteIds),
+      isDeload: (n) => !!n.title?.startsWith(DELOAD_NOTE_PREFIX),
+    });
 
     const buildFullSections = (ownRawText) => eligibleNotes.flatMap((n, noteOrdinal) => {
       const isCurrent = n.id === currentId;

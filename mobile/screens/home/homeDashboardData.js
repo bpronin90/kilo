@@ -33,7 +33,16 @@ import {
   getDefaultTrackedNames,
   normalizeLiftName,
 } from '../../lib/data';
-import { deriveProgressionSections, deriveProgressionAnchorSource, deriveExerciseProgress } from '../../lib/data/exerciseProgress';
+import { deriveProgressionSections, deriveExerciseProgress } from '../../lib/data/exerciseProgress';
+import { projectWorkoutHistoryPopulation } from '../../lib/data/workoutHistoryPopulation';
+
+function deriveHomeAnchorSource(notes, normalNotes) {
+  const members = new Set(normalNotes);
+  return projectWorkoutHistoryPopulation(notes, {
+    sectionsOf: getNoteSections,
+    isExcluded: n => !members.has(n),
+  }).anchorSource;
+}
 
 // Home's ordinary-analytics population (#699). This module owns the decision end
 // to end — which notes count, and whether that is even knowable yet — so the
@@ -232,11 +241,14 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
   // #893/#989/#699: the one canonical progression pass Analytics also reads —
   // same deload-excluded population, activation records, and re-entry inputs —
   // so Exercise Progress cannot mean different things on the two screens.
+  // #1492: membership arrives as the screen's `normalNotes` (its subscribed
+  // Recovery snapshot); the canonical projection only places those members
+  // within the unfiltered notebook.
   const progressionSections = normalNotes && noteSectionsList
     ? deriveProgressionSections(normalNotes, noteSectionsList)
     : (allSections || []);
   const anchorSource = normalNotes && noteSectionsList && notes
-    ? deriveProgressionAnchorSource(notes, notes.map(n => getNoteSections(n)), normalNotes)
+    ? deriveHomeAnchorSource(notes, normalNotes)
     : null;
   const deloadContext = { deloadHistory, sourceNoteId: sourceNoteId ?? null, recoveryBlocks };
   const progress = deriveExerciseProgress({
