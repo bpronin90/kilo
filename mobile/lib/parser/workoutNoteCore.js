@@ -6,7 +6,7 @@
 // module imports the regexes and _dashContentAsSetRow from here so the
 // header/set-row classification stays a single source of truth; the barrel
 // re-exports parseWorkoutNote and MAX_RAW_TEXT_LENGTH from here.
-import { parseWorkoutRow, parseHeaderDeclaration } from './workoutRow.js';
+import { parseWorkoutRow, parseHeaderDeclaration, MAX_SETS_PER_ROW, setCountLimitMessage } from './workoutRow.js';
 import { kgMarkerToLb } from '../units.js';
 import {
   ImportRecordError,
@@ -368,6 +368,23 @@ export function parseWorkoutNote(noteText) {
       const dlNumSets = parseInt(deloadMatch[3], 10);
       const dlReps = parseInt(deloadMatch[4], 10);
       const dlSets = [];
+      // Validate the requested count before allocating (#1482). Over-limit
+      // (including non-safe digit strings, which parse to huge/Infinity) keeps
+      // the line as an unparsed row with a visible error — no sets invented.
+      if (!(dlNumSets <= MAX_SETS_PER_ROW)) {
+        const error = setCountLimitMessage(deloadMatch[3].length > 12 ? deloadMatch[3].slice(0, 12) + '…' : deloadMatch[3]);
+        currentSection.exercises.push({
+          name: dlName,
+          raw_header: trimmed,
+          header_line: lineNumber,
+          rows: [],
+          sets: [],
+          session_entries: [{ skipped: false, raw: trimmed, sets: [], unparsed: true, error, category: 'invalid_field_value' }],
+          unparsed_rows: [trimmed],
+        });
+        problems.push({ line: lineNumber, message: error, exerciseName: dlName, severity: 'error' });
+        continue;
+      }
       for (let si = 0; si < dlNumSets; si++) {
         dlSets.push(_makeSet(si + 1, dlReps, dlWeight, 'lb'));
       }

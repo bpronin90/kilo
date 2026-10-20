@@ -11,6 +11,18 @@
 // are completely unaffected.
 import { kgMarkerToLb } from '../units.js';
 
+// Finite ceiling on sets one logged row or compact deload line (`Name: 135 lb
+// NxR`) may expand to (#1482). Supported routine syntax tops out at a few dozen
+// sets (5x5, 10x3, 20-rep drop ladders); 100 sits well above that. The raw-text
+// cap bounds line length, not the count a short numeric token requests, so
+// this is checked before any set is allocated. Over-limit input is rejected,
+// never truncated into valid-looking history.
+export const MAX_SETS_PER_ROW = 100;
+
+export function setCountLimitMessage(count) {
+  return `Too many sets (${count}) — a single row can log at most ${MAX_SETS_PER_ROW} sets`;
+}
+
 const _KG_ATTACHED_RE = /^(\d+(?:\.\d+)?)kg$/i;
 const _KG_TOKEN_RE = /^kg$/i;
 
@@ -136,6 +148,9 @@ function _parseSetTokens(setStr, raw, declaration = null) {
       return { ok: false, raw, error: 'Invalid rep group — use: 8,8,8 (no trailing comma)', category: 'invalid_field_value' };
     }
     const reps = tokens[0].split(',').map(n => (n === '-' ? null : parseInt(n, 10)));
+    if (reps.length > MAX_SETS_PER_ROW) {
+      return { ok: false, raw, error: setCountLimitMessage(reps.length), category: 'invalid_field_value' };
+    }
     if (reps.some(r => r !== null && r <= 0)) {
       return { ok: false, raw, error: 'Rep counts must be positive integers', category: 'invalid_field_value' };
     }
@@ -243,6 +258,9 @@ function _parseSetTokens(setStr, raw, declaration = null) {
       return { ok: false, raw, error: 'Rep counts must be positive integers', category: 'invalid_field_value' };
     }
     i++;
+    if (sets.length + reps.length > MAX_SETS_PER_ROW) {
+      return { ok: false, raw, error: setCountLimitMessage(sets.length + reps.length), category: 'invalid_field_value' };
+    }
     // A kg-marked load derives its canonical lb value once here (whole lb —
     // see kgMarkerToLb). `converted_from_kg` and `kg_value` (the original
     // typed kg number, e.g. 40) carry that fact onto every set built from
