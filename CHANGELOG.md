@@ -1,5 +1,89 @@
 # Changelog
 
+## 1.16.43 - 2026-10-20
+
+- Issue #1501: Fixed the suggested weight-goal target date so a month-end start (for example January 31) suggests the last day of the next month instead of rolling into the month after.
+
+## 1.16.42 - 2026-10-20
+
+- Issue #1500: Editing only a routine's A/B week or a deload's session number now autosaves, and "Saved on device" clears as soon as any of those fields changes, so the status never claims an unsaved week, date, or session number was saved.
+
+## 1.16.41 - 2026-10-20
+
+- Issue #1497: The Android restore service now enforces its 16 KiB request limit on the actual bytes received, so oversized or multibyte-padded requests are refused early and never reach sign-in or credential processing.
+
+## 1.16.40 - 2026-10-20
+
+- Issue #1491: Cloud Sync consent now handles network failures explicitly: if the consent terms cannot be loaded you get a Retry button, and if recording your consent fails to reach the server you see a clear message and can try again. Nothing is enabled or uploaded unless the server confirms your consent.
+
+## 1.16.39 - 2026-10-20
+
+- Issue #1490: Fixed Recovery actions (end block, rebuild baseline, tidy names, analytics setting) so an unexpected failure shows a retry message and keeps your place instead of failing silently.
+
+## 1.16.38 - 2026-10-20
+
+- Issue #1489: When starting a recovery block fails partway, a newly created Week 1 note that a leftover block could still link is no longer deleted, and the error now says when the new note was kept or when a recovery block from the attempt may still be active, instead of only reporting the first failure.
+
+## 1.16.37 - 2026-10-20
+
+- Issue #1488: Recovery now refreshes the block reason, baseline, and week completion shown on Home, Log, and Analytics after a verified read, even when the record timestamps did not change.
+
+## 1.16.36 - 2026-10-20
+
+- Issue #1487: A failed Fatigue tracking or Deload mode save now returns every screen to the last saved setting and shows "Couldn't save" with a Retry button in Settings, instead of leaving the switch claiming a change that was not stored.
+
+## 1.16.35 - 2026-10-20
+
+- Issue #1486: Reminder settings now report when a change could not be saved and revert to the last saved setting, separately from notification scheduling errors.
+
+## 1.16.34 - 2026-10-20
+
+- Issue #1485: The plate calculator now tells you when a unit change, inventory save, or reset could not be saved, keeps your entry visible as unsaved, and offers Retry; reopening shows what is actually saved.
+
+## 1.16.33 - 2026-10-20
+
+- Issue #1484: Weight trends, pace, and goal projections now refresh when the local calendar day changes (at midnight or when the app returns to the foreground) without reopening the screen.
+
+## 1.16.32 - 2026-10-20
+
+- Issue #1483: Cloud Sync consent now only accepts a consent revision whose server wording exactly matches the text shown on screen. Missing, malformed, or changed terms block acceptance with an explanation, and a changed revision requires the user to affirm again.
+
+## 1.16.31 - 2026-10-20
+
+- Issue #1482: Fixed workout notes so compact set counts (such as "Squat: 135 lb 500x5") and long rep groups above 100 sets per row are flagged with an error instead of generating that many sets.
+
+## 1.16.30 - 2026-10-20
+
+- Issue #1481: Fixed pressing Done > Save in the deload editor so text typed while a save is pending is saved before the editor closes.
+
+## 1.16.29 - 2026-10-20
+
+- Issue #1480: Fixed goal, goal history, profile unit and feature-toggle screens staying on old values after a cloud sync or backup import until the app was reopened.
+
+## 1.16.28 - 2026-10-20
+
+- Issue #1479: Fixed the line chart so replacing its data while a point is selected no longer breaks the chart; it falls back to the latest point instead.
+
+## 1.16.27 - 2026-10-20
+
+- Issue #1478: Ordinary analytics and save-time exercise classifications now treat malformed Recovery records, including an unreadable week tombstone, as unknown rather than as "nothing excluded", so Recovery work is never silently counted. The last verified boundary stays in use until a later valid read, and a save made meanwhile keeps the note's text without overwriting its stored classifications.
+
+## 1.16.26 - 2026-10-20
+
+- Issue #1477: Retrying a weight-goal archive that failed partway no longer saves the goal to history twice. A failed archive now shows an error and keeps the goal on screen, and retrying finishes the original archive without removing a newer goal saved in the meantime.
+
+## 1.16.25 - 2026-10-20
+
+- Issue #1476: Fixed unsaved weigh-in and goal inputs so they keep the same physical weight when you switch between lb and kg, instead of reinterpreting the old number in the new unit.
+
+## 1.16.24 - 2026-10-20
+
+- Issue #1475: Saving a session check-in no longer overwrites check-ins for other sessions that were saved while the check-in sheet was open. The new answer is merged into the latest saved routine instead of the copy the sheet opened with.
+
+## 1.16.23 - 2026-10-20
+
+- Issue #1474: Fixed pressing Done on a new routine so edits made while an earlier save was pending, or while Done was saving, are saved before the editor closes.
+
 ## 1.16.22 - 2026-10-19
 
 - Issue #1466: Progressive Overload no longer counts an exercise as Progressing when its top weight went up but the estimated max dropped (for example 325 for 6,6,6 followed by 330 for a single 2); it now shows Regressing.
