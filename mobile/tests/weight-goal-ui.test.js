@@ -1396,3 +1396,45 @@ describe('WeightScreen', () => {
     });
   });
 });
+
+// #1480: a pristine reseed after an external refresh must replace the unit
+// provenance with the newly seeded canonical lb values.
+describe('WeightScreen goal form: refresh reseed replaces unit provenance (#1480)', () => {
+  const { setWeightUnitPreference } = require('../lib/unitPreference');
+  let save;
+  const mountWith = (goal) => {
+    save = jest.fn().mockResolvedValue(undefined);
+    useEntries.useWeightEntries.mockReturnValue({ entries: [], remove: jest.fn(), update: jest.fn() });
+    useEntries.useUserProfile.mockReturnValue({ profile: null });
+    weightHooks.useArchivedWeightGoals.mockReturnValue({ archivedGoals: [], loading: false, refresh: jest.fn() });
+    const element = () => {
+      useEntries.useWeightGoal.mockReturnValue({ goal: currentGoal, save, clear: jest.fn(), archiveGoal: jest.fn() });
+      return (
+        <WeightScreen weightValue="" setWeightValue={jest.fn()} weightNote="" setWeightNote={jest.fn()}
+          onSaveWeight={jest.fn()} errorMessage="" saving={false} isActive />
+      );
+    };
+    let currentGoal = goal;
+    let c;
+    render.act(() => { c = render.create(element()); });
+    return {
+      c,
+      setGoal: (g) => { currentGoal = g; render.act(() => { c.update(element()); }); },
+    };
+  };
+  const press = (c, label) => {
+    const node = c.root.findAll((n) => n.props.onPress && (n.props.label === label || n.props.title === label))[0];
+    return render.act(async () => { await node.props.onPress(); });
+  };
+  afterEach(() => { setWeightUnitPreference('lb'); });
+
+  test('kg edit: external 170.1 -> 170.2 lb (same kg text) saves exactly 170.2', async () => {
+    setWeightUnitPreference('kg');
+    const { c, setGoal } = mountWith({ target_weight: 170.1, target_date: '2099-01-01', start_weight: 180.1 });
+    await press(c, 'Edit');
+    setGoal({ target_weight: 170.2, target_date: '2099-01-01', start_weight: 180.2 });
+    await press(c, 'Save goal');
+    expect(save.mock.calls[0][0].target_weight).toBe(170.2);
+    expect(save.mock.calls[0][0].start_weight).toBe(180.2);
+  });
+});

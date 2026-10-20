@@ -69,23 +69,28 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
   // the whole draft is kept, in creation and edit mode alike. `null` forces a
   // re-seed (after save or cancel).
   const baselineRef = useRef({ t: '', d: goalTargetDate, s: '' });
-  const reseed = (t, d, s) => {
-    baselineRef.current = { t, d, s };
+  // The ONLY way fields are seeded or reset: fields, baseline and unit
+  // provenance always move together, so a refreshed seed can never keep the
+  // previous goal's retained lb value (#1480). A reset (no goal) clears both.
+  const seedForm = (source) => {
+    const lb = canonicalGoal ?? null;
+    const t = source ? String(source.target_weight) : '';
+    const d = source ? source.target_date : defaultTargetDate();
+    const st = source?.start_weight ? String(source.start_weight) : '';
+    targetProvRef.current = source && lb?.target_weight != null ? { text: t, unit, lb: lb.target_weight } : null;
+    startProvRef.current = source && lb?.start_weight ? { text: st, unit, lb: lb.start_weight } : null;
+    baselineRef.current = { t, d, s: st };
     setGoalTargetWeight(t);
     setGoalTargetDate(d);
-    setGoalStartWeight(s);
+    setGoalStartWeight(st);
   };
   useEffect(() => {
     const base = baselineRef.current;
     const pristine = base === null
       || (goalTargetWeight === base.t && goalTargetDate === base.d && goalStartWeight === base.s);
     if (!pristine) return;
-    if (goal && (!goalEditing || base !== null)) {
-      reseed(String(goal.target_weight), goal.target_date, goal.start_weight ? String(goal.start_weight) : '');
-    } else if (!goal) {
-      reseed('', defaultTargetDate(), '');
-      dropProvenance();
-    }
+    if (goal && (!goalEditing || base !== null)) seedForm(goal);
+    else if (!goal) seedForm(null);
   }, [goal, goalEditing]);
 
   // Register with the app shell instead of BackHandler directly (#527): all tab
@@ -149,8 +154,7 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
       { text: 'Cancel', style: 'cancel' },
       { text: 'Clear', style: 'destructive', onPress: async () => {
         await clearGoal();
-        reseed('', defaultTargetDate(), '');
-        dropProvenance();
+        seedForm(null);
         setGoalEditing(false);
       }},
     ]);
@@ -168,24 +172,14 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
           Alert.alert('Archive failed', 'Could not archive your goal. Try again.');
           return;
         }
-        reseed('', defaultTargetDate(), '');
-        dropProvenance();
+        seedForm(null);
         setGoalEditing(false);
       }},
     ]);
   };
 
   const startEditGoal = () => {
-    const lbGoal = canonicalGoal ?? null;
-    targetProvRef.current = goal && lbGoal?.target_weight != null
-      ? { text: String(goal.target_weight), unit, lb: lbGoal.target_weight } : null;
-    startProvRef.current = goal && lbGoal?.start_weight
-      ? { text: String(goal.start_weight), unit, lb: lbGoal.start_weight } : null;
-    if (goal) {
-      reseed(String(goal.target_weight), goal.target_date, goal.start_weight ? String(goal.start_weight) : '');
-    } else {
-      reseed('', defaultTargetDate(), '');
-    }
+    seedForm(goal || null);
     setGoalError('');
     setGoalEditing(true);
   };
