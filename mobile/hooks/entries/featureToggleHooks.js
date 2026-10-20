@@ -29,17 +29,24 @@ const SAVERS = {
 };
 
 // Read-only: loaders never write, so refresh notifications cannot loop.
+// Every read takes a generation when it starts; a result older than the last
+// applied one (e.g. a slow initial load finishing after a refresh) is dropped.
+let readGeneration = 0;
+let lastAppliedGeneration = 0;
 async function readDurableToggles() {
+  const generation = ++readGeneration;
   const [fatigueTrackingEnabled, deloadModeEnabled] = await Promise.all([
     Storage.loadFatigueTrackingEnabled(),
     Storage.loadDeloadModeEnabled(),
   ]);
-  return { fatigueTrackingEnabled, deloadModeEnabled };
+  return { toggles: { fatigueTrackingEnabled, deloadModeEnabled }, generation };
 }
 
 // `snapshot` is the request counter per key when the load was queued. A key the
 // user has toggled since then keeps its newer optimistic value.
-function applyLoadedToggles(loaded, snapshot) {
+function applyLoadedToggles({ toggles: loaded, generation }, snapshot) {
+  if (generation < lastAppliedGeneration) return;
+  lastAppliedGeneration = generation;
   durableToggles = { ...loaded };
   const next = { ...currentFeatureToggles };
   Object.keys(SAVERS).forEach((key) => {

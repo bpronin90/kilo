@@ -169,6 +169,23 @@ describe('feature toggle save failures', () => {
     expect(mockSaves).toHaveLength(1);
   });
 
+  test('a slow initial load cannot overwrite a newer refresh', async () => {
+    const releases = [];
+    mockLoadFatigue = () => new Promise((r) => { const v = mockStore.fatigue; releases.push(() => r(v)); });
+    loadFresh();
+    const a = mountHook();
+    // initial read captured false and stays pending
+    mockStore.fatigue = true;
+    let refreshed;
+    await act(async () => { refreshed = hooks.refreshFeatureToggles(); });
+    await flush();
+    await act(async () => { releases[1](); await refreshed; });
+    expect(a.ref.current.fatigueTrackingEnabled).toBe(true);
+    await act(async () => { releases[0](); });
+    await flush();
+    expect(a.ref.current.fatigueTrackingEnabled).toBe(true);
+  });
+
   test('unmounting before the rejection settles is harmless and the mirror still reverts', async () => {
     const a = mountHook();
     const b = mountHook();
