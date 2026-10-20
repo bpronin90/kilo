@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Alert } from '../lib/platformAlert';
+import { convertWeightDraft, retainedDraftLb, parseStrictWeightText } from '../lib/parser/weightEntry';
 
 // One month out, local calendar day (not UTC) so the pre-filled date never
 // lands a day off near midnight.
@@ -11,13 +12,56 @@ function defaultTargetDate() {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
-export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActive = true, registerBackConsumer) {
+export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActive = true, registerBackConsumer, unit = 'lb', canonicalGoal = null) {
   const [goalEditing, setGoalEditing] = useState(false);
   const [goalTargetWeight, setGoalTargetWeight] = useState('');
   const [goalTargetDate, setGoalTargetDate] = useState(defaultTargetDate);
   const [goalStartWeight, setGoalStartWeight] = useState('');
   const [goalError, setGoalError] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // Unit-change bridge (#1476): form text is typed in the selected unit. While
+  // editing, a preference change converts the dirty text once (never discards
+  // it). Provenance refs keep the original lb value for text we seeded or
+  // converted, so repeated switches and unchanged drafts do not drift.
+  const prevUnitRef = useRef(unit);
+  const targetProvRef = useRef(null);
+  const startProvRef = useRef(null);
+  // Provenance lives only as long as the exact draft it describes (#1476): any
+  // user keystroke drops it, and so does the form closing, saving, clearing or
+  // archiving, so a later draft reusing the same text never inherits a stale lb.
+  const dropProvenance = () => {
+    targetProvRef.current = null;
+    startProvRef.current = null;
+  };
+  const onTargetChange = (text) => {
+    targetProvRef.current = null;
+    setGoalTargetWeight(text);
+  };
+  const onStartChange = (text) => {
+    startProvRef.current = null;
+    setGoalStartWeight(text);
+  };
+  useEffect(() => {
+    if (!goalEditing && goal) dropProvenance();
+  }, [goalEditing, goal]);
+  useEffect(() => {
+    const from = prevUnitRef.current;
+    if (from === unit) return;
+    prevUnitRef.current = unit;
+    // With no saved goal the form is shown directly (goalEditing stays false).
+    if (!goalEditing && goal) return;
+    const t = convertWeightDraft(goalTargetWeight, from, unit, targetProvRef.current);
+    if (t) {
+      targetProvRef.current = t;
+      setGoalTargetWeight(t.text);
+    }
+    const s = convertWeightDraft(goalStartWeight, from, unit, startProvRef.current);
+    if (s) {
+      startProvRef.current = s;
+      setGoalStartWeight(s.text);
+    }
+  }, [unit]);
 
   useEffect(() => {
     if (goal && !goalEditing) {
@@ -41,12 +85,12 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
 
   const handleSaveGoal = async (currentWeight) => {
     setGoalError('');
-    const tw = parseFloat(goalTargetWeight);
+    const tw = parseStrictWeightText(goalTargetWeight) ?? NaN;
     if (isNaN(tw) || tw <= 0) {
       setGoalError('Enter a valid target weight.');
       return;
     }
-    const startW = currentWeight ?? parseFloat(goalStartWeight);
+    const startW = currentWeight ?? (parseStrictWeightText(goalStartWeight) ?? NaN);
     if (!currentWeight && (isNaN(startW) || startW <= 0)) {
       setGoalError('Enter your current weight.');
       return;
@@ -62,16 +106,23 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
       return;
     }
     try {
+      // Retained lb provenance (#1476): untouched seeded/converted text saves its
+      // exact lb value instead of re-rounding the display text.
+      const lbOverrides = {
+        target_weight: retainedDraftLb(goalTargetWeight, unit, targetProvRef.current),
+        start_weight: currentWeight ? null : retainedDraftLb(goalStartWeight, unit, startProvRef.current),
+      };
       await saveGoal({
         target_weight: tw,
         target_date: goalTargetDate,
         start_weight: !isNaN(startW) && startW > 0 ? startW : null,
-      });
+      }, lbOverrides);
     } catch {
       // Keep the draft open so the user can retry; never imply success.
       setGoalError('Could not save your goal. Try again.');
       return;
     }
+    dropProvenance();
     setGoalEditing(false);
   };
 
@@ -83,6 +134,7 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
         setGoalTargetWeight('');
         setGoalTargetDate(defaultTargetDate());
         setGoalStartWeight('');
+        dropProvenance();
         setGoalEditing(false);
       }},
     ]);
@@ -103,12 +155,18 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
         setGoalTargetWeight('');
         setGoalTargetDate(defaultTargetDate());
         setGoalStartWeight('');
+        dropProvenance();
         setGoalEditing(false);
       }},
     ]);
   };
 
   const startEditGoal = () => {
+    const lbGoal = canonicalGoal ?? null;
+    targetProvRef.current = goal && lbGoal?.target_weight != null
+      ? { text: String(goal.target_weight), unit, lb: lbGoal.target_weight } : null;
+    startProvRef.current = goal && lbGoal?.start_weight
+      ? { text: String(goal.start_weight), unit, lb: lbGoal.start_weight } : null;
     if (goal) {
       setGoalTargetWeight(String(goal.target_weight));
       setGoalTargetDate(goal.target_date);
@@ -123,6 +181,8 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
   };
 
   const cancelEditGoal = () => {
+    targetProvRef.current = null;
+    startProvRef.current = null;
     setGoalError('');
     setGoalStartWeight('');
     setGoalEditing(false);
@@ -150,11 +210,11 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActi
     goalEditing,
     setGoalEditing,
     goalTargetWeight,
-    setGoalTargetWeight,
+    setGoalTargetWeight: onTargetChange,
     goalTargetDate,
     setGoalTargetDate,
     goalStartWeight,
-    setGoalStartWeight,
+    setGoalStartWeight: onStartChange,
     goalError,
     setGoalError,
     showDatePicker,

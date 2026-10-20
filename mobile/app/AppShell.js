@@ -418,7 +418,7 @@ export function useAppShell({ onDeviceDataWiped }) {
     [cloudSyncSummary, handleRetrySync, openCloudSync]
   );
 
-  const saveWeight = useCallback(async (date) => {
+  const saveWeight = useCallback(async (date, retainedLb) => {
     if (weightSaving) return false;
     const startedAt = Date.now();
     emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.WEIGHT_SAVE_ATTEMPTED, {});
@@ -444,7 +444,7 @@ export function useAppShell({ onDeviceDataWiped }) {
       loggedAt = localToday + loggedAt.slice(10);
     }
     const entry = makeWeightEntry({
-      weight_value: parsed.weight_value,
+      weight_value: Number.isFinite(retainedLb) ? retainedLb : parsed.weight_value,
       logged_at: loggedAt,
       note: weightNote.trim() || undefined,
     });
