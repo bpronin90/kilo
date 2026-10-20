@@ -6,7 +6,7 @@
 // module imports the regexes and _dashContentAsSetRow from here so the
 // header/set-row classification stays a single source of truth; the barrel
 // re-exports parseWorkoutNote and MAX_RAW_TEXT_LENGTH from here.
-import { parseWorkoutRow, parseHeaderDeclaration } from './workoutRow.js';
+import { parseWorkoutRow, parseHeaderDeclaration, MAX_SETS_PER_ROW, setCountLimitMessage } from './workoutRow.js';
 import { kgMarkerToLb } from '../units.js';
 import {
   ImportRecordError,
@@ -49,7 +49,9 @@ const _IMPORT_NOTE_RE = /^--\s+@import-note(?:\s+(.*))?$/;
 export function _dashContentAsSetRow(content, declaration = null) {
   if (!/^\d/.test(content)) return null;
   const r = parseWorkoutRow(content, declaration);
-  return (r.ok && !r.blank && !r.skipped) ? r : null;
+  // An over-limit row (#1482) is still a set row: callers must not fall back to
+  // exercise-header classification for it. They check `limitExceeded`.
+  return ((r.ok && !r.blank && !r.skipped) || r.limitExceeded) ? r : null;
 }
 
 function _normalizeExerciseName(raw) {
@@ -296,7 +298,11 @@ export function parseWorkoutNote(noteText) {
         // logged set, not an exercise-name header. Never mint a numeric-named
         // phantom exercise for it.
         if (currentExercise) {
-          if (recovery.preserved) {
+          if (recovery.limitExceeded) {
+            currentExercise.unparsed_rows.push(dashContent);
+            currentExercise.session_entries.push({ skipped: false, raw: dashContent, sets: [], unparsed: true, error: recovery.error, category: recovery.category ?? null });
+            problems.push({ line: lineNumber, message: recovery.error, exerciseName: currentExercise.name, severity: 'error' });
+          } else if (recovery.preserved) {
             // #854/G1-p: recognized bare integer, no governing declaration —
             // preserved, not structured data.
             currentExercise.unparsed_rows.push(dashContent);
@@ -368,6 +374,23 @@ export function parseWorkoutNote(noteText) {
       const dlNumSets = parseInt(deloadMatch[3], 10);
       const dlReps = parseInt(deloadMatch[4], 10);
       const dlSets = [];
+      // Validate the requested count before allocating (#1482). Over-limit
+      // (including non-safe digit strings, which parse to huge/Infinity) keeps
+      // the line as an unparsed row with a visible error — no sets invented.
+      if (!(dlNumSets <= MAX_SETS_PER_ROW)) {
+        const error = setCountLimitMessage(deloadMatch[3].length > 12 ? deloadMatch[3].slice(0, 12) + '…' : deloadMatch[3]);
+        currentSection.exercises.push({
+          name: dlName,
+          raw_header: trimmed,
+          header_line: lineNumber,
+          rows: [],
+          sets: [],
+          session_entries: [{ skipped: false, raw: trimmed, sets: [], unparsed: true, error, category: 'invalid_field_value' }],
+          unparsed_rows: [trimmed],
+        });
+        problems.push({ line: lineNumber, message: error, exerciseName: dlName, severity: 'error' });
+        continue;
+      }
       for (let si = 0; si < dlNumSets; si++) {
         dlSets.push(_makeSet(si + 1, dlReps, dlWeight, 'lb'));
       }
