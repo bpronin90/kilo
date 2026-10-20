@@ -78,4 +78,17 @@ describe('row set-count bound (#1482)', () => {
     expect(r.problems[0]).toMatchObject({ line: 2, exerciseName: 'Bench' });
     expect(r.sections[0].exercises[0].sets).toEqual([]);
   });
+
+  test('over-limit continuation segment is rejected, not demoted to prose tail', () => {
+    const over = parseWorkoutRow(`100 5 - 90 ${group(MAX_SETS_PER_ROW + 1)}`);
+    expect(over.ok).toBe(false);
+    expect(over.error).toMatch(/Too many sets/);
+    const atLimit = parseWorkoutRow(`100 5 - 90 ${group(MAX_SETS_PER_ROW - 1)}`);
+    expect(atLimit.ok).toBe(true);
+    expect(atLimit.sets).toHaveLength(MAX_SETS_PER_ROW);
+    expect(atLimit.tail).toBeNull();
+    const note = parseWorkoutNote(`-Bench\n100 5 - 90 ${group(MAX_SETS_PER_ROW + 1)}`);
+    expect(note.problems).toHaveLength(1);
+    expect(note.sections[0].exercises[0].sets).toEqual([]);
+  });
 });

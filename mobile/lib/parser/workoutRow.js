@@ -149,7 +149,7 @@ function _parseSetTokens(setStr, raw, declaration = null) {
     }
     const reps = tokens[0].split(',').map(n => (n === '-' ? null : parseInt(n, 10)));
     if (reps.length > MAX_SETS_PER_ROW) {
-      return { ok: false, raw, error: setCountLimitMessage(reps.length), category: 'invalid_field_value' };
+      return { ok: false, raw, error: setCountLimitMessage(reps.length), category: 'invalid_field_value', limitExceeded: true };
     }
     if (reps.some(r => r !== null && r <= 0)) {
       return { ok: false, raw, error: 'Rep counts must be positive integers', category: 'invalid_field_value' };
@@ -259,7 +259,7 @@ function _parseSetTokens(setStr, raw, declaration = null) {
     }
     i++;
     if (sets.length + reps.length > MAX_SETS_PER_ROW) {
-      return { ok: false, raw, error: setCountLimitMessage(sets.length + reps.length), category: 'invalid_field_value' };
+      return { ok: false, raw, error: setCountLimitMessage(sets.length + reps.length), category: 'invalid_field_value', limitExceeded: true };
     }
     // A kg-marked load derives its canonical lb value once here (whole lb —
     // see kgMarkerToLb). `converted_from_kg` and `kg_value` (the original
@@ -307,7 +307,9 @@ function _isSetSegment(seg) {
   // A G1-p preserved bare integer (no governing declaration) is not
   // structured data — it belongs in the prose `tail`, not absorbed as an
   // empty continuation set (#854/C2).
-  return result.ok === true && !result.preserved;
+  // An over-limit segment is still syntactically a set segment: classify it as
+  // one so the primary parse rejects it, rather than demoting it to prose tail.
+  return (result.ok === true && !result.preserved) || result.limitExceeded === true;
 }
 
 // Split a trimmed row into its tokenizable set string and an optional captured
