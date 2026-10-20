@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.16.48 - 2026-10-20
+
+- Issue #1537: Recovery movement groups are now visibly nested under their header with aligned names, counts, scores and chevrons, exercise rows show a clear strength percentage and bar, and the not-retested and not-scored lists show one reason heading with every exercise on its own line instead of a comma-joined paragraph.
+
+## 1.16.47 - 2026-10-20
+
+- Issue #1536: Completed Recovery blocks no longer repeat themselves: an expanded completed block shows its recovery percentage once and its reason, baseline and dates once, and the redundant History list is hidden when there is only one completed block (history stays whenever another block exists).
+
+## 1.16.46 - 2026-10-20
+
+- Issue #1535: 1K Progress on Home and Analytics now uses tighter, consistent spacing between its heading, total, progress bar and Squat/Bench/Deadlift values.
+
+## 1.16.45 - 2026-10-20
+
+- Issue #1534: Weight Trends value and status text is modestly smaller, so arrows and status words no longer overwhelm their rows; values, units and colors are unchanged.
+
+## 1.16.44 - 2026-10-20
+
+- Issue #1533: Home's Exercise Progress, 1K Progress and Body Weight cards now share one spacing convention, and the first-session explanation line is removed from Home.
+
 ## 1.16.43 - 2026-10-20
 
 - Issue #1501: Fixed the suggested weight-goal target date so a month-end start (for example January 31) suggests the last day of the next month instead of rolling into the month after.
