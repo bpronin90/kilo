@@ -263,7 +263,7 @@ describe('deload date edit: save flow does not get stuck in pending state', () =
   test('deload date save path calls updateDeload before update on date change', () => {
     // Both the history record and the note record must be updated. If updateDeload
     // is absent the history anchor drifts from the note saved_at date.
-    expect(src).toMatch(/await\s+updateDeload\s*\([\s\S]{0,700}await\s+update\s*\(\s*editingNoteId/);
+    expect(src).toMatch(/await\s+updateDeload\s*\([\s\S]{0,700}await\s+update\s*\(\s*(?:editingNoteId|savedNoteId)/);
   });
 
   test('deload save path writes deload_session_ordinal into the deloadPatch', () => {

@@ -6,7 +6,7 @@ import { computeWeeksIn } from '../../lib/data';
 import { Alert } from '../../lib/platformAlert';
 import { restoreWorkoutNoteDraft } from './editorDrafts';
 import { spliceWeekText } from './editorWeekText';
-import { runDoneConvergenceLoop } from './useLogEditorSave';
+import { runDoneConvergenceLoop, newRoutineTitleConverged } from './useLogEditorSave';
 
 // Current-routine editor open/exit/restore and exercise source-jump lifecycle,
 // extracted from useLogCurrentRoutineEditor (#1055). Provided as a factory hook
@@ -259,8 +259,17 @@ export async function handleDoneCurrent(ctx) {
   }
   if (!currentId) {
     if (hasUnsavedCurrent) {
-      const ok = await handleSave();
-      if (!ok) return;
+      // #1474: converge on edits made while an earlier save was pending or
+      // while Done itself awaits; a failed save keeps the editor open.
+      // Done's own record of the created id outlives the transient draft override.
+      const resumeCreated = { id: null };
+      const converged = await runDoneConvergenceLoop({
+        save: () => handleSave({ resumeCreated }),
+        hasConverged: () =>
+          workoutNoteTextRef.current === lastSavedTextRef.current
+          && newRoutineTitleConverged(workoutNoteTitleRef.current, lastSavedTitleRef.current),
+      });
+      if (!converged) return;
     }
     exitCurrentEditor();
     return;

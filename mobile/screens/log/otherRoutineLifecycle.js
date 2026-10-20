@@ -3,7 +3,7 @@ import { Alert } from '../../lib/platformAlert';
 import { resolveExerciseSourceAnchor } from '../../lib/parser';
 import { isValidActiveWeek } from './editorWeekText';
 import { restoreWorkoutNoteDraft } from './editorDrafts';
-import { runDoneConvergenceLoop } from './useLogEditorSave';
+import { runDoneConvergenceLoop, newRoutineTitleConverged } from './useLogEditorSave';
 import {
   clearWorkoutNoteDraft,
   clearWorkoutNoteDraftsForNote,
@@ -241,8 +241,15 @@ export function useOtherEditorLifecycle(ctx) {
     }
     if (editingNoteId === 'new') {
       if (hasUnsavedOther) {
-        const ok = await handleSaveOtherNote();
-        if (!ok) return;
+        // #1474: converge on edits made while an earlier save was pending or
+        // while Done itself awaits; a failed save keeps the editor open.
+        const converged = await runDoneConvergenceLoop({
+          save: () => handleSaveOtherNote(),
+          hasConverged: () =>
+            editingFullTextRef.current === lastSavedTextRef.current
+            && newRoutineTitleConverged(editingTitleRef.current, lastSavedTitleRef.current),
+        });
+        if (!converged) return;
       }
       setEditingNoteId(null);
       setEditingSource(null);
