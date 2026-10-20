@@ -324,4 +324,28 @@ describe('new-routine Done persists trailing edits (#1474)', () => {
       expect(editor.isOpen()).toBe(false);
     });
   });
+
+  test('current editor: later trailing edits after the parent adopts the created id still update the same note', async () => {
+    const store = makeStore();
+    const createGate = deferred();
+    const trailingGate = deferred();
+    store.addGates.push(createGate);
+    store.updateGates.push(trailingGate);
+    const editor = mountCurrent(store, { followId: true });
+
+    editor.type(TEXT_A, 'Title A');
+    let done;
+    render.act(() => { done = editor.done(); });
+    await flush();
+    editor.type(TEXT_B, 'Title B');
+    await render.act(async () => { createGate.resolve(); });
+    await flush();
+    editor.type(TEXT_A.replace('135', '145'), 'Title C');
+    await render.act(async () => { trailingGate.resolve(); await done; });
+
+    expect(store.add).toHaveBeenCalledTimes(1);
+    expect(Object.keys(store.notes)).toEqual(['wn_1']);
+    expect(store.notes.wn_1).toEqual(expect.objectContaining({ title: 'Title C', raw_text: TEXT_A.replace('135', '145') }));
+    expect(editor.isOpen()).toBe(false);
+  });
 });

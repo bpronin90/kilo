@@ -400,7 +400,7 @@ export async function performRevertCurrent({
 // id-stable create (#997): the attempt token is durable before the create and
 // retired only after full success, so a retried create completes the same note
 // instead of adding a second.
-export function performCurrentSave(ctx, { autosave = false, overrideText, universalSkipCount, sessionCheckins, resumeCreated = false } = {}) {
+export function performCurrentSave(ctx, { autosave = false, overrideText, universalSkipCount, sessionCheckins, resumeCreated = null } = {}) {
   const {
     notes,
     trackedLifts,
@@ -436,15 +436,20 @@ export function performCurrentSave(ctx, { autosave = false, overrideText, univer
   // create a duplicate.
   const workoutNoteText = workoutNoteTextRef.current;
   const workoutNoteTitle = workoutNoteTitleRef.current;
-  const currentId = ctx.currentId || (resumeCreated && draftNoteIdOverrideRef.current) || null;
+  const currentId = ctx.currentId || resumeCreated?.id || (resumeCreated && draftNoteIdOverrideRef.current) || null;
   const adoptedCreatedId = !ctx.currentId && !!currentId;
 
   const isSpecializedSave = overrideText !== undefined
     || universalSkipCount !== undefined
     || sessionCheckins !== undefined;
   if (saveInFlightRef.current) {
-    return isSpecializedSave
-      ? Promise.resolve(false)
+    if (isSpecializedSave) return Promise.resolve(false);
+    // Coalescing onto a create still counts toward Done's created-id record.
+    return resumeCreated
+      ? saveInFlightRef.current.then((ok) => {
+        if (ok && !resumeCreated.id) resumeCreated.id = lastSavedIdRef.current;
+        return ok;
+      })
       : saveInFlightRef.current;
   }
   const textToSave = overrideText ?? workoutNoteText;
@@ -521,6 +526,7 @@ export function performCurrentSave(ctx, { autosave = false, overrideText, univer
       }
 
       if (result) {
+        if (resumeCreated && (result.id || currentId)) resumeCreated.id = result.id || currentId;
         const identityUnchanged = savedForId && !adoptedCreatedId
           ? currentIdRef.current === savedForId
           : currentIdRef.current == null || currentIdRef.current === (result.id || savedForId);

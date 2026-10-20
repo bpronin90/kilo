@@ -261,8 +261,10 @@ export async function handleDoneCurrent(ctx) {
     if (hasUnsavedCurrent) {
       // #1474: converge on edits made while an earlier save was pending or
       // while Done itself awaits; a failed save keeps the editor open.
+      // Done's own record of the created id outlives the transient draft override.
+      const resumeCreated = { id: null };
       const converged = await runDoneConvergenceLoop({
-        save: () => handleSave({ resumeCreated: true }),
+        save: () => handleSave({ resumeCreated }),
         hasConverged: () =>
           workoutNoteTextRef.current === lastSavedTextRef.current
           && newRoutineTitleConverged(workoutNoteTitleRef.current, lastSavedTitleRef.current),
