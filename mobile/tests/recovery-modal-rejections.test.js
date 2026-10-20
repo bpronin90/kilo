@@ -46,6 +46,7 @@ beforeEach(() => {
   process.on('unhandledRejection', onUnhandled);
   mockLifecycleProps = [];
   announceSpy = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => {});
+  announceSpy.mockClear();
 });
 afterEach(async () => {
   await new Promise(r => setImmediate(r));
@@ -140,6 +141,53 @@ describe('RebuildBaselineAction', () => {
   });
 });
 
+describe('RebuildBaselineAction resolved failure, duplicates, unmount', () => {
+  const baseNote = { id: 'nb', title: 'Routine', raw_text: BASE, updated_at: '2026-04-01T00:00:00Z' };
+  const mount = (onRebuild) => {
+    const block = { ...blk({ baseline: { ...captureRecoveryBaselineFromText(BASE), version: 1 } }), baseline_note_id: 'nb' };
+    let c;
+    act(() => { c = render.create(wrap(<RebuildBaselineAction block={block} notes={[baseNote]} weeks={[]} onRebuild={onRebuild} />)); });
+    act(() => { byLabel(c.root, 'Rebuild baseline').props.onPress(); });
+    return c;
+  };
+  const confirmLabel = 'Confirm rebuilding the baseline';
+
+  test('resolved failure shows its message, keeps the preview, and retry is possible', async () => {
+    const onRebuild = jest.fn().mockResolvedValueOnce({ ok: false, error: 'Nope.' }).mockResolvedValue({ ok: true });
+    const c = mount(onRebuild);
+    await act(async () => { await byLabel(c.root, confirmLabel).props.onPress(); });
+    expect(texts(c.root)).toContain('Nope.');
+    expect(c.root.findAll(n => n.props && n.props.testID === 'recovery-rebuild-preview').length).toBeGreaterThan(0);
+    expect(byLabel(c.root, confirmLabel).props.disabled).toBe(false);
+    expect(announceSpy).not.toHaveBeenCalledWith('Baseline rebuilt from the routine.');
+    await act(async () => { await byLabel(c.root, confirmLabel).props.onPress(); });
+    expect(onRebuild).toHaveBeenCalledTimes(2);
+  });
+
+  test('duplicate confirm while pending calls once; unmount before it rejects is quiet', async () => {
+    const d = deferred();
+    const onRebuild = jest.fn(() => d.promise);
+    const c = mount(onRebuild);
+    act(() => { byLabel(c.root, confirmLabel).props.onPress(); });
+    act(() => { byLabel(c.root, confirmLabel).props.onPress(); });
+    expect(onRebuild).toHaveBeenCalledTimes(1);
+    act(() => { c.unmount(); });
+    const err = jest.spyOn(console, 'error').mockImplementation(() => {});
+    await act(async () => { d.reject(new Error('late')); await d.promise.catch(() => {}); });
+    expect(err).not.toHaveBeenCalled();
+  });
+
+  test('unmount before the pending promise resolves is quiet', async () => {
+    const d = deferred();
+    const c = mount(jest.fn(() => d.promise));
+    act(() => { byLabel(c.root, confirmLabel).props.onPress(); });
+    act(() => { c.unmount(); });
+    const err = jest.spyOn(console, 'error').mockImplementation(() => {});
+    await act(async () => { d.resolve({ ok: true }); await d.promise; });
+    expect(err).not.toHaveBeenCalled();
+  });
+});
+
 describe('TidyRecoveryNamesAction', () => {
   const notes = [{ id: 'n1', raw_text: '-Squat 3x6-8, step up\n- 135 8\n', updated_at: 'x' }];
   const weeks = [{ id: 'w1', block_id: 'rb1', note_id: 'n1', week_number: 1, deleted_at: null }];
@@ -163,6 +211,18 @@ describe('TidyRecoveryNamesAction', () => {
     await confirm(c.root);
     expect(onTidy).toHaveBeenCalledTimes(2);
     expect(texts(c.root)).toContain('Names tidied.');
+  });
+
+  test('resolved failure shows its message, keeps the review open, retry possible', async () => {
+    const onTidy = jest.fn().mockResolvedValueOnce({ ok: false, error: 'Nope.' }).mockResolvedValue({ ok: true });
+    const c = mount(onTidy);
+    act(() => { byLabel(c.root, 'Tidy names').props.onPress(); });
+    await confirm(c.root);
+    expect(texts(c.root)).toContain('Nope.');
+    expect(byLabel(c.root, 'Confirm tidy names').props.disabled).toBe(false);
+    expect(texts(c.root)).not.toContain('Names tidied.');
+    await confirm(c.root);
+    expect(onTidy).toHaveBeenCalledTimes(2);
   });
 
   test('duplicate presses call once; unmount while pending is quiet', async () => {
