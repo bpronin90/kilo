@@ -1,4 +1,4 @@
-import { parseWorkoutNote } from '../../lib/parser';
+import { parseWorkoutNote } from '../../lib/parser/workoutPure';
 
 // Bound: a few thousand notes covers a long training history on one device
 // (several years of daily logging) while keeping retained parsed data finite.

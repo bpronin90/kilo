@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { parseWorkoutNote } from '../../lib/parser';
+import { parseWorkoutNote } from '../../lib/parser/workoutPure';
 import {
   normalizeLiftName,
   deriveWorkoutNoteAnalytics,

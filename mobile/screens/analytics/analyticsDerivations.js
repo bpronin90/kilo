@@ -6,7 +6,7 @@ import {
   derive1kTotalSeriesFromSectionsList,
 } from '../../lib/data';
 import { deriveProgressionSections, deriveProgressionAnchorSource, deriveExerciseProgress } from '../../lib/data/exerciseProgress';
-import { normalizeExerciseKey } from '../../lib/parser';
+import { normalizeExerciseKey } from '../../lib/parser/workoutPure';
 import { filterNotesForNormalAnalytics } from '../../lib/data/recoveryAnalyticsFilter';
 
 // `excludedNoteIds` (#699) is the set of recovery-linked note ids whose block
