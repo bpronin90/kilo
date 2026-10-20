@@ -41,6 +41,7 @@ function scheduleFailureMessage(e) {
 // failure (#1486): the setting did not persist, so the control reverts to the
 // last durable value instead of showing an unsaved draft as if it were saved.
 const SAVE_ERROR_MESSAGE = 'Could not save the reminder setting. Your previous setting was kept. Please try again.';
+const LOAD_ERROR_MESSAGE = 'Could not load your saved reminder settings, so changes are disabled. Reopen Settings to try again.';
 const WORKOUT_DAYS_REQUIRED_MESSAGE = 'Pick at least one workout day before enabling the nudge.';
 
 // Reminders settings card (issue #440): two independent opt-in local
@@ -86,6 +87,9 @@ export function ReminderSettingsCard() {
     workoutChannel.current = createChannel({ ...DEFAULT_WORKOUT_REMINDER, fallbackWeekdays: [] });
   }
   const inferredRef = useRef([]);
+  // Edits are ignored until the stored settings have loaded: defaults are not a
+  // durable baseline, so a failed early edit must never roll back to them.
+  const hydratedRef = useRef(false);
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -102,20 +106,22 @@ export function ReminderSettingsCard() {
         reconcileWorkoutReminder(),
       ]);
       if (cancelled) return;
-      // An edit made before the initial load finished already owns the channel.
-      if (weighInChannel.current.rev === 0) {
-        weighInChannel.current.latest = weighInSettings;
-        weighInChannel.current.durable = weighInSettings;
-        setWeighIn(weighInSettings);
-      }
-      if (workoutChannel.current.rev === 0) {
-        workoutChannel.current.latest = reconciled.workout;
-        workoutChannel.current.durable = reconciled.workout;
-        setWorkout(reconciled.workout);
-      }
+      weighInChannel.current.latest = weighInSettings;
+      weighInChannel.current.durable = weighInSettings;
+      workoutChannel.current.latest = reconciled.workout;
+      workoutChannel.current.durable = reconciled.workout;
+      hydratedRef.current = true;
+      setWeighIn(weighInSettings);
+      setWorkout(reconciled.workout);
       inferredRef.current = reconciled.inferredWeekdays;
       setInferredWeekdays(reconciled.inferredWeekdays);
-    })().catch(() => {});
+    })().catch(() => {
+      // Hydration failed: the card stays read-only on defaults rather than
+      // letting edits overwrite settings it could not read.
+      if (cancelled) return;
+      setWeighInError(LOAD_ERROR_MESSAGE);
+      setWorkoutError(LOAD_ERROR_MESSAGE);
+    });
     return () => {
       cancelled = true;
     };
@@ -163,6 +169,7 @@ export function ReminderSettingsCard() {
   // reports the schedule problem separately. `revertOnScheduleFailure` turns an
   // enable back off (its own durable write) when it could not be scheduled.
   const commit = useCallback((channelRef, setState, setError, apply, save, build, revertOnScheduleFailure = false) => {
+    if (!hydratedRef.current) return Promise.resolve();
     const ch = channelRef.current;
     const next = build(ch.latest);
     const rev = ++ch.rev;
@@ -231,12 +238,14 @@ export function ReminderSettingsCard() {
   ), [commit]);
 
   const handleWeighInToggle = useCallback(async (enabled) => {
+    if (!hydratedRef.current) return;
     setWeighInError(null);
     if (enabled && !(await ensurePermission(setWeighInError))) return;
     await commitWeighIn((base) => ({ ...base, enabled }), enabled);
   }, [ensurePermission, commitWeighIn]);
 
   const handleWorkoutToggle = useCallback(async (enabled) => {
+    if (!hydratedRef.current) return;
     setWorkoutError(null);
     const days = workoutChannel.current.latest.fallbackWeekdays;
     if (enabled && resolveWorkoutWeekdays(inferredRef.current, days).length === 0) {

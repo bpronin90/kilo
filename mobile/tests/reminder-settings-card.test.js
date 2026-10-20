@@ -281,6 +281,33 @@ describe('ReminderSettingsCard', () => {
       });
     };
 
+    test('an edit before hydration is ignored, so the stored setting is never replaced by defaults', async () => {
+      const pending = deferred();
+      reconcileWorkoutReminder.mockReturnValueOnce(pending.promise);
+      const tree = await mount();
+      await act(async () => { find(tree, 'Nudge on Monday').props.onPress(); });
+      expect(Storage.saveWorkoutReminder).not.toHaveBeenCalled();
+      await act(async () => {
+        pending.resolve({ workout: { enabled: true, hour: 19, minute: 30, fallbackWeekdays: [3] }, inferredWeekdays: [] });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(find(tree, 'Workout day nudge').props.value).toBe(true);
+      expect(find(tree, 'Nudge on Tuesday').props.accessibilityState.checked).toBe(true);
+      expect(find(tree, 'Nudge on Monday').props.accessibilityState.checked).toBe(false);
+    });
+
+    test('hydration failure leaves the card read-only with a truthful message', async () => {
+      reconcileWorkoutReminder.mockRejectedValueOnce(new Error('boom'));
+      const tree = await mount();
+      expect(texts(tree).join('|')).toContain('Could not load your saved reminder settings');
+      await act(async () => { find(tree, 'Nudge on Monday').props.onPress(); });
+      await act(async () => { await find(tree, 'Daily weigh-in reminder').props.onValueChange(true); });
+      expect(Storage.saveWorkoutReminder).not.toHaveBeenCalled();
+      expect(Storage.saveWeighInReminder).not.toHaveBeenCalled();
+      expect(requestReminderPermission).not.toHaveBeenCalled();
+    });
+
     test('weigh-in enable rejection restores the switch, reports a save error, and does not schedule', async () => {
       Storage.saveWeighInReminder.mockRejectedValueOnce(new Error('disk full'));
       const tree = await mount();
