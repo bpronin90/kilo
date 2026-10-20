@@ -347,7 +347,7 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     rowGap: 8,
   },
   weightTrendChart: {
-    marginTop: 8,
+    marginTop: 14,
   },
   goalSummary: {
     flexShrink: 1,
