@@ -5,6 +5,44 @@ import { useLogCurrentRoutineEditor } from '../screens/log/useLogCurrentRoutineE
 
 jest.mock('../lib/platformAlert', () => ({ Alert: { alert: jest.fn() } }));
 
+// Screen-wiring suite below mounts the real LogScreen: stub only the
+// storage/native edges and capture the props LogScreen hands the check-in sheet.
+const mockCheckInSheet = { props: {}, visibleHistory: [] };
+jest.mock('../hooks/useEntries');
+jest.mock('expo-updates', () => ({
+  useUpdates: () => ({ currentlyRunning: { isEmbeddedLaunch: true } }),
+  checkForUpdateAsync: jest.fn(), fetchUpdateAsync: jest.fn(), reloadAsync: jest.fn(),
+}));
+jest.mock('@react-native-community/datetimepicker', () => {
+  const ReactMock = require('react');
+  const { View } = require('react-native');
+  return function MockDateTimePicker(props) { return ReactMock.createElement(View, { testID: 'mock-datetimepicker', ...props }); };
+});
+jest.mock('../components/LogEmptyState', () => {
+  const ReactMock = require('react');
+  const { View } = require('react-native');
+  return { LogEmptyState: function MockLogEmptyState() { return ReactMock.createElement(View); } };
+});
+jest.mock('../components/SessionCheckInModal', () => {
+  const ReactMock = require('react');
+  const { View } = require('react-native');
+  return {
+    SessionCheckInModal: function MockSessionCheckInModal(props) {
+      mockCheckInSheet.props = props;
+      mockCheckInSheet.visibleHistory.push(props.visible);
+      return ReactMock.createElement(View);
+    },
+  };
+});
+jest.mock('../components/ScreenShell', () => {
+  const ReactMock = require('react');
+  const { View } = require('react-native');
+  const ScreenShell = ReactMock.forwardRef(({ children, headerRight }, ref) => (
+    ReactMock.createElement(View, { testID: 'screen-shell' }, headerRight, children)
+  ));
+  return { ScreenShell, ScrollContext: ReactMock.createContext({ onScroll: () => {} }) };
+});
+
 // ── D10 trigger contract, driven through the real hook ───────────────────────
 //
 // Nothing here stubs the detector or the parser: each note below is real text
@@ -429,32 +467,112 @@ describe('cooldown: at most one prompt per three session indices', () => {
 // ── Screen wiring ────────────────────────────────────────────────────────────
 // There is no ownership manager in the app: the check-in, the recovery-block
 // modal and the add-week modal are sibling <Modal>s. Ownership is therefore a
-// predicate LogScreen derives from the two state variables it already keeps,
-// and it has to reach the hook — a render-side gate alone would leave the
-// prompt state set and let the sheet return.
+// predicate LogScreen derives from the state it already keeps, and it has to
+// reach the hook — a render-side gate alone would leave the prompt state set
+// and let the sheet return. These mount the real LogScreen (only storage-backed
+// hooks and the sheet itself are stubbed) and observe the props the check-in
+// sheet receives, so they hold however LogScreen splits or names its internals.
 
 describe('LogScreen supplies the ownership predicate and the toggle gate', () => {
-  const src = require('fs').readFileSync(
-    require('path').join(__dirname, '../screens/LogScreen.js'), 'utf8'
-  );
+  const useEntries = require('../hooks/useEntries');
+  const {
+    ControlledLogScreen, openCurrentRoutineMenu, openRecoveryManagement, findPressableByText,
+  } = require('./helpers/log-screen');
 
-  test('ownership covers both the recovery-block modal and the add-week modal', () => {
-    expect(src).toMatch(/const otherModalOwnsScreen = !!recoveryModal \|\| addWeekModalOpen \|\| endBlockModalOpen;/);
+  const note = { id: 'note1', title: 'Push Day', raw_text: decliningNote(), updated_at: '2026-01-01T00:00:00.000Z' };
+  let update;
+  let toggles;
+  let screen;
+
+  const modalProps = () => mockCheckInSheet.props;
+  const screenElement = () => <ControlledLogScreen initialText={note.raw_text} initialTitle={note.title} />;
+
+  const mountScreen = () => {
+    render.act(() => { screen = render.create(screenElement()); });
+    mounted.push(screen);
+    return screen.root;
+  };
+  const refresh = () => render.act(() => { screen.update(screenElement()); });
+  const enterEditor = (root) => {
+    openCurrentRoutineMenu(root);
+    render.act(() => { findPressableByText(root, 'Edit').props.onPress({ stopPropagation: jest.fn() }); });
+  };
+  const pressDone = async (root) => {
+    enterEditor(root);
+    await render.act(async () => { await findPressableByText(root, 'Done').props.onPress(); });
+  };
+
+  beforeEach(() => {
+    mockCheckInSheet.props = {};
+    mockCheckInSheet.visibleHistory = [];
+    update = jest.fn().mockImplementation(async (id, patch) => ({ id, title: patch.title ?? note.title, raw_text: patch.raw_text ?? note.raw_text }));
+    toggles = { fatigueTrackingEnabled: true, deloadModeEnabled: false };
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [note], currentId: note.id, currentNote: note, deloadNotes: [],
+      loading: false, error: null, refresh: jest.fn(), selectCurrent: jest.fn(), update, add: jest.fn(), remove: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: { Bench: true }, toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: null, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockImplementation(() => toggles);
+    const recoveryHooks = jest.requireActual('../hooks/entries/recoveryBlockHooks');
+    useEntries.isEligibleBaselineNote.mockImplementation(recoveryHooks.isEligibleBaselineNote);
+    useEntries.isEligibleRecoveryWeekNote.mockImplementation(recoveryHooks.isEligibleRecoveryWeekNote);
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      activeBlock: null, blocks: [], weeks: [], recoveryWeekNumberByNoteId: {}, loading: false, error: null, refresh: jest.fn(),
+    });
+    useEntries.useStartRecoveryBlock.mockReturnValue({ startBlock: jest.fn() });
   });
 
-  test('the predicate and the verified-read state are passed into the editor hook', () => {
-    const hookCall = src.slice(
-      src.indexOf('useLogCurrentRoutineEditor({'),
-      src.indexOf('const deloadEditor')
-    );
-    expect(hookCall).toContain('otherModalOwnsScreen');
-    expect(hookCall).toContain('notesLoading');
-    expect(hookCall).toContain('notesError');
-    expect(hookCall).toContain('fatigueTrackingEnabled');
+  test('a rough Done raises the sheet through the screen, and the sheet follows the feature toggle', async () => {
+    const root = mountScreen();
+    expect(modalProps().visible).toBe(false);
+
+    await pressDone(root);
+    expect(modalProps().visible).toBe(true);
+    expect(modalProps().currentId).toBe('note1');
+    expect(modalProps().checkInData.detectors).toEqual(['volume_drop']);
+
+    // Turning the feature off closes the sheet on the very next render: no
+    // render after the toggle flips may show it, not even a transient one
+    // before the hook has withdrawn its own state.
+    mockCheckInSheet.visibleHistory = [];
+    toggles = { ...toggles, fatigueTrackingEnabled: false };
+    refresh();
+    expect(mockCheckInSheet.visibleHistory.length).toBeGreaterThan(0);
+    expect(mockCheckInSheet.visibleHistory.every(v => v === false)).toBe(true);
+    expect(modalProps().visible).toBe(false);
+
+    // And turning it back on does not resurrect a withdrawn prompt.
+    toggles = { ...toggles, fatigueTrackingEnabled: true };
+    refresh();
+    expect(modalProps().visible).toBe(false);
   });
 
-  test('the Log check-in modal is gated on the feature toggle, as the Analytics one is', () => {
-    expect(src).toMatch(/visible=\{fatigueTrackingEnabled && currentEditor\.showCheckInModal\}/);
+  test('with the feature off the screen never raises the sheet, even for a rough session', async () => {
+    toggles = { ...toggles, fatigueTrackingEnabled: false };
+    const root = mountScreen();
+
+    await pressDone(root);
+    expect(modalProps().visible).toBe(false);
+    toggles = { ...toggles, fatigueTrackingEnabled: true };
+    refresh();
+    expect(modalProps().visible).toBe(false);
+    expect(checkInWrites(update)).toHaveLength(0);
+  });
+
+  test('the recovery-block modal taking the screen withdraws the sheet', async () => {
+    const root = mountScreen();
+    await pressDone(root);
+    expect(modalProps().visible).toBe(true);
+
+    openRecoveryManagement(root);
+    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress(); });
+
+    expect(modalProps().visible).toBe(false);
+    expect(modalProps().checkInData).toBeNull();
   });
 });
 
