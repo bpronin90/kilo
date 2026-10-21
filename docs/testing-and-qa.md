@@ -127,3 +127,44 @@ See [Android Restore Credentials Migration/Restore Test Flow](testing/manual-qa.
 ## Google Play 2027 Memory and DEX Optimization (#1134)
 
 See [Google Play 2027 Memory and DEX Optimization (#1134)](operations/play-store-readiness.md#google-play-2027-memory-and-dex-optimization-1134).
+
+## Expo SDK 58 Upgrade Verification (#1546)
+
+Toolchain: Expo SDK 58.0.16, React Native 0.88.0, React 19.3.0, Jest 30 /
+jest-expo 58. A clean `expo prebuild --platform android` resolves AGP 9.2.1,
+Gradle 9.4.1, and Kotlin 2.2.0 with `android.builtInKotlin=false` and
+`android.newDsl=false`; the release buildType uses
+`proguard-android-optimize.txt` and both #1176/#1455 keep rules are emitted.
+References: [RN 0.87 (AGP 9)](https://reactnative.dev/blog/2026/08/11/react-native-0.87),
+[Expo SDK 58](https://expo.dev/changelog/sdk-58).
+
+Runtime and rollout: preview binaries use `preview-14`; signed production uses
+`<version>-sdk58-signed`, so no SDK 58 bundle can reach an SDK 54 binary of the
+same version (those use `<version>-signed`). Preview and production installs
+need a fresh native build; JavaScript cannot repair an older binary.
+
+Release-APK emulator smoke, 2026-10-21. EAS preview build
+`a99b6450-8f0d-4aa9-9e02-9a3a6290dfc0` (runtime `preview-14`, commit
+`22812152`), APK SHA-256
+`1b7f015da1bada4b1cb057fd934df9bc08eb8c86d62b184e641e03771216f642`. Emulator
+37.2.12, Android 15 (API 35, google_apis x86_64), Pixel 7 profile 1080×2400,
+light, default font. Baseline: preview-13 build `bae54fd8` (SDK 54, commit
+`5d22e00d`) installed first, seeded with two weigh-ins and a "Smoke Day"
+routine, then preview-14 installed over it with `adb install -r` (same
+`firstInstallTime`, data kept). Screenshots are in the local checkout under
+`.visual-evidence/1546/`.
+
+| Scenario | Steps | Result |
+| --- | --- | --- |
+| Cold launch | `am force-stop`; `am start -W` | Pass: 5.6 s first launch after upgrade, no fatal/JS errors in logcat; native splash matches SDK 54 (`new-11-native-splash.png`). |
+| Existing data + SecureStore | Read baseline data after upgrade | Pass: 182.4 lb weigh-in and "Smoke Day" routine decrypt with the SecureStore device key (`new-01-cold-launch.png`); no `EncryptedStorageError`. |
+| Navigation | Home, Weight, Analytics, More, Log | Pass: every tab renders with icons (`new-nav-*.png`). |
+| Workout save/reload | Make routine current, append `140 5,5`, Done, force-stop, relaunch | Pass: new session persists across process restart (`new-03`, `new-04`). |
+| Notification permission denied | Enable weigh-in reminder, "Don't allow" | Pass: toggle stays off, "Notifications are blocked" shown, no alarm registered (`new-06`). |
+| Notification scheduling | Grant `POST_NOTIFICATIONS`, enable reminder | Pass: `expo.modules.notifications` RTC_WAKEUP alarm for 08:00 next day; no `NotSerializableException` (`new-07`). |
+| Scheduling across restart | Force-stop + reboot, then launch; plain reboot without launch | Pass: launch reconciles the alarm after a force-stopped boot; a plain reboot restores it from the serialized store before launch. |
+| System appearance | Dark, then System, then OS night mode on/off | Pass: System follows OS light/dark live, same process, no crash (`new-08`–`new-10`). |
+
+Gaps: signed-in Supabase session persistence was not exercised (no test
+account in this run); the production AAB build and `r8.json` measurement stay
+with #1167.
