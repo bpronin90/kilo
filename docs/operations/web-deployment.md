@@ -90,6 +90,16 @@ automatically when the upload has no top-level `404.html`. The export step
 fails if one appears. Do not add a `/* /index.html 200` `_redirects` rule;
 Pages ignores it as an infinite loop.
 
+## Vendored asset paths
+
+Cloudflare Pages silently drops any uploaded path containing `node_modules`.
+Expo writes the icon font to `dist/assets/node_modules/@expo/vector-icons/…`,
+so before #1548 production served `index.html` in its place: the tab-bar icons
+were blank and the page threw "A network error occurred." The `export:web`
+script in `mobile/package.json` renames that directory to
+`assets/vendor_modules`, rewrites the bundle references, and fails the export
+if any `node_modules` path remains.
+
 ## Rollback
 
 Use either path; both take effect in seconds and keep the browser data of
