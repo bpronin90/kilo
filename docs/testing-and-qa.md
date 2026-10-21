@@ -165,6 +165,16 @@ routine, then preview-14 installed over it with `adb install -r` (same
 | Scheduling across restart | Force-stop + reboot, then launch; plain reboot without launch | Pass: launch reconciles the alarm after a force-stopped boot; a plain reboot restores it from the serialized store before launch. |
 | System appearance | Dark, then System, then OS night mode on/off | Pass: System follows OS light/dark live, same process, no crash (`new-08`–`new-10`). |
 
-Gaps: signed-in Supabase session persistence was not exercised (no test
-account in this run); the production AAB build and `r8.json` measurement stay
-with #1167.
+Production profile build: EAS `b09f72af-ae93-46e9-81af-888e27fc9c7c`
+(`npm run build:android:production` with the local certificate for config
+evaluation), commit `03e77f9f`, version 1.16.48, versionCode 19, AAB SHA-256
+`c4b2c03e4541651305599951fa0f5bbc88d09141ec0422f3215181225a318e57`. The AAB
+embeds runtime `1.16.48-sdk58-signed` and the `CN=Kilo` code-signing
+certificate (SHA-256 `CA:EB:C3:E6:99:99:D9:F0:23:AE:BD:6B:D6:8D:60:A4:AB:16:6C:5C:F9:F7:20:BD:83:76:50:F5:E5:C2:71:A9`;
+compare with the password-manager record before any submission) with metadata
+`keyid main` / `rsa-v1_5-sha256`. Not submitted. `r8.json` thresholds and
+optimized resource shrinking remain #1167's acceptance.
+
+Gap: signed-in Supabase session persistence across restart was not exercised
+(no test account available to this run). Local SecureStore persistence is
+covered by the device-key read above.
