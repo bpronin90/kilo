@@ -106,7 +106,9 @@ Supported repository build paths are:
 - Expo development through the root `mobile:start` and `mobile:android`
   scripts.
 - Android preview and production builds through the mobile EAS scripts.
-- An Expo web export served as a static application.
+- An Expo web export served as a static application, published at
+  https://kilo-app.pages.dev by the [Web Deployment](../operations/web-deployment.md)
+  workflow.
 - iOS simulator and device profiles documented in the mobile build runbook.
 
 Remote EAS Update publication is intentionally blocked while update-signing key

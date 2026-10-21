@@ -1,0 +1,132 @@
+name: Web Deploy
+
+# Production web deploys run only after the Test workflow succeeds for a push
+# to main. Pull requests never reach this workflow's secrets: workflow_run
+# executes the default-branch definition, and the guards below reject any run
+# that did not come from a main push in this repository.
+#
+# workflow_dispatch redeploys an earlier main commit for rollback. See
+# docs/operations/web-deployment.md.
+
+on:
+  workflow_run:
+    workflows: [Test]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Full SHA of a commit already on main to (re)deploy
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-deploy-production
+  cancel-in-progress: false
+
+env:
+  PAGES_PROJECT: kilo-app
+  WRANGLER_VERSION: 4.147.0
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production-web
+      url: ${{ vars.KILO_WEB_URL }}
+
+    steps:
+      - name: Resolve deploy commit
+        id: target
+        env:
+          DISPATCH_SHA: ${{ inputs.sha }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          sha="${DISPATCH_SHA:-$RUN_SHA}"
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Deploy target must be a full 40-character commit SHA."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ steps.target.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require the commit to be on main
+        env:
+          SHA: ${{ steps.target.outputs.sha }}
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "::error::$SHA is not on main; refusing to deploy it to production."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - run: npm --prefix mobile ci
+
+      # Only public EXPO_PUBLIC_ values from repository variables enter the
+      # bundle. Never map a repository secret into this step.
+      - name: Export web build
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          EXPO_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.EXPO_PUBLIC_TURNSTILE_SITE_KEY }}
+          EXPO_PUBLIC_SENTRY_DSN: ${{ vars.EXPO_PUBLIC_SENTRY_DSN }}
+        run: |
+          for name in EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_ANON_KEY EXPO_PUBLIC_TURNSTILE_SITE_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository variable $name is not set."
+              exit 1
+            fi
+          done
+          npm --prefix mobile run export:web
+          test -f mobile/dist/index.html
+          test -f mobile/dist/_headers
+          # A top-level 404.html disables Cloudflare Pages' SPA fallback.
+          test ! -e mobile/dist/404.html
+
+      - name: Deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SHA: ${{ steps.target.outputs.sha }}
+        run: >-
+          npx --yes "wrangler@${WRANGLER_VERSION}" pages deploy mobile/dist
+          --project-name "$PAGES_PROJECT"
+          --branch main
+          --commit-hash "$SHA"
+          --commit-dirty=false
+
+      - name: Verify live response
+        env:
+          KILO_WEB_URL: ${{ vars.KILO_WEB_URL }}
+        run: |
+          if [ -z "$KILO_WEB_URL" ]; then
+            echo "::warning::KILO_WEB_URL is not set; skipping live verification."
+            exit 0
+          fi
+          for path in / /spa-fallback-check; do
+            headers=$(curl -fsS -D - -o /tmp/body.html "${KILO_WEB_URL%/}$path")
+            grep -qi '^content-security-policy:' <<<"$headers"
+            grep -qi '^x-frame-options: *deny' <<<"$headers"
+            grep -q 'id="root"' /tmp/body.html
+          done
+          echo "Live $KILO_WEB_URL serves the app shell with security headers."
