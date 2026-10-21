@@ -29,7 +29,7 @@ test('native builds isolate OTA channels and Android OS backup stays disabled', 
   const priorAppEnv = process.env.APP_ENV;
   process.env.APP_ENV = 'preview';
   try {
-    assert.equal(resolveAppConfig({ config: app.expo }).runtimeVersion, 'preview-13');
+    assert.equal(resolveAppConfig({ config: app.expo }).runtimeVersion, 'preview-14');
   } finally {
     if (priorAppEnv === undefined) delete process.env.APP_ENV;
     else process.env.APP_ENV = priorAppEnv;
@@ -96,8 +96,11 @@ test('production builds embed the configured certificate and require signed OTA 
   for (const marker of [{ APP_ENV: 'production' }, { EAS_BUILD_PROFILE: 'production' }]) {
     const resolved = withEnv({ ...marker, KILO_OTA_CODE_SIGNING_CERTIFICATE: signer.certPath }, () => resolveAppConfig({ config: app.expo }));
     const { updates } = resolved;
-    // Signed builds never share a runtime with unsigned production installs.
-    assert.equal(resolved.runtimeVersion, `${app.expo.version}-signed`);
+    // Signed builds never share a runtime with unsigned production installs,
+    // and the Expo SDK major isolates binaries across SDK upgrades (#1546).
+    const sdkMajor = /(\d+)/.exec(mobilePackage.dependencies.expo)[1];
+    assert.equal(sdkMajor, '58');
+    assert.equal(resolved.runtimeVersion, `${app.expo.version}-sdk${sdkMajor}-signed`);
     assert.equal(resolve(mobileDir, updates.codeSigningCertificate), signer.certPath);
     assert.deepEqual(updates.codeSigningMetadata, { keyid: 'main', alg: 'rsa-v1_5-sha256' });
     assert.notEqual(updates.codeSigningAllowUnsignedManifests, true);
@@ -134,7 +137,7 @@ test('preview, simulator, development, and local config stay unsigned even with 
       if (certificate) vars.KILO_OTA_CODE_SIGNING_CERTIFICATE = certificate;
       const resolved = withEnv(vars, () => resolveAppConfig({ config: app.expo }));
       assert.deepEqual(resolved.updates, app.expo.updates);
-      assert.deepEqual(resolved.runtimeVersion, appEnv === 'preview' ? 'preview-13' : { policy: 'appVersion' });
+      assert.deepEqual(resolved.runtimeVersion, appEnv === 'preview' ? 'preview-14' : { policy: 'appVersion' });
     }
   }
   for (const [name, profile] of Object.entries(eas.build)) {

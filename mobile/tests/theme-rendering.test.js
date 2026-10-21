@@ -1207,7 +1207,7 @@ describe('native appearance reconciliation (#985)', () => {
   test('an explicit selection pins the native scheme', () => {
     renderInTheme(<Text>probe</Text>);
     // System default on mount hands control back to the OS.
-    expect(setColorScheme).toHaveBeenLastCalledWith(null);
+    expect(setColorScheme).toHaveBeenLastCalledWith('unspecified');
 
     act(() => {
       setAppearancePreference('dark');
@@ -1230,7 +1230,7 @@ describe('native appearance reconciliation (#985)', () => {
     act(() => {
       setAppearancePreference('system');
     });
-    expect(setColorScheme).toHaveBeenLastCalledWith(null);
+    expect(setColorScheme).toHaveBeenLastCalledWith('unspecified');
   });
 
   test('a live OS scheme change under System does not re-pin', () => {
@@ -1245,7 +1245,7 @@ describe('native appearance reconciliation (#985)', () => {
     // The effect only depends on the preference, so an OS-driven repaint under
     // System never calls setColorScheme again with a concrete value.
     for (const call of setColorScheme.mock.calls) {
-      expect(call[0]).toBe(null);
+      expect(call[0]).toBe('unspecified');
     }
   });
 });

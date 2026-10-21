@@ -265,6 +265,9 @@ beforeEach(() => {
 
   resetSupabaseClientForTests();
   mockFetch = jest.fn();
+  // #1546: React Native 0.88 lazily installs its fetch polyfill over the
+  // module-level stub mid-file, so reinstall the mock before every test.
+  global.fetch = (...args) => mockFetch(...args);
 });
 
 // ---------------------------------------------------------------------------

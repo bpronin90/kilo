@@ -102,7 +102,7 @@ export function OwnershipPrompt({ type, canRestore, onUpload, onDownload, onStar
 
 const createStyles = (colors, kua = null, mode = 'light') => StyleSheet.create({
   ownershipOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: kua ? scrim(mode) : colors.overlay,
   },
   scroll: {

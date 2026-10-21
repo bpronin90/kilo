@@ -85,9 +85,12 @@ resolves the same unsigned config as before #1233.
    the private key to EAS.
 
 6. Ship a new production store build (below). Signed production uses the
-   runtime `<version>-signed` (for example `1.14.18-signed`) instead of the
-   plain `appVersion` runtime, so signed and unsigned binaries never share a
-   runtime. This matters because expo-updates does not re-verify cached
+   runtime `<version>-sdk<N>-signed` (for example `1.16.49-sdk58-signed`;
+   binaries built before #1546 use `<version>-signed`) instead of the plain
+   `appVersion` runtime, so signed and unsigned binaries never share a
+   runtime. The Expo SDK major `<N>` comes from `mobile/package.json`, so
+   JavaScript built for a new SDK never reaches an older SDK's binary of the
+   same version. This matters because expo-updates does not re-verify cached
    updates: an unsigned OTA cached by an older install must not launch after
    an in-place upgrade to the signed binary. Installs built before #1233 stay
    unsigned until they update from the store, and they never receive signed
@@ -126,7 +129,7 @@ The certificate is native configuration, so rotation needs a store build.
 2. Replace the EAS variable with `eas env:update` (or `eas env:create --force`)
    in `production` only.
 3. Bump the app version through the release workflow so the new certificate
-   ships under a new `<version>-signed` runtime, then build and submit.
+   ships under a new `<version>-sdk<N>-signed` runtime, then build and submit.
 4. Sign updates for the new version with the new key. Keep the old key only
    to sign updates for older versions still installed, then destroy it once
    those versions are retired.
@@ -161,12 +164,13 @@ export KILO_OTA_CODE_SIGNING_CERTIFICATE=<certificate embedded in the affected v
 export KILO_OTA_CODE_SIGNING_PRIVATE_KEY=<matching private key>
 APP_ENV=production node -e "try{require('./app.config.js').assertProductionUpdateSigning()}catch(e){console.error(e.message);process.exit(1)}" \
   && APP_ENV=production eas update:roll-back-to-embedded --platform android \
-    --channel production --runtime-version <affected-version>-signed \
+    --channel production --runtime-version <affected-runtime> \
     --private-key-path "$KILO_OTA_CODE_SIGNING_PRIVATE_KEY"
 unset KILO_OTA_CODE_SIGNING_PRIVATE_KEY
 ```
 
-Repeat once per affected `<version>-signed` runtime.
+Repeat once per affected runtime (`<version>-sdk<N>-signed`, or
+`<version>-signed` for binaries built before #1546).
 
 ### Lost signing material
 
