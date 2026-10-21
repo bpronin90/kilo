@@ -162,6 +162,15 @@ describe('app config', () => {
     expect(pkg.dependencies['expo-dev-client']).toMatch(/^~58\.0\./);
   });
 
+  // #1546: SDK 58 stopped pulling these in transitively. Jest resolves
+  // `buffer` to Node's builtin, so only a direct dependency keeps the Metro
+  // bundle (and the EAS build) from failing.
+  test('modules production code imports are direct dependencies', () => {
+    const pkg = require('../package.json');
+    expect(pkg.dependencies.buffer).toBeDefined();
+    expect(pkg.dependencies['@expo/vector-icons']).toBeDefined();
+  });
+
   // #1124: R8 optimization for production AABs.
   test('expo-build-properties is declared as a direct dependency at an SDK-compatible version', () => {
     const pkg = require('../package.json');
