@@ -241,7 +241,7 @@ const createBarbellStyles = (colors, kua) => {
 
 const createOverlayStyles = (colors, kua, typography) => StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 10,
     elevation: 10,
     alignItems: 'center',

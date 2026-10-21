@@ -38,15 +38,16 @@ export function resolveThemeMode(preference, systemScheme) {
 
 // Reconcile the JS preference with React Native's native `Appearance` (#985).
 // Light/Dark pin the native scheme so keyboards, pickers, switches, alerts and
-// the OS status bar match; System passes `null`, which hands control back to the
-// OS so `useColorScheme()` keeps tracking live light/dark switches. Because
+// the OS status bar match; System passes `'unspecified'`, which hands control
+// back to the OS so `useColorScheme()` keeps tracking live light/dark switches
+// (React Native 0.88 no longer maps `null` to it, #1546). Because
 // `resolveThemeMode` derives the app's mode from the *preference* first and only
 // falls back to the scheme for `system`, pinning the scheme for an explicit
 // choice cannot feed back into the resolved mode. Web has no native appearance
 // layer, so it is skipped.
 function applyNativeAppearance(preference) {
   if (Platform.OS === 'web') return;
-  const pinned = preference === 'light' || preference === 'dark' ? preference : null;
+  const pinned = preference === 'light' || preference === 'dark' ? preference : 'unspecified';
   Appearance.setColorScheme(pinned);
 }
 

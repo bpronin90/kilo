@@ -87,8 +87,10 @@ eas build:list --platform android --limit 5
 Use this for the app that ships through Google Play (production channel). This
 path is separate from the preview APK flow above: production builds are `.aab`
 app bundles distributed only through Play Console, and they use the signed
-per-version runtime `<version>-signed` (#1233) instead of the stable preview
-runtime string.
+per-version runtime `<version>-sdk<N>-signed` (#1233, #1546) instead of the
+stable preview runtime string. The Expo SDK major `<N>` keeps an SDK upgrade's
+JavaScript off older binaries that share the app version; binaries built before
+#1546 use `<version>-signed`.
 
 ### Build And Upload The Production AAB
 

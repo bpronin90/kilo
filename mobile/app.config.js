@@ -48,7 +48,11 @@ const path = require('node:path');
 //   so scheduling any notification threw NotSerializableException. The rule
 //   changes the generated release proguard-rules.pro, so preview-12 installs
 //   need this rebuilt APK (installed over preview-12; no data is cleared).
-const PREVIEW_RUNTIME = 'preview-13';
+// preview-14: #1546 (2026-10-21) upgrades Expo SDK 54 -> 58 (React Native
+//   0.88, AGP 9). Every native module changes, so preview-13 installs must not
+//   receive SDK 58 bundles and need a fresh preview build (installed over
+//   preview-13; no data is cleared).
+const PREVIEW_RUNTIME = 'preview-14';
 
 // Large-screen resizing (#1126). The SDK 54 template's MainActivity already
 // handles orientation|screenSize|screenLayout itself, but not
@@ -170,14 +174,22 @@ function loadOtaCertificate(env = process.env) {
   return { absolute, certificate };
 }
 
-// Signed production gets its own runtime, `<version>-signed`, rather than the
-// plain appVersion runtime. expo-updates does not re-verify cached updates, so
-// sharing the unsigned runtime would let an unsigned OTA cached by an older
-// install launch after an in-place upgrade to the signed binary. Each version
-// still gets a distinct runtime, as with the appVersion policy.
+// Signed production gets its own runtime, `<version>-sdk<N>-signed`, rather
+// than the plain appVersion runtime. expo-updates does not re-verify cached
+// updates, so sharing the unsigned runtime would let an unsigned OTA cached by
+// an older install launch after an in-place upgrade to the signed binary. Each
+// version still gets a distinct runtime, as with the appVersion policy. The
+// Expo SDK major (#1546) is part of the runtime so JavaScript built against a
+// new SDK can never be published to an older SDK's binary of the same version.
+function expoSdkMajor() {
+  const match = /(\d+)/.exec(require('./package.json').dependencies?.expo || '');
+  if (!match) throw signingError('mobile/package.json must declare the expo dependency to derive the signed runtime.');
+  return match[1];
+}
+
 function signedProductionRuntime(config) {
   if (!config.version) throw signingError('expo.version is required to derive the signed runtime.');
-  return `${config.version}-signed`;
+  return `${config.version}-sdk${expoSdkMajor()}-signed`;
 }
 
 // expo-updates joins updates.codeSigningCertificate onto the project root, so

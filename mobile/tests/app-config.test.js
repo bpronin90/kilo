@@ -22,7 +22,7 @@ describe('app config', () => {
 
     const result = configFactory({ config: { plugins: [] } });
 
-    expect(result.runtimeVersion).toBe('preview-13');
+    expect(result.runtimeVersion).toBe('preview-14');
   });
 
   test('uses the appVersion runtime policy for production builds', () => {
@@ -145,27 +145,27 @@ describe('app config', () => {
 
   test('expo-system-ui is pinned at an SDK-compatible version', () => {
     const pkg = require('../package.json');
-    expect(pkg.dependencies['expo-system-ui']).toMatch(/^~6\.0\./);
+    expect(pkg.dependencies['expo-system-ui']).toMatch(/^~58\.0\./);
   });
 
   // #1097: KUA typography requires expo-font for offline-safe bundled font loading.
   test('expo-font is declared as a direct dependency at an SDK-compatible version', () => {
     const pkg = require('../package.json');
-    expect(pkg.dependencies['expo-font']).toMatch(/^~14\./);
+    expect(pkg.dependencies['expo-font']).toMatch(/^~58\./);
   });
 
   // #1127: expo-dev-client is a direct runtime dependency and ships in all builds including production.
   // expo-dev-launcher (its native dependency) unconditionally includes play-services-code-scanner and
-  // mlkit:barcode-scanning on SDK 54; there is no per-profile autolinking exclusion available.
-  test('expo-dev-client is declared as a direct dependency at an SDK-54-compatible version', () => {
+  // mlkit:barcode-scanning; there is no per-profile autolinking exclusion available.
+  test('expo-dev-client is declared as a direct dependency at an SDK-58-compatible version', () => {
     const pkg = require('../package.json');
-    expect(pkg.dependencies['expo-dev-client']).toMatch(/^~6\.0\./);
+    expect(pkg.dependencies['expo-dev-client']).toMatch(/^~58\.0\./);
   });
 
   // #1124: R8 optimization for production AABs.
   test('expo-build-properties is declared as a direct dependency at an SDK-compatible version', () => {
     const pkg = require('../package.json');
-    expect(pkg.dependencies['expo-build-properties']).toMatch(/^~1\.0\./);
+    expect(pkg.dependencies['expo-build-properties']).toMatch(/^~58\.0\./);
   });
 
   test('static config registers expo-build-properties with R8 enabled for release builds', () => {
@@ -206,7 +206,9 @@ describe('app config', () => {
   });
 
   test('expo-build-properties emits the Expo annotation keep rule into release proguard rules', () => {
-    const { updateAndroidProguardRules } = require('expo-build-properties/build/android');
+    // SDK 58's exports map hides build/*, so resolve it from the package root.
+    const buildPropsRoot = require('path').dirname(require.resolve('expo-build-properties/package.json'));
+    const { updateAndroidProguardRules } = require(`${buildPropsRoot}/build/android`);
     const appJson = require('../app.json');
     const buildPropsPlugin = appJson.expo.plugins.find(
       (p) => Array.isArray(p) && p[0] === 'expo-build-properties',
