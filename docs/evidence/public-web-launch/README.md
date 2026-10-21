@@ -69,7 +69,7 @@ Script: [`scripts/auth2.mjs`](scripts/auth2.mjs)
 | Continue with GitHub | Pass. Redirects to `github.com/login` with `redirect_to=https://issue-1548-web-launch.kilo-app.pages.dev`. |
 | Cancelled GitHub sign-in (`?error=access_denied`) | Partial. Stays signed out without crashing, but shows no message (`after-390x844-12-oauth-cancelled.png`). |
 | Successful sign-in and callback return | Pass, by the owner on the deployed origin (2026-10-21). |
-| Sign-out | **Fail.** "Could not revoke Android restore key. Sign out again to retry." The Edge Functions send no CORS allow-origin to browsers. Tracked as a follow-up; see [Web Deployment → Known web gaps](../../operations/web-deployment.md#known-web-gaps). |
+| Sign-out | **Fail.** "Could not revoke Android restore key. Sign out again to retry." The Edge Functions send no CORS allow-origin to browsers. Tracked in #1552; see [Web Deployment → Known web gaps](../../operations/web-deployment.md#known-web-gaps). |
 
 ## Native-only features
 

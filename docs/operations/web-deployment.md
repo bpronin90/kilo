@@ -154,7 +154,8 @@ so revert or fix the faulty change on `main` before merging anything else.
 
 Kilo's Supabase Edge Functions deliberately return no
 `Access-Control-Allow-Origin` header to browsers (`supabase/functions/_shared/cors.ts`),
-so every web call to them fails. Until the follow-up issue opens them to the
+so every web call to them fails. Until
+[#1552](https://github.com/bpronin90/kilo/issues/1552) opens them to the
 production origin, the following do **not** work on the web; cloud accounts on
 the web are not launch-ready:
 
