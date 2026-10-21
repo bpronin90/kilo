@@ -140,14 +140,31 @@ so revert or fix the faulty change on `main` before merging anything else.
   id. Signing in never changes or erases local data by itself; history owned by
   another account requires an explicit purge-or-upload choice before sync
   starts. See [Cloud Sync](../architecture/cloud-sync.md).
-- **Session invalidation.** Sign-out ends the session and returns storage to
-  local-only mode, offering an explicit device-wipe. Clearing site data also
-  removes the session.
-- **Offline and sync failure.** The app keeps reading and writing local data
-  while offline or when Supabase is unreachable; sync retries later. Cloud
-  features are unavailable when the build lacks configuration, and password
-  Auth shows "Security verification is unavailable in this build" when the
-  Turnstile Sitekey is missing.
+- **Session invalidation.** Sign-out is meant to end the session and return
+  storage to local-only mode, offering an explicit device-wipe; on the web it
+  currently fails (see below). Clearing site data removes the session.
+- **Offline and sync failure.** Local reads and writes do not depend on
+  Supabase, so the app keeps working offline or when Supabase is unreachable;
+  retry and conflict behavior is in [Cloud Sync](../architecture/cloud-sync.md).
+  Password Auth shows "Security verification is unavailable in this build" when
+  the Turnstile Sitekey is missing, and "Complete the security verification
+  before continuing" until the Turnstile check passes.
+
+### Known web gaps
+
+Kilo's Supabase Edge Functions deliberately return no
+`Access-Control-Allow-Origin` header to browsers (`supabase/functions/_shared/cors.ts`),
+so every web call to them fails. Until the follow-up issue opens them to the
+production origin, the following do **not** work on the web; cloud accounts on
+the web are not launch-ready:
+
+- **Sign-out** fails with "Could not revoke Android restore key. Sign out again
+  to retry." because it first calls `android-restore-credentials/v1/revoke`.
+  Clearing the site's data ends the session but also deletes all local data,
+  so export a backup first.
+- **Cloud account export, account deletion, and health-data deletion**
+  (`account-export`, `account-delete`, `health-data-delete`).
+- **Cancelled GitHub sign-in** returns signed out without a message.
 
 ## Web limitations
 
