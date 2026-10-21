@@ -175,6 +175,25 @@ compare with the password-manager record before any submission) with metadata
 `keyid main` / `rsa-v1_5-sha256`. Not submitted. `r8.json` thresholds and
 optimized resource shrinking remain #1167's acceptance.
 
-Gap: signed-in Supabase session persistence across restart was not exercised
-(no test account available to this run). Local SecureStore persistence is
-covered by the device-key read above.
+Signed-in session persistence, same emulator and APKs, disposable test
+account (no tokens recorded). Identity source is the Supabase auth user ID;
+the session persists through `auth.storage` = the chunked SecureStore adapter
+(`mobile/lib/supabaseClient.js`, `persistSession: true`), and the local data
+owner marker records that user ID. Sign-out (`mobile/hooks/useAuthSession.js`)
+revokes the Android restore key, calls `auth.signOut()` (removes the stored
+session chunks) and clears in-memory session state. Screenshots: `ac5-*.png`.
+
+| Scenario | Steps | Result |
+| --- | --- | --- |
+| Upgrade keeps session | Clean preview-13 install, sign in (dismiss first-sign-in prompt), force-stop, `adb install -r` preview-14, launch | Pass: Account shows "Signed in as" the same account with no re-login (`ac5-01`, `ac5-02`). First-sign-in prompt reappears because the owner marker was unclaimed; by design (`dismissOwnershipPrompt`). |
+| Authenticated operation | "Download My Account's Data" on SDK 58 | Pass: server data pulled down (`ac5-03`). |
+| Same user ID restored | Force-stop, relaunch | Pass: no ownership prompt, so the restored session user ID equals the stored owner (`owner === userId` path); still signed in (`ac5-04`). |
+| Network unavailable | Airplane mode, force-stop, cold launch, Export Account Data | Pass: local data renders; server fetch fails visibly ("fetch failed: … UnknownHostException"), no false success (`ac5-06`). |
+| Recovery | Network back, relaunch | Pass: "Server acknowledged. Up to date" / "Server-confirmed pass complete" (`ac5-07-online-sync-complete`). |
+| Logout invalidation | Sign Out, force-stop, relaunch | Pass: Account shows SIGN IN; no session or ownership prompt restored (`ac5-09`, `ac5-10`). |
+
+Observation: an Export Account Data request started right after leaving
+airplane mode stayed "Working…" in that process (likely a stale connection; RN's
+OkHttp client has no read timeout). After relaunch the retry reached the
+server and returned the export rate limit ("Too Many Requests", `ac5-08`).
+Not compared against SDK 54; no data or auth-state impact.
