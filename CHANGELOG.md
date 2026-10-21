@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.16.51 - 2026-10-21
+
+- Issue #1546: Upgraded the app to Expo SDK 58 (React Native 0.88) with an Android Gradle Plugin 9 toolchain. Installed apps need the new store or preview build; older builds no longer receive over-the-air updates built for this version.
+
+## 1.16.50 - 2026-10-21
+
+- Issue #1544: Fixed Recovery spacing: the selected week row is now vertically centered, and the Reason, Baseline and Dates rows are evenly spaced.
+
+## 1.16.49 - 2026-10-21
+
+- Issue #1167: Production Android builds now use optimized resource shrinking alongside R8 code optimization, shrinking, and obfuscation, meeting Google Play's app optimization recommendations.
+
 ## 1.16.48 - 2026-10-20
 
 - Issue #1537: Recovery movement groups are now visibly nested under their header with aligned names, counts, scores and chevrons, exercise rows show a clear strength percentage and bar, and the not-retested and not-scored lists show one reason heading with every exercise on its own line instead of a comma-joined paragraph.
