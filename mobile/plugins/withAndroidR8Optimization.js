@@ -10,6 +10,9 @@ const pkg = require('../package.json');
 // for applicable app versions from February 2027. Swapping in
 // "proguard-android-optimize.txt" keeps minification/shrinking (already enabled
 // via expo-build-properties) but drops -dontoptimize so R8 actually optimizes.
+// Expo SDK 58 (AGP 9, #1546) already emits the optimizing preset, so this is
+// an idempotent no-op guard there; AGP 9 also turns on optimized resource
+// shrinking whenever shrinkResources is enabled (#1167).
 const NON_OPTIMIZING_PROGUARD_FILE = 'getDefaultProguardFile("proguard-android.txt")';
 const OPTIMIZING_PROGUARD_FILE = 'getDefaultProguardFile("proguard-android-optimize.txt")';
 

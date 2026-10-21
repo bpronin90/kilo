@@ -277,6 +277,23 @@ describe('app config', () => {
       expect(result).toBe(contents);
     });
 
+    // #1167: the installed SDK 58 template already selects the optimizing
+    // preset, and its AGP 9 toolchain enables optimized resource shrinking
+    // whenever shrinkResources is on, so the plugin must leave it untouched.
+    test('leaves the installed Expo template release buildType unchanged on an AGP 9 toolchain', async () => {
+      const { execFileSync } = require('child_process');
+      const fs = require('fs');
+      const path = require('path');
+      const expoRoot = path.dirname(require.resolve('expo/package.json'));
+      const template = execFileSync('tar', ['-xzOf', path.join(expoRoot, 'template.tgz'), 'package/android/app/build.gradle'], { encoding: 'utf8' });
+      expect(template).toContain('shrinkResources enableShrinkResources.toBoolean()');
+      expect(await runAppBuildGradleMod(template)).toBe(template);
+
+      const rnGradleRoot = path.dirname(require.resolve('@react-native/gradle-plugin/package.json', { paths: [path.dirname(require.resolve('react-native/package.json'))] }));
+      const versions = fs.readFileSync(path.join(rnGradleRoot, 'gradle/libs.versions.toml'), 'utf8');
+      expect(Number(/^agp = "(\d+)\./m.exec(versions)[1])).toBeGreaterThanOrEqual(9);
+    });
+
     test('fails clearly when the expected non-optimizing proguard line is missing', async () => {
       const contents = [
         'buildTypes {',

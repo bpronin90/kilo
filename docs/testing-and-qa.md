@@ -197,3 +197,53 @@ airplane mode stayed "Working…" in that process (likely a stale connection; RN
 OkHttp client has no read timeout). After relaunch the retry reached the
 server and returned the export rate limit ("Too Many Requests", `ac5-08`).
 Not compared against SDK 54; no data or auth-state impact.
+
+## Android R8 Optimization Verification (#1167)
+
+Toolchain (selected by #1546, no override): Expo SDK 58.0.16, React Native
+0.88.0, AGP 9.2.1, Gradle 9.4.1, Kotlin 2.2.0, JDK 17 (EAS image
+`ubuntu-26.04-jdk-17-ndk-r27b-sdk-58`), R8 9.2.14. References:
+[app optimization / optimized resource shrinking](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization),
+[AGP compatibility](https://developer.android.com/build/releases/gradle-plugin),
+[RN 0.87 (AGP 9)](https://reactnative.dev/blog/2026/08/11/react-native-0.87),
+[Expo SDK 58](https://expo.dev/changelog/sdk-58).
+
+Effective release config (clean `CI=1 npx expo prebuild --platform android
+--clean` in a disposable copy, not retained): `minifyEnabled` and
+`shrinkResources` both true via `expo-build-properties`; the SDK 58 template
+already selects `proguard-android-optimize.txt`, so
+`withAndroidR8Optimization` is an idempotent no-op guard (tested against the
+installed template); `proguard-rules.pro` carries the #1176 and #1455 keep
+rules. AGP 9 enables optimized resource shrinking whenever resource shrinking
+is on, so no `android.r8.optimizedResourceShrinking` opt-in is needed.
+
+Production AAB: EAS `b09f72af-ae93-46e9-81af-888e27fc9c7c`, commit `03e77f9f`,
+versionCode 19, SHA-256
+`c4b2c03e4541651305599951fa0f5bbc88d09141ec0422f3215181225a318e57`, build log
+`./gradlew :app:bundleRelease` with `:app:minifyReleaseWithR8` (no separate
+resource-shrink task). `unzip -p <aab> BUNDLE-METADATA/com.android.tools/r8.json`:
+
+| Field | Value | Threshold |
+| --- | --- | --- |
+| `isOptimizationsEnabled` / `isShrinkingEnabled` / `isObfuscationEnabled` | true / true / true | enabled |
+| `noOptimizationPercentage` | 24.56 | <= 75.0 |
+| `noShrinkingPercentage` | 23.59 | <= 75.0 |
+| `noObfuscationPercentage` | 23.55 | <= 75.0 |
+| `resourceOptimization.isOptimizedShrinkingEnabled` | true | true |
+
+Baseline before this work: versionCode 17 (`0b84c33c`) reported optimization
+disabled and optimized resource shrinking disabled.
+
+Release-APK smoke: EAS preview `a99b6450` (`:app:assembleRelease`, same R8
+release config, commit `22812152`); results in the #1546 section above: cold
+launch, navigation, workout save/reload, SecureStore data and signed-in
+session persistence across upgrade/restart/logout, notification scheduling
+and restart persistence. No `EncryptedStorageError`, `throw null` Record
+failure, or `NotSerializableException` (the #1176/#1455 R8 regressions).
+
+Same-commit basis: `git diff 22812152 03e77f9f` and `git diff 03e77f9f` to this
+change's base touch only `docs/testing-and-qa.md`, and this change edits only a
+plugin comment, tests, and docs, so neither artifact's native output differs.
+For the same reason `PREVIEW_RUNTIME` stays `preview-14` (advanced by #1546 for
+the AGP 9 native change) and the signed production runtime stays
+`<version>-sdk58-signed`.
