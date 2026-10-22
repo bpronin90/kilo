@@ -1,9 +1,10 @@
 // Renders Account auth feedback states (#1565) on a local web build that points
 // at the fake host localfake.supabase.co. Every request to that host is answered
 // here; Turnstile is stubbed. No production project or data is involved.
-// Usage: node capture.mjs <url> <outDir> <prefix>
+// Usage: node capture.mjs <url> <outDir> <prefix> [<width>x<height>, default 390x844]
 import { chromium } from '/home/benpronin/.npm/_npx/e41f203b7505f1fb/node_modules/playwright-core/index.mjs';
-const [url, outDir, prefix] = process.argv.slice(2);
+const [url, outDir, prefix, viewportArg = '390x844'] = process.argv.slice(2);
+const [vw, vh] = viewportArg.split('x').map(Number);
 const KEY = 'sb-localfake-auth-token';
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 const now = Math.floor(Date.now() / 1000);
@@ -14,7 +15,7 @@ const session = (exp) => ({ access_token: jwt(exp), refresh_token: 'fake-refresh
 const browser = await chromium.launch({ executablePath: process.env.HOME + '/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome' });
 
 async function open({ signedIn }) {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const ctx = await browser.newContext({ viewport: { width: vw, height: vh } });
   const p = await ctx.newPage();
   p.errs = []; p.on('pageerror', (e) => p.errs.push(e.message));
   await ctx.route(/localfake\.supabase\.co/, async (route) => {

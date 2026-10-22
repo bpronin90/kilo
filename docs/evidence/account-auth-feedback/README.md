@@ -6,7 +6,7 @@ action block it belongs to, and makes it a polite live region.
 
 ## Setup (local only)
 
-- Viewport: 390x844, headless Chromium (playwright-core).
+- Viewports: 390x844 (phone) and 1366x768 (laptop, see below), headless Chromium (playwright-core).
 - Before build: `origin/main` at `1eb8bf71c0ba2a93aaa26b8d9f6ac615b8c529ff`.
 - After build (rendered commit): `35da64282208257f2baa16bdfa7f26bbf0a23951`. The
   export ran from the working tree right before that commit, and no file under
@@ -67,6 +67,35 @@ no widget there, and that slot looks the same in the before render.
 Screenshots: `before-*.png` and `after-*.png` for `signin-failure`,
 `captcha-expired`, and `signout-failure`.
 
+## Laptop viewport (1366x768)
+
+The issue asks for the production report's viewport, or a laptop viewport if
+that is unknown. The original report came from the user's desktop browser on
+https://kilo-app.pages.dev, and no exact viewport was recorded, so 1366x768 was
+chosen as the laptop viewport. The same builds, fake host, and `capture.mjs`
+were used (`node capture.mjs <url> . <prefix> 1366x768`). The before render is
+from `1eb8bf71c0ba2a93aaa26b8d9f6ac615b8c529ff` (the pre-change base) and the after
+render is from `35da64282208257f2baa16bdfa7f26bbf0a23951` (the rendered commit;
+nothing under `mobile/` has changed since). At this width, ScreenShell centres a
+608px content column starting at x=379.
+
+Checklist at 1366x768, for the same items 1 to 8 with the column at x=379, w=608:
+
+| | Before (`1eb8bf71`) | After (`35da6428`) |
+|---|---|---|
+| Sign-in failure position | After the legal links, y=692 | 12px under Continue with GitHub (631 + 12 = 643), above the legal links |
+| Sign-out failure position | After the Danger Zone and the legal links, y=613 | Directly under Sign Out (347 + 12 = 359), Danger Zone 12px below |
+| Box | x=379, w=608, h=16 (1 line) | x=379, w=608, h=22 (1 line at 22px); scroll size equals client size |
+| Type | 14px / normal, muted `rgb(90,104,122)` | 14px / 22px, `onSurface` `rgb(14,23,38)` |
+| Live region | none | `aria-live="polite"` |
+| Status nodes / page `scrollWidth` | 1 / 1366 | 1 / 1366 |
+
+**Comparison: PASS** on items 1 to 8. The message fits on one line inside the
+centred column, its left edge matches the buttons, and the inputs, buttons,
+Danger Zone, legal links, and tab bar are unchanged. Screenshots:
+`before-1366x768-signin-failure.png`, `after-1366x768-signin-failure.png`,
+`before-1366x768-signout-failure.png`, `after-1366x768-signout-failure.png`.
+
 ## Accessibility check and its limits
 
 Playwright's accessibility snapshot (`ariaSnapshot`) of the after build lists the
@@ -88,7 +117,8 @@ EXPO_PUBLIC_SUPABASE_URL=https://localfake.supabase.co \
 EXPO_PUBLIC_SUPABASE_ANON_KEY=fake-anon-key \
   npx expo export -p web --output-dir /path/to/dist
 python3 -m http.server 8742 -d /path/to/dist &
-node ../docs/evidence/account-auth-feedback/capture.mjs http://127.0.0.1:8742/ <outDir> after
+node ../docs/evidence/account-auth-feedback/capture.mjs http://127.0.0.1:8742/ <outDir> after            # 390x844
+node ../docs/evidence/account-auth-feedback/capture.mjs http://127.0.0.1:8742/ <outDir> after-1366x768 1366x768
 ```
 
 The script prints each state's text, box, overflow, font, live-region value,
