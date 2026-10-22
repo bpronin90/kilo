@@ -13,6 +13,12 @@
 // credential, bad signature, replayed challenge, revoked key, ineligible
 // account -- returns the same 401 body. Why it failed goes to the security log
 // only, and the log carries a bounded reason code, never request content.
+//
+// Exception boundary (#1562): a dependency that rejects instead of resolving an
+// error (a limiter or identity transport failure, a thrown RPC) is answered by
+// the shared sanitized 500, with this request's CORS headers and no-store. The
+// throw has already stopped the route, so nothing after it runs -- no session
+// is returned and no revocation is claimed.
 
 import type {
   verifyAuthenticationResponse,
@@ -20,6 +26,7 @@ import type {
 } from 'https://esm.sh/@simplewebauthn/server@14.0.2'
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.108.2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { withUnexpectedErrorResponse } from '../_shared/unexpected-error.ts'
 import { extractToken } from '../_shared/auth.ts'
 import { clientIp, rateLimitAllowed } from '../_shared/rate-limit.ts'
 import {
@@ -53,6 +60,8 @@ import {
 } from '../_shared/android-restore-credentials.ts'
 
 const SECURITY_SOURCE = 'android-restore-credentials' as const
+// Token-bearing responses must never be cached by anything in between.
+const NO_STORE = { 'Cache-Control': 'no-store' } as const
 
 // Unauthenticated restore routes share one IP bucket: a real restore needs two
 // calls, so 20 per 10 minutes leaves room for retries and none for key trials.
@@ -86,13 +95,12 @@ const ROUTE_PATTERN = /\/v1\/(enrollment-options|registration-verification|resto
 export function createRestoreHandler(deps: RestoreHandlerDeps): (req: Request) => Promise<Response> {
   const { admin, identity, config } = deps
 
-  return async (req: Request): Promise<Response> => {
+  return withUnexpectedErrorResponse(SECURITY_SOURCE, async (req: Request): Promise<Response> => {
     const cors = corsHeaders(req)
     const json = (status: number, body: unknown, extra: Record<string, string> = {}) =>
       new Response(JSON.stringify(body), {
         status,
-        // Token-bearing responses must never be cached by anything in between.
-        headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...extra },
+        headers: { ...cors, 'Content-Type': 'application/json', ...NO_STORE, ...extra },
       })
 
     if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -397,8 +405,15 @@ export function createRestoreHandler(deps: RestoreHandlerDeps): (req: Request) =
     // And re-checked after: the GoTrue exchange takes real time, and a sign-out,
     // account deletion, password change, or global sign-out during it must win
     // (#1162). The session already exists at this point, so it is revoked, not
-    // merely withheld.
-    const still = await credentialEligible(admin, assertion.id, stored.userId)
+    // merely withheld -- including when the re-check itself throws, since
+    // eligibility could not be confirmed.
+    let still: Awaited<ReturnType<typeof credentialEligible>>
+    try {
+      still = await credentialEligible(admin, assertion.id, stored.userId)
+    } catch (err) {
+      await identity.revokeSession(issued.accessToken).catch(() => {})
+      throw err
+    }
     if (!still.ok || !still.value) {
       await identity.revokeSession(issued.accessToken)
       return still.ok
@@ -419,5 +434,5 @@ export function createRestoreHandler(deps: RestoreHandlerDeps): (req: Request) =
       access_token: issued.accessToken,
       refresh_token: issued.refreshToken,
     })
-  }
+  }, NO_STORE)
 }
