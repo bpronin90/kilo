@@ -184,16 +184,21 @@ describe('AnalyticsTrainingBreakdown dashboard (#1588)', () => {
       .map((n) => n.props.testID.replace('training-breakdown-region-', ''));
     expect([...new Set(order)]).toEqual(['chest', 'back', 'shoulders', 'arms', 'legs', 'core']);
     expect(all(root)).toContain('Overlapping counts');
-    expect(all(root)).toContain('Most: Chest');
+    // #1593: the muscle short name no longer repeats its region label.
+    expect(all(root)).toContain('Most: Pecs');
+    expect(all(root)).not.toContain('Most: Chest');
 
     await press(root, 'training-breakdown-region-chest');
     expect(sheetTitle(root)).toBe('Chest');
+    expect(texts(root)).toContain('Pecs');
     await press(root, 'training-breakdown-region-muscle-pectoralis_major');
-    expect(sheetTitle(root)).toBe('Chest');
+    expect(sheetTitle(root)).toBe('Pecs');
     expect(has(root, 'training-breakdown-muscle-primary')).toBe(true);
     expect(has(root, 'training-breakdown-sheet-back')).toBe(true);
     await press(root, 'training-breakdown-sheet-back');
     expect(has(root, 'training-breakdown-sheet-back')).toBe(false);
+    expect(sheetTitle(root)).toBe('Chest');
+    expect(has(root, 'training-breakdown-region-muscle-pectoralis_major')).toBe(true);
     await press(root, 'training-breakdown-sheet-close');
 
     const b = deriveTrainingBreakdownForRange(pop, '90D', { now: NOW, populationVerified: true });
@@ -262,5 +267,170 @@ describe('AnalyticsTrainingBreakdown dashboard (#1588)', () => {
     }
     expect(s.info.width).toBeGreaterThanOrEqual(44);
     expect(s.iconButton.width).toBeGreaterThanOrEqual(44);
+  });
+});
+
+// #1593 polish: bar scaling excludes Unknown/Unclassified from the scale (they
+// are capped at full width), and region strips keep one polarity on every tile.
+const pctOf = (w) => Number(String(w).replace('%', ''));
+const flat = (st) => Object.assign({}, ...[].concat(st || []).flat(Infinity).filter(Boolean));
+// Rendered bar width (percent) inside a ranked row: the hatched fill for
+// Unknown rows, otherwise the first proportional fill View.
+function barWidth(root, testID) {
+  const row = byId(root, testID)[0];
+  const fills = row.findAll((n) => typeof n.type === 'string' && typeof flat(n.props.style).width === 'string'
+    && flat(n.props.style).width.endsWith('%'));
+  expect(fills.length).toBeGreaterThan(0);
+  const w = pctOf(flat(fills[0].props.style).width);
+  expect(Number.isFinite(w)).toBe(true);
+  return w;
+}
+const lines = (name, sets) => [`-${name}: ${sets}x10`, `50 ${Array(sets).fill(10).join(',')}`];
+const KNOWN_EQUIPMENT = [
+  ['Barbell Bench Press', 12], ['Seated Cable Row', 6], ['Leg Press', 5], ['Pull Up', 3], ['EZ Bar Curl', 3],
+  ['Kettlebell Swing', 3], ['Smith Machine Squat', 2], ['Trap Bar Deadlift', 2],
+];
+const note = (entries) => ['Monday', ...entries.flatMap(([n, s]) => lines(n, s))].join('\n');
+const fixture = (entries) => population([{ date: iso(1), text: note(entries) }]);
+
+describe('Training breakdown scaling and strips (#1593)', () => {
+  const unknownDominant = fixture([...KNOWN_EQUIPMENT, ['Mystery Machine Thing', 20], ['Odd Sled Move', 20], ['Weird Rig Lift', 20]]);
+
+  async function equipmentRoot(p) {
+    const root = await render({ parsedSections: p });
+    await press(root, 'training-breakdown-view-equipment');
+    return root;
+  }
+
+  test('dashboard and All-equipment sheet scale to the largest known item and cap Unknown', async () => {
+    const b = deriveTrainingBreakdownForRange(unknownDominant, '90D', { now: NOW, populationVerified: true });
+    const [lead, second] = b.equipment.items;
+    expect(b.equipment.items.length).toBeGreaterThan(6);
+    expect(b.equipment.unknown.sets).toBeGreaterThan(lead.sets);
+    const root = await equipmentRoot(unknownDominant);
+    const check = (prefix) => {
+      expect(barWidth(root, `${prefix}-${lead.id}`)).toBe(100);
+      expect(barWidth(root, `${prefix}-${second.id}`)).toBeCloseTo((second.sets / lead.sets) * 100, 5);
+      expect(barWidth(root, `${prefix}-unknown`)).toBe(100);
+      const t = all(root);
+      expect(t).toContain(`${b.equipment.unknown.sets}| ${Math.round((b.equipment.unknown.sets / b.totals.completedSets) * 100)}%`);
+    };
+    check('training-breakdown-equipment');
+    await press(root, 'training-breakdown-all-equipment');
+    check('training-breakdown-all-equipment');
+    const lastKnown = b.equipment.items[b.equipment.items.length - 1];
+    expect(barWidth(root, `training-breakdown-all-equipment-${lastKnown.id}`)).toBeCloseTo(Math.max(3, (lastKnown.sets / lead.sets) * 100), 5);
+    await press(root, 'training-breakdown-all-equipment-unknown');
+    expect(sheetTitle(root)).toBe('Unknown equipment');
+  });
+
+  test('Unknown below the known maximum keeps its proportional width', async () => {
+    const p = fixture([...KNOWN_EQUIPMENT, ['Mystery Machine Thing', 2]]);
+    const b = deriveTrainingBreakdownForRange(p, '90D', { now: NOW, populationVerified: true });
+    expect(b.equipment.unknown.sets).toBeLessThan(b.equipment.items[0].sets);
+    const root = await equipmentRoot(p);
+    expect(barWidth(root, 'training-breakdown-equipment-unknown')).toBeCloseTo((b.equipment.unknown.sets / b.equipment.items[0].sets) * 100, 5);
+  });
+
+  test('unknown-only and known-only equipment stay finite and bounded', async () => {
+    const unknownOnly = await equipmentRoot(fixture([['Mystery Machine Thing', 4]]));
+    expect(barWidth(unknownOnly, 'training-breakdown-equipment-unknown')).toBe(100);
+    expect(all(unknownOnly)).toContain('4| 100%');
+    const knownOnly = await equipmentRoot(fixture(KNOWN_EQUIPMENT.slice(0, 3)));
+    expect(has(knownOnly, 'training-breakdown-equipment-unknown')).toBe(false);
+    const b = deriveTrainingBreakdownForRange(fixture(KNOWN_EQUIPMENT.slice(0, 3)), '90D', { now: NOW, populationVerified: true });
+    b.equipment.items.forEach((it) => {
+      const w = barWidth(knownOnly, `training-breakdown-equipment-${it.id}`);
+      expect(w).toBeGreaterThanOrEqual(3);
+      expect(w).toBeLessThanOrEqual(100);
+    });
+  });
+
+  test('All-groups sheet scales to the largest classified group (incl. saved choices) and caps Unclassified', async () => {
+    const p = population([
+      { date: iso(1), text: note([['Barbell Bench Press', 6], ['Back Squat', 3], ['Mystery Machine Thing', 20], ['Odd Sled Move', 20]]) },
+      { date: iso(2), text: note([['Face Pull', 9]]), extra: { exercise_movement_groups: { version: 1, overrides: { 'face pull': 'pull' } } } },
+    ]);
+    const b = deriveTrainingBreakdownForRange(p, '90D', { now: NOW, populationVerified: true });
+    const [lead, ...rest] = b.movement.groups;
+    expect(lead.source).toBe('override');
+    expect(b.movement.unclassified.sets).toBeGreaterThan(lead.sets);
+    const root = await render({ parsedSections: p });
+    await press(root, 'training-breakdown-more-groups');
+    expect(barWidth(root, `training-breakdown-all-group-${lead.id}`)).toBe(100);
+    rest.forEach((g) => expect(barWidth(root, `training-breakdown-all-group-${g.id}`)).toBeCloseTo((g.sets / lead.sets) * 100, 5));
+    expect(barWidth(root, 'training-breakdown-all-group-unclassified')).toBe(100);
+    expect(all(root)).toContain(`${b.movement.unclassified.sets}| ${Math.round((b.movement.unclassified.sets / b.totals.completedSets) * 100)}%`);
+    await press(root, 'training-breakdown-all-group-unclassified');
+    expect(has(root, 'training-breakdown-sheet-back')).toBe(true);
+  });
+
+  test('All-groups sheet with no classified groups caps Unclassified at full width', async () => {
+    const root = await render({ parsedSections: fixture([['Mystery Machine Thing', 5]]) });
+    await press(root, 'training-breakdown-more-groups');
+    expect(barWidth(root, 'training-breakdown-all-group-unclassified')).toBe(100);
+  });
+
+  test('empty data renders no bars and no NaN widths', async () => {
+    const root = await render({ parsedSections: population([{ date: iso(200), text: OLD }]) });
+    expect(has(root, 'training-breakdown-empty')).toBe(true);
+    expect(all(root)).not.toMatch(/NaN|Infinity/);
+  });
+
+  describe('region strips keep one polarity in every court palette', () => {
+    const { KUA_PALETTES } = require('../theme/colors');
+    const { MusclesView } = require('../components/trainingBreakdown/BreakdownViews');
+    const { resolveBreakdownPalette, heatFill, contrastRatio } = require('../components/trainingBreakdown/breakdownPalette');
+    const { createTrainingBreakdownStyles } = require('../screens/analytics/trainingBreakdownStyles');
+    const rgba = (c) => { const m = /rgba\((\d+),(\d+),(\d+),([\d.]+)\)/.exec(c); return m ? [[+m[1], +m[2], +m[3]], +m[4]] : null; };
+    const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+    const over = ([fg, a], bg) => fg.map((c, i) => c * a + bg[i] * (1 - a));
+    const lum = (rgb) => rgb.map((v) => v / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+      .reduce((s, c, i) => s + c * [0.2126, 0.7152, 0.0722][i], 0);
+    // Low (Chest), middle and highest (Legs) intensity regions, plus an empty Core.
+    const p90 = fixture([['Barbell Bench Press', 2], ['Barbell Row', 6], ['Lat Pulldown', 3], ['Back Squat', 12], ['Romanian Deadlift', 8]]);
+
+    for (const court of ['hardCourt', 'clayCourt', 'grassCourt']) {
+      for (const mode of ['light', 'dark']) {
+        test(`${court} ${mode}`, () => {
+          const kua = KUA_PALETTES[court][mode];
+          const p = resolveBreakdownPalette({}, kua, mode);
+          const styles = createTrainingBreakdownStyles({}, kua, mode);
+          const b = deriveTrainingBreakdownForRange(p90, '90D', { now: NOW, populationVerified: true });
+          let root;
+          act(() => { root = renderer.create(<MusclesView styles={styles} p={p} breakdown={b} onOpen={() => {}} />); });
+          mounted.push(root);
+          const card = hex(p.card);
+          const max = Math.max(...b.muscles.regions.map((r) => r.sets));
+          const signs = new Set();
+          const bases = new Set();
+          let checked = 0;
+          for (const region of b.muscles.regions) {
+            const tile = over(rgba(heatFill(p, region.sets / max).backgroundColor), card);
+            const cells = root.root.findAll((n) => typeof n.type === 'string' && String(n.props.testID || '').startsWith(`training-breakdown-strip-${region.id}-`));
+            expect(cells.length).toBeGreaterThan(0);
+            const strengths = [];
+            for (const c of cells) {
+              const [base, a] = rgba(flat(c.props.style).backgroundColor);
+              bases.add(base.join(','));
+              const strip = over([base, a], tile);
+              if (!c.props.testID.endsWith('-empty')) {
+                signs.add(Math.sign(lum(strip) - lum(tile)));
+                strengths.push([a, contrastRatio(strip.map(Math.round), tile.map(Math.round))]);
+              }
+              checked += 1;
+            }
+            // Stronger muscle values stay distinguishable (more opaque, more contrast).
+            strengths.sort((x, y) => x[0] - y[0]);
+            for (let i = 1; i < strengths.length; i++) expect(strengths[i][1]).toBeGreaterThanOrEqual(strengths[i - 1][1] - 1e-9);
+            if (strengths.length) expect(strengths[strengths.length - 1][1]).toBeGreaterThan(1.2);
+          }
+          expect(checked).toBeGreaterThan(6);
+          expect(bases.size).toBe(1);
+          expect(signs.size).toBe(1);
+          expect(has(root, 'training-breakdown-strip-core-empty') || root.root.findAll((n) => n.props.testID === 'training-breakdown-strip-core-empty').length > 0).toBe(true);
+        });
+      }
+    }
   });
 });

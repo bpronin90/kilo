@@ -98,6 +98,19 @@ describe('short names are display only (#1589)', () => {
     expect(muscleShortName('unknown_id', 'Unknown id')).toBe('Unknown id');
   });
 
+  test('no short name repeats its owning region label (#1593)', () => {
+    expect(MUSCLE_SHORT_NAMES.pectoralis_major).toBe('Pecs');
+    expect(muscleShortName('pectoralis_major', 'Pectoralis major')).toBe('Pecs');
+    const collisions = MUSCLE_REGIONS.flatMap((r) => r.muscles
+      .filter((id) => (MUSCLE_SHORT_NAMES[id] || '').toLowerCase() === r.label.toLowerCase())
+      .map((id) => `${r.id}:${id}`));
+    expect(collisions).toEqual([]);
+    const b = of('Monday\n-Barbell Bench Press: 3x5\n135 5');
+    const pecs = b.muscles.primary.find((m) => m.id === 'pectoralis_major');
+    expect(pecs.label).not.toBe('Pecs');
+    expect(pecs.exercises[0].key).toBe('barbell bench press');
+  });
+
   test('breakdown ids and labels keep library identity', () => {
     const b = of('Monday\n-Barbell Back Squat: 3x5\n185 5');
     const glute = b.muscles.primary.find((m) => m.id === 'gluteus_maximus');

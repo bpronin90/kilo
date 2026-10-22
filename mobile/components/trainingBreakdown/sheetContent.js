@@ -71,7 +71,7 @@ function methodology(styles, range) {
 function groupsSheet(styles, p, b, onOpen) {
   const m = b.movement;
   const total = b.totals.completedSets;
-  const max = Math.max(1, m.groups[0]?.sets || 0, m.unclassified?.sets || 0);
+  const max = Math.max(1, m.groups[0]?.sets || 0); // Unclassified is capped, not the scale (#1593).
   return {
     title: 'All movement groups',
     body: (
@@ -147,7 +147,7 @@ function muscleSheet(styles, p, b, id) {
 function allEquipmentSheet(styles, p, b, onOpen) {
   const e = b.equipment;
   const total = b.totals.completedSets;
-  const max = Math.max(1, e.items[0]?.sets || 0, e.unknown?.sets || 0);
+  const max = Math.max(1, e.items[0]?.sets || 0); // Unknown is capped, not the scale (#1593).
   return {
     title: 'All equipment',
     body: (

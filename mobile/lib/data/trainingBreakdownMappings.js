@@ -46,7 +46,7 @@ export const MOVEMENT_COMPARISONS = freezeDeep([
 ]);
 
 export const MUSCLE_SHORT_NAMES = freezeDeep({
-  pectoralis_major: 'Chest',
+  pectoralis_major: 'Pecs',
   latissimus_dorsi: 'Lats',
   rhomboids: 'Rhomboids',
   erector_spinae: 'Lower back',
