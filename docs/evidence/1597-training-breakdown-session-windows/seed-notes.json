@@ -1,0 +1,56 @@
+[
+  {
+    "id": "wn_seed_1",
+    "title": "Block 1",
+    "raw_text": "Monday\n-Barbell Bench Press: 4x5\n185 5,5,5,5\n185 5,5,5,5\n185 5,5,5\n185 5,5,5,5\n185 5,5,5,5\n185 5,5,5\n185 5,5,5,5\n185 5,5,5,5\n-Barbell Row: 4x8\n155 8,8,8,8\n155 8,8,8,8\n155 8,8,8\n155 8,8,8,8\n155 8,8,8,8\n155 8,8,8\n155 8,8,8,8\n155 8,8,8,8\n-Lateral Raise: 3x15\n20 15,15,15\n20 15,15,15\n20 15,15\n20 15,15,15\n20 15,15,15\n20 15,15\n20 15,15,15\n20 15,15,15\n-Triceps Pushdown: 3x12\n60 12,12,12\n60 12,12,12\n60 12,12\n60 12,12,12\n60 12,12,12\n60 12,12\n-Spoto Press: 3x5\n165 5,5,5\n165 5,5,5\n165 5,5\nWednesday\n-Back Squat: 5x5\n245 5,5,5,5,5\n245 5,5,5,5,5\n245 5,5,5,5\n245 5,5,5,5,5\n245 5,5,5,5,5\n245 5,5,5,5\n245 5,5,5,5,5\n245 5,5,5,5,5\n-Romanian Deadlift: 3x8\n205 8,8,8\n205 8,8,8\n205 8,8\n205 8,8,8\n205 8,8,8\n205 8,8\n205 8,8,8\n-Leg Extension: 3x12\n110 12,12,12\n110 12,12,12\n110 12,12\n110 12,12,12\n-Standing Calf Raise: 3x15\n180 15,15,15\n180 15,15,15\n180 15,15\n180 15,15,15\n180 15,15,15\n180 15,15\n180 15,15,15\n180 15,15,15\n-Plank: 2x45s\n45\n45\n45\n45\n45\n45\nFriday\n-Overhead Press: 3x6\n115 6,6,6\n115 6,6,6\n115 6,6\n115 6,6,6\n115 6,6,6\n115 6,6\n115 6,6,6\n115 6,6,6\n-Pull Up: 3x8\nBW 8,8,8\nBW 8,8,8\nBW 8,8\nBW 8,8,8\nBW 8,8,8\nBW 8,8\nBW 8,8,8\nBW 8,8,8\n-Face Pull: 3x15\n50 15,15,15\n50 15,15,15\n50 15,15\n50 15,15,15\n50 15,15,15\n50 15,15\n50 15,15,15\n50 15,15,15\n-EZ Bar Curl: 3x10\n70 10,10,10\n70 10,10,10\n70 10,10\n70 10,10,10\n70 10,10,10\n70 10,10\n70 10,10,10\n70 10,10,10\n-Kroc Row: 2x15\n90 15,15\n90 15,15\n-Bike 20 min\n- 20 min\n- 20 min\n- 20 min\n- 20 min\n- 20 min\n- 20 min",
+    "saved_at": "2026-01-01T00:00:00.000Z",
+    "updated_at": "2026-01-01T00:00:00.000Z",
+    "tracked_exercises": [],
+    "one_k_exercises": null,
+    "isCurrent": false,
+    "skip_markers": null,
+    "attendance_flags": null,
+    "session_checkins": null,
+    "dismissed_nudges": null,
+    "exercise_classifications": null,
+    "activeWeek": null,
+    "exercise_movement_groups": {
+      "version": 1,
+      "overrides": {
+        "face pull": "pull"
+      }
+    }
+  },
+  {
+    "id": "wn_seed_2",
+    "title": "Block 2",
+    "raw_text": "Monday\n-Barbell Bench Press: 4x5\n185 5,5,5,5\n185 5,5,5\n185 5,5,5,5\n185 5,5,5,5\n185 5,5,5\n185 5,5,5,5\n185 5,5,5,5\n185 5,5,5\n-Barbell Row: 4x8\n155 8,8,8,8\n155 8,8,8\n155 8,8,8,8\n155 8,8,8,8\n155 8,8,8\n155 8,8,8,8\n155 8,8,8,8\n155 8,8,8\n-Lateral Raise: 3x15\n20 15,15,15\n20 15,15\n20 15,15,15\n20 15,15,15\n20 15,15\n20 15,15,15\n20 15,15,15\n20 15,15\n-Triceps Pushdown: 3x12\n60 12,12,12\n60 12,12\n60 12,12,12\n60 12,12,12\n60 12,12\n60 12,12,12\n-Spoto Press: 3x5\n165 5,5,5\n165 5,5\n165 5,5,5\nWednesday\n-Back Squat: 5x5\n245 5,5,5,5,5\n245 5,5,5,5\n245 5,5,5,5,5\n245 5,5,5,5,5\n245 5,5,5,5\n245 5,5,5,5,5\n245 5,5,5,5,5\n245 5,5,5,5\n-Romanian Deadlift: 3x8\n205 8,8,8\n205 8,8\n205 8,8,8\n205 8,8,8\n205 8,8\n205 8,8,8\n205 8,8,8\n-Leg Extension: 3x12\n110 12,12,12\n110 12,12\n110 12,12,12\n110 12,12,12\n-Standing Calf Raise: 3x15\n180 15,15,15\n180 15,15\n180 15,15,15\n180 15,15,15\n180 15,15\n180 15,15,15\n180 15,15,15\n180 15,15\n-Plank: 2x45s\n45\n45\n45\n45\n45\n45\nFriday\n-Overhead Press: 3x6\n115 6,6,6\n115 6,6\n115 6,6,6\n115 6,6,6\n115 6,6\n115 6,6,6\n115 6,6,6\n115 6,6\n-Pull Up: 3x8\nBW 8,8,8\nBW 8,8\nBW 8,8,8\nBW 8,8,8\nBW 8,8\nBW 8,8,8\nBW 8,8,8\nBW 8,8\n-Face Pull: 3x15\n50 15,15,15\n50 15,15\n50 15,15,15\n50 15,15,15\n50 15,15\n50 15,15,15\n50 15,15,15\n50 15,15\n-EZ Bar Curl: 3x10\n70 10,10,10\n70 10,10\n70 10,10,10\n70 10,10,10\n70 10,10\n70 10,10,10\n70 10,10,10\n70 10,10\n-Kroc Row: 2x15\n90 15,15\n90 15\n-Bike 20 min\n- 20 min\n- 20 min\n- 20 min\n- 20 min\n- 20 min\n- 20 min",
+    "saved_at": "2026-01-01T00:00:00.000Z",
+    "updated_at": "2026-01-01T00:00:00.000Z",
+    "tracked_exercises": [],
+    "one_k_exercises": null,
+    "isCurrent": false,
+    "skip_markers": null,
+    "attendance_flags": null,
+    "session_checkins": null,
+    "dismissed_nudges": null,
+    "exercise_classifications": null,
+    "activeWeek": null
+  },
+  {
+    "id": "wn_seed_3",
+    "title": "Block 3",
+    "raw_text": "Monday\n-Barbell Bench Press: 4x5\n185 5,5,5\n185 5,5,5,5\n185 5,5,5,5\n185 5,5,5\n185 5,5,5,5\n185 5,5,5,5\n185 5,5,5\n185 5,5,5,5\n-Barbell Row: 4x8\n155 8,8,8\n155 8,8,8,8\n155 8,8,8,8\n155 8,8,8\n155 8,8,8,8\n155 8,8,8,8\n155 8,8,8\n155 8,8,8,8\n-Lateral Raise: 3x15\n20 15,15\n20 15,15,15\n20 15,15,15\n20 15,15\n20 15,15,15\n20 15,15,15\n20 15,15\n20 15,15,15\n-Triceps Pushdown: 3x12\n60 12,12\n60 12,12,12\n60 12,12,12\n60 12,12\n60 12,12,12\n60 12,12,12\n-Spoto Press: 3x5\n165 5,5\n165 5,5,5\n165 5,5,5\nWednesday\n-Back Squat: 5x5\n245 5,5,5,5\n245 5,5,5,5,5\n245 5,5,5,5,5\n245 5,5,5,5\n245 5,5,5,5,5\n245 5,5,5,5,5\n245 5,5,5,5\n245 5,5,5,5,5\n-Romanian Deadlift: 3x8\n205 8,8\n205 8,8,8\n205 8,8,8\n205 8,8\n205 8,8,8\n205 8,8,8\n205 8,8\n-Leg Extension: 3x12\n110 12,12\n110 12,12,12\n110 12,12,12\n110 12,12\n-Standing Calf Raise: 3x15\n180 15,15\n180 15,15,15\n180 15,15,15\n180 15,15\n180 15,15,15\n180 15,15,15\n180 15,15\n180 15,15,15\n-Plank: 2x45s\n45\n45\n45\n45\n45\n45\nFriday\n-Overhead Press: 3x6\n115 6,6\n115 6,6,6\n115 6,6,6\n115 6,6\n115 6,6,6\n115 6,6,6\n115 6,6\n115 6,6,6\n-Pull Up: 3x8\nBW 8,8\nBW 8,8,8\nBW 8,8,8\nBW 8,8\nBW 8,8,8\nBW 8,8,8\nBW 8,8\nBW 8,8,8\n-Face Pull: 3x15\n50 15,15\n50 15,15,15\n50 15,15,15\n50 15,15\n50 15,15,15\n50 15,15,15\n50 15,15\n50 15,15,15\n-EZ Bar Curl: 3x10\n70 10,10\n70 10,10,10\n70 10,10,10\n70 10,10\n70 10,10,10\n70 10,10,10\n70 10,10\n70 10,10,10\n-Kroc Row: 2x15\n90 15\n90 15,15\n-Bike 20 min\n- 20 min\n- 20 min\n- 20 min\n- 20 min\n- 20 min\n- 20 min",
+    "saved_at": "2026-01-01T00:00:00.000Z",
+    "updated_at": "2026-01-01T00:00:00.000Z",
+    "tracked_exercises": [],
+    "one_k_exercises": null,
+    "isCurrent": true,
+    "skip_markers": null,
+    "attendance_flags": null,
+    "session_checkins": null,
+    "dismissed_nudges": null,
+    "exercise_classifications": null,
+    "activeWeek": null
+  }
+]
