@@ -32,6 +32,23 @@ Ambiguous and unknown results carry no `exerciseId`.
 for stored IDs only (for example `assisted_pull_up` to `machine_assisted_pull_up`).
 Free text "assisted pull-up" stays ambiguous: it never inherits the redirect.
 
+## Unicode profile
+
+Normalization is pinned to Unicode 15 so every runtime (Hermes, Node, Python) gives
+the same keys. Code points unassigned in Unicode 15 become separators before NFKC
+(for example U+A7F1 splits "Pre\ua7f1s" into "pre s", and U+088F after "Press" is
+ignored). Order: separate unassigned, NFKC, casefold, NFKC (casefold can emit base
+plus mark), strip apostrophes, punctuation to spaces, join single-letter runs
+(including supplementary-plane letters). No NFKC runs after joining, so joined jamo
+are never composed.
+
+Both generated blocks live in `index.js`: `UNICODE15_ASSIGNED_RANGES` (from
+`validate-exercise-library.py --regen-repertoire`) and the casefold exception table
+(code points where upper-then-lower differs from Python `casefold()`). Expected
+casefold and full-pipeline outputs are committed in
+`mobile/tests/fixtures/exercise-library-negative.json` (`--regen-casefold`), so Jest
+needs no live Python for them. Regeneration requires Python with Unicode 15.x data.
+
 ## Validation
 
 - `python3 scripts/validate-exercise-library.py` checks vocabulary and references,

@@ -10,6 +10,10 @@ Usage:
   validate-exercise-library.py [library.json]
   validate-exercise-library.py --mutations negative.json [library.json]
   validate-exercise-library.py --regen-casefold fixture.json index.js
+  validate-exercise-library.py --regen-repertoire index.js
+
+--regen-repertoire rewrites the UNICODE15_ASSIGNED range block in index.js (code
+points assigned in Unicode 15 per Python unicodedata 15.0.0).
 
 --regen-casefold rewrites the "casefold_expected" and "normalize_expected"
 sections of the shared test fixture from Python str.casefold() and normalize(),
@@ -36,8 +40,10 @@ EXERCISE_KEYS = {"id", "name", "aliases", "family_id", "activity_type", "movemen
 
 
 def normalize(text):
-    t = unicodedata.normalize("NFKC", unicodedata.normalize("NFKC", text).casefold())
-    t = re.sub(r"['‘’`]", "", t)
+    # Unicode 15 profile: code points unassigned in Unicode 15 become separators.
+    t = "".join(" " if unicodedata.category(c) == "Cn" else c for c in text)
+    t = unicodedata.normalize("NFKC", unicodedata.normalize("NFKC", t).casefold())
+    t = re.sub(r"['\u2018\u2019`]", "", t)
     t = re.sub(r"[^\w]+|_", " ", t).strip()
     out, run = [], ""
     for tok in t.split():
@@ -176,10 +182,51 @@ NORMALIZE_SAMPLES = [
     "\u03a3\u03a4\u0391\u03a3", "\u03c3\u03c4\u03b1\u03c2", "R.D.L.", " D.B.  RDL", "Push-Up",
     "\uFB01x", "\u0130stanbul", "Farmer\u2019s Walk", "\uFF22\uFF22 bench", "a_b",
     "5x5 @ 100kg", "\u1e97 bar row", "\u01f0 curl", "\u0390 raise", "Pre\u1e9e", "\u0131ncline", "\u13a0\uab70",
+    "S \U00010400 L", "S\U00010400L", "\u1100 \u1161", "\u1100\u1161 \u11a8",
+    "Barbell Bench Pre\ua7f1s", "Barbell Bench Press\u088f", "\u1ea0\u0897", "A\u0323\u0897",
+    "\ud800", "x\U0010ffff y", "ABC\u0301 D.E.F", "\u2160 \u2461 \ufb01",
 ]
 
 
+def check_unicode_profile():
+    if not unicodedata.unidata_version.startswith("15."):
+        raise SystemExit(f"requires Python with Unicode 15.x data, got {unicodedata.unidata_version}")
+
+
+def regen_repertoire(index_path):
+    check_unicode_profile()
+    ranges, start = [], None
+    for cp in range(0x110001):
+        ok = cp <= 0x10FFFF and unicodedata.category(chr(cp)) != "Cn"
+        if ok and start is None:
+            start = cp
+        elif not ok and start is not None:
+            ranges.append((start, cp - 1))
+            start = None
+    items = [format(a, "x") if a == b else f"{a:x}-{b:x}" for a, b in ranges]
+    lines, cur = [], ""
+    for it in items:
+        if len(cur) + len(it) + 1 > 88:
+            lines.append(cur)
+            cur = ""
+        cur += (" " if cur else "") + it
+    lines.append(cur)
+    body = "\n".join(f"    '{ln}'," if i < len(lines) - 1 else f"    '{ln} '," for i, ln in enumerate(lines))
+    # join with single space: each line ends with a space except we add below
+    body = "\n".join(f"  '{ln} '," for ln in lines)
+    path = Path(index_path)
+    text = path.read_text()
+    a = text.index("// BEGIN UNICODE15_ASSIGNED")
+    b = text.index("// END UNICODE15_ASSIGNED")
+    head = text[a:text.index("\n", a)]
+    new = head + "\nconst UNICODE15_ASSIGNED_RANGES = [\n" + body + "\n].join('');\n"
+    path.write_text(text[:a] + new + text[b:])
+    print(f"wrote {len(ranges)} assigned ranges")
+    return 0
+
+
 def regen_casefold(fixture_path, index_path):
+    check_unicode_profile()
     text = Path(index_path).read_text()
     block = text.split("const CASEFOLD_EXCEPTIONS", 1)[1].split("]\n    .join", 1)[0]
     cps = [int(m, 16) for m in re.findall(r"(?:'|\s)([0-9a-f]+)=[0-9a-f.]+", block)]
@@ -190,7 +237,12 @@ def regen_casefold(fixture_path, index_path):
         "table_codepoints": len(cps),
         "cases": {format(ord(c), "x"): c.casefold() for c in chars},
     }
-    fixture["normalize_expected"] = {x: normalize(x) for x in NORMALIZE_SAMPLES}
+    lib = json.loads(DEFAULT.read_text())
+    sampled = []
+    for i, e in enumerate(lib["exercises"][::9]):
+        sampled += [e["name"].upper(), e["name"].replace(" ", "  ").replace("-", "."),
+                    (e["aliases"] or [e["name"]])[0].title()]
+    fixture["normalize_expected"] = {x: normalize(x) for x in NORMALIZE_SAMPLES + sampled}
     Path(fixture_path).write_text(json.dumps(fixture, indent=2, ensure_ascii=True) + "\n")
     print(f"wrote {len(chars)} casefold cases, {len(NORMALIZE_SAMPLES)} normalize cases")
     return 0
@@ -198,6 +250,8 @@ def regen_casefold(fixture_path, index_path):
 
 def main(argv):
     args = argv[1:]
+    if args and args[0] == "--regen-repertoire":
+        return regen_repertoire(args[1])
     if args and args[0] == "--regen-casefold":
         return regen_casefold(args[1], args[2])
     mut = None

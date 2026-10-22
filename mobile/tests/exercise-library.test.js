@@ -9,7 +9,7 @@ import {
   SOURCE_PROVENANCE,
   normalizeExerciseName,
   foldCase,
-  CASEFOLD_EXCEPTIONS,
+  CASEFOLD_EXCEPTION_CODEPOINTS,
   resolveExerciseName,
   resolveExerciseId,
   getExercise,
@@ -108,9 +108,9 @@ describe('casefold parity with committed Python-generated fixture', () => {
   const cases = Object.entries(fixture.casefold_expected.cases);
 
   it('covers every table entry', () => {
-    expect(fixture.casefold_expected.table_codepoints).toBe(CASEFOLD_EXCEPTIONS.size);
+    expect(fixture.casefold_expected.table_codepoints).toBe(CASEFOLD_EXCEPTION_CODEPOINTS.length);
     const covered = new Set(cases.map(([hex]) => String.fromCodePoint(parseInt(hex, 16))));
-    for (const ch of CASEFOLD_EXCEPTIONS.keys()) expect(covered.has(ch)).toBe(true);
+    for (const ch of CASEFOLD_EXCEPTION_CODEPOINTS) expect(covered.has(ch)).toBe(true);
   });
 
   it.each(cases)('foldCase(U+%s) equals Python casefold()', (hex, expected) => {
@@ -125,6 +125,29 @@ describe('casefold parity with committed Python-generated fixture', () => {
     expect(normalizeExerciseName('\u1e97 bar row')).toBe('\u1e97 bar row');
     expect(resolveExerciseName('\u1e97 bar row').matchType).toBe('unknown');
     expect(resolveExerciseName('T bar row').exerciseId).toBe('t_bar_row');
+  });
+
+  it('joins supplementary-plane initialisms without composing Hangul boundaries', () => {
+    expect(normalizeExerciseName('S \u{10400} L')).toBe('s\u{10428}l');
+    expect(normalizeExerciseName('\u1100 \u1161')).toBe('\u1100\u1161');
+    expect(normalizeExerciseName('\u1100 \u1161')).not.toBe('\uac00');
+  });
+
+  it('pins the Unicode 15 repertoire regardless of runtime version', () => {
+    expect(resolveExerciseName('Barbell Bench Pre\ua7f1s').matchType).toBe('unknown');
+    expect(normalizeExerciseName('Barbell Bench Pre\ua7f1s')).toBe('barbell bench pre s');
+    expect(resolveExerciseName('Barbell Bench Press\u088f')).toMatchObject({
+      matchType: 'exact',
+      exerciseId: 'barbell_bench_press',
+    });
+    expect(normalizeExerciseName('\u1ea0\u0897')).toBe('\u1ea1');
+  });
+
+  it('exposes no mutable casefold table', () => {
+    expect(Object.isFrozen(CASEFOLD_EXCEPTION_CODEPOINTS)).toBe(true);
+    expect(() => {
+      CASEFOLD_EXCEPTION_CODEPOINTS.push('x');
+    }).toThrow();
   });
 
   it('resolves capital sharp s and keeps dotless i distinct', () => {
