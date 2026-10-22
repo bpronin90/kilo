@@ -477,6 +477,21 @@ describe('movement groups on the shared snapshot (#1581)', () => {
     expect(chosen.movementGroups.breakdown.total_count).toBe(plain.movementGroups.breakdown.total_count);
   });
 
+  test('added lifts are classified from the week note original names, not the alias-grouped name', () => {
+    const block = mkBlock(captureRecoveryBaselineFromText('-Deadlift\n- 100 5'));
+    const notes = [note('nb', '-Deadlift\n- 100 5'), note('w1', '-Deadlift\n- 80 5\n-incline press\n- 50 5\n-pulldowns\n- 50 10\n-Barbell Curl\n- 30 10')];
+    _resetRecoverySnapshotStore();
+    const s = getRecoverySnapshot({ block, weeks: [mkWeek(1, 'w1')], notes });
+    const byKey = (k) => s.groupEditor.exercises.find(e => e.key === k);
+    // "incline press" groups under "Incline DB Press" for history, but the original
+    // text is not a library match: keyword fallback, never library certainty.
+    expect(byKey('incline db press')).toMatchObject({ origin: 'added', name: 'Incline DB Press', group: 'push', source: 'keywords' });
+    expect(byKey('lat pulldown')).toMatchObject({ group: 'pull', source: 'keywords' });
+    expect(byKey('barbell curl')).toMatchObject({ group: 'elbow_flexion', source: 'library' });
+    const panel = s.movementGroups.breakdown.groups.flatMap(g => g.exercises).find(e => e.key === 'incline db press');
+    expect(panel).toMatchObject({ group: 'push', source: 'keywords' });
+  });
+
   test('an unsupported version is unavailable, rules-only, and never shown as saved', () => {
     const s = snap({ version: 3, overrides: { rdl: 'legs' } });
     expect(s.groupEditor.source).toMatchObject({ available: false, reason: 'invalid' });

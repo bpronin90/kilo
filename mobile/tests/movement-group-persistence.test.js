@@ -10,13 +10,18 @@ import { setCloudTransport } from '../storage/cloudAdapter';
 import { sync } from '../storage/cloud/syncAdapter';
 import { exportBackup, importBackup, IMPORT_MODES } from '../storage/entries/backupImport';
 import { updateWorkoutNoteItem } from '../storage/entries/workoutNotes';
-import { setMovementGroupCore } from '../hooks/entries/movementGroupHooks';
+import { DetailedUnsupported, serverAccepts, setMovementGroupCore } from '../hooks/entries/movementGroupHooks';
 import { buildBootstrapPlan } from '../storage/cloudAdapter';
 import { createSupabaseTransport, resetValidatedUserCacheForTests } from '../storage/cloud/transport';
 import {
   SYNC_TABLES, getDirtyRecords, isTombstone, resetClientIdCacheForTests, resetStampClockForTests, DERIVED_NOTE_FIELDS,
 } from '../storage/syncQueue';
 import { __resetSyncQueue } from '../storage/syncRecovery';
+
+const mockRpc = jest.fn();
+jest.mock('../lib/supabaseClient', () => ({
+  getSupabaseClient: () => ({ schema: () => ({ rpc: (...args) => mockRpc(...args) }) }),
+}));
 
 jest.mock('../hooks/entries/workoutNoteHooks', () => ({
   notifyWorkoutNotes: jest.fn(),
@@ -140,6 +145,44 @@ describe('local write path', () => {
     const n = await stored();
     expect(n.exercise_movement_groups).toEqual({ version: 2, overrides: { deadlift: 'legs', squat: 'squat' } });
     expect(n.title).toBe('Renamed');
+  });
+
+  test('a server that does not accept version 2 refuses the detailed write before anything is stored', async () => {
+    await Storage.saveWorkoutNoteItem(note({ exercise_movement_groups: MAP }));
+    const seen = [];
+    const old = { ...storage, serverAccepts: async (map) => { seen.push(map); return false; } };
+    expect(await setMovementGroupCore(old, { noteId: 'wn-1', key: 'squat', group: 'squat' })).toEqual({ ok: false, error: DetailedUnsupported });
+    expect(seen).toEqual([{ version: 2, overrides: { deadlift: 'legs', squat: 'squat' } }]);
+    expect((await stored()).exercise_movement_groups).toEqual(MAP);
+    expect((await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES)).filter(r => r.id === 'wn-1' && r.exercise_movement_groups?.version === 2)).toEqual([]);
+    // A throwing probe is a failure too; a version 1 write never asks the server.
+    const throwing = { ...storage, serverAccepts: async () => { throw new Error('offline'); } };
+    expect((await setMovementGroupCore(throwing, { noteId: 'wn-1', key: 'squat', group: 'squat' })).ok).toBe(false);
+    seen.length = 0;
+    expect((await setMovementGroupCore(old, { noteId: 'wn-1', key: 'squat', group: 'legs' })).ok).toBe(true);
+    expect(seen).toEqual([]);
+    const accepting = { ...storage, serverAccepts: async () => true };
+    expect((await setMovementGroupCore(accepting, { noteId: 'wn-1', key: 'squat', group: 'squat' })).ok).toBe(true);
+  });
+
+  test('serverAccepts: local mode needs no server; cloud mode asks the kilo validator and only an explicit true passes', async () => {
+    mockRpc.mockReset();
+    expect(await serverAccepts({ version: 2, overrides: {} })).toBe(true);
+    expect(mockRpc).not.toHaveBeenCalled();
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    try {
+      mockRpc.mockResolvedValueOnce({ data: true, error: null });
+      expect(await serverAccepts({ version: 2, overrides: { squat: 'squat' } })).toBe(true);
+      expect(mockRpc).toHaveBeenCalledWith('is_valid_exercise_movement_groups', { p_value: { version: 2, overrides: { squat: 'squat' } } });
+      mockRpc.mockResolvedValueOnce({ data: false, error: null });
+      expect(await serverAccepts({ version: 2, overrides: {} })).toBe(false);
+      mockRpc.mockResolvedValueOnce({ data: null, error: { code: 'PGRST202' } });
+      expect(await serverAccepts({ version: 2, overrides: {} })).toBe(false);
+      mockRpc.mockRejectedValueOnce(new Error('network'));
+      expect(await serverAccepts({ version: 2, overrides: {} })).toBe(false);
+    } finally {
+      Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+    }
   });
 
   test('the overrides are authored content, not a derived cache field', () => {

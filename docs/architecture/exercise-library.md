@@ -142,7 +142,9 @@ Recovery snapshot. Strength cohort, percents, per-lift values, denominators, pac
 the frozen baseline are inputs only; regrouping never recomputes them.
 
 - **Order of authority.** A saved choice on the baseline note wins exactly as stored.
-  Otherwise the library classifies the frozen record's own `name` (source `library`).
+  Otherwise the library classifies the frozen baseline record's own `name`, or, for a
+  lift added during recovery, every original parsed name in the block's week notes
+  that maps to its history key (they must agree) (source `library`).
   When the library cannot (unknown name, disagreeing candidates, or a record with no
   name), the existing keyword rules decide and the source is shown as
   "Automatic (name keywords)", never as library certainty. The normalized key is
@@ -152,7 +154,9 @@ the frozen baseline are inputs only; regrouping never recomputes them.
   a lift stays in its broad bucket with the existing label ("Your earlier broad
   choice"). Detailed choices are written as `{version: 2}`; the first detailed edit
   upgrades the map and carries every other value over unchanged, and later edits
-  never downgrade it. Reset removes only that key. Rendering never writes.
+  never downgrade it. In cloud mode a version 2 write is first checked against the
+  server's validator; if the server does not accept it nothing is stored and the
+  editor shows the choice as not saved. Reset removes only that key. Rendering never writes.
 - **Editor.** Options are the detailed groups listed under their broad family. A broad
   option is shown only when it is the current group (an earlier choice or keyword
   fallback).

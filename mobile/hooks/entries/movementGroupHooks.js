@@ -13,17 +13,20 @@
 //      means the persisted field holds the chosen map.
 // Writes are serialized, and a failure is reported, never claimed as saved.
 // A detailed choice (#1581) writes a version 2 map carrying every other stored
-// value unchanged; until the server accepts version 2 its CHECK rejects the
-// upload and the save is reported as failed.
+// value unchanged. In cloud mode a version 2 map is first checked against the
+// account's own server validator (the CHECK's function): until the server accepts
+// version 2, nothing is written and the save is reported as failed, so a choice
+// the server would reject later is never shown as saved or left queued.
 
 import { useCallback } from 'react';
 import * as Storage from '../../storage/entries';
 import { updateWorkoutNoteItem } from '../../storage/entries/workoutNotes';
-import { nextMovementGroupMap } from '../../lib/data/movementGroups';
+import { DETAILED_MOVEMENT_GROUPS_VERSION, nextMovementGroupMap } from '../../lib/data/movementGroups';
 import { notifyWorkoutNotes, reloadWorkoutNotes } from './workoutNoteHooks';
 import { readVia, writeVia } from './storageMode';
 
 const MissingNote = 'The baseline routine for this block is no longer available.';
+export const DetailedUnsupported = 'Your account can’t store detailed groups yet, so this choice wasn’t saved. Try again later.';
 
 let chain = Promise.resolve();
 
@@ -35,6 +38,10 @@ export function setMovementGroupCore(storage, { noteId, key, group = null } = {}
       if (!note) return { ok: false, error: MissingNote };
       const next = nextMovementGroupMap(note.exercise_movement_groups, key, group);
       if (!next.ok) return { ok: false, error: next.error };
+      if (next.map.version === DETAILED_MOVEMENT_GROUPS_VERSION && typeof storage.serverAccepts === 'function'
+        && (await storage.serverAccepts(next.map)) !== true) {
+        return { ok: false, error: DetailedUnsupported };
+      }
       // No equality short-circuit: in cloud mode the local write lands before the
       // upload is enqueued, so a failed first attempt can leave the map already
       // stored with no upload intent. Re-running the same write re-stamps and
@@ -53,7 +60,23 @@ export function setMovementGroupCore(storage, { noteId, key, group = null } = {}
   return run;
 }
 
+// Cloud mode only: ask the server's validator whether it accepts this exact map.
+// Any error, a missing client, or a false answer counts as "not accepted".
+export async function serverAccepts(map) {
+  if (Storage.getStorageMode() !== Storage.STORAGE_MODES.CLOUD) return true;
+  try {
+    // eslint-disable-next-line global-require
+    const client = require('../../lib/supabaseClient').getSupabaseClient();
+    if (!client) return false;
+    const { data, error } = await client.schema('kilo').rpc('is_valid_exercise_movement_groups', { p_value: map });
+    return !error && data === true;
+  } catch {
+    return false;
+  }
+}
+
 const LiveStorage = {
+  serverAccepts,
   loadNotes: () => readVia('loadWorkoutNotes', Storage.loadWorkoutNotes),
   updateNote: (id, patch) => writeVia('updateWorkoutNoteItem', updateWorkoutNoteItem, id, patch),
 };

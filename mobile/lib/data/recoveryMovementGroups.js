@@ -28,13 +28,43 @@ import {
 } from './movementGroups.js';
 import { UNCLASSIFIED_GROUP_ID, groupForResolution } from './primaryMovementGroups.js';
 import { resolveExerciseName } from './exerciseLibrary';
+import { normalizeExerciseKey, parseWorkoutNote } from '../parser.js';
+
+// Row mapper adding `original_names`: every distinct original parsed exercise
+// name in `notes` whose history key is the row's key. Unparseable notes add none.
+export function withOriginalNames(notes = []) {
+  const byKey = new Map();
+  for (const n of notes) {
+    let sections = [];
+    try { sections = (typeof n.raw_text === 'string' && parseWorkoutNote(n.raw_text).sections) || []; } catch { sections = []; }
+    for (const section of sections) {
+      for (const ex of (section && section.exercises) || []) {
+        const name = ex && typeof ex.name === 'string' ? ex.name.trim() : '';
+        if (!name) continue;
+        const key = normalizeExerciseKey(name);
+        if (!byKey.has(key)) byKey.set(key, new Set());
+        byKey.get(key).add(name);
+      }
+    }
+  }
+  return (row) => (row && byKey.has(row.key) ? { ...row, original_names: [...byKey.get(row.key)] } : row);
+}
 
 // Detailed buckets first (library order), then the broad buckets that only
 // legacy choices and keyword fallback fill.
 const BUCKETS = Object.freeze([...DETAILED_MOVEMENT_GROUPS, ...MOVEMENT_GROUPS]);
 
-// { group, source: 'library' | 'keywords' } for one frozen row, ignoring overrides.
+// { group, source: 'library' | 'keywords' } for one row, ignoring overrides. A row
+// with `original_names` (an added lift) is classified from those: the library
+// answers only when every original name agrees; otherwise keywords on the first.
 export function automaticRecoveryGroup(row) {
+  const originals = row && Array.isArray(row.original_names) ? row.original_names.filter(n => typeof n === 'string' && n.trim()) : [];
+  if (originals.length > 0) {
+    const ids = new Set(originals.map(n => groupForResolution(resolveExerciseName(n)).groupId));
+    const [only] = ids;
+    if (ids.size === 1 && only !== UNCLASSIFIED_GROUP_ID) return { group: only, source: 'library' };
+    return { group: keywordMovementGroup(originals[0]), source: 'keywords' };
+  }
   const name = row && typeof row.name === 'string' && row.name.trim() ? row.name : null;
   if (name) {
     const { groupId } = groupForResolution(resolveExerciseName(name));
