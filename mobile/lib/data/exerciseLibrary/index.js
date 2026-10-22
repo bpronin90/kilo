@@ -52,14 +52,15 @@ export function normalizeExerciseName(input) {
   if (typeof input !== 'string') return '';
   const text = input
     .normalize('NFKC')
+    .toUpperCase()
     .toLowerCase()
-    .replace(/\u00df/g, 'ss')
     .replace(/\u03c2/g, '\u03c3')
     .replace(/[‘’'`]/g, '')
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
   if (!text) return '';
-  // Lower-casing plus eszett/final-sigma folds approximate Unicode casefold; re-normalize.
+  // upper->lower applies the full (multi-character) Unicode case mappings, so it
+  // matches casefold for these inputs (e.g. ss, final sigma, U+0345); re-normalize.
   return foldInitialisms(text.split(' ')).join(' ').normalize('NFKC');
 }
 

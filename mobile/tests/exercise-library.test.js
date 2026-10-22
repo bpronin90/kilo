@@ -101,6 +101,32 @@ describe('normalization', () => {
   });
 });
 
+describe('normalization parity with the independent validator', () => {
+  it('matches Python casefold-based normalization on tricky inputs', () => {
+    const inputs = [
+      'Barbell Bench Pre\u00df', 'Barbell Bench Press\u0345', '\u1f72', '\u1fb2', '\u1f70\u03b9',
+      '\u03a3\u03a4\u0391\u03a3', '\u03c3\u03c4\u03b1\u03c2', 'R.D.L.', ' D.B.  RDL', 'Push-Up',
+      '\uFB01x', '\u0130stanbul', 'Farmer\u2019s Walk', '\uFF22\uFF22 bench', 'a_b', '5x5 @ 100kg',
+    ];
+    const code = [
+      'import json,sys,importlib.util as u',
+      "s=u.spec_from_file_location('v',sys.argv[1]);m=u.module_from_spec(s);s.loader.exec_module(m)",
+      'print(json.dumps([m.normalize(x) for x in json.load(sys.stdin)]))',
+    ].join('\n');
+    const r = spawnSync('python3', ['-c', code, VALIDATOR], {
+      input: JSON.stringify(inputs),
+      encoding: 'utf8',
+    });
+    expect(r.status).toBe(0);
+    expect(inputs.map(normalizeExerciseName)).toEqual(JSON.parse(r.stdout));
+  });
+
+  it('applies full case folding to lookups', () => {
+    expect(resolveExerciseName('Barbell Bench Press\u0345').matchType).toBe('unknown');
+    expect(normalizeExerciseName('\u1fb2')).toBe(normalizeExerciseName('\u1f70\u03b9'));
+  });
+});
+
 describe('contract', () => {
   it('returns unknown/ambiguous partials without arbitrary ids and does no fuzzy matching', () => {
     const unknown = resolveExerciseName('Zorblax Cable Pullover');
