@@ -1,8 +1,9 @@
 // Backup/restore gate for the per-exercise movement-group override map (#1306).
 // Kept out of backupValidation.js / backupRestore.js (at the line cap). An
 // omitted or null field is a legacy note (rules only) and is valid; anything
-// else must be exactly {version: 1, overrides: {<key>: <one group id>}}. A
-// malformed map is rejected rather than restored as a silently accepted mapping.
+// else must be exactly {version: 1|2, overrides: {<key>: <one group id>}}
+// (#1581: version 2 may also hold detailed ids). A malformed or unsupported map
+// is rejected rather than restored as a silently accepted or downgraded mapping.
 
 import { movementGroupMapError } from '../../lib/data/movementGroups';
 

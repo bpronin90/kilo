@@ -17,7 +17,17 @@
 // "leg"/"squat"). A name with no matching phrase is "other". Nothing infers
 // anatomy from an unlisted name. A user override always wins over the rules.
 
+//
+// Detailed choices (#1581). Version 2 maps may also hold a primary library group
+// id (exerciseLibrary/primaryGroups.json, excluding 'unclassified'). The two id
+// sets are disjoint, so one value names exactly one bucket. Version 1 stays
+// readable and writable unchanged; a map becomes version 2 only when an explicit
+// edit stores a detailed id, and is never rewritten back to version 1. An older
+// client reads a version 2 map as INVALID (rules only, editing unavailable), so it
+// can neither discard nor downgrade the authored values.
+
 import { normalizeExerciseKey } from '../parser.js';
+import PRIMARY_GROUPS from './exerciseLibrary/primaryGroups.json';
 
 export const MOVEMENT_GROUPS = Object.freeze([
   Object.freeze({ id: 'push', label: 'Push' }),
@@ -33,11 +43,22 @@ export const MOVEMENT_GROUPS = Object.freeze([
 export const MOVEMENT_GROUP_IDS = Object.freeze(MOVEMENT_GROUPS.map(g => g.id));
 export const OTHER_GROUP_ID = 'other';
 
-const _labels = new Map(MOVEMENT_GROUPS.map(g => [g.id, g.label]));
+// Primary (detailed) ids a version 2 map may store.
+export const DETAILED_MOVEMENT_GROUPS = Object.freeze(PRIMARY_GROUPS.groups
+  .filter(g => g.id !== 'unclassified')
+  .map(g => Object.freeze({ id: g.id, label: g.label, legacy: g.legacy_broad_group })));
+export const DETAILED_MOVEMENT_GROUP_IDS = Object.freeze(DETAILED_MOVEMENT_GROUPS.map(g => g.id));
+
+const _labels = new Map([...MOVEMENT_GROUPS, ...DETAILED_MOVEMENT_GROUPS].map(g => [g.id, g.label]));
 export const movementGroupLabel = (id) => _labels.get(id) || _labels.get(OTHER_GROUP_ID);
 export const isMovementGroupId = (id) => typeof id === 'string' && MOVEMENT_GROUP_IDS.includes(id);
+export const isDetailedMovementGroupId = (id) => typeof id === 'string' && DETAILED_MOVEMENT_GROUP_IDS.includes(id);
 
 export const MOVEMENT_GROUPS_VERSION = 1;
+export const DETAILED_MOVEMENT_GROUPS_VERSION = 2;
+const _allowed = (version) => (version === DETAILED_MOVEMENT_GROUPS_VERSION
+  ? (id) => isMovementGroupId(id) || isDetailedMovementGroupId(id)
+  : isMovementGroupId);
 export const MAX_MOVEMENT_OVERRIDES = 1000;
 export const MAX_MOVEMENT_KEY_LENGTH = 200;
 
@@ -85,21 +106,23 @@ export function keywordMovementGroup(name) {
 // ── override map ──────────────────────────────────────────────────────────────
 
 // Error string for an invalid map, null when valid. `null`/`undefined` is valid
-// (rules only). Exactly {version: 1, overrides: {<key>: <one group id>}}: no
+// (rules only). Exactly {version: 1|2, overrides: {<key>: <one group id>}}: no
 // extra top-level fields, no arrays of groups, keys 1-200 chars, <= 1000 keys.
+// Version 1 accepts only the eight broad ids; version 2 also the detailed ids.
 export function movementGroupMapError(value) {
   if (value == null) return null;
   if (typeof value !== 'object' || Array.isArray(value)) return 'must be an object';
   const keys = Object.keys(value);
   if (keys.length !== 2 || !('version' in value) || !('overrides' in value)) return 'must have exactly version and overrides';
-  if (value.version !== MOVEMENT_GROUPS_VERSION) return `unsupported version ${String(value.version)}`;
+  if (value.version !== MOVEMENT_GROUPS_VERSION && value.version !== DETAILED_MOVEMENT_GROUPS_VERSION) return `unsupported version ${String(value.version)}`;
+  const allowed = _allowed(value.version);
   const o = value.overrides;
   if (!o || typeof o !== 'object' || Array.isArray(o)) return 'overrides must be an object';
   const entries = Object.entries(o);
   if (entries.length > MAX_MOVEMENT_OVERRIDES) return `too many overrides (${entries.length}; limit ${MAX_MOVEMENT_OVERRIDES})`;
   for (const [k, g] of entries) {
     if (k.length < 1 || k.length > MAX_MOVEMENT_KEY_LENGTH || k === '__proto__') return 'override key must be 1-200 characters';
-    if (typeof g !== 'string' || !MOVEMENT_GROUP_IDS.includes(g)) return `unknown movement group for "${k}"`;
+    if (typeof g !== 'string' || !allowed(g)) return `unknown movement group for "${k}"`;
   }
   return null;
 }
@@ -113,25 +136,29 @@ export const OVERRIDE_STATE = Object.freeze({
 // Read a stored map into { state, overrides }. An invalid map is an explicit
 // INVALID state with no usable overrides, never a silently accepted mapping.
 export function readMovementOverrides(value) {
-  if (value == null) return { state: OVERRIDE_STATE.RULES_ONLY, overrides: {} };
+  if (value == null) return { state: OVERRIDE_STATE.RULES_ONLY, overrides: {}, version: null };
   const error = movementGroupMapError(value);
   if (error) return { state: OVERRIDE_STATE.INVALID, overrides: {}, error };
-  return { state: OVERRIDE_STATE.OVERRIDES, overrides: { ...value.overrides } };
+  return { state: OVERRIDE_STATE.OVERRIDES, overrides: { ...value.overrides }, version: value.version };
 }
 
 // The group for one exercise: the user override when one exists for the exact
 // normalized key, else the keyword rules. Always exactly one valid id.
+export const normalizeOverrideKey = (name) => normalizeExerciseKey(name);
+
 export function resolveMovementGroup(name, overrides = {}) {
   const key = normalizeExerciseKey(name);
   const own = Object.prototype.hasOwnProperty.call(overrides, key) ? overrides[key] : null;
-  if (own && MOVEMENT_GROUP_IDS.includes(own)) return { group: own, source: 'override', key };
+  if (own && (isMovementGroupId(own) || isDetailedMovementGroupId(own))) return { group: own, source: 'override', key };
   return { group: keywordMovementGroup(key), source: 'rules', key };
 }
 
 // Next stored map after choosing `group` for `key`, or after Reset (`group`
-// null) removing the key so the keyword rules apply again. Always a map object
-// (an emptied map is `{version:1, overrides:{}}`, never null, so the cleared
-// state reaches the server instead of being skipped as "no value").
+// null) removing the key so automatic classification applies again. Always a map
+// object (an emptied map is `{version, overrides:{}}`, never null, so the cleared
+// state reaches the server instead of being skipped as "no value"). Other keys'
+// values are carried over exactly. The version is 2 when the current map already
+// is, or when `group` is a detailed id; otherwise it stays 1.
 export function nextMovementGroupMap(current, key, group) {
   const read = readMovementOverrides(current);
   if (read.state === OVERRIDE_STATE.INVALID) return { ok: false, error: 'Saved group choices are unreadable.' };
@@ -139,8 +166,10 @@ export function nextMovementGroupMap(current, key, group) {
   if (!k || k === '__proto__' || k.length > MAX_MOVEMENT_KEY_LENGTH) return { ok: false, error: 'That exercise name is too long to save a group for.' };
   const overrides = { ...read.overrides };
   if (group == null) delete overrides[k];
-  else if (!MOVEMENT_GROUP_IDS.includes(group)) return { ok: false, error: 'Unknown movement group.' };
+  else if (!isMovementGroupId(group) && !isDetailedMovementGroupId(group)) return { ok: false, error: 'Unknown movement group.' };
   else overrides[k] = group;
   if (Object.keys(overrides).length > MAX_MOVEMENT_OVERRIDES) return { ok: false, error: 'Too many saved group choices.' };
-  return { ok: true, map: { version: MOVEMENT_GROUPS_VERSION, overrides } };
+  const version = read.version === DETAILED_MOVEMENT_GROUPS_VERSION || isDetailedMovementGroupId(group)
+    ? DETAILED_MOVEMENT_GROUPS_VERSION : MOVEMENT_GROUPS_VERSION;
+  return { ok: true, map: { version, overrides } };
 }

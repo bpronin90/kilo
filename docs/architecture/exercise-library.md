@@ -134,6 +134,36 @@ empty exclusion set.
   recorded (a generic weighted exercise never implies a vest or belt).
 - **Coverage.** Each view reports its own field-specific known-set coverage.
 
+## Recovery movement groups (#1581)
+
+`mobile/lib/data/recoveryMovementGroups.js` places each Recovery lift (baseline roster
+plus lifts added during recovery) in exactly one display bucket, read by the shared
+Recovery snapshot. Strength cohort, percents, per-lift values, denominators, pace and
+the frozen baseline are inputs only; regrouping never recomputes them.
+
+- **Order of authority.** A saved choice on the baseline note wins exactly as stored.
+  Otherwise the library classifies the frozen record's own `name` (source `library`).
+  When the library cannot (unknown name, disagreeing candidates, or a record with no
+  name), the existing keyword rules decide and the source is shown as
+  "Automatic (name keywords)", never as library certainty. The normalized key is
+  never fed to the library, so a frozen coarse name (for example `RDL`) keeps exactly
+  the specificity it recorded.
+- **Saved choices.** `{version: 1}` maps keep their eight broad ids and meaning; such
+  a lift stays in its broad bucket with the existing label ("Your earlier broad
+  choice"). Detailed choices are written as `{version: 2}`; the first detailed edit
+  upgrades the map and carries every other value over unchanged, and later edits
+  never downgrade it. Reset removes only that key. Rendering never writes.
+- **Editor.** Options are the detailed groups listed under their broad family. A broad
+  option is shown only when it is the current group (an earlier choice or keyword
+  fallback).
+- **Older clients.** A client that knows only version 1 reads a version 2 map as
+  unreadable: rules-only grouping, editing unavailable, no write. Its ordinary note
+  saves patch other fields and leave the map intact, and its backup restore rejects
+  such a backup rather than dropping the map.
+- **Known limit.** Analytics' Training breakdown labels a note-scoped choice with
+  `movementGroupLabel`, so a detailed choice there appears as its own
+  `legacy:<id>` row beside the library row of the same name.
+
 ## Validation
 
 - `python3 scripts/validate-exercise-library.py` checks vocabulary and references,

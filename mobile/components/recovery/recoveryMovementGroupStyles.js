@@ -30,6 +30,10 @@ export const createMovementGroupStyles = (colors, kua = null) => {
     exerciseList: { paddingLeft: 12, gap: 2, paddingBottom: 6 },
     exercise: { gap: 2, paddingVertical: 4 },
     exerciseHead: { flexDirection: 'row', alignItems: 'center', columnGap: 8, minHeight: 28 },
+    // Manage editor row (#1581): wraps so the full-width editor drops below the
+    // name and its button instead of overflowing the card.
+    manageHead: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, minHeight: 28 },
+    manageName: { flexGrow: 1, flexShrink: 1, flexBasis: 0, fontSize: TYPOGRAPHY['body-md'].fontSize, color: ink },
     exerciseName: { flexGrow: 1, flexShrink: 1, fontSize: TYPOGRAPHY['body-md'].fontSize, color: ink },
     exerciseValue: { flexShrink: 0, minWidth: 64, textAlign: 'right', ...label },
     exerciseValueEmpty: { flexShrink: 0, minWidth: 64, textAlign: 'right', ...caption },
@@ -42,6 +46,7 @@ export const createMovementGroupStyles = (colors, kua = null) => {
     disabledText: { opacity: 0.5 },
     editor: { gap: 2, paddingVertical: 4, borderTopWidth: 1, borderTopColor: border },
     scope: caption,
+    optionHeading: { ...caption, fontWeight: '700', paddingTop: 8 },
     option: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
     optionText: { flexShrink: 1, fontSize: TYPOGRAPHY['body-md'].fontSize, color: ink },
     optionTextSelected: { fontWeight: '700' },

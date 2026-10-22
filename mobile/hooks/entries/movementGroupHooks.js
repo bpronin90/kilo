@@ -12,6 +12,9 @@
 //   4. checks the value read back from the write, so a "saved" result always
 //      means the persisted field holds the chosen map.
 // Writes are serialized, and a failure is reported, never claimed as saved.
+// A detailed choice (#1581) writes a version 2 map carrying every other stored
+// value unchanged; until the server accepts version 2 its CHECK rejects the
+// upload and the save is reported as failed.
 
 import { useCallback } from 'react';
 import * as Storage from '../../storage/entries';

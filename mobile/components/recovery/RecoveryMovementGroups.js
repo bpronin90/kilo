@@ -14,6 +14,7 @@ import { useTheme } from '../../theme/ThemeContext';
 import { displayPercent } from '../../lib/data/recoveryStrength';
 import { RecoveryDisclosure } from './RecoveryStrengthDisclosures';
 import { createMovementGroupStyles } from './recoveryMovementGroupStyles';
+import { groupSourceText } from '../../lib/data/recoveryMovementGroups';
 
 const _lifts = (n) => `${n} ${n === 1 ? 'lift' : 'lifts'}`;
 
@@ -38,7 +39,7 @@ function ExerciseRow({ ex, styles }) {
   const status = ex.origin === 'added' ? 'Added during recovery, not scored'
     : (ex.in_cohort ? (scored ? 'In the average' : 'In the average, no score this week') : 'Not in the average');
   const value = scored ? `${pct}%` : 'No score';
-  const source = ex.source === 'override' ? 'Your choice' : 'Automatic';
+  const source = groupSourceText(ex);
   return (
     <View
       testID={`movement-group-exercise-${ex.key}`}

@@ -4,7 +4,7 @@
 import React from 'react';
 import render, { act } from 'react-test-renderer';
 import {
-  MOVEMENT_GROUPS, MOVEMENT_GROUP_IDS, OVERRIDE_STATE, keywordMovementGroup, movementGroupMapError,
+  DETAILED_MOVEMENT_GROUP_IDS, MOVEMENT_GROUPS, MOVEMENT_GROUP_IDS, OVERRIDE_STATE, keywordMovementGroup, movementGroupMapError,
   nextMovementGroupMap, readMovementOverrides, resolveMovementGroup,
 } from '../lib/data/movementGroups';
 import { deriveMovementGroupBreakdown, resolveMovementGroupSource } from '../lib/data/recoveryMovementGroups';
@@ -98,9 +98,9 @@ describe('override map', () => {
   const ok = { version: 1, overrides: { deadlift: 'hinge' } };
 
   test('null/undefined is rules only; a valid map reads; the shape is exact', () => {
-    expect(readMovementOverrides(null)).toEqual({ state: OVERRIDE_STATE.RULES_ONLY, overrides: {} });
+    expect(readMovementOverrides(null)).toEqual({ state: OVERRIDE_STATE.RULES_ONLY, overrides: {}, version: null });
     expect(readMovementOverrides(undefined).state).toBe(OVERRIDE_STATE.RULES_ONLY);
-    expect(readMovementOverrides(ok)).toEqual({ state: OVERRIDE_STATE.OVERRIDES, overrides: { deadlift: 'hinge' } });
+    expect(readMovementOverrides(ok)).toEqual({ state: OVERRIDE_STATE.OVERRIDES, overrides: { deadlift: 'hinge' }, version: 1 });
     expect(movementGroupMapError(ok)).toBeNull();
     expect(movementGroupMapError({ version: 1, overrides: {} })).toBeNull();
   });
@@ -108,7 +108,13 @@ describe('override map', () => {
   test.each([
     ['array', []],
     ['string', 'x'],
-    ['version 2', { version: 2, overrides: {} }],
+    ['version 3', { version: 3, overrides: {} }],
+    ['string version', { version: '2', overrides: {} }],
+    ['version 1 with a detailed id', { version: 1, overrides: { squat: 'squat' } }],
+    ['version 2 unknown id', { version: 2, overrides: { squat: 'quads' } }],
+    ['version 2 unclassified', { version: 2, overrides: { squat: 'unclassified' } }],
+    ['version 2 multi-group array', { version: 2, overrides: { squat: ['squat'] } }],
+    ['version 2 extra field', { version: 2, overrides: {}, extra: 1 }],
     ['no version', { overrides: {} }],
     ['extra top-level field', { version: 1, overrides: {}, extra: 1 }],
     ['overrides array', { version: 1, overrides: [] }],
@@ -119,6 +125,37 @@ describe('override map', () => {
   ])('invalid: %s is an explicit invalid state, never accepted', (_label, value) => {
     expect(movementGroupMapError(value)).toEqual(expect.any(String));
     expect(readMovementOverrides(value)).toMatchObject({ state: OVERRIDE_STATE.INVALID, overrides: {} });
+  });
+
+  test('version 2 holds detailed and broad choices side by side; version 1 stays valid', () => {
+    const v2 = { version: 2, overrides: { squat: 'squat', deadlift: 'hinge', row: 'horizontal_pull' } };
+    expect(movementGroupMapError(v2)).toBeNull();
+    expect(readMovementOverrides(v2)).toEqual({ state: OVERRIDE_STATE.OVERRIDES, overrides: v2.overrides, version: 2 });
+    expect(movementGroupMapError({ version: 2, overrides: {} })).toBeNull();
+    expect(resolveMovementGroup('Row', v2.overrides)).toMatchObject({ group: 'horizontal_pull', source: 'override' });
+    const many = Object.fromEntries(Array.from({ length: 1001 }, (_, i) => [`k${i}`, 'squat']));
+    expect(movementGroupMapError({ version: 2, overrides: many })).toMatch(/too many/);
+    expect(movementGroupMapError({ version: 2, overrides: { ['k'.repeat(201)]: 'squat' } })).toEqual(expect.any(String));
+  });
+
+  test('a detailed choice upgrades to version 2 keeping every legacy broad value exactly; never downgrades', () => {
+    const v1 = { version: 1, overrides: { deadlift: 'legs', curl: 'pull' } };
+    expect(nextMovementGroupMap(v1, 'Squat', 'legs').map).toEqual({ version: 1, overrides: { deadlift: 'legs', curl: 'pull', squat: 'legs' } });
+    const up = nextMovementGroupMap(v1, 'Squat', 'squat');
+    expect(up).toEqual({ ok: true, map: { version: 2, overrides: { deadlift: 'legs', curl: 'pull', squat: 'squat' } } });
+    const reset = nextMovementGroupMap(up.map, 'squat', null);
+    expect(reset.map).toEqual({ version: 2, overrides: { deadlift: 'legs', curl: 'pull' } });
+    expect(nextMovementGroupMap(reset.map, 'curl', 'arms').map.version).toBe(2);
+    expect(nextMovementGroupMap(null, 'Squat', 'unclassified')).toMatchObject({ ok: false });
+  });
+
+  test('the server CHECK accepts exactly the client detailed ids (migration list stays in sync)', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const sql = fs.readFileSync(path.join(__dirname, '../../supabase/migrations/20261022163911_exercise_primary_movement_groups.sql'), 'utf8');
+    const detailedBlock = sql.slice(sql.indexOf("'horizontal_push'"), sql.indexOf("'stretching'") + "'stretching'".length);
+    const ids = detailedBlock.match(/'([a-z_]+)'/g).map(x => x.slice(1, -1));
+    expect([...ids].sort()).toEqual([...DETAILED_MOVEMENT_GROUP_IDS].sort());
   });
 
   test('1000 keys is the limit', () => {
@@ -157,6 +194,9 @@ describe('override map', () => {
     expect(movementGroupsNoteError({ id: 'n', exercise_movement_groups: null })).toBeNull();
     expect(movementGroupsNoteError({ id: 'n', exercise_movement_groups: ok })).toBeNull();
     expect(movementGroupsNoteError({ id: 'n', exercise_movement_groups: { version: 1, overrides: { a: ['push'] } } })).toMatch(/^Invalid backup/);
+    expect(movementGroupsNoteError({ id: 'n', exercise_movement_groups: { version: 2, overrides: { a: 'squat', b: 'legs' } } })).toBeNull();
+    expect(movementGroupsNoteError({ id: 'n', exercise_movement_groups: { version: 1, overrides: { a: 'squat' } } })).toMatch(/^Invalid backup/);
+    expect(movementGroupsNoteError({ id: 'n', exercise_movement_groups: { version: 3, overrides: {} } })).toMatch(/unsupported version/);
   });
 });
 
@@ -178,12 +218,12 @@ describe('group score derivation', () => {
     const { baseline, strength } = strengthFor(['-Bench\n- 80 5\n-Squat\n- 60 5\n-Deadlift\n- 100 5\n-Curl\n- 30 10']);
     const b = deriveMovementGroupBreakdown({ strength, baselineRows: baseline.exercises, addedRows: [{ key: 'curl', name: 'Curl' }] });
     expect(byId(b, 'push').percent).toBeCloseTo(80, 6);
-    expect(byId(b, 'legs').percent).toBeCloseTo(60, 6);
-    expect(byId(b, 'hinge').percent).toBeCloseTo(100, 6);
+    expect(byId(b, 'squat').percent).toBeCloseTo(60, 6);
+    expect(byId(b, 'hip_hinge').percent).toBeCloseTo(100, 6);
     // Row was not logged this week: grouped, never scored, so its group has no percent.
     expect(byId(b, 'pull')).toMatchObject({ percent: null, total_count: 1, scored_count: 0, cohort_count: 0 });
     // Plank is unscoreable, an added lift is not scored: grouped, not averaged.
-    expect(byId(b, 'core')).toMatchObject({ percent: null, total_count: 1, baseline_count: 1 });
+    expect(byId(b, 'trunk_stability')).toMatchObject({ percent: null, total_count: 1, baseline_count: 1 });
     expect(byId(b, 'arms')).toMatchObject({ percent: null, total_count: 1, baseline_count: 0 });
   });
 
@@ -195,7 +235,7 @@ describe('group score derivation', () => {
     const b = deriveMovementGroupBreakdown({ strength, baselineRows: baseline.exercises });
     expect(byId(b, 'push')).toMatchObject({ scored_count: 1, cohort_count: 1 });
     expect(byId(b, 'push').percent).toBeCloseTo(90, 6);
-    expect(byId(b, 'legs')).toMatchObject({ percent: null, total_count: 1, cohort_count: 0 });
+    expect(byId(b, 'squat')).toMatchObject({ percent: null, total_count: 1, cohort_count: 0 });
   });
 
   test('empty cohort -> every group has no percent', () => {
@@ -210,17 +250,22 @@ describe('group score derivation', () => {
     const added = [{ key: 'curl', name: 'Curl' }];
     const before = deriveMovementGroupBreakdown({ strength, baselineRows: baseline.exercises, addedRows: added });
     const after = deriveMovementGroupBreakdown({
-      strength, baselineRows: baseline.exercises, addedRows: added, overrides: { deadlift: 'legs' },
+      strength, baselineRows: baseline.exercises, addedRows: added, overrides: { deadlift: 'squat' },
     });
     expect(after.total_count).toBe(before.total_count);
     const count = (b) => b.groups.reduce((n, g) => n + g.total_count, 0);
     expect(count(after)).toBe(count(before));
     expect(after.groups.flatMap(g => g.exercises).filter(e => e.key === 'deadlift')).toHaveLength(1);
-    expect(byId(before, 'hinge')).toBeDefined();
-    expect(byId(after, 'hinge')).toBeUndefined();
-    expect(byId(after, 'legs').exercises.map(e => e.key).sort()).toEqual(['deadlift', 'squat']);
-    expect(byId(after, 'legs').percent).toBeCloseTo((60 + 100) / 2, 6);
-    expect(byId(after, 'legs').exercises.find(e => e.key === 'deadlift')).toMatchObject({ source: 'override', automatic_group: 'hinge' });
+    expect(byId(before, 'hip_hinge')).toBeDefined();
+    expect(byId(after, 'hip_hinge')).toBeUndefined();
+    expect(byId(after, 'squat').exercises.map(e => e.key).sort()).toEqual(['deadlift', 'squat']);
+    expect(byId(after, 'squat').percent).toBeCloseTo((60 + 100) / 2, 6);
+    expect(byId(after, 'squat').exercises.find(e => e.key === 'deadlift')).toMatchObject({ source: 'override', legacy_choice: false, automatic_group: 'hip_hinge' });
+    // A version 1 broad choice keeps its exact broad bucket and label.
+    const legacy = deriveMovementGroupBreakdown({ strength, baselineRows: baseline.exercises, addedRows: added, overrides: { deadlift: 'legs' } });
+    expect(byId(legacy, 'legs')).toMatchObject({ label: 'Legs (quad-dominant)', total_count: 1 });
+    expect(byId(legacy, 'legs').exercises[0]).toMatchObject({ key: 'deadlift', source: 'override', legacy_choice: true });
+    expect(count(legacy)).toBe(count(before));
     // The strength result is an input only: same object, same headline.
     expect(strength.headline).toBeCloseTo((80 + 60 + 100 + 90) / 4, 6);
   });
@@ -287,8 +332,8 @@ describe('Recovery movement-group UI', () => {
     press(root, 'recovery-movement-groups-header');
     expect(host(root, 'movement-group-row-push')).toHaveLength(1);
     expect(host(root, 'movement-group-value-push')[0].props.children).toBe('80%');
-    expect(host(root, 'movement-group-value-legs')[0].props.children).toBe('60%');
-    expect(host(root, 'movement-group-value-hinge')[0].props.children).toBe('100%');
+    expect(host(root, 'movement-group-value-squat')[0].props.children).toBe('60%');
+    expect(host(root, 'movement-group-value-hip_hinge')[0].props.children).toBe('100%');
     // An added lift is grouped but unscored: Arms shows no percent.
     expect(host(root, 'movement-group-value-arms')[0].props.children).toBe('No score');
     // Compact visible counts; the full wording stays in the row's label.
@@ -300,7 +345,7 @@ describe('Recovery movement-group UI', () => {
   test('the breakdown is read-only: no editor control and no Manage block anywhere in Analytics', () => {
     const root = mount();
     press(root, 'recovery-movement-groups-header');
-    press(root, 'movement-group-row-hinge');
+    press(root, 'movement-group-row-hip_hinge');
     expect(host(root, 'movement-group-exercise-deadlift')).toHaveLength(1);
     expect(host(root, 'movement-group-edit-deadlift')).toHaveLength(0);
     expect(host(root, 'recovery-manage-groups')).toHaveLength(0);
@@ -309,8 +354,10 @@ describe('Recovery movement-group UI', () => {
   test('a persisted override (from the baseline note) moves the lift immediately; the overall number is unchanged', () => {
     const root = mount({ notes: uiNotes({ exercise_movement_groups: { version: 1, overrides: { deadlift: 'legs' } } }) });
     press(root, 'recovery-movement-groups-header');
-    expect(host(root, 'movement-group-row-hinge')).toHaveLength(0);
-    expect(host(root, 'movement-group-value-legs')[0].props.children).toBe('80%');
+    expect(host(root, 'movement-group-row-hip_hinge')).toHaveLength(0);
+    // The legacy broad choice keeps its own bucket; squat stays in its library group.
+    expect(host(root, 'movement-group-value-legs')[0].props.children).toBe('100%');
+    expect(host(root, 'movement-group-value-squat')[0].props.children).toBe('60%');
     expect(host(root, 'recovery-strength-summary')[0].props.accessibilityLabel).toMatch(/^Week 1: 80% /);
   });
 
@@ -325,7 +372,7 @@ describe('Recovery movement-group UI', () => {
     expect(texts(root).some(t => t.includes(copy))).toBe(false);
     press(root, 'recovery-movement-groups-header');
     expect(texts(root).some(t => t.includes(copy))).toBe(true);
-    press(root, 'movement-group-row-hinge');
+    press(root, 'movement-group-row-hip_hinge');
     expect(host(root, 'movement-group-exercise-deadlift')).toHaveLength(1);
     expect(host(root, 'movement-group-edit-deadlift')).toHaveLength(0);
   });
@@ -343,8 +390,8 @@ describe('Log Manage block movement-group editor (#1306, moved to Log by #1315)'
     expect(host(root, 'manage-group-exercise-deadlift')).toHaveLength(0);
     press(root, 'recovery-manage-groups-header');
     for (const key of ['bench', 'squat', 'deadlift', 'curl']) expect(host(root, `manage-group-exercise-${key}`)).toHaveLength(1);
-    expect(texts(root)).toContain('Hinge / posterior chain · Automatic');
-    expect(texts(root)).toContain('Arms · Automatic · added during recovery');
+    expect(texts(root)).toContain('Hip hinge · Automatic');
+    expect(texts(root)).toContain('Arms · Automatic (name keywords) · added during recovery');
   });
 
   test('the editor offers every group plus reset, each >= 44dp with selected state', () => {
@@ -352,17 +399,44 @@ describe('Log Manage block movement-group editor (#1306, moved to Log by #1315)'
     openEditor(root);
     press(root, 'movement-group-edit-deadlift');
     const { StyleSheet } = require('react-native');
-    for (const id of MOVEMENT_GROUP_IDS) {
+    for (const id of DETAILED_MOVEMENT_GROUP_IDS) {
       const opt = host(root, `movement-group-option-deadlift-${id}`)[0];
       expect(opt.props.accessibilityRole).toBe('radio');
-      expect(opt.props.accessibilityState.selected).toBe(id === 'hinge');
+      expect(opt.props.accessibilityState.selected).toBe(id === 'hip_hinge');
       expect(StyleSheet.flatten(opt.props.style).minHeight).toBeGreaterThanOrEqual(44);
     }
     const reset = host(root, 'movement-group-reset-deadlift')[0];
     expect(StyleSheet.flatten(reset.props.style).minHeight).toBeGreaterThanOrEqual(44);
     expect(reset.props.accessibilityState.disabled).toBe(true); // already automatic
+    // Broad groups are offered only when needed (none here).
+    for (const id of MOVEMENT_GROUP_IDS) expect(host(root, `movement-group-option-deadlift-${id}`)).toHaveLength(0);
     expect(StyleSheet.flatten(host(root, 'movement-group-edit-deadlift')[0].props.style).minHeight).toBeGreaterThanOrEqual(44);
     expect(texts(root).some(t => t.includes('every week and every block that uses Push Pull Legs'))).toBe(true);
+  });
+
+  test('a legacy broad choice stays visible and selected with its label; reset returns to automatic', async () => {
+    mockSetMovementGroup.mockResolvedValue({ ok: true });
+    const root = mountLog({ notes: uiNotes({ exercise_movement_groups: { version: 1, overrides: { deadlift: 'legs' } } }) });
+    openEditor(root);
+    expect(texts(root)).toContain('Legs (quad-dominant) · Your earlier broad choice');
+    press(root, 'movement-group-edit-deadlift');
+    expect(host(root, 'movement-group-option-deadlift-legs')[0].props.accessibilityState.selected).toBe(true);
+    expect(texts(root)).toContain('Broad group (your earlier choice)');
+    expect(host(root, 'movement-group-option-deadlift-hinge')).toHaveLength(0);
+    const reset = host(root, 'movement-group-reset-deadlift')[0];
+    expect(reset.props.accessibilityState.disabled).toBe(false);
+    expect(texts(root)).toContain('Reset to automatic (Hip hinge)');
+    press(root, 'movement-group-reset-deadlift');
+    await flush();
+    expect(mockSetMovementGroup).toHaveBeenCalledWith({ noteId: 'nb', key: 'deadlift', group: null });
+  });
+
+  test('keyword fallback is labelled as such, never as library certainty', () => {
+    const root = mountLog();
+    openEditor(root);
+    press(root, 'movement-group-edit-curl');
+    expect(host(root, 'movement-group-option-curl-arms')[0].props.accessibilityState.selected).toBe(true);
+    expect(texts(root)).toContain('Broad group (from name keywords)');
   });
 
   test('choosing a group writes once with the baseline note id; duplicate taps are disabled while saving', async () => {
@@ -371,10 +445,10 @@ describe('Log Manage block movement-group editor (#1306, moved to Log by #1315)'
     const root = mountLog();
     openEditor(root);
     press(root, 'movement-group-edit-deadlift');
-    press(root, 'movement-group-option-deadlift-legs');
-    expect(mockSetMovementGroup).toHaveBeenCalledWith({ noteId: 'nb', key: 'deadlift', group: 'legs' });
-    expect(host(root, 'movement-group-option-deadlift-push')[0].props.accessibilityState.disabled).toBe(true);
-    act(() => { comp(root, 'movement-group-option-deadlift-push').props.onPress(); });
+    press(root, 'movement-group-option-deadlift-squat');
+    expect(mockSetMovementGroup).toHaveBeenCalledWith({ noteId: 'nb', key: 'deadlift', group: 'squat' });
+    expect(host(root, 'movement-group-option-deadlift-horizontal_push')[0].props.accessibilityState.disabled).toBe(true);
+    act(() => { comp(root, 'movement-group-option-deadlift-horizontal_push').props.onPress(); });
     expect(mockSetMovementGroup).toHaveBeenCalledTimes(1);
     await act(async () => { finish({ ok: true }); });
   });
@@ -384,16 +458,16 @@ describe('Log Manage block movement-group editor (#1306, moved to Log by #1315)'
     const root = mountLog();
     openEditor(root);
     press(root, 'movement-group-edit-deadlift');
-    press(root, 'movement-group-option-deadlift-legs');
+    press(root, 'movement-group-option-deadlift-squat');
     await flush();
     expect(host(root, 'movement-group-error-deadlift')[0].props.children).toBe('Not saved: disk full');
-    expect(host(root, 'movement-group-option-deadlift-legs')[0].props.accessibilityState.selected).toBe(true);
+    expect(host(root, 'movement-group-option-deadlift-squat')[0].props.accessibilityState.selected).toBe(true);
     // Collapsing Manage block keeps the draft and error mounted (hidden), never discarded.
     press(root, 'recovery-manage-trigger-rb1');
     expect(host(root, 'recovery-manage-body-rb1')[0].props.accessibilityElementsHidden).toBe(true);
     press(root, 'recovery-manage-trigger-rb1');
     expect(host(root, 'movement-group-error-deadlift')[0].props.children).toBe('Not saved: disk full');
-    expect(host(root, 'movement-group-option-deadlift-legs')[0].props.accessibilityState.selected).toBe(true);
+    expect(host(root, 'movement-group-option-deadlift-squat')[0].props.accessibilityState.selected).toBe(true);
   });
 
   test.each([
@@ -414,11 +488,11 @@ describe('Log Manage block movement-group editor (#1306, moved to Log by #1315)'
     expect(host(stale, 'recovery-manage-locked')).toHaveLength(1);
     expect(texts(stale).some(t => t.includes('paused until Recovery data is current'))).toBe(true);
     press(stale, 'movement-group-edit-deadlift');
-    expect(host(stale, 'movement-group-option-deadlift-legs')[0].props.accessibilityState.disabled).toBe(true);
+    expect(host(stale, 'movement-group-option-deadlift-squat')[0].props.accessibilityState.disabled).toBe(true);
 
     const pending = mountLog({ pendingRecovery: [{ operation_id: 1, block_id: 'rb1', error: null }] });
     openEditor(pending);
     press(pending, 'movement-group-edit-deadlift');
-    expect(host(pending, 'movement-group-option-deadlift-legs')[0].props.accessibilityState.disabled).toBe(true);
+    expect(host(pending, 'movement-group-option-deadlift-squat')[0].props.accessibilityState.disabled).toBe(true);
   });
 });
