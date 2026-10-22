@@ -115,22 +115,51 @@ describe('AnalyticsScreen public boundary (card #1051)', () => {
   });
 });
 
-describe('AnalyticsScreen Training breakdown (#1580)', () => {
-  const notes = [{ id: 'n1', title: 'Routine', raw_text: 'Monday\n-Barbell Bench Press: 3x5\n135 5,5,5' }];
+describe('AnalyticsScreen Training breakdown (#1580, dashboard #1588)', () => {
+  const notes = [{ id: 'n1', title: 'Routine', date: '2026-05-26', raw_text: 'Monday\n-Barbell Bench Press: 3x5\n135 5,5,5' }];
 
-  test('renders the section after Strength with the derived eligible-history counts', () => {
+  test('renders the dashboard after Strength from the verified, paired population', async () => {
     const { component } = setup({ hookOverrides: { notes, currentNote: notes[0] } });
+    for (let i = 0; i < 5; i++) await render.act(async () => { await Promise.resolve(); });
     const json = JSON.stringify(component.toJSON());
     expect(json.indexOf('Strength')).toBeLessThan(json.indexOf('Training breakdown'));
     expect(json.indexOf('Training breakdown')).toBeLessThan(json.indexOf('Routine Health'));
-    expect(json).toContain('Eligible ordinary history');
-    expect(json).toContain('3 completed sets');
-    expect(json).toContain('Movement classified: 3 of 3 sets (100%)');
+    const { AnalyticsTrainingBreakdown } = require('../components/AnalyticsTrainingBreakdown');
+    const props = component.root.findByType(AnalyticsTrainingBreakdown).props;
+    expect(props.populationVerified).toBe(true);
+    expect(props.parsedSections.normalNotes.map((n) => n.id)).toEqual(['n1']);
+    expect(props.parsedSections.noteSectionsList).toHaveLength(1);
+    const sets = component.root.findAll((n) => n.props.testID === 'training-breakdown-completed-sets' && typeof n.type !== 'string');
+    expect([].concat(sets[0].props.children).join('')).toBe('3');
+  });
+
+  test('an unverified Recovery boundary passes populationVerified=false and never paints a breakdown', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    const hooks = require('../hooks/entries/recoveryBlockHooks');
+    hooks._resetRecoveryAnalyticsFilterCache();
+    AsyncStorage.getItem.mockImplementation(async (key) => {
+      if (key === 'kilo_recovery_blocks' || key === 'kilo_recovery_block_weeks') throw new Error('storage unavailable');
+      return null;
+    });
+    try {
+      const { component } = setup({ hookOverrides: { notes, currentNote: notes[0] } });
+      for (let i = 0; i < 5; i++) await render.act(async () => { await Promise.resolve(); });
+      const { AnalyticsTrainingBreakdown } = require('../components/AnalyticsTrainingBreakdown');
+      expect(component.root.findByType(AnalyticsTrainingBreakdown).props.populationVerified).toBe(false);
+      expect(component.root.findAll((n) => n.props.testID === 'training-breakdown-completed-sets')).toHaveLength(0);
+      expect(component.root.findAll((n) => n.props.testID === 'training-breakdown-empty')).toHaveLength(0);
+    } finally {
+      AsyncStorage.getItem.mockReset();
+      hooks._resetRecoveryAnalyticsFilterCache();
+    }
   });
 
   test('with no notes it shows the empty state rather than zeros', () => {
     const { component } = setup();
-    expect(component.root.findAllByProps({ testID: 'training-breakdown-empty' }).length).toBeGreaterThan(0);
+    const empty = component.root.findAllByProps({ testID: 'training-breakdown-empty' });
+    const pending = component.root.findAllByProps({ testID: 'training-breakdown-loading' });
+    expect(empty.length + pending.length).toBeGreaterThan(0);
+    expect(component.root.findAllByProps({ testID: 'training-breakdown-completed-sets' })).toHaveLength(0);
   });
 });
 

@@ -19,9 +19,12 @@ The active application lives in `mobile/` and has five tabs:
   blocks from canonical note text.
 - **Weight** records weigh-ins and goals and presents history and trends.
 - **Analytics** derives workout, strength, weight, fatigue, and recovery views,
-  including a Training breakdown (Movement, Muscles, Equipment) of eligible
-  ordinary history placed after Strength and shown as paused baseline history
-  during an active Recovery block. Recovery groups lifts by detailed movement
+  including a Training breakdown dashboard (Movement, Muscles, Equipment) of
+  eligible ordinary history placed after Strength and shown as paused baseline
+  history during an active Recovery block. It has a 30D / 90D / All range
+  (default 90D, kept in memory and affecting only that section), descriptive
+  Push vs Pull and Knee vs Hip comparisons, a body-region heatmap, ranked
+  equipment bars, and bottom-sheet drill-downs to the contributing exercises. Recovery groups lifts by detailed movement
   (for example Hip hinge, Vertical pull) while keeping earlier broad group
   choices as saved.
 
