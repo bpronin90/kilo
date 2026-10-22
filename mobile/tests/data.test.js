@@ -1807,105 +1807,125 @@ describe('rollingWindowStart', () => {
 // ── trend windows use calendar-day arithmetic across DST ──────────────────────
 // Regression coverage for issue #604: windows are defined by local calendar
 // date, so a DST transition inside a window must not shift a boundary onto an
-// adjacent day. TZ is toggled per test because Node re-reads process.env.TZ at
-// runtime, making these deterministic across representative timezones.
-describe('weight trend windows — calendar-day semantics across DST', () => {
-  const withTZ = (tz, fn) => {
-    const had = Object.prototype.hasOwnProperty.call(process.env, 'TZ');
-    const prev = process.env.TZ;
-    process.env.TZ = tz;
-    try {
-      return fn();
-    } finally {
-      // Restore true absence rather than the string "undefined" when TZ was
-      // originally unset, so later tests don't inherit a changed timezone.
-      if (had) process.env.TZ = prev;
-      else delete process.env.TZ;
-    }
-  };
+// adjacent day. Assigning process.env.TZ inside Jest does not change the zone
+// Date uses, so each zone's suite runs in a child Jest process started with TZ
+// set in its launch environment. The parent only checks each child passed; the
+// child (KILO_DATA_TZ_CHILD=<zone>) runs only its own zone suite via -t.
+const DST_SUITE = 'weight trend windows DST';
+const TZ_CHILD = process.env.KILO_DATA_TZ_CHILD;
+const describeInZone = (zone) => (TZ_CHILD === zone ? describe : describe.skip);
+const offsetsMinutes = (...dates) => dates.map((d) => new Date(`${d}T12:00:00`).getTimezoneOffset());
+
+if (!TZ_CHILD) {
+  describe(`${DST_SUITE} (child processes)`, () => {
+    // Expected passing count per child includes its offset guard, so a skipped or
+    // missing zone suite fails here rather than passing vacuously.
+    test.each([['America/New_York', 6], ['Australia/Sydney', 2]])('calendar-day semantics pass with TZ=%s', (zone, expected) => {
+      const { spawnSync } = require('child_process');
+      const run = spawnSync(process.execPath, [
+        require.resolve('jest/bin/jest'), '--runInBand', '--json', '--runTestsByPath', 'tests/data.test.js',
+        '-t', `${DST_SUITE} in ${zone}`,
+      ], {
+        cwd: require('path').resolve(__dirname, '..'),
+        env: { ...process.env, TZ: zone, KILO_DATA_TZ_CHILD: zone },
+        encoding: 'utf8',
+        timeout: 120000,
+      });
+      const output = `${run.stdout}\n${run.stderr}`;
+      if (run.error) throw new Error(`child spawn failed for ${zone}: ${run.error.message}\n${output}`);
+      if (run.status !== 0) throw new Error(`child for ${zone} exited ${run.status} (signal ${run.signal})\n${output}`);
+      const passed = JSON.parse(run.stdout).testResults
+        .flatMap((r) => r.assertionResults)
+        .filter((t) => t.status === 'passed')
+        .map((t) => t.title);
+      expect(passed).toHaveLength(expected);
+      expect(passed).toContain(`effective timezone offsets match ${zone} transitions`);
+    }, 130000);
+  });
+}
+
+describeInZone('America/New_York')(`${DST_SUITE} in America/New_York`, () => {
+  test('effective timezone offsets match America/New_York transitions', () => {
+    expect(offsetsMinutes('2026-03-07', '2026-03-09')).toEqual([300, 240]);
+    expect(offsetsMinutes('2026-10-31', '2026-11-02')).toEqual([240, 300]);
+  });
 
   // Early-morning reference the day after Northern-hemisphere spring-forward.
   // Fixed 86,400,000ms subtraction lands the 7-day start on 03-02 (an extra
   // day); calendar arithmetic keeps it on 03-03.
   test('7-day window contains exactly 7 calendar dates through spring-forward', () => {
-    withTZ('America/New_York', () => {
-      const ref = new Date('2026-03-09T00:30:00');
-      const entries = [
-        { date: '2026-03-02', weight_value: 1000 }, // day before start — must be excluded
-        { date: '2026-03-03', weight_value: 10 },   // inclusive start
-        { date: '2026-03-09', weight_value: 10 },   // reference day
-      ];
-      expect(computeWeightTrends(entries, ref).avg7).toBe(10);
-    });
+    const ref = new Date('2026-03-09T00:30:00');
+    const entries = [
+      { date: '2026-03-02', weight_value: 1000 }, // day before start — must be excluded
+      { date: '2026-03-03', weight_value: 10 },   // inclusive start
+      { date: '2026-03-09', weight_value: 10 },   // reference day
+    ];
+    expect(computeWeightTrends(entries, ref).avg7).toBe(10);
   });
 
   test('7-day window is stable through fall-back', () => {
-    withTZ('America/New_York', () => {
-      const ref = new Date('2026-11-02T00:30:00'); // morning after fall-back (11-01)
-      const entries = [
-        { date: '2026-10-26', weight_value: 1000 }, // day before start — must be excluded
-        { date: '2026-10-27', weight_value: 10 },   // inclusive start
-        { date: '2026-11-02', weight_value: 10 },   // reference day
-      ];
-      expect(computeWeightTrends(entries, ref).avg7).toBe(10);
-    });
+    const ref = new Date('2026-11-02T00:30:00'); // morning after fall-back (11-01)
+    const entries = [
+      { date: '2026-10-26', weight_value: 1000 }, // day before start — must be excluded
+      { date: '2026-10-27', weight_value: 10 },   // inclusive start
+      { date: '2026-11-02', weight_value: 10 },   // reference day
+    ];
+    expect(computeWeightTrends(entries, ref).avg7).toBe(10);
   });
 
   test('30-day window contains exactly 30 calendar dates through spring-forward', () => {
-    withTZ('America/New_York', () => {
-      const ref = new Date('2026-03-09T00:30:00');
-      const entries = [
-        { date: '2026-02-07', weight_value: 1000 }, // day before start — must be excluded
-        { date: '2026-02-08', weight_value: 10 },   // inclusive start (30 days back)
-        { date: '2026-03-09', weight_value: 10 },   // reference day
-      ];
-      expect(computeWeightTrends(entries, ref).avg30).toBe(10);
+    const ref = new Date('2026-03-09T00:30:00');
+    const entries = [
+      { date: '2026-02-07', weight_value: 1000 }, // day before start — must be excluded
+      { date: '2026-02-08', weight_value: 10 },   // inclusive start (30 days back)
+      { date: '2026-03-09', weight_value: 10 },   // reference day
+    ];
+    expect(computeWeightTrends(entries, ref).avg30).toBe(10);
+  });
+
+  test('prior windows stay adjacent and non-overlapping across DST', () => {
+    const ref = new Date('2026-03-09T00:30:00');
+    // current 7-day window: 03-03..03-09; prior 7-day window: 02-24..03-02.
+    const entries = [
+      { date: '2026-02-23', weight_value: 1000 }, // before prior7 start — excluded
+      { date: '2026-02-24', weight_value: 20 },   // prior7 inclusive start
+      { date: '2026-03-02', weight_value: 20 },   // prior7 inclusive end (day before current start)
+      { date: '2026-03-03', weight_value: 10 },   // current start — not in prior window
+      { date: '2026-03-09', weight_value: 10 },
+    ];
+    const summary = computeWeightTrendSummary(entries, ref);
+    expect(summary.priorAvg7).toBe(20); // excludes 02-23 and the current-window entries
+    expect(summary.avg7).toBe(10);
+  });
+
+  test('goal days remaining uses calendar days across DST', () => {
+    const ref = new Date('2026-03-06T12:00:00'); // spring-forward (03-08) falls inside the span
+    const goal = computeWeightGoal({
+      currentWeight: 200,
+      targetWeight: 193,
+      targetDate: '2026-03-20',
+      referenceDate: ref,
     });
+    expect(goal.weeks_remaining).toBe(2); // exactly 14 calendar days, unaffected by the lost hour
+    expect(goal.required_weekly_pace).toBeCloseTo(-3.5, 5);
+  });
+});
+
+describeInZone('Australia/Sydney')(`${DST_SUITE} in Australia/Sydney`, () => {
+  test('effective timezone offsets match Australia/Sydney transitions', () => {
+    expect(offsetsMinutes('2026-10-03', '2026-10-05')).toEqual([-600, -660]);
   });
 
   // Southern-hemisphere transition runs the opposite direction (spring-forward
   // in October) and must be equally deterministic.
   test('window is deterministic in a Southern-hemisphere timezone', () => {
-    withTZ('Australia/Sydney', () => {
-      const ref = new Date('2026-10-05T00:30:00'); // morning after AU spring-forward (10-04)
-      const entries = [
-        { date: '2026-09-28', weight_value: 1000 }, // day before start — must be excluded
-        { date: '2026-09-29', weight_value: 10 },   // inclusive start
-        { date: '2026-10-05', weight_value: 10 },   // reference day
-      ];
-      expect(computeWeightTrends(entries, ref).avg7).toBe(10);
-    });
-  });
-
-  test('prior windows stay adjacent and non-overlapping across DST', () => {
-    withTZ('America/New_York', () => {
-      const ref = new Date('2026-03-09T00:30:00');
-      // current 7-day window: 03-03..03-09; prior 7-day window: 02-24..03-02.
-      const entries = [
-        { date: '2026-02-23', weight_value: 1000 }, // before prior7 start — excluded
-        { date: '2026-02-24', weight_value: 20 },   // prior7 inclusive start
-        { date: '2026-03-02', weight_value: 20 },   // prior7 inclusive end (day before current start)
-        { date: '2026-03-03', weight_value: 10 },   // current start — not in prior window
-        { date: '2026-03-09', weight_value: 10 },
-      ];
-      const summary = computeWeightTrendSummary(entries, ref);
-      expect(summary.priorAvg7).toBe(20); // excludes 02-23 and the current-window entries
-      expect(summary.avg7).toBe(10);
-    });
-  });
-
-  test('goal days remaining uses calendar days across DST', () => {
-    withTZ('America/New_York', () => {
-      const ref = new Date('2026-03-06T12:00:00'); // spring-forward (03-08) falls inside the span
-      const goal = computeWeightGoal({
-        currentWeight: 200,
-        targetWeight: 193,
-        targetDate: '2026-03-20',
-        referenceDate: ref,
-      });
-      expect(goal.weeks_remaining).toBe(2); // exactly 14 calendar days, unaffected by the lost hour
-      expect(goal.required_weekly_pace).toBeCloseTo(-3.5, 5);
-    });
+    const ref = new Date('2026-10-05T00:30:00'); // morning after AU spring-forward (10-04)
+    const entries = [
+      { date: '2026-09-28', weight_value: 1000 }, // day before start — must be excluded
+      { date: '2026-09-29', weight_value: 10 },   // inclusive start
+      { date: '2026-10-05', weight_value: 10 },   // reference day
+    ];
+    expect(computeWeightTrends(entries, ref).avg7).toBe(10);
   });
 });
 
