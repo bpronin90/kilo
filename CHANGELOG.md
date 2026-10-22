@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.21.2 - 2026-10-22
+
+- Issue #1597: Fixed Training breakdown showing nothing for its time ranges: it now offers Last 4 / Last 12 / All sessions per exercise (default Last 12), since workouts record sessions rather than dates.
+
 ## 1.21.1 - 2026-10-22
 
 - Issue #1593: Training breakdown equipment and movement-group bars now scale to the largest known item, with Unknown and Unclassified capped at full width; the chest muscle reads "Pecs"; and body-region strips keep the same shade direction on every tile.
