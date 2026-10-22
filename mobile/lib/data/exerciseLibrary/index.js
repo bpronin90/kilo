@@ -10,6 +10,7 @@
 // generic "assisted pull-up" text stays ambiguous.
 
 import LIBRARY from './v3.json';
+import KILO_ALIASES from './aliases.json';
 
 // Provenance and dataset version are tracked separately from schema_version.
 export const SOURCE_PROVENANCE = Object.freeze({
@@ -18,6 +19,7 @@ export const SOURCE_PROVENANCE = Object.freeze({
   sha256: '094e8ebbe7a4ea7ad947cde44be806f9a8bd778a61f9d2e198993b4482b38920',
 });
 export const DATASET_VERSION = 'v3-2026-10-22';
+export const ALIAS_VERSION = KILO_ALIASES.alias_version;
 
 function deepFreeze(value) {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
@@ -27,6 +29,7 @@ function deepFreeze(value) {
   return value;
 }
 deepFreeze(LIBRARY);
+deepFreeze(KILO_ALIASES);
 
 // Single-letter tokens in a row (R.D.L., R D L) fold into one token (rdl).
 function foldInitialisms(tokens) {
@@ -277,10 +280,12 @@ function result(input, fields) {
     candidates: Object.freeze([...(fields.candidates || [])]),
     missingDiscriminators: Object.freeze([...(fields.missingDiscriminators || [])]),
     clarificationQuestion: fields.clarificationQuestion || null,
+    source: fields.source || 'library',
+    aliasTarget: fields.aliasTarget || null,
   });
 }
 
-export function resolveExerciseName(input) {
+function resolveLibraryName(input) {
   const key = normalizeExerciseName(input);
   const exact = canonicalIndex.get(key);
   if (exact) {
@@ -315,6 +320,37 @@ export function resolveExerciseName(input) {
   return result(input, { matchType: 'unknown' });
 }
 
+// Kilo spelling aliases (aliases.json) are consulted only when the library itself
+// has no answer, so they can never override or shadow a library record. An alias
+// re-resolves its target through the library and keeps the target's match type
+// (family_only stays family_only, ambiguous stays ambiguous); `source` and
+// `aliasTarget` record that Kilo, not the dataset, supplied the spelling.
+const kiloAliasIndex = new Map();
+for (const entry of KILO_ALIASES.aliases) {
+  const key = normalizeExerciseName(entry.alias);
+  if (key && !kiloAliasIndex.has(key)) kiloAliasIndex.set(key, entry);
+}
+
+export function resolveExerciseName(input) {
+  const base = resolveLibraryName(input);
+  if (base.matchType !== 'unknown') return base;
+  const entry = kiloAliasIndex.get(normalizeExerciseName(input));
+  if (!entry) return base;
+  const target = resolveLibraryName(entry.target);
+  if (target.matchType === 'unknown') return base;
+  return result(input, {
+    matchType: target.matchType,
+    exerciseId: target.exerciseId,
+    familyId: target.familyId,
+    exercise: target.exercise,
+    candidates: target.candidates,
+    missingDiscriminators: target.missingDiscriminators,
+    clarificationQuestion: target.clarificationQuestion,
+    source: 'kilo_alias',
+    aliasTarget: entry.target,
+  });
+}
+
 // Separate ID API: follows deprecated redirects (e.g. assisted_pull_up ->
 // machine_assisted_pull_up) for stored IDs only, never for free text.
 export function resolveExerciseId(id) {
@@ -341,5 +377,11 @@ export function getFamily(id) {
   return familiesById.get(id) || null;
 }
 
+// Catalog exercises in one family, in dataset order (empty for an unknown family).
+export function getFamilyExercises(familyId) {
+  return LIBRARY.exercises.filter((exercise) => exercise.family_id === familyId);
+}
+
 export const SCHEMA_VERSION = LIBRARY.schema_version;
 export const EXERCISE_LIBRARY = LIBRARY;
+export const KILO_ALIAS_ENTRIES = KILO_ALIASES.aliases;
