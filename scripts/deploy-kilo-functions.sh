@@ -17,6 +17,10 @@ set -euo pipefail
 
 readonly PROJECT_REF="ogzhnscdqcdrhfqcobuv"
 readonly FUNCTIONS=(account-export account-delete health-data-delete android-restore-credentials)
+# account-delete refuses to delete a user with consent history unless both are
+# set (fail closed). Presence of the names is prerequisite evidence only; it
+# does not prove the values are usable.
+readonly EVIDENCE_SECRET_NAMES=(KILO_EVIDENCE_KEY KILO_EVIDENCE_KEY_ID)
 
 die() {
   echo "ERROR: $*" >&2
@@ -70,6 +74,40 @@ for (const name of requiredNames) {
     process.stderr.write(`Required Edge Function lacks current deployment evidence: ${name}.\n`);
     process.exit(1);
   }
+}
+NODE
+}
+
+verify_evidence_secret_names() {
+  local secrets_json
+
+  # Names-only, read-only management-plane check. The list response carries a
+  # digest beside each name, never the value; the output is parsed in memory and
+  # is never printed, logged, or passed on a command line.
+  secrets_json="$(npx supabase secrets list --project-ref "${PROJECT_REF}" --output json)" \
+    || die "Could not list Edge Function secret names from the Supabase management plane."
+
+  KILO_SECRETS_LIST_JSON="${secrets_json}" node - "${EVIDENCE_SECRET_NAMES[@]}" <<'NODE' \
+    || die "Consent-evidence Edge Function secrets are not provisioned; see docs/operations/backend-activation.md."
+const requiredNames = process.argv.slice(2);
+let secrets;
+try {
+  secrets = JSON.parse(process.env.KILO_SECRETS_LIST_JSON ?? '');
+} catch {
+  process.stderr.write('Management-plane secret list was not valid JSON.\n');
+  process.exit(1);
+}
+
+if (!Array.isArray(secrets) || !secrets.every((s) => s && typeof s.name === 'string')) {
+  process.stderr.write('Management-plane secret list was not a list of named secrets.\n');
+  process.exit(1);
+}
+
+const present = new Set(secrets.map((s) => s.name));
+const missing = requiredNames.filter((name) => !present.has(name));
+if (missing.length > 0) {
+  process.stderr.write(`Required Edge Function secret is missing: ${missing.join(', ')}.\n`);
+  process.exit(1);
 }
 NODE
 }
@@ -150,6 +188,7 @@ main() {
 
   # Verify external prerequisites before changing any deployed function. The
   # function status check remains after deploy because it must prove this run.
+  verify_evidence_secret_names
   verify_worker_vault_secrets
   verify_health_deletion_cron
 
