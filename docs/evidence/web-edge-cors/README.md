@@ -147,7 +147,7 @@ read-only SQL on `auth.*` and `kilo.*`.
 
 ### Visual comparison
 
-#1552 changes no `mobile/` production source (`git diff origin/main -- mobile/`
+#1552 changes no `mobile/` production source (`git diff origin/main...HEAD -- mobile/`
 touches tests only), so no layout changes by construction. What changes is
 which existing state the user reaches.
 
