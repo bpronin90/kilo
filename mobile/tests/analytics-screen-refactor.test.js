@@ -115,11 +115,31 @@ describe('AnalyticsScreen public boundary (card #1051)', () => {
   });
 });
 
+describe('AnalyticsScreen Training breakdown (#1580)', () => {
+  const notes = [{ id: 'n1', title: 'Routine', raw_text: 'Monday\n-Barbell Bench Press: 3x5\n135 5,5,5' }];
+
+  test('renders the section after Strength with the derived eligible-history counts', () => {
+    const { component } = setup({ hookOverrides: { notes, currentNote: notes[0] } });
+    const json = JSON.stringify(component.toJSON());
+    expect(json.indexOf('Strength')).toBeLessThan(json.indexOf('Training breakdown'));
+    expect(json.indexOf('Training breakdown')).toBeLessThan(json.indexOf('Routine Health'));
+    expect(json).toContain('Eligible ordinary history');
+    expect(json).toContain('3 completed sets');
+    expect(json).toContain('Movement classified: 3 of 3 sets (100%)');
+  });
+
+  test('with no notes it shows the empty state rather than zeros', () => {
+    const { component } = setup();
+    expect(component.root.findAllByProps({ testID: 'training-breakdown-empty' }).length).toBeGreaterThan(0);
+  });
+});
+
 describe('orderAnalyticsSections — the two hierarchies', () => {
   const el = (key) => React.createElement(View, { key });
   const parts = () => ({
     banners: [null, el('weight-error-banner')],
     strength: el('strength'),
+    trainingBreakdown: el('tb'),
     progressiveOverload: el('po'),
     weight: el('weight'),
     routineHealth: el('routine'),
@@ -128,14 +148,14 @@ describe('orderAnalyticsSections — the two hierarchies', () => {
   });
   const keys = (items) => items.filter(Boolean).map(i => i.key);
 
-  test('normal training: Strength → Routine Health → Progressive Overload → Weight → Recovery history', () => {
+  test('normal training: Strength → Training breakdown → Routine Health → Progressive Overload → Weight → Recovery history', () => {
     expect(keys(orderAnalyticsSections({ isActiveRecovery: false, baselineExpanded: false, ...parts() })))
-      .toEqual(['weight-error-banner', 'strength', 'routine', 'po', 'weight', 'recovery']);
+      .toEqual(['weight-error-banner', 'strength', 'tb', 'routine', 'po', 'weight', 'recovery']);
   });
 
   test('normal training with no Recovery history leaves no slot behind', () => {
     expect(keys(orderAnalyticsSections({ isActiveRecovery: false, ...parts(), recovery: null })))
-      .toEqual(['weight-error-banner', 'strength', 'routine', 'po', 'weight']);
+      .toEqual(['weight-error-banner', 'strength', 'tb', 'routine', 'po', 'weight']);
   });
 
   test('active Recovery, collapsed: Recovery → Weight → disclosure, baseline hidden', () => {
@@ -143,9 +163,15 @@ describe('orderAnalyticsSections — the two hierarchies', () => {
       .toEqual(['weight-error-banner', 'recovery', 'weight', 'disclosure']);
   });
 
-  test('active Recovery, expanded: disclosure holds Strength → Progressive Overload → Routine Health', () => {
+  test('active Recovery, expanded: disclosure holds Strength → Training breakdown → Progressive Overload → Routine Health', () => {
     expect(keys(orderAnalyticsSections({ isActiveRecovery: true, baselineExpanded: true, ...parts() })))
-      .toEqual(['weight-error-banner', 'recovery', 'weight', 'disclosure', 'strength', 'po', 'routine']);
+      .toEqual(['weight-error-banner', 'recovery', 'weight', 'disclosure', 'strength', 'tb', 'po', 'routine']);
+  });
+
+  test('a caller that supplies no Training breakdown leaves no slot behind', () => {
+    const { trainingBreakdown, ...rest } = parts();
+    expect(keys(orderAnalyticsSections({ isActiveRecovery: false, ...rest })))
+      .toEqual(['weight-error-banner', 'strength', 'routine', 'po', 'weight', 'recovery']);
   });
 
   test('the disclosure never renders outside active Recovery', () => {
