@@ -660,6 +660,120 @@ describe('web signOut revocation', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Sign-out without a usable revocation bearer (#1557): /v1/revoke authorizes
+// only with the session's access token, so a lookup that cannot supply one
+// must fail truthfully with no local sign-out, device clear, ID deletion, or
+// wipe — on every platform.
+// ---------------------------------------------------------------------------
+
+describe('signOut when session lookup cannot supply a bearer', () => {
+  const CRED_KEY = 'kilo.auth.androidRestoreCredentialId';
+  const { NO_BEARER_ERROR, REVOKE_FAILED_ERROR } = require('../lib/signOutRevocation');
+  const { wipeSensitiveDeviceData } = require('../storage/secureStorage');
+  const revokeCalls = () => mockFetch.mock.calls.filter(([url]) => String(url).includes('/v1/revoke'));
+
+  const NO_BEARER_LOOKUPS = [
+    ['resolved { session: null, error }', { data: { session: null }, error: { message: 'invalid refresh' } }],
+    ['null session without an error', { data: { session: null }, error: null }],
+    ['session missing access_token', { data: { session: { refresh_token: 'ref', user: { id: 'uid-1' } } }, error: null }],
+    ['session with an empty access_token', { data: { session: { ...FAKE_SESSION, access_token: '' } }, error: null }],
+    ['resolved auth error alongside a session', { data: { session: FAKE_SESSION }, error: { message: 'refresh failed' } }],
+  ];
+
+  beforeEach(async () => {
+    wipeSensitiveDeviceData.mockClear();
+    const AS = require('@react-native-async-storage/async-storage');
+    await AS.setItem(CRED_KEY, 'cred-id-123');
+  });
+
+  // Mounts signed in with a valid session, then applies `setLookup` so only
+  // the sign-out lookup sees the failure fixture.
+  async function signOutSignedIn(setLookup, options) {
+    const { ref } = renderAuthHook();
+    await flush();
+    expect(ref.current.signedIn).toBe(true);
+    setLookup();
+    let result;
+    await act(async () => { result = await ref.current.signOut(options); });
+    return { ref, result };
+  }
+
+  async function expectNothingCleared(ref) {
+    expect(revokeCalls()).toHaveLength(0);
+    expect(mockAuth.signOut).not.toHaveBeenCalled();
+    expect(nativeMock.clearRestoreCredential).not.toHaveBeenCalled();
+    expect(wipeSensitiveDeviceData).not.toHaveBeenCalled();
+    const AS = require('@react-native-async-storage/async-storage');
+    expect(await AS.getItem(CRED_KEY)).toBe('cred-id-123');
+    // The hook does not fabricate a signed-out state either; the SDK's own
+    // SIGNED_OUT event is what moves the UI to sign-in when it drops a session.
+    expect(ref.current.signedIn).toBe(true);
+  }
+
+  describe.each(['android', 'ios', 'web'])('on %s', (os) => {
+    beforeEach(() => { Platform.OS = os; });
+
+    test.each(NO_BEARER_LOOKUPS)('%s fails truthfully and clears nothing', async (_label, lookup) => {
+      const { ref, result } = await signOutSignedIn(
+        () => mockAuth.getSession.mockResolvedValue(lookup), { wipeLocalData: true });
+
+      expect(result).toEqual({ ok: false, error: NO_BEARER_ERROR });
+      expect(result.error).toMatch(/sign in again/i);
+      expect(result.error).not.toMatch(/signed out|revoked/i);
+      await expectNothingCleared(ref);
+    });
+
+    test('a rejected lookup fails closed with the transient retry error', async () => {
+      const { ref, result } = await signOutSignedIn(
+        () => mockAuth.getSession.mockRejectedValue(new Error('network error')), { wipeLocalData: true });
+
+      expect(result).toEqual({ ok: false, error: REVOKE_FAILED_ERROR });
+      await expectNothingCleared(ref);
+    });
+
+    test('a second null lookup after the SDK removed the session still fails', async () => {
+      const { ref, result } = await signOutSignedIn(() => mockAuth.getSession
+        .mockResolvedValueOnce({ data: { session: null }, error: { message: 'invalid refresh' } })
+        .mockResolvedValue({ data: { session: null }, error: null }));
+      expect(result).toEqual({ ok: false, error: NO_BEARER_ERROR });
+
+      let retry;
+      await act(async () => { retry = await ref.current.signOut(); });
+      expect(retry).toEqual({ ok: false, error: NO_BEARER_ERROR });
+      await expectNothingCleared(ref);
+    });
+
+    test('after interactive re-authentication the retry revokes with the new bearer, then signs out', async () => {
+      const callOrder = [];
+      mockFetch.mockImplementation((url) => {
+        if (String(url).includes('/v1/revoke')) callOrder.push('revoke');
+        return fakeRes({ version: 1, revoked: true });
+      });
+      mockAuth.signOut.mockImplementation(() => { callOrder.push('signOut'); return Promise.resolve({ error: null }); });
+
+      const { ref, result } = await signOutSignedIn(
+        () => mockAuth.getSession.mockResolvedValue({ data: { session: null }, error: null }));
+      expect(result).toEqual({ ok: false, error: NO_BEARER_ERROR });
+
+      const fresh = { ...FAKE_SESSION, access_token: 'tok-fresh' };
+      mockAuth.signInWithPassword.mockResolvedValue({ data: { session: fresh }, error: null });
+      mockAuth.getSession.mockResolvedValue({ data: { session: fresh }, error: null });
+      await act(async () => { await ref.current.signInWithPassword('a@b.com', 'pw'); });
+      await act(async () => { mockAuth._emit('SIGNED_IN', fresh); });
+      await flush();
+
+      let retry;
+      await act(async () => { retry = await ref.current.signOut(); });
+      expect(retry.ok).toBe(true);
+      expect(callOrder).toEqual(['revoke', 'signOut']);
+      expect(revokeCalls()[0][1].headers.Authorization).toBe('Bearer tok-fresh');
+      expect(ref.current.signedIn).toBe(false);
+      expect(nativeMock.clearRestoreCredential).toHaveBeenCalledTimes(os === 'android' ? 1 : 0);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Account delete: device clear, no extra revoke call
 // ---------------------------------------------------------------------------
 
