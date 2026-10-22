@@ -439,6 +439,51 @@ describe('HomeScreen holds its loading state while the recovery boundary is unve
     await render.act(async () => { component.unmount(); });
   });
 
+  test.each([
+    [{}, 'empty'],
+    [{ loading: true }, 'loading'],
+    [{ loadError: true }, 'unavailable'],
+    [{ weightEntries: [{ id: 'weight', weight_value: 180, weight_unit: 'lb', date: '2026-10-20', logged_at: '2026-10-20T08:00:00Z' }] }, 'populated'],
+    [{ notes: [{ id: 'note', title: 'Routine', raw_text: '' }] }, 'populated'],
+  ])('publishes verified first-use status from existing reads: %j', async (overrides, expected) => {
+    AsyncStorage.getItem.mockImplementation(async () => null);
+    const onFirstUseStatus = jest.fn();
+    let component;
+    await render.act(async () => { component = render.create(<HomeScreen {...props(overrides)} onFirstUseStatus={onFirstUseStatus} />); });
+    expect(onFirstUseStatus).toHaveBeenLastCalledWith(expected);
+    await render.act(async () => component.unmount());
+  });
+
+  test.each([
+    [{ history: [], loading: true }, 'loading'],
+    [{ history: [], loading: false, error: new Error('disk') }, 'unavailable'],
+    [{ history: [{ id: 'past-deload', completed_at: '2026-10-01T12:00:00Z', session_count: 1 }], loading: false }, 'populated'],
+  ])('deload history must also establish emptiness: %j', async (historyState, expected) => {
+    AsyncStorage.getItem.mockImplementation(async () => null);
+    const spy = jest.spyOn(useEntriesModule, 'useDeloadHistory').mockReturnValue(historyState);
+    const onFirstUseStatus = jest.fn();
+    let component;
+    try {
+      await render.act(async () => { component = render.create(<HomeScreen {...props()} onFirstUseStatus={onFirstUseStatus} />); });
+      expect(onFirstUseStatus).toHaveBeenLastCalledWith(expected);
+    } finally {
+      await render.act(async () => component?.unmount());
+      spy.mockRestore();
+    }
+  });
+
+  test('unreadable Recovery cannot publish empty installation status', async () => {
+    AsyncStorage.getItem.mockImplementation(async (key) => {
+      if (key === 'kilo_recovery_blocks' || key === 'kilo_recovery_block_weeks') throw new Error('disk');
+      return null;
+    });
+    const onFirstUseStatus = jest.fn();
+    let component;
+    await render.act(async () => { component = render.create(<HomeScreen {...props()} onFirstUseStatus={onFirstUseStatus} />); });
+    expect(onFirstUseStatus).not.toHaveBeenCalledWith('empty');
+    await render.act(async () => component.unmount());
+  });
+
   test('once the recovery read succeeds, Home paints as usual', async () => {
     AsyncStorage.getItem.mockImplementation(async () => null);
 

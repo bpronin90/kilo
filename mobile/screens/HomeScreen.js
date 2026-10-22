@@ -167,7 +167,7 @@ function HomeSkeleton() {
   );
 }
 
-export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes, successMessage, onNavigate, loading, loadError = false, onRetryLoad }) {
+export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes, successMessage, onNavigate, loading, loadError = false, onRetryLoad, onFirstUseStatus }) {
   const { colors, kuaPalette: kua } = useTheme();
   const typography = useKuaTypography();
   const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
@@ -226,7 +226,7 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   // (Home already subscribes via useHomeRecoverySummary), passed raw the way
   // Analytics passes them so the re-entry label's active-Recovery exclusion
   // matches across both surfaces.
-  const { history: deloadHistory } = useDeloadHistory();
+  const { history: deloadHistory, loading: deloadHistoryLoading, error: deloadHistoryError } = useDeloadHistory();
   const recoveryState = useRecoveryBlockState() || {};
   const recoveryBlocks = (recoveryState.ready ? recoveryState.blocks : recoveryState.provisional?.blocks) || [];
   // Subscribe at startup so unit hydration is concurrent with all other reads
@@ -369,6 +369,14 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
            !weightGoal &&
            !hasTrackedLifts;
   }, [isLoading, hasLoadError, weightEntries, notes, workoutNote, weightGoal, trackedLifts]);
+
+  // Publish existing read results only; no new Home reads or startup waits.
+  // Provisional/stale Recovery state cannot establish a new installation.
+  const firstUseStatus = isLoading || deloadHistoryLoading ? 'loading'
+    : hasLoadError || deloadHistoryError || !recoveryState.ready
+      || recoveryStatus !== ACTIVE_TRAINING_STATUS.NORMAL ? 'unavailable'
+      : isEmptyState && !currentId && recoveryBlocks.length === 0 && !deloadHistory?.length ? 'empty' : 'populated';
+  useEffect(() => { onFirstUseStatus?.(firstUseStatus); }, [firstUseStatus, onFirstUseStatus]);
 
   // #1341: one neutral subtitle in every state. The lead card already names the
   // routine week or `Recovery · Week N`; a state-specific subtitle repeated it.

@@ -1,0 +1,119 @@
+{
+  "renderedCommit": "af64a47e397e69b071520fd69ce08a21378e7d23",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "geometry": [
+    {
+      "tab": "Home",
+      "ring": {
+        "x": 21,
+        "y": 789,
+        "width": 66.390625,
+        "height": 46
+      },
+      "anchor": {
+        "x": 21,
+        "y": 789,
+        "width": 66.390625,
+        "height": 46
+      },
+      "panel": {
+        "x": 16,
+        "y": 611,
+        "width": 358,
+        "height": 166
+      }
+    },
+    {
+      "tab": "Log",
+      "ring": {
+        "x": 91.390625,
+        "y": 789,
+        "width": 66.40625,
+        "height": 46
+      },
+      "anchor": {
+        "x": 91.390625,
+        "y": 789,
+        "width": 66.40625,
+        "height": 46
+      },
+      "panel": {
+        "x": 16,
+        "y": 591,
+        "width": 358,
+        "height": 186
+      }
+    },
+    {
+      "tab": "Weight",
+      "ring": {
+        "x": 161.796875,
+        "y": 789,
+        "width": 66.390625,
+        "height": 46
+      },
+      "anchor": {
+        "x": 161.796875,
+        "y": 789,
+        "width": 66.390625,
+        "height": 46
+      },
+      "panel": {
+        "x": 16,
+        "y": 611,
+        "width": 358,
+        "height": 166
+      }
+    },
+    {
+      "tab": "Analytics",
+      "ring": {
+        "x": 232.1875,
+        "y": 789,
+        "width": 66.40625,
+        "height": 46
+      },
+      "anchor": {
+        "x": 232.1875,
+        "y": 789,
+        "width": 66.40625,
+        "height": 46
+      },
+      "panel": {
+        "x": 16,
+        "y": 611,
+        "width": 358,
+        "height": 166
+      }
+    },
+    {
+      "tab": "More",
+      "ring": {
+        "x": 302.59375,
+        "y": 789,
+        "width": 66.40625,
+        "height": 46
+      },
+      "anchor": {
+        "x": 302.59375,
+        "y": 789,
+        "width": 66.40625,
+        "height": 46
+      },
+      "panel": {
+        "x": 16,
+        "y": 611,
+        "width": 358,
+        "height": 166
+      }
+    }
+  ],
+  "changedKeys": [
+    "kilo:welcome-walkthrough:v1"
+  ],
+  "errors": [],
+  "interactions": "Next, Back, Done → Home, relaunch suppression, Help replay → Home, 200% text, Skip → Log, relaunch suppression"
+}
