@@ -35,7 +35,7 @@ function Chunk({ styles, label, children }) {
   );
 }
 
-export function HelpScreen({ onBack }) {
+export function HelpScreen({ onBack, onReplayWalkthrough }) {
   const styles = useThemedStyles(createStyles);
   const { colors } = useTheme();
   const kua = useKuaStyle();
@@ -185,6 +185,15 @@ export function HelpScreen({ onBack }) {
   return (
     <ScreenShell title="Help" subtitle="Quick answers for using Kilo." onBack={onBack}>
       <View style={styles.list}>
+        {onReplayWalkthrough && (
+          <Pressable accessibilityRole="button" accessibilityLabel="Replay walkthrough"
+            onPress={onReplayWalkthrough} style={[styles.topic, styles.row]}>
+            <View style={styles.rowCopy}>
+              <Text style={styles.rowTitle}>Replay walkthrough</Text>
+              <Text style={styles.rowSummary}>A quick tour of Kilo’s five main screens.</Text>
+            </View>
+          </Pressable>
+        )}
         {TOPICS.map(({ id, title, summary, content }) => {
           const isOpen = openId === id;
           return (

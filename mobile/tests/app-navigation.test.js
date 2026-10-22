@@ -698,6 +698,7 @@ describe('App shell top safe-area inset (#1125)', () => {
   });
 
   afterEach(() => {
+    renderer.act(() => { component?.unmount(); });
     backHandlerSpy.mockRestore();
     component = null;
     jest.useRealTimers();

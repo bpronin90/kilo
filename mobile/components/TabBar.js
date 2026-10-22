@@ -23,7 +23,7 @@ const TAB_ICON_SIZE = 20;
 
 const HIDE_DURATION_MS = 180;
 
-export function TabBar({ tabs, activeTab, onTabPress, onHeightChange, hidden = false }) {
+export function TabBar({ tabs, activeTab, onTabPress, onHeightChange, hidden = false, onAnchorChange, anchorRequest = null }) {
   const styles = useThemedStyles(createStyles);
   const { colors } = useTheme();
   const kua = useKuaStyle();
@@ -31,7 +31,7 @@ export function TabBar({ tabs, activeTab, onTabPress, onHeightChange, hidden = f
   // Wide windows (#1126): the bar aligns with ScreenShell's centered content
   // column and clears side insets instead of spanning a tablet or landscape
   // display. On phone portrait this resolves to the original 16/16 offsets.
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const column = centeredColumnInsets(windowWidth, { left: leftInset, right: rightInset });
 
   // Active/inactive tint from the selected court palette, falling back to the
@@ -56,8 +56,25 @@ export function TabBar({ tabs, activeTab, onTabPress, onHeightChange, hidden = f
     }).start();
   }, [hidden, bottomInset, translateY]);
 
+  const tabRefs = useRef({});
+  const [layoutVersion, bumpLayout] = React.useReducer((n) => n + 1, 0);
+  // Measure only for the walkthrough, after the existing slide has settled.
+  useEffect(() => {
+    if (anchorRequest === null || hidden || !onAnchorChange) return undefined;
+    let live = true;
+    const timer = setTimeout(() => {
+      const node = tabRefs.current[activeTab];
+      node?.measureInWindow((x, y, width, height) => {
+        if (live) onAnchorChange({ tab: activeTab, request: anchorRequest, x, y, width, height,
+          windowWidth, windowHeight, node });
+      });
+    }, HIDE_DURATION_MS + 32);
+    return () => { live = false; clearTimeout(timer); };
+  }, [activeTab, anchorRequest, hidden, windowWidth, windowHeight, layoutVersion, onAnchorChange]);
+
   const handleLayout = (e) => {
     heightRef.current = e.nativeEvent.layout.height;
+    bumpLayout();
     if (onHeightChange) onHeightChange(e.nativeEvent.layout.height);
   };
 
@@ -75,6 +92,7 @@ export function TabBar({ tabs, activeTab, onTabPress, onHeightChange, hidden = f
       {tabs.map((tab) => (
         <Pressable
           key={tab}
+          ref={(node) => { tabRefs.current[tab] = node; }}
           onPress={() => onTabPress(tab)}
           style={[styles.tab, activeTab === tab ? styles.tabActive : null]}
           accessibilityRole="tab"
