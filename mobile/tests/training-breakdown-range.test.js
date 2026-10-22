@@ -1,5 +1,3 @@
-process.env.TZ = 'America/New_York';
-
 import { deriveTrainingBreakdown, deriveTrainingBreakdownForRange } from '../lib/data/trainingBreakdown';
 import { noteLocalDayOrdinal, selectRangePopulation } from '../lib/data/trainingBreakdownRange';
 import { deriveParsedSections } from '../screens/analytics/analyticsDerivations';
@@ -8,10 +6,31 @@ const note = (id, date, raw_text, extra = {}) => ({ id, title: id, date, raw_tex
 const bench = (sets) => `Monday\n-Barbell Bench Press: 3x5\n135 ${Array(sets).fill(5).join(',')}`;
 const parsed = (notes, excluded = null) => deriveParsedSections(notes, notes[0], excluded);
 const sets = (notes, range, now, excluded) => deriveTrainingBreakdownForRange(parsed(notes, excluded), range, { now }).totals.completedSets;
-// Local noon / local just-before and just-after midnight on 2026-10-22 (New York).
-const NOON = new Date(2026, 9, 22, 12, 0, 0);
+// Local noon on 2026-10-22, built inside each test so it uses the test TZ.
+let NOON;
+beforeEach(() => { NOON = new Date(2026, 9, 22, 12, 0, 0); });
 
-describe('range calendar semantics (#1589)', () => {
+// Jest's sandboxed process.env does not reset the libc timezone, so the calendar
+// suite runs in a child Jest process started with TZ=America/New_York. The child
+// is the run that executes these assertions; the parent only checks it passed.
+const IN_TZ_CHILD = process.env.KILO_RANGE_TZ_CHILD === '1';
+const describeInTz = IN_TZ_CHILD ? describe : describe.skip;
+
+if (!IN_TZ_CHILD) {
+  test('calendar semantics pass in a non-UTC timezone (child run)', () => {
+    const { spawnSync } = require('child_process');
+    const run = spawnSync(process.execPath, [require.resolve('jest/bin/jest'), '--runInBand', 'tests/training-breakdown-range.test.js'], {
+      cwd: require('path').resolve(__dirname, '..'),
+      env: { ...process.env, TZ: 'America/New_York', KILO_RANGE_TZ_CHILD: '1' },
+      encoding: 'utf8',
+      timeout: 120000,
+    });
+    if (run.status !== 0) throw new Error(`${run.stdout}\n${run.stderr}`);
+    expect(run.stderr).toMatch(/Tests:\s+\d+ passed/);
+  }, 130000);
+}
+
+describeInTz('range calendar semantics (#1589)', () => {
   test('timezone is non-UTC for these tests', () => {
     expect(new Date(2026, 9, 22).getTimezoneOffset()).not.toBe(0);
   });
