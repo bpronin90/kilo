@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('/home/benpronin/.npm/_npx/e41f203b7505f1fb/node_modules/playwright-core');
 const [dist, label, out] = process.argv.slice(2);
+const RECOVERY = process.env.RECOVERY ? JSON.parse(fs.readFileSync(path.join(__dirname, 'recovery-seed.json'), 'utf8')) : null;
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.ttf': 'font/ttf', '.ico': 'image/x-icon', '.svg': 'image/svg+xml' };
 const server = http.createServer((req, res) => {
   let f = path.join(dist, decodeURIComponent(req.url.split('?')[0]));
@@ -33,6 +34,8 @@ const TEXT1 = `Monday
 30
 -Mystery Machine Thing: 3x10
 50 10,10,10
+-Bike 20 min
+- 20 min
 +Warmup
 -Barbell Bench Press
 45 10
@@ -61,12 +64,13 @@ const NOTES = [
   const base = `http://127.0.0.1:${server.address().port}`;
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
-  await ctx.addInitScript(([k, v, nk, nv, ck, cv]) => {
+  await ctx.addInitScript(([k, v, nk, nv, ck, cv, rb, rw]) => {
     if (!sessionStorage.getItem('injected')) {
       localStorage.setItem(k, v); localStorage.setItem(nk, nv); localStorage.setItem(ck, cv);
+      if (rb) { localStorage.setItem('kilo_recovery_blocks', rb); localStorage.setItem('kilo_recovery_block_weeks', rw); }
       sessionStorage.setItem('injected', '1');
     }
-  }, ['sb-mockproj-auth-token', JSON.stringify(SESSION), 'kilo_workout_notes', JSON.stringify(NOTES), 'kilo_current_workout_id', JSON.stringify('wn_a')]);
+  }, ['sb-mockproj-auth-token', JSON.stringify(SESSION), 'kilo_workout_notes', JSON.stringify(NOTES), 'kilo_current_workout_id', JSON.stringify('wn_a'), RECOVERY ? JSON.stringify(RECOVERY.b) : null, RECOVERY ? JSON.stringify(RECOVERY.w) : null]);
   await ctx.route('**/*', async (route) => {
     const u = new URL(route.request().url());
     if (u.hostname === '127.0.0.1') return route.continue();
@@ -92,6 +96,15 @@ const NOTES = [
   await page.getByText('Analytics', { exact: true }).last().click();
   await page.waitForTimeout(1800);
   await page.screenshot({ path: `${out}/${label}-01-analytics-top.png` });
+  if (RECOVERY) {
+    console.log('collapsed: training-breakdown-section count =', await page.getByTestId('training-breakdown-section').count());
+    await page.screenshot({ path: `${out}/${label}-recovery-01-collapsed.png` });
+    await page.getByTestId('baseline-disclosure-toggle').click(); await page.waitForTimeout(800);
+    await page.getByTestId('training-breakdown-section').scrollIntoViewIfNeeded(); await page.waitForTimeout(500);
+    await page.screenshot({ path: `${out}/${label}-recovery-02-expanded.png` });
+    console.log((await page.locator('body').innerText()).slice(0, 1500));
+    await browser.close(); server.close(); return;
+  }
   const tb = page.getByTestId('training-breakdown-section');
   if (await tb.count()) {
     await tb.scrollIntoViewIfNeeded(); await page.waitForTimeout(500);
@@ -99,6 +112,10 @@ const NOTES = [
     for (const v of ['muscles', 'equipment']) {
       await page.getByTestId(`training-breakdown-view-${v}`).click(); await page.waitForTimeout(500);
       await tb.scrollIntoViewIfNeeded();
+      if (v === 'equipment') {
+        await page.screenshot({ path: `${out}/${label}-03-breakdown-equipment-collapsed-names.png` });
+        await page.getByTestId('training-breakdown-equipment-unknown-names-toggle').click(); await page.waitForTimeout(400);
+      }
       await page.screenshot({ path: `${out}/${label}-03-breakdown-${v}.png` });
     }
   } else {
