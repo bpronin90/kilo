@@ -13,8 +13,9 @@ const width = (n, max) => `${Math.max(3, Math.min(100, (n / Math.max(1, max)) * 
 
 export function Hatch({ styles, p, w }) {
   return (
-    <View style={[styles.hatch, { width: w }]} testID="training-breakdown-hatch">
-      {Array.from({ length: 40 }, (_, i) => (
+    <View style={[styles.hatch, { width: w, backgroundColor: tint(p.muted, 0.22) }]} testID="training-breakdown-hatch">
+      {/* Base fill carries the proportional length; stripes are clipped texture. */}
+      {Array.from({ length: 240 }, (_, i) => (
         <View key={i} style={{ width: 3, height: '200%', marginTop: -2, backgroundColor: tint(p.muted, 0.55), transform: [{ skewX: '-40deg' }] }} />
       ))}
     </View>
