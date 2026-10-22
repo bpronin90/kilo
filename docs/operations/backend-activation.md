@@ -177,6 +177,103 @@ the operator may additionally set `HEALTH_DELETION_FIXTURE_USER_ID` to a
 disposable, already-due deletion job. The script dispatches only when that is
 the sole due job, and otherwise fails without enqueuing or changing any user.
 
+### Consent-Evidence Edge Function Secrets
+
+`account-delete` needs two **Edge Function secrets** (set with
+`supabase secrets` on the project, read by the function runtime through
+`Deno.env`). They are separate from the database Vault worker secrets above,
+which live in `vault.secrets` and are read by Postgres, not by Edge Functions:
+
+- `KILO_EVIDENCE_KEY` — the HMAC-SHA-256 key that pseudonymizes the six-year
+  consent-evidence archive written when a user with consent history deletes
+  their account. It lives outside the database so a dump cannot re-identify the
+  archive.
+- `KILO_EVIDENCE_KEY_ID` — a nonempty, non-secret version label stored with each
+  archive row (`evidence_key_id`) and registered in `kilo.consent_evidence_key`.
+
+If either is absent, `account-delete` fails closed for any user with consent
+events (HTTP 500, security event `account.delete_failed` with reason
+`evidence_key_missing`); users with no consent history are unaffected. Do not
+work around that by skipping archival or removing consent history.
+
+The runtime imports the **literal UTF-8 string** of `KILO_EVIDENCE_KEY` as the
+raw HMAC key; it does not hex- or base64-decode it. The key is therefore exactly
+the characters stored — preserve that representation (no added newline,
+quoting, or re-encoding) wherever the key is kept, and use the same string when
+privately correlating an archive (`HMAC-SHA-256(key_utf8, user_uuid_utf8)`,
+lowercase hex).
+
+#### Provision (operator only)
+
+Agents never generate, read, or set these values. An authorized operator, on a
+trusted machine, outside the repository, and without echoing values to the
+terminal or shell history:
+
+1. Generate at least 32 random bytes as a hex string into a private file, and
+   choose a version ID never used before (for example `kilo-evidence-2026-10`):
+
+   ```sh
+   umask 077
+   printf 'KILO_EVIDENCE_KEY=%s\nKILO_EVIDENCE_KEY_ID=%s\n' \
+     "$(openssl rand -hex 32)" "kilo-evidence-YYYY-MM" > "$HOME/.kilo-evidence.env"
+   ```
+
+2. Record the version ID and key together in the operator secret store (outside
+   the database and Git) before setting them.
+3. Set both names in one call, so the pair changes together, on the explicit
+   production project:
+
+   ```sh
+   supabase secrets set --project-ref ogzhnscdqcdrhfqcobuv --env-file "$HOME/.kilo-evidence.env"
+   ```
+
+4. Delete the temporary file (`shred -u "$HOME/.kilo-evidence.env"` or
+   equivalent).
+5. Confirm both **names** are listed (`supabase secrets list --project-ref
+   ogzhnscdqcdrhfqcobuv`; it shows names and digests, never values). Then prove
+   the pair is usable: a disposable account grants and withdraws Cloud Sync
+   consent, deletes itself through the deployed `account-delete`, and the
+   operator checks that the Auth identity and Kilo rows are gone and that an
+   archive row exists under the new `evidence_key_id` with no raw user ID,
+   email, health payload, free text, IP, or device identifier. Name presence
+   alone does not prove a usable value.
+
+#### Names-only checklist
+
+Before deploying functions, and again before relying on account deletion:
+
+- [ ] Edge Function secret `KILO_EVIDENCE_KEY` listed on `ogzhnscdqcdrhfqcobuv`.
+- [ ] Edge Function secret `KILO_EVIDENCE_KEY_ID` listed on `ogzhnscdqcdrhfqcobuv`.
+- [ ] Database Vault secrets `kilo_functions_base_url` and `kilo_service_role_key` present.
+- [ ] The active version ID and its key are recorded in the operator secret store.
+
+`scripts/deploy-kilo-functions.sh` checks the two Edge Function secret names
+(read-only, via `supabase secrets list --output json`) before deploying
+anything, and exits nonzero without deploying if either name is missing or the
+listing fails or is malformed. It never reads, prints, or sets values.
+
+#### Rotation and key persistence
+
+- Each rotation uses a **new key and a fresh version ID**. Never reuse an ID, and
+  never overwrite a historical version ID with a different key: existing archive
+  rows would then silently fail private correlation.
+- Cut over by setting the new pair in one `secrets set` call, then repeat the
+  disposable-account proof and confirm the new archive row carries the new ID.
+- After cutover, mark the previous version retired
+  (`kilo.consent_evidence_key.retired_at`); the runtime does not do this.
+  `kilo.evidence_retention_sweep()` only marks a retired version destroyed once
+  no unexpired archive row references it.
+- Keep every old version-to-key pair in the operator secret store until **both**
+  its `destroyed_at` is set **and** every retained database backup that could
+  contain archive rows under that version has aged out. Do not destroy an old
+  key merely because the active secret changed, and never rewrite archive rows
+  to a new version.
+
+Consent-evidence retention and its contents are owned by the
+[Health-Data Consent Contract](../privacy/health-data-consent.md#server-enforcement-and-evidence);
+`account.delete_failed` alerting and investigation are owned by
+[Security Monitoring](../security/security-monitoring.md#alerting).
+
 ### CAPTCHA
 
 See [CAPTCHA](auth-activation.md#captcha).

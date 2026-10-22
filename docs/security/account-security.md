@@ -47,6 +47,20 @@ database revocation committed. Both tables are RLS
 deny-all with no table grants; every access goes through `kilo.restore_*`
 security-definer functions granted to `service_role` only.
 
+The client revokes before it signs out locally, on web, iOS, and Android
+(`mobile/lib/signOutRevocation.js`). The bearer comes only from the current
+`getSession()` result; cached user IDs, stored credential IDs, platform, and
+request Origin are never used to authorize revocation, and no bearer is
+persisted as a fallback. If the lookup rejects, the revoke request fails, or the
+server refuses it, sign-out fails and can be retried. If the lookup resolves
+with an auth error, no session, or no access token, sign-out fails and tells the
+user to sign in again first (issue #1557). In every failure case local
+sign-out, device credential clearing, credential-ID deletion, and the optional
+device wipe do not run. This is a bounded limitation: the client detects and
+reports that it cannot revoke, but it cannot revoke remotely without a bearer.
+Revoking or recovering without one would need a separately designed
+authenticated server protocol, not a weaker `revoke` route.
+
 A key also dies with its owner's auth lifecycle (issue #1162, migration
 `20260926120000_restore_credentials_auth_lifecycle.sql`). Enrollment records a
 digest of the owner's `auth.users.encrypted_password` and the GoTrue

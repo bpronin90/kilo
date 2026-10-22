@@ -30,20 +30,21 @@
 // State lives in Postgres so the limits hold across isolate recycling and cold
 // starts; see supabase/functions/_shared/rate-limit.ts and migration
 // 20260622120001_edge_rate_limit.sql.
+//
+// The request flow is exported as createExportHandler so tests can drive it with
+// client doubles (index.test.ts); the bottom of this file wires the real clients.
+// Unanticipated exceptions resolve to a sanitized, CORS-aware 500 through the
+// shared boundary in _shared/unexpected-error.ts (#1559).
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.108.2'
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.108.2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { extractToken } from '../_shared/auth.ts'
 import { clientIp, rateLimitAllowed, rateLimitRefund } from '../_shared/rate-limit.ts'
 import { exportHealthData, LEGACY_HEALTH_COLUMNS } from '../_shared/health-data-scope.ts'
 import { recordSecurityEvent, requestId } from '../_shared/security-event.ts'
+import { withUnexpectedErrorResponse } from '../_shared/unexpected-error.ts'
 
 const SECURITY_SOURCE = 'account-export' as const
-
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 // ---------------------------------------------------------------------------
 // Rate limit windows. Enforcement is durable/shared (see rate-limit.ts):
@@ -56,13 +57,15 @@ const USER_MAX       = 1                 // 1 export per user per window
 const IP_WINDOW_MS   = 10 * 60 * 1000   // 10 minutes
 const IP_MAX         = 5                 // 5 exports per IP per window
 
-// Service-role client. Used for the durable rate-limit RPCs and, since #487, for
-// the gate-bypassing health reads described in the header. It is never used to
-// widen scope: every health statement is filtered to the verified caller's id.
-const rlAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  db: { schema: 'kilo' },
-  auth: { autoRefreshToken: false, persistSession: false },
-})
+export interface ExportHandlerDeps {
+  // Service-role client. Used for the durable rate-limit RPCs and, since #487,
+  // for the gate-bypassing health reads described in the header. It is never used
+  // to widen scope: every health statement is filtered to the verified caller's id.
+  admin: SupabaseClient<any, any, any, any, any>
+  // Builds the user-scoped client for a bearer token: RLS restricts its queries
+  // to the requester's rows, and it is what proves who the requester is.
+  userClient: (token: string) => SupabaseClient<any, any, any, any, any>
+}
 
 // The six legacy health columns still live on the mixed user_profile row during
 // the expand phase. They are NOT exported from there: user_health_profile already
@@ -78,151 +81,175 @@ function stripLegacyHealthColumns(profile: Record<string, unknown> | null) {
   return out
 }
 
-// ---------------------------------------------------------------------------
+// Any exception the flow below does not anticipate resolves to a sanitized 500
+// with this request's CORS headers (see _shared/unexpected-error.ts) instead of
+// rejecting into a runtime error an allowed browser origin cannot read.
+export function createExportHandler(deps: ExportHandlerDeps): (req: Request) => Promise<Response> {
+  const { admin, userClient } = deps
 
-serve(async (req) => {
-  const cors = corsHeaders(req)
+  return withUnexpectedErrorResponse(SECURITY_SOURCE, async (req) => {
+    const cors = corsHeaders(req)
 
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: cors })
-  }
+    if (req.method === 'OPTIONS') {
+      return new Response('ok', { headers: cors })
+    }
 
-  // Correlates every event below with the platform log line for this request.
-  const rid = requestId(req)
+    // Correlates every event below with the platform log line for this request.
+    const rid = requestId(req)
 
-  // IP rate check (pre-auth, blocks hammering callers before JWT verification).
-  const ip = clientIp(req)
-  // The limiter records the throttle event itself, because only it can tell an
-  // exhausted bucket from an outage -- both return false under `deny`.
-  if (!await rateLimitAllowed(rlAdmin, `export:ip:${ip}`, IP_MAX, IP_WINDOW_MS, 'deny', SECURITY_SOURCE, { type: 'ip', value: ip, requestId: rid })) {
-    return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
-      status: 429,
-      headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '600' },
-    })
-  }
+    // IP rate check (pre-auth, blocks hammering callers before JWT verification).
+    const ip = clientIp(req)
+    // The limiter records the throttle event itself, because only it can tell an
+    // exhausted bucket from an outage -- both return false under `deny`.
+    if (!await rateLimitAllowed(admin, `export:ip:${ip}`, IP_MAX, IP_WINDOW_MS, 'deny', SECURITY_SOURCE, { type: 'ip', value: ip, requestId: rid })) {
+      return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
+        status: 429,
+        headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '600' },
+      })
+    }
 
-  const token = extractToken(req)
-  if (!token) {
-    // Pre-auth, so the only subject available is the network origin. One of
-    // these is a misconfigured client; a rate of them is a probe.
-    await recordSecurityEvent(rlAdmin, {
-      name: 'auth.token_missing',
+    const token = extractToken(req)
+    if (!token) {
+      // Pre-auth, so the only subject available is the network origin. One of
+      // these is a misconfigured client; a rate of them is a probe.
+      await recordSecurityEvent(admin, {
+        name: 'auth.token_missing',
+        source: SECURITY_SOURCE,
+        outcome: 'denied',
+        subjectType: 'ip',
+        subject: ip,
+        context: { status: 401, reason: 'missing_token', request_id: rid },
+      })
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // User-scoped client: RLS restricts its queries to the requester's rows, and it
+    // is what proves who the requester is.
+    const client = userClient(token)
+
+    const { data: { user }, error: authError } = await client.auth.getUser()
+    if (authError || !user) {
+      // The token is unusable, so there is no verified account to attribute this
+      // to; the IP is the only honest subject. A rising distinct-subject count on
+      // this event is what credential stuffing looks like from here.
+      await recordSecurityEvent(admin, {
+        name: 'auth.token_rejected',
+        source: SECURITY_SOURCE,
+        outcome: 'denied',
+        subjectType: 'ip',
+        subject: ip,
+        context: { status: 401, reason: 'invalid_token', request_id: rid },
+      })
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Per-user rate check (post-auth). Quota is only spent on successful exports;
+    // failed export attempts refund the bucket so transient errors don't exhaust
+    // the user's one-success-per-window allowance.
+    const userKey = `export:user:${user.id}`
+    if (!await rateLimitAllowed(admin, userKey, USER_MAX, USER_WINDOW_MS, 'deny', SECURITY_SOURCE, { type: 'user', value: user.id, requestId: rid })) {
+      return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
+        status: 429,
+        headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '600' },
+      })
+    }
+
+    // Non-health account rows under RLS; the complete gated health set through the
+    // one shared definition that account-delete and health-data-delete also use.
+    const [profileResult, togglesResult, healthResult] = await Promise.all([
+      client.from('user_profile').select('*').maybeSingle(),
+      client.from('feature_toggles').select('*').maybeSingle(),
+      exportHealthData(admin, user.id),
+    ])
+
+    const firstError =
+      profileResult.error?.message ??
+      togglesResult.error?.message ??
+      (healthResult.ok ? undefined : healthResult.error)
+
+    if (firstError) {
+      // Refund the user bucket: a failed export should not spend the quota.
+      await rateLimitRefund(admin, userKey)
+      console.error(`account-export query failed: ${firstError}`)
+      // The message stays in the platform log; the event carries only the
+      // classification. firstError is an upstream string and may quote row data.
+      await recordSecurityEvent(admin, {
+        name: 'server.error',
+        source: SECURITY_SOURCE,
+        outcome: 'failed',
+        subjectType: 'user',
+        subject: user.id,
+        context: { status: 500, reason: 'db_error', request_id: rid },
+      })
+      return new Response(JSON.stringify({ error: 'Export failed.' }), {
+        status: 500,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const payload = {
+      version: 3,
+      exportedAt: new Date().toISOString(),
+      account: { id: user.id, email: user.email },
+      cloud: {
+        user_profile: stripLegacyHealthColumns(
+          profileResult.data as Record<string, unknown> | null,
+        ),
+        feature_toggles: togglesResult.data,
+        // user_health_profile, weight_entries, weight_goal, archived_weight_goals,
+        // workout_notes, deload_history, fatigue_checkins, and — since #694 — the
+        // recovery collections: recovery_blocks (with each frozen baseline
+        // snapshot) and recovery_block_weeks. Spread from the shared scope rather
+        // than named here, so a table added to that scope is exported the same day
+        // it becomes gated.
+        ...healthResult.data,
+      },
+    }
+
+    // The audit half of the trail: a full copy of one account's data left the
+    // server. Recorded on success, not on request, so the log says what happened
+    // rather than what was attempted.
+    await recordSecurityEvent(admin, {
+      name: 'account.export_succeeded',
       source: SECURITY_SOURCE,
-      outcome: 'denied',
-      subjectType: 'ip',
-      subject: ip,
-      context: { status: 401, reason: 'missing_token', request_id: rid },
-    })
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: { ...cors, 'Content-Type': 'application/json' },
-    })
-  }
-
-  // User-scoped client: RLS restricts its queries to the requester's rows, and it
-  // is what proves who the requester is.
-  const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    db: { schema: 'kilo' },
-    global: { headers: { Authorization: `Bearer ${token}` } },
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
-
-  const { data: { user }, error: authError } = await client.auth.getUser()
-  if (authError || !user) {
-    // The token is unusable, so there is no verified account to attribute this
-    // to; the IP is the only honest subject. A rising distinct-subject count on
-    // this event is what credential stuffing looks like from here.
-    await recordSecurityEvent(rlAdmin, {
-      name: 'auth.token_rejected',
-      source: SECURITY_SOURCE,
-      outcome: 'denied',
-      subjectType: 'ip',
-      subject: ip,
-      context: { status: 401, reason: 'invalid_token', request_id: rid },
-    })
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: { ...cors, 'Content-Type': 'application/json' },
-    })
-  }
-
-  // Per-user rate check (post-auth). Quota is only spent on successful exports;
-  // failed export attempts refund the bucket so transient errors don't exhaust
-  // the user's one-success-per-window allowance.
-  const userKey = `export:user:${user.id}`
-  if (!await rateLimitAllowed(rlAdmin, userKey, USER_MAX, USER_WINDOW_MS, 'deny', SECURITY_SOURCE, { type: 'user', value: user.id, requestId: rid })) {
-    return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
-      status: 429,
-      headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '600' },
-    })
-  }
-
-  // Non-health account rows under RLS; the complete gated health set through the
-  // one shared definition that account-delete and health-data-delete also use.
-  const [profileResult, togglesResult, healthResult] = await Promise.all([
-    client.from('user_profile').select('*').maybeSingle(),
-    client.from('feature_toggles').select('*').maybeSingle(),
-    exportHealthData(rlAdmin, user.id),
-  ])
-
-  const firstError =
-    profileResult.error?.message ??
-    togglesResult.error?.message ??
-    (healthResult.ok ? undefined : healthResult.error)
-
-  if (firstError) {
-    // Refund the user bucket: a failed export should not spend the quota.
-    await rateLimitRefund(rlAdmin, userKey)
-    console.error(`account-export query failed: ${firstError}`)
-    // The message stays in the platform log; the event carries only the
-    // classification. firstError is an upstream string and may quote row data.
-    await recordSecurityEvent(rlAdmin, {
-      name: 'server.error',
-      source: SECURITY_SOURCE,
-      outcome: 'failed',
+      outcome: 'succeeded',
       subjectType: 'user',
       subject: user.id,
-      context: { status: 500, reason: 'db_error', request_id: rid },
+      context: { status: 200, request_id: rid },
     })
-    return new Response(JSON.stringify({ error: 'Export failed.' }), {
-      status: 500,
+
+    return new Response(JSON.stringify(payload), {
+      status: 200,
       headers: { ...cors, 'Content-Type': 'application/json' },
     })
-  }
-
-  const payload = {
-    version: 3,
-    exportedAt: new Date().toISOString(),
-    account: { id: user.id, email: user.email },
-    cloud: {
-      user_profile: stripLegacyHealthColumns(
-        profileResult.data as Record<string, unknown> | null,
-      ),
-      feature_toggles: togglesResult.data,
-      // user_health_profile, weight_entries, weight_goal, archived_weight_goals,
-      // workout_notes, deload_history, fatigue_checkins, and — since #694 — the
-      // recovery collections: recovery_blocks (with each frozen baseline
-      // snapshot) and recovery_block_weeks. Spread from the shared scope rather
-      // than named here, so a table added to that scope is exported the same day
-      // it becomes gated.
-      ...healthResult.data,
-    },
-  }
-
-  // The audit half of the trail: a full copy of one account's data left the
-  // server. Recorded on success, not on request, so the log says what happened
-  // rather than what was attempted.
-  await recordSecurityEvent(rlAdmin, {
-    name: 'account.export_succeeded',
-    source: SECURITY_SOURCE,
-    outcome: 'succeeded',
-    subjectType: 'user',
-    subject: user.id,
-    context: { status: 200, request_id: rid },
   })
+}
 
-  return new Response(JSON.stringify(payload), {
-    status: 200,
-    headers: { ...cors, 'Content-Type': 'application/json' },
-  })
-})
+// ---------------------------------------------------------------------------
+// Production wiring. Deno.serve (rather than std's serve) so a test can stub
+// the registration and import this module without opening a listener.
+// ---------------------------------------------------------------------------
+
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+const NO_SESSION = { autoRefreshToken: false, persistSession: false }
+
+Deno.serve(createExportHandler({
+  admin: createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    db: { schema: 'kilo' },
+    auth: NO_SESSION,
+  }),
+  userClient: (token) => createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    db: { schema: 'kilo' },
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: NO_SESSION,
+  }),
+}))

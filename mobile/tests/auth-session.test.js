@@ -409,7 +409,25 @@ describe('secure store adapter', () => {
   });
 });
 
+// Sign-out revokes server restore keys with the session bearer before any local
+// sign-out (#1557), so sign-out fixtures need a token-bearing session and a
+// confirmed revoke response.
+const SIGNED_IN_SESSION = { access_token: 'jwt', user: { id: 'user-1', email: 'x@b.com' } };
+
+function withConfirmedRevoke() {
+  mockAuth.getSession.mockResolvedValue({ data: { session: SIGNED_IN_SESSION }, error: null });
+  const previousFetch = global.fetch;
+  global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ version: 1, revoked: true }) });
+  return () => { global.fetch = previousFetch; };
+}
+
 describe('useAuthSession', () => {
+  let restoreFetch = null;
+  afterEach(() => {
+    restoreFetch?.();
+    restoreFetch = null;
+  });
+
   test('restores a persisted session on mount', async () => {
     mockAuth.getSession.mockResolvedValue({ data: { session: { user: { email: 'restored@b.com' } } }, error: null });
     const { ref } = renderAuthHook();
@@ -460,7 +478,7 @@ describe('useAuthSession', () => {
   });
 
   test('sign out clears the session', async () => {
-    mockAuth.getSession.mockResolvedValue({ data: { session: { user: { email: 'x@b.com' } } }, error: null });
+    restoreFetch = withConfirmedRevoke();
     const { ref } = renderAuthHook();
     await flush();
     expect(ref.current.signedIn).toBe(true);
@@ -472,7 +490,22 @@ describe('useAuthSession', () => {
     expect(mockWipeSensitiveDeviceData).not.toHaveBeenCalled();
   });
 
+  test('sign out without a usable session bearer fails without signing out or wiping', async () => {
+    mockAuth.getSession.mockResolvedValue({ data: { session: null }, error: { message: 'invalid refresh' } });
+    const onDeviceDataWiped = jest.fn();
+    const { ref } = renderAuthHook({ onDeviceDataWiped });
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.signOut({ wipeLocalData: true }); });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/sign in again/i);
+    expect(mockAuth.signOut).not.toHaveBeenCalled();
+    expect(mockWipeSensitiveDeviceData).not.toHaveBeenCalled();
+    expect(onDeviceDataWiped).not.toHaveBeenCalled();
+  });
+
   test('confirmed sign out wipes device data after the auth session is revoked', async () => {
+    restoreFetch = withConfirmedRevoke();
     const onDeviceDataWiped = jest.fn();
     const { ref } = renderAuthHook({ onDeviceDataWiped });
     await flush();
@@ -485,6 +518,7 @@ describe('useAuthSession', () => {
   });
 
   test('failed sign-out wipe remains retryable without an auth session', async () => {
+    restoreFetch = withConfirmedRevoke();
     const onDeviceDataWiped = jest.fn();
     mockWipeSensitiveDeviceData.mockRejectedValueOnce(new Error('storage unavailable'));
     const { ref } = renderAuthHook({ onDeviceDataWiped });
@@ -651,12 +685,17 @@ describe('network/client exceptions surface as { ok: false, error } (#831)', () 
   });
 
   test('signOut', async () => {
-    mockAuth.signOut.mockRejectedValueOnce(new Error('A network error occurred'));
-    const { ref } = renderAuthHook();
-    await flush();
-    let result;
-    await act(async () => { result = await ref.current.signOut(); });
-    expect(result).toEqual({ ok: false, error: 'A network error occurred' });
+    const restore = withConfirmedRevoke();
+    try {
+      mockAuth.signOut.mockRejectedValueOnce(new Error('A network error occurred'));
+      const { ref } = renderAuthHook();
+      await flush();
+      let result;
+      await act(async () => { result = await ref.current.signOut(); });
+      expect(result).toEqual({ ok: false, error: 'A network error occurred' });
+    } finally {
+      restore();
+    }
   });
 
   test('resetPasswordForEmail', async () => {
