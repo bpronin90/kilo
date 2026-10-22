@@ -22,6 +22,8 @@ import { _occurrenceEntries } from '../parser/analytics.js';
 import { getExerciseMetadata } from './exerciseMetadata';
 import { UNCLASSIFIED_GROUP_ID } from './primaryMovementGroups';
 import { OVERRIDE_STATE, movementGroupLabel, readMovementOverrides, resolveMovementGroup } from './movementGroups';
+import { MOVEMENT_COMPARISONS, MUSCLE_REGIONS, regionForMuscle } from './trainingBreakdownMappings';
+import { selectRangePopulation } from './trainingBreakdownRange';
 
 export const TRAINING_BREAKDOWN_SCOPE = 'Eligible ordinary history';
 
@@ -99,6 +101,10 @@ function countOccurrence(exercise, kind, nonLift) {
 // without that pairing there is no note to read authored overrides from, so the
 // library group is used for every set.
 export function deriveTrainingBreakdown(parsedSections) {
+  return accumulate(parsedSections).result;
+}
+
+function accumulate(parsedSections) {
   const lists = parsedSections?.noteSectionsList;
   const notes = parsedSections?.normalNotes;
   const sectionLists = Array.isArray(lists) ? lists : [parsedSections?.allSections || []];
@@ -112,6 +118,7 @@ export function deriveTrainingBreakdown(parsedSections) {
   const equipment = newBucketMap();
   const unknownEquipment = newBucketMap();
   const timed = newBucketMap();
+  const regions = newBucketMap();
   const seenExercises = new Set();
   const metaCache = new Map();
   const unreadableNotes = new Set();
@@ -155,6 +162,9 @@ export function deriveTrainingBreakdown(parsedSections) {
         if (prim) {
           cov.primary += strength;
           for (const m of prim) addTo(primary, m, humanizeLibraryId(m), name, key, strength);
+          // A set counts once per region however many of its primaries sit there.
+          const touched = new Set(prim.map(regionForMuscle).filter(Boolean));
+          for (const r of touched) addTo(regions, r, r, name, key, strength);
         } else {
           addTo(unknownMuscles, 'unknown', 'Unknown muscles', name, key, strength);
         }
@@ -177,7 +187,7 @@ export function deriveTrainingBreakdown(parsedSections) {
   const timedBuckets = finish(timed);
   const activityEntries = timedBuckets.length ? timedBuckets[0].sets : 0;
   const coverage = (known) => ({ knownSets: known, totalSets: cov.total });
-  return {
+  const result = {
     scope: TRAINING_BREAKDOWN_SCOPE,
     isEmpty: cov.total === 0 && activityEntries === 0,
     totals: { completedSets: cov.total, activityEntries, exerciseCount: seenExercises.size },
@@ -200,5 +210,43 @@ export function deriveTrainingBreakdown(parsedSections) {
       coverage: coverage(cov.equipment),
     },
     timed: timedBuckets[0] || null,
+  };
+  return { result, regions };
+}
+
+function regionBuckets(regionMap) {
+  const done = new Map(finish(regionMap).map((b) => [b.id, b]));
+  return MUSCLE_REGIONS.map(({ id, label }) => ({
+    id, label, sets: done.get(id)?.sets || 0, exercises: done.get(id)?.exercises || [],
+  }));
+}
+
+function comparisons(movementGroups) {
+  const setsOf = (groups) => movementGroups
+    .filter((g) => g.source === 'library' && groups.includes(g.id))
+    .reduce((n, g) => n + g.sets, 0);
+  return MOVEMENT_COMPARISONS.map(({ id, label, sides }) => {
+    const counted = sides.map((side) => ({ id: side.id, label: side.label, sets: setsOf(side.groups) }));
+    const totalSets = counted.reduce((n, side) => n + side.sets, 0);
+    return { id, label, totalSets, sides: counted.map((side) => ({ ...side, share: totalSets ? side.sets / totalSets : 0 })) };
+  });
+}
+
+// #1589: the breakdown for one range ('30D' | '90D' | 'All') plus
+// `muscles.regions` and `movement.comparisons`. `parsedSections` must come from a
+// verified Recovery population; pass `populationVerified: false` when membership
+// is unknown and the result is null rather than an unfiltered or empty breakdown.
+// Bounded ranges also return null without usable note/section pairing; All keeps
+// the legacy allSections fallback. Pure: no input mutation, storage or caching.
+export function deriveTrainingBreakdownForRange(parsedSections, range, { now = new Date(), populationVerified = true } = {}) {
+  if (!populationVerified) return null;
+  const selection = selectRangePopulation(parsedSections, range, now);
+  if (!selection) return null;
+  const input = selection.all ? parsedSections : { normalNotes: selection.notes, noteSectionsList: selection.sectionsList };
+  const { result, regions } = accumulate(input);
+  return {
+    ...result,
+    movement: { ...result.movement, comparisons: comparisons(result.movement.groups) },
+    muscles: { ...result.muscles, regions: regionBuckets(regions) },
   };
 }
