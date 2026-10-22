@@ -906,6 +906,166 @@ Deno.test('the allowed web origin does not satisfy the WebAuthn origin check', a
 })
 
 // ---------------------------------------------------------------------------
+// Exception boundary (#1562): a dependency that rejects, not resolves an error
+// ---------------------------------------------------------------------------
+
+const UNEXPECTED = { status: 500, body: { error: 'Internal Server Error' } }
+// Planted in every injected rejection; it must never leave the process.
+const LEAKY_MESSAGE = `upstream exploded for ${OWNER_EMAIL} with ${OWNER_TOKEN}`
+
+// Makes one RPC reject (a transport failure inside supabase-js) instead of
+// resolving { error }. Records every RPC the handler attempts.
+function rejectRpc(ctx: ReturnType<typeof setup>, failing: string) {
+  const attempted: string[] = []
+  const originalRpc = ctx.db.admin.rpc
+  ctx.db.admin.rpc = (fn: string, args: Record<string, unknown>) => {
+    attempted.push(fn)
+    if (fn === failing) return Promise.reject(new TypeError(LEAKY_MESSAGE))
+    return originalRpc(fn, args)
+  }
+  return attempted
+}
+
+// Runs fn with console.error captured, returning what was logged.
+async function captureErrors(fn: () => Promise<void>): Promise<string> {
+  const originalError = console.error
+  const lines: unknown[][] = []
+  console.error = (...args: unknown[]) => lines.push(args)
+  try {
+    await fn()
+  } finally {
+    console.error = originalError
+  }
+  return JSON.stringify(lines)
+}
+
+function assertSanitized(result: { status: number; body: unknown; headers: Headers }, label: string) {
+  assertEquals({ status: result.status, body: result.body }, UNEXPECTED, `${label}: sanitized 500`)
+  assertEquals(result.headers.get('content-type'), 'application/json', `${label}: JSON content type`)
+  assertEquals(result.headers.get('cache-control'), 'no-store', `${label}: never cached`)
+  const text = JSON.stringify(result.body)
+  for (const secret of [LEAKY_MESSAGE, OWNER_EMAIL, OWNER_TOKEN, ISSUED_ACCESS, ISSUED_REFRESH, 'stack']) {
+    assert(!text.includes(secret), `${label}: body leaks ${secret.slice(0, 12)}...`)
+  }
+}
+
+Deno.test('a rejected limiter on every rate-limited route resolves a sanitized, CORS-aware 500', async () => {
+  const routes: [string, unknown, string | undefined][] = [
+    ['restore-options', { version: 1 }, undefined],
+    ['restore-verification', { version: 1 }, undefined],
+    ['enrollment-options', {}, OWNER_TOKEN],
+    ['registration-verification', { version: 1 }, OWNER_TOKEN],
+  ]
+  const origins: [string | undefined, string | null][] = [
+    [WEB_ORIGIN, WEB_ORIGIN], ['https://evil.example', null], ['null', null], [undefined, null],
+  ]
+  for (const [route, body, token] of routes) {
+    for (const [origin, acao] of origins) {
+      const ctx = setup()
+      const attempted = rejectRpc(ctx, 'rate_limit_check')
+      const result = await ctx.call(route, body, token, origin)
+      const label = `${route} from ${origin}`
+      assertSanitized(result, label)
+      assertEquals(result.headers.get('access-control-allow-origin'), acao, `${label}: shared CORS policy`)
+      if (acao) assertEquals(result.headers.get('vary'), 'Origin', `${label}: varies by Origin`)
+      assertEquals(attempted, ['rate_limit_check'], `${label}: no protected work after the throw`)
+      assertEquals(ctx.db.challenges.size, 0, `${label}: no challenge issued`)
+      assertEquals(ctx.revokedSessions, [], `${label}: no session touched`)
+    }
+  }
+})
+
+Deno.test('a rejected identity lookup on revoke claims nothing and revokes nothing', async () => {
+  const signOuts: string[] = []
+  const { identity } = fakeIdentity({
+    signOutEverywhere: (token) => {
+      signOuts.push(token)
+      return Promise.resolve({ ok: true })
+    },
+  })
+  const ctx = setup({ identity })
+  const { authenticator } = await enroll(ctx)
+  identity.userFromToken = () => Promise.reject(new TypeError(LEAKY_MESSAGE))
+  const result = await ctx.call('revoke', {}, OWNER_TOKEN, WEB_ORIGIN)
+  assertSanitized(result, 'revoke')
+  assertEquals(result.headers.get('access-control-allow-origin'), WEB_ORIGIN, 'the failure is browser-readable')
+  assert(!ctx.db.credentials.get(authenticator.credentialId)!.revoked, 'nothing is revoked')
+  assertEquals(signOuts, [], 'no global sign-out runs')
+  assert(!ctx.db.eventNames().includes('restore.revoked'), 'no revocation is audited')
+})
+
+Deno.test('a rejected revocation write never reaches the global sign-out', async () => {
+  const signOuts: string[] = []
+  const { identity } = fakeIdentity({
+    signOutEverywhere: (token) => {
+      signOuts.push(token)
+      return Promise.resolve({ ok: true })
+    },
+  })
+  const ctx = setup({ identity })
+  await enroll(ctx)
+  rejectRpc(ctx, 'restore_revoke_user')
+  const result = await ctx.call('revoke', {}, OWNER_TOKEN, WEB_ORIGIN)
+  assertSanitized(result, 'revoke')
+  assertEquals(signOuts, [], 'revoke-before-global-signout ordering holds on a throw')
+  assert(!ctx.db.eventNames().includes('restore.revoked'), 'no revocation is audited')
+})
+
+Deno.test('a rejected global sign-out keeps the key revoked, claims no revocation, and retries cleanly', async () => {
+  const { identity } = fakeIdentity({ signOutEverywhere: () => Promise.reject(new TypeError(LEAKY_MESSAGE)) })
+  const ctx = setup({ identity })
+  const { authenticator } = await enroll(ctx)
+  const result = await ctx.call('revoke', {}, OWNER_TOKEN, WEB_ORIGIN)
+  assertSanitized(result, 'revoke')
+  assert(ctx.db.credentials.get(authenticator.credentialId)!.revoked, 'the key revoked before the throw stays revoked')
+  assert(!ctx.db.eventNames().includes('restore.revoked'), 'no completed revocation is audited')
+  identity.signOutEverywhere = () => Promise.resolve({ ok: true })
+  const retry = await ctx.call('revoke', {}, OWNER_TOKEN)
+  assertEquals({ status: retry.status, body: retry.body }, { status: 200, body: { version: 1, revoked: true } }, 'the retry completes')
+})
+
+async function restoreThrowing(identityOverrides: Partial<RestoreIdentity>, failingRpc?: string) {
+  const fake = fakeIdentity()
+  const ctx = setup({ identity: fake.identity })
+  const { authenticator } = await enroll(ctx)
+  const options = await restoreOptions(ctx, authenticator.credentialId)
+  const credential = await assertionResponse(authenticator, { challenge: options.challenge, rpId: RP_ID, origin: ORIGIN })
+  Object.assign(fake.identity, identityOverrides)
+  if (failingRpc) rejectRpc(ctx, failingRpc)
+  let result!: Awaited<ReturnType<typeof ctx.call>>
+  const logged = await captureErrors(async () => {
+    result = await ctx.call('restore-verification', { version: 1, credential }, undefined, WEB_ORIGIN)
+  })
+  return { ctx, result, logged, revokedSessions: fake.revokedSessions }
+}
+
+Deno.test('a rejected session exchange returns no tokens and audits no issuance', async () => {
+  const { ctx, result, logged } = await restoreThrowing({ verifyMagicLink: () => Promise.reject(new TypeError(LEAKY_MESSAGE)) })
+  assertSanitized(result, 'restore-verification')
+  assertEquals(result.headers.get('access-control-allow-origin'), WEB_ORIGIN, 'the failure is browser-readable')
+  assert(!ctx.db.eventNames().includes('restore.session_issued'), 'no issuance is audited')
+  assert(logged.includes('android-restore-credentials unexpected error') && logged.includes('TypeError'), `logged: ${logged}`)
+  for (const secret of [LEAKY_MESSAGE, OWNER_EMAIL, OWNER_TOKEN]) {
+    assert(!logged.includes(secret), `the log leaks ${secret.slice(0, 12)}...`)
+  }
+})
+
+Deno.test('a rejected post-exchange re-check revokes the minted session and returns no tokens', async () => {
+  const { ctx, result, revokedSessions } = await restoreThrowing({}, 'restore_credential_eligible')
+  assertSanitized(result, 'restore-verification')
+  assertEquals(revokedSessions, [ISSUED_ACCESS], 'the session minted before the throw is revoked')
+  assert(!ctx.db.eventNames().includes('restore.session_issued'), 'no issuance is audited')
+})
+
+Deno.test('a failing revocation of the minted session still ends in the sanitized 500', async () => {
+  const { result } = await restoreThrowing(
+    { revokeSession: () => Promise.reject(new TypeError(LEAKY_MESSAGE)) },
+    'restore_credential_eligible',
+  )
+  assertSanitized(result, 'restore-verification')
+})
+
+// ---------------------------------------------------------------------------
 // Log redaction
 // ---------------------------------------------------------------------------
 
