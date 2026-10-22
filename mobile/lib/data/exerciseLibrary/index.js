@@ -51,7 +51,7 @@ function foldInitialisms(tokens) {
 // Code points where upper->lower differs from Unicode casefold(), as
 // `codepoint=folded.codepoints` hex. Generated from Python str.casefold() against
 // JS toUpperCase().toLowerCase(); the parity test re-derives it exhaustively.
-const CASEFOLD_EXCEPTIONS = new Map(
+export const CASEFOLD_EXCEPTIONS = new Map(
   [
     '131=131 13a0=13a0 13a1=13a1 13a2=13a2 13a3=13a3 13a4=13a4 13a5=13a5 13a6=13a6 13a7=13a7 ',
     '13a8=13a8 13a9=13a9 13aa=13aa 13ab=13ab 13ac=13ac 13ad=13ad 13ae=13ae 13af=13af 13b0=13b0 ',

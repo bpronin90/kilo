@@ -9,6 +9,7 @@ import {
   SOURCE_PROVENANCE,
   normalizeExerciseName,
   foldCase,
+  CASEFOLD_EXCEPTIONS,
   resolveExerciseName,
   resolveExerciseId,
   getExercise,
@@ -102,58 +103,22 @@ describe('normalization', () => {
   });
 });
 
-describe('normalization parity with the independent validator', () => {
-  it('matches Python casefold-based normalization on tricky inputs', () => {
-    const inputs = [
-      'Barbell Bench Pre\u00df', 'Barbell Bench Press\u0345', '\u1f72', '\u1fb2', '\u1f70\u03b9',
-      '\u03a3\u03a4\u0391\u03a3', '\u03c3\u03c4\u03b1\u03c2', 'R.D.L.', ' D.B.  RDL', 'Push-Up',
-      '\uFB01x', '\u0130stanbul', 'Farmer\u2019s Walk', '\uFF22\uFF22 bench', 'a_b', '5x5 @ 100kg', 'Pre\u1e9e', '\u0131ncline', '\u13a0\uab70',
-    ];
-    const code = [
-      'import json,sys,importlib.util as u',
-      "s=u.spec_from_file_location('v',sys.argv[1]);m=u.module_from_spec(s);s.loader.exec_module(m)",
-      'print(json.dumps([m.normalize(x) for x in json.load(sys.stdin)]))',
-    ].join('\n');
-    const r = spawnSync('python3', ['-c', code, VALIDATOR], {
-      input: JSON.stringify(inputs),
-      encoding: 'utf8',
-    });
-    expect(r.status).toBe(0);
-    expect(inputs.map(normalizeExerciseName)).toEqual(JSON.parse(r.stdout));
+describe('casefold parity with committed Python-generated fixture', () => {
+  const fixture = JSON.parse(fs.readFileSync(NEGATIVE, 'utf8'));
+  const cases = Object.entries(fixture.casefold_expected.cases);
+
+  it('covers every table entry', () => {
+    expect(fixture.casefold_expected.table_codepoints).toBe(CASEFOLD_EXCEPTIONS.size);
+    const covered = new Set(cases.map(([hex]) => String.fromCodePoint(parseInt(hex, 16))));
+    for (const ch of CASEFOLD_EXCEPTIONS.keys()) expect(covered.has(ch)).toBe(true);
   });
 
-  it('foldCase equals Python casefold() for every code point', () => {
-    const code = [
-      'import json',
-      'print(json.dumps({i: chr(i).casefold() for i in range(0x110000)',
-      '  if not 0xD800 <= i < 0xE000 and chr(i).casefold() != chr(i)}))',
-    ].join('\n');
-    const r = spawnSync('python3', ['-c', code], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-    expect(r.status).toBe(0);
-    const py = JSON.parse(r.stdout);
-    const mismatches = [];
-    for (let i = 0; i < 0x110000; i += 1) {
-      if (i >= 0xd800 && i < 0xe000) continue;
-      const ch = String.fromCodePoint(i);
-      const expected = py[i] ?? ch;
-      if (foldCase(ch) !== expected) mismatches.push(i.toString(16));
-    }
-    // Runtimes ship different Unicode versions. Code points that either side
-    // does not yet assign are version drift, not table defects, so drop them.
-    const drift = (hex) => /\p{Cn}/u.test(String.fromCodePoint(parseInt(hex, 16)));
-    const assignedInJs = mismatches.filter((hex) => !drift(hex));
-    const probe = spawnSync(
-      'python3',
-      [
-        '-c',
-        'import sys,json,unicodedata as u\n'
-          + 'print(json.dumps([h for h in json.load(sys.stdin)'
-          + " if u.category(chr(int(h,16)))!='Cn']))",
-      ],
-      { input: JSON.stringify(assignedInJs), encoding: 'utf8' },
-    );
-    expect(probe.status).toBe(0);
-    expect(JSON.parse(probe.stdout)).toEqual([]);
+  it.each(cases)('foldCase(U+%s) equals Python casefold()', (hex, expected) => {
+    expect(foldCase(String.fromCodePoint(parseInt(hex, 16)))).toBe(expected);
+  });
+
+  it.each(Object.entries(fixture.normalize_expected))('normalizes %j like Python', (input, expected) => {
+    expect(normalizeExerciseName(input)).toBe(expected);
   });
 
   it('resolves capital sharp s and keeps dotless i distinct', () => {

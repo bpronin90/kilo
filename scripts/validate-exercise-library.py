@@ -9,6 +9,13 @@ asserted in mobile/tests/exercise-library.test.js, not here.
 Usage:
   validate-exercise-library.py [library.json]
   validate-exercise-library.py --mutations negative.json [library.json]
+  validate-exercise-library.py --regen-casefold fixture.json index.js
+
+--regen-casefold rewrites the "casefold_expected" and "normalize_expected"
+sections of the shared test fixture from Python str.casefold() and normalize(),
+for the code points listed in the CASEFOLD_EXCEPTIONS table of index.js (plus
+fixed extras and sample names). Jest asserts the JS resolver against that
+committed output, so tests need no live Python for case folding.
 """
 import copy
 import json
@@ -162,8 +169,37 @@ def run_mutations(d, path):
     return failures
 
 
+CASEFOLD_EXTRAS = ["A", "Z", "\u03a3", "\u03c2", "\u00df", "\u1e9e", "\u0130", "\u0131",
+                   "\u01c5", "\u0345", "\u1fb2", "\u1f72"]
+NORMALIZE_SAMPLES = [
+    "Barbell Bench Pre\u00df", "Barbell Bench Press\u0345", "\u1f72", "\u1fb2", "\u1f70\u03b9",
+    "\u03a3\u03a4\u0391\u03a3", "\u03c3\u03c4\u03b1\u03c2", "R.D.L.", " D.B.  RDL", "Push-Up",
+    "\uFB01x", "\u0130stanbul", "Farmer\u2019s Walk", "\uFF22\uFF22 bench", "a_b",
+    "5x5 @ 100kg", "Pre\u1e9e", "\u0131ncline", "\u13a0\uab70",
+]
+
+
+def regen_casefold(fixture_path, index_path):
+    text = Path(index_path).read_text()
+    block = text.split("const CASEFOLD_EXCEPTIONS", 1)[1].split("]\n    .join", 1)[0]
+    cps = [int(m, 16) for m in re.findall(r"(?:'|\s)([0-9a-f]+)=[0-9a-f.]+", block)]
+    chars = sorted({chr(c) for c in cps} | set(CASEFOLD_EXTRAS))
+    fixture = json.loads(Path(fixture_path).read_text())
+    fixture["casefold_expected"] = {
+        "python_version_note": "Generated once with Python str.casefold(); regenerate with --regen-casefold.",
+        "table_codepoints": len(cps),
+        "cases": {format(ord(c), "x"): c.casefold() for c in chars},
+    }
+    fixture["normalize_expected"] = {x: normalize(x) for x in NORMALIZE_SAMPLES}
+    Path(fixture_path).write_text(json.dumps(fixture, indent=2, ensure_ascii=True) + "\n")
+    print(f"wrote {len(chars)} casefold cases, {len(NORMALIZE_SAMPLES)} normalize cases")
+    return 0
+
+
 def main(argv):
     args = argv[1:]
+    if args and args[0] == "--regen-casefold":
+        return regen_casefold(args[1], args[2])
     mut = None
     if args and args[0] == "--mutations":
         mut, args = args[1], args[2:]
