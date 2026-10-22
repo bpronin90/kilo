@@ -132,9 +132,12 @@ function RegionTile({ styles, p, region, def, primaryById, max, muscleMax, onOpe
         <Text style={[styles.tileValue, { color: ink }]}>{region.sets}</Text>
       </View>
       <Text style={[styles.regionTopMuscle, { color: ink }]}>{topLabel}</Text>
+      {/* Strips use the palette's surface ink on every tile (#1593), not the
+          per-tile text ink, so their polarity never flips on the brightest tile. */}
       <View style={styles.cells}>
         {(present.length ? present : [null]).map((id, i) => (
-          <View key={id || i} style={[styles.cell, { backgroundColor: tint(ink, id ? 0.25 + (primaryById.get(id).sets / muscleMax) * 0.7 : 0.14) }]} />
+          <View key={id || i} testID={`training-breakdown-strip-${region.id}-${id || 'empty'}`}
+            style={[styles.cell, { backgroundColor: tint(p.ink, id ? 0.25 + (primaryById.get(id).sets / muscleMax) * 0.7 : 0.14) }]} />
         ))}
       </View>
     </Pressable>
@@ -180,7 +183,8 @@ export function EquipmentView({ styles, p, breakdown, onOpen }) {
   const e = breakdown.equipment;
   const total = breakdown.totals.completedSets;
   const top = e.items.slice(0, TOP_EQUIPMENT);
-  const max = Math.max(1, top[0]?.sets || 0, e.unknown?.sets || 0);
+  // Scale to the largest known item; Unknown is capped at full width (#1593).
+  const max = Math.max(1, top[0]?.sets || 0);
   return (
     <Card style={styles.card}>
       <CardHead styles={styles} title="Share of sets using each"
