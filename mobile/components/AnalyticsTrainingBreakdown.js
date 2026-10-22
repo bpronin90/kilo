@@ -18,20 +18,31 @@ const NAME_LIMIT = 3;
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const pct = (known, total) => (total > 0 ? Math.round((known / total) * 100) : 0);
 
-function namesLine(exercises) {
-  const names = exercises.map((e) => e.name);
-  const shown = names.slice(0, NAME_LIMIT).join(', ');
-  return names.length > NAME_LIMIT ? `${shown} +${names.length - NAME_LIMIT} more` : shown;
-}
-
 function Row({ styles, bucket, first, muted = false, tag = null, testID }) {
+  const [open, setOpen] = useState(false);
+  const names = bucket.exercises.map((e) => e.name);
+  const long = names.length > NAME_LIMIT;
+  const shown = open || !long ? names : names.slice(0, NAME_LIMIT);
+  const unit = bucket.unit === 'entry' ? ['entry', 'entries'] : ['set', 'sets'];
   return (
     <View testID={testID} style={[styles.row, !first && styles.rowBorder]}>
       <View style={styles.rowHead}>
         <Text style={[styles.rowLabel, muted && styles.rowLabelMuted]}>{bucket.label}{tag ? ` · ${tag}` : ''}</Text>
-        <Text style={styles.rowCount}>{plural(bucket.sets, 'set', 'sets')}</Text>
+        <Text style={styles.rowCount}>{plural(bucket.sets, unit[0], unit[1])}</Text>
       </View>
-      <Text style={styles.rowNames}>{namesLine(bucket.exercises)}</Text>
+      <Text style={styles.rowNames}>{shown.join(', ')}</Text>
+      {long ? (
+        <Pressable
+          testID={`${testID}-names-toggle`}
+          style={styles.showAll}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+          accessibilityLabel={open ? 'Show fewer exercises' : `Show all ${names.length} exercises`}
+          onPress={() => setOpen((v) => !v)}
+        >
+          <Text style={styles.showAllText}>{open ? 'Show fewer' : `+${names.length - NAME_LIMIT} more`}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -169,7 +180,7 @@ export function AnalyticsTrainingBreakdown({ breakdown, isLoading = false, hasEr
         ) : null}
         {breakdown.timed ? (
           <View testID="training-breakdown-timed">
-            <Row styles={styles} bucket={breakdown.timed} first />
+            <Row styles={styles} bucket={breakdown.timed} first testID="training-breakdown-timed-row" />
           </View>
         ) : null}
       </>

@@ -25,14 +25,32 @@ describe('deriveTrainingBreakdown counting (#1580)', () => {
 
   test('timed activity stays visible without becoming strength sets', () => {
     const b = sectionsOnly('Monday\n-Plank: 3x30s\n30\n30\n-Barbell Back Squat: 3x5\n185 5');
-    expect(b.timed).toMatchObject({ sets: 2 });
-    expect(b.totals).toMatchObject({ completedSets: 1, timedSets: 2 });
+    expect(b.timed).toMatchObject({ sets: 2, unit: 'entry' });
+    expect(b.totals).toMatchObject({ completedSets: 1, activityEntries: 2 });
   });
 
   test('a note with only a timed hold is not empty', () => {
     const b = sectionsOnly('Monday\n-Plank: 3x30s\n30\n30\n30');
     expect(b.isEmpty).toBe(false);
-    expect(b.totals).toMatchObject({ completedSets: 0, timedSets: 3 });
+    expect(b.totals).toMatchObject({ completedSets: 0, activityEntries: 3 });
+  });
+
+  test.each([
+    ['weighted-looking cardio rows', 'Monday\n-Bike\n10 5', 1],
+    ['cardio with a decimal load', 'Monday\n-Treadmill\n7.2 5', 1],
+    ['an unparsed logged cardio entry', 'Monday\n-Bike 5 min\n- 5 min', 1],
+    ['cardio rows the parser keeps unparsed', 'Monday\n-Bike\n5 min 9', 1],
+  ])('cardio stays visible as activity and never becomes strength sets: %s', (_, text, entries) => {
+    const b = sectionsOnly(text);
+    expect(b.totals).toMatchObject({ completedSets: 0, activityEntries: entries });
+    expect(b.isEmpty).toBe(false);
+    expect(b.movement.groups).toEqual([]);
+    expect(b.movement.coverage.totalSets).toBe(0);
+  });
+
+  test('a warm-up cardio entry and a cardio header without rows add nothing', () => {
+    expect(sectionsOnly('Monday\n+Warmup\n-Bike\n10 5').isEmpty).toBe(true);
+    expect(sectionsOnly('Monday\n-Treadmill 20 min').isEmpty).toBe(true);
   });
 
   test('no notes and no sets are empty', () => {

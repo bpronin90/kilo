@@ -19,6 +19,7 @@
 // back, and it does not touch exercise_classifications or any history key.
 
 import { _occurrenceEntries } from '../parser/analytics.js';
+import { isStrengthExerciseName } from './exerciseCatalog';
 import { getExerciseMetadata } from './exerciseMetadata';
 import { UNCLASSIFIED_GROUP_ID } from './primaryMovementGroups';
 import { OVERRIDE_STATE, movementGroupLabel, readMovementOverrides, resolveMovementGroup } from './movementGroups';
@@ -59,20 +60,25 @@ function finish(map) {
 
 const knownList = (value) => (Array.isArray(value) && value.length > 0 ? value : null);
 
-// Counts the completed (strength) and timed sets of one exercise occurrence.
-function countOccurrence(exercise, kind) {
-  let strength = 0;
-  let timed = 0;
-  if (kind === 'warmup') return { strength, timed };
-  for (const unit of _occurrenceEntries({ ...exercise, kind })) {
-    if (!unit || unit.skipped || unit.unparsed || !unit.sets || unit.sets.length === 0) continue;
+// Counts one exercise occurrence: completed strength sets, timed-hold sets, and
+// logged entries (a cardio/non-lift exercise's non-skipped units, parsed or not).
+function countOccurrence(exercise, kind, nonLift) {
+  const out = { strength: 0, timed: 0, entries: 0 };
+  if (kind === 'warmup') return out;
+  const units = _occurrenceEntries({ ...exercise, kind }).filter((u) => u && !u.skipped);
+  if (nonLift) {
+    out.entries = units.length > 0 ? units.length : (exercise.unparsed_rows || []).length;
+    return out;
+  }
+  for (const unit of units) {
+    if (unit.unparsed || !unit.sets) continue;
     for (const set of unit.sets) {
       if (!set || set.skipped) continue;
-      if (set.duration_seconds > 0) timed += 1;
-      else if (set.rep_count > 0) strength += 1;
+      if (set.duration_seconds > 0) out.timed += 1;
+      else if (set.rep_count > 0) out.strength += 1;
     }
   }
-  return { strength, timed };
+  return out;
 }
 
 // `parsedSections` is the object `deriveParsedSections` returns. `normalNotes[i]`
@@ -105,18 +111,19 @@ export function deriveTrainingBreakdown(parsedSections) {
     for (const section of sections || []) {
       for (const exercise of section.exercises || []) {
         const name = exercise.name;
-        const { strength, timed: timedSets } = countOccurrence(exercise, section.kind);
-        if (strength + timedSets === 0) continue;
+        let meta = metaCache.get(name);
+        if (!meta) { meta = getExerciseMetadata(name); metaCache.set(name, meta); }
+        const nonLift = !isStrengthExerciseName(name) || meta.fields.activityType === 'cardio';
+        const { strength, timed: timedSets, entries } = countOccurrence(exercise, section.kind, nonLift);
+        if (strength + timedSets + entries === 0) continue;
         // Original-name identity, not the alias-grouped history key, so "RDL" and
         // "Romanian Deadlift" stay distinct names behind the breakdown.
         const key = String(name).trim().toLowerCase();
-        seenExercises.add(key);
-        if (timedSets > 0) addTo(timed, 'timed', 'Timed activity', name, key, timedSets);
+        if (strength > 0) seenExercises.add(key);
+        if (timedSets + entries > 0) addTo(timed, 'timed', 'Timed and cardio activity', name, key, timedSets + entries, { unit: 'entry' });
         if (strength === 0) continue;
         if (read.state === OVERRIDE_STATE.INVALID && note) unreadableNotes.add(note.id ?? noteIndex);
 
-        let meta = metaCache.get(name);
-        if (!meta) { meta = getExerciseMetadata(name); metaCache.set(name, meta); }
         cov.total += strength;
 
         const chosen = resolveMovementGroup(name, overrides);
@@ -155,12 +162,12 @@ export function deriveTrainingBreakdown(parsedSections) {
   });
 
   const timedBuckets = finish(timed);
-  const timedSets = timedBuckets.length ? timedBuckets[0].sets : 0;
+  const activityEntries = timedBuckets.length ? timedBuckets[0].sets : 0;
   const coverage = (known) => ({ knownSets: known, totalSets: cov.total });
   return {
     scope: TRAINING_BREAKDOWN_SCOPE,
-    isEmpty: cov.total === 0 && timedSets === 0,
-    totals: { completedSets: cov.total, timedSets, exerciseCount: seenExercises.size },
+    isEmpty: cov.total === 0 && activityEntries === 0,
+    totals: { completedSets: cov.total, activityEntries, exerciseCount: seenExercises.size },
     movement: {
       groups: finish(movement),
       unclassified: finish(unclassified)[0] || null,

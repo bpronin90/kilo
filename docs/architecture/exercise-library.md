@@ -116,8 +116,9 @@ empty exclusion set.
 - **Counting.** Logged session units come from the existing `_occurrenceEntries`
   semantics, so a collapsed row such as `135 5,5,5` is its three parsed sets. Warm-up
   sections, skipped entries and sets, unparsed rows, and empty prescriptions add
-  nothing; a deload note counts like any ordinary note. Sets with a duration are
-  tallied as timed activity and never become strength sets.
+  nothing; a deload note counts like any ordinary note. Timed holds and cardio/non-lift
+  activity (including a logged cardio entry that did not parse into sets) are tallied
+  as activity entries and never become strength sets or enter classification coverage.
 - **Identity.** Enrichment reads the original parsed name (`getExerciseMetadata`), so
   `RDL` and `Romanian Deadlift` stay distinct names behind each row even though legacy
   history grouping may merge them. Library IDs describe metadata and do not replace

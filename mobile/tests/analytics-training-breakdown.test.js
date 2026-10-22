@@ -32,7 +32,7 @@ describe('AnalyticsTrainingBreakdown (#1580)', () => {
     const root = await render({ breakdown });
     const all = texts(root).join('|');
     expect(all).toContain('Eligible ordinary history');
-    expect(all).toContain('5 completed sets across 3 exercises');
+    expect(all).toContain('5 completed sets across 2 exercises');
     expect(root.root.findAllByProps({ testID: 'training-breakdown-movement-unclassified' }).length).toBeGreaterThan(0);
     expect(texts(root)).toContain('Movement classified: 3 of 5 sets (60%)');
     expect(texts(root).some((t) => t.includes('Mystery Machine Thing'))).toBe(true);
@@ -70,6 +70,23 @@ describe('AnalyticsTrainingBreakdown (#1580)', () => {
     expect(texts(root)).toContain('Paused during Recovery · baseline history');
     const normal = await render({ breakdown });
     expect(normal.root.findAllByProps({ testID: 'training-breakdown-paused' })).toHaveLength(0);
+  });
+
+  test('every exercise name behind a row is reachable, not just the first three', async () => {
+    const names = ['A one', 'B two', 'C three', 'D four', 'E five'].map((name) => ({ name, sets: 1 }));
+    const big = { ...breakdown, movement: { ...breakdown.movement, groups: [{ id: 'squat', label: 'Squat', sets: 5, exercises: names }] } };
+    const root = await render({ breakdown: big });
+    expect(texts(root)).toContain('A one, B two, C three');
+    expect(texts(root).join('|')).not.toContain('D four');
+    await press(root, 'training-breakdown-movement-squat-names-toggle');
+    expect(texts(root)).toContain('A one, B two, C three, D four, E five');
+  });
+
+  test('cardio activity renders as entries, not sets', async () => {
+    const cardio = deriveTrainingBreakdown({ allSections: parseWorkoutNote('Monday\n-Bike 5 min\n- 5 min\n-Barbell Bench Press: 3x5\n135 5').sections });
+    const root = await render({ breakdown: cardio });
+    expect(texts(root)).toContain('1 entry');
+    expect(texts(root)).toContain('Bike 5 min');
   });
 
   test('long lists are bounded behind Show all', async () => {
