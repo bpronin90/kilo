@@ -1,8 +1,9 @@
-import React, { useContext, useEffect, useRef } from 'react';
+import React, { useContext, useEffect, useMemo, useRef } from 'react';
 import { AccessibilityInfo, findNodeHandle, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useKuaStyle, useTheme } from '../theme/ThemeContext';
 import { useKuaTypography } from '../theme/typography';
+import { scrim } from '../theme/styleHelpers';
 import { GEOMETRY, SPACING } from '../theme/spacing';
 import { centeredColumnInsets, MODAL_SUPPORTED_ORIENTATIONS } from './adaptiveLayout';
 import { WALKTHROUGH_STEPS } from '../hooks/useWelcomeWalkthrough';
@@ -20,8 +21,9 @@ function focus(node) {
 export function WelcomeWalkthrough({ tour, anchorVisible }) {
   const { width, height } = useWindowDimensions();
   const insets = useContext(SafeAreaInsetsContext) || {};
-  const { colors } = useTheme();
+  const { colors, mode } = useTheme();
   const kua = useKuaStyle();
+  const styles = useMemo(() => createStyles(colors, kua, mode), [colors, kua, mode]);
   const type = useKuaTypography();
   const title = useRef(null);
   const restore = useRef(null);
@@ -47,11 +49,11 @@ export function WelcomeWalkthrough({ tour, anchorVisible }) {
   if (!visible) return null;
   const step = WALKTHROUGH_STEPS[tour.step];
   const textColor = kua ? kua.onSurface : colors.text;
-  const primary = kua ? kua.primary : colors.primary;
+  const primary = kua ? kua.primary : colors.text;
   const action = (label, onPress, filled = false) => (
     <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress}
       style={[styles.action, filled && { backgroundColor: primary }]}>
-      <Text style={[type['body-md'], { color: filled ? (kua ? kua.onPrimary : colors.buttonText) : textColor }]}>{label}</Text>
+      <Text style={[type['body-md'], { color: filled ? (kua ? kua.onPrimary : colors.buttonLabel) : textColor }]}>{label}</Text>
     </Pressable>
   );
   return (
@@ -63,8 +65,7 @@ export function WelcomeWalkthrough({ tour, anchorVisible }) {
         <View style={[styles.connector, { left: anchor.x + anchor.width / 2 - 1, top: anchor.y - SPACING['space-md'], backgroundColor: primary }]} />
         <View style={[styles.panel, { left: column.left, right: column.right, bottom: height - anchor.y + SPACING['space-md'],
           maxHeight: Math.max(44, anchor.y - (insets.top || 0) - SPACING.margin - SPACING['space-md']),
-          backgroundColor: kua ? kua.surfaceCard : colors.card,
-          borderColor: kua ? kua.surfaceBorder : colors.cardBorder }]}>
+        }]}>
           <ScrollView bounces={false} contentContainerStyle={styles.copy}>
             <Text ref={title} accessible accessibilityRole="header" tabIndex={-1}
               accessibilityLabel={`${step.tab}, ${tour.step + 1} of 5`}
@@ -82,11 +83,11 @@ export function WelcomeWalkthrough({ tour, anchorVisible }) {
   );
 }
 
-const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.32)' },
+const createStyles = (colors, kua, mode) => StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: scrim(mode) },
   ring: { position: 'absolute', borderWidth: 2, borderRadius: GEOMETRY['radius-2xl'] },
   connector: { position: 'absolute', width: 2, height: SPACING['space-md'] },
-  panel: { position: 'absolute', borderWidth: 1, borderRadius: GEOMETRY['radius-2xl'], overflow: 'hidden' },
+  panel: { backgroundColor: kua ? kua.surfaceCard : colors.card, borderColor: kua ? kua.surfaceBorder : colors.cardBorder, position: 'absolute', borderWidth: 1, borderRadius: GEOMETRY['radius-2xl'], overflow: 'hidden' },
   copy: { padding: SPACING.margin, gap: SPACING['space-md'] },
   actions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: SPACING['space-sm'] },
   action: { minWidth: 44, minHeight: 44, paddingHorizontal: SPACING['space-md'], paddingVertical: SPACING['space-sm'], justifyContent: 'center', alignItems: 'center', borderRadius: GEOMETRY['radius-xl'] },
