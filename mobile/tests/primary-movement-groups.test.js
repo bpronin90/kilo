@@ -78,6 +78,9 @@ describe('primary movement taxonomy', () => {
     expect(groupForExerciseId('dumbbell_renegade_row')).toBe('trunk_stability');
     expect(groupForExerciseId('copenhagen_plank')).toBe('hip_abduction_adduction');
     expect(groupForExerciseId('sled_push')).toBe('mixed_conditioning');
+    expect(groupForExerciseId('side_plank')).toBe('trunk_stability');
+    expect(groupForExerciseId('side_plank_hip_lift')).toBe('trunk_movement');
+    expect(groupForFamilyId('side_plank')).toBeNull();
     expect(groupForFamilyId('thruster')).toBe('mixed_conditioning');
     expect(groupForFamilyId('jerk')).toBe('olympic_lift');
     expect(groupForFamilyId('push_press')).toBe('vertical_push');

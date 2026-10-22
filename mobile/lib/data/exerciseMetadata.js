@@ -23,6 +23,7 @@ import {
   groupForResolution,
   getPrimaryMovementGroup,
   legacyBroadGroupFor,
+  primaryPatternsFor,
   TAXONOMY_VERSION,
 } from './primaryMovementGroups.js';
 
@@ -66,9 +67,11 @@ export function getExerciseMetadata(input) {
   }
   const { groupId, basis: groupBasis } = groupForResolution(resolution);
   const group = getPrimaryMovementGroup(groupId);
-  // Patterns the curated group does not cover; never "the rest after the first".
+  // Patterns outside the curated group's primary motion (its own patterns plus the
+  // family's documented tie-rule exceptions); never "the rest after the first".
+  const primaryPatterns = primaryPatternsFor(groupId, resolution.familyId);
   const secondary = fields.movementPatterns && groupBasis !== 'none'
-    ? Object.freeze(fields.movementPatterns.filter((p) => !group.movement_patterns.includes(p)))
+    ? Object.freeze(fields.movementPatterns.filter((p) => !primaryPatterns.includes(p)))
     : null;
   return Object.freeze({
     input: name,

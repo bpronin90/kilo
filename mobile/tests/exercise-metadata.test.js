@@ -125,6 +125,24 @@ describe('secondary patterns, ambiguity and unknown input', () => {
     expect(getExerciseMetadata('Barbell Bench Press').secondaryMovementPatterns).toEqual([]);
   });
 
+  it('never labels a sole curated primary motion as secondary', () => {
+    for (const name of ['Dumbbell Pullover', 'Straight Arm Cable Pulldown', 'Dumbbell Bent Over Rear Delt Raise', 'Barbell Push Jerk', 'Copenhagen Plank', 'Mountain Climber']) {
+      const m = getExerciseMetadata(name);
+      expect(m.exerciseId).toBeTruthy();
+      expect(m.secondaryMovementPatterns).toEqual([]);
+    }
+    expect(getExerciseMetadata('Side Plank Hip Lift')).toMatchObject({
+      primaryGroup: { id: 'trunk_movement' },
+      secondaryMovementPatterns: [],
+    });
+    // Every catalog exercise keeps at least one pattern as primary motion.
+    for (const e of EXERCISE_LIBRARY.exercises) {
+      const m = getExerciseMetadata(e.name);
+      expect(m.exerciseId).toBe(e.id);
+      expect(m.secondaryMovementPatterns.length).toBeLessThan(e.movement_patterns.length);
+    }
+  });
+
   it('keeps assistance ambiguous with no equipment and high/low bar distinct', () => {
     const a = getExerciseMetadata('assisted pull-up');
     expect(a).toMatchObject({ matchType: 'ambiguous', exerciseId: null });

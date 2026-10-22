@@ -64,6 +64,18 @@ function agreedGroup(exerciseIds) {
   return only || null;
 }
 
+// Movement patterns the curated group treats as primary motion for a family:
+// the group's own patterns plus the family's documented tie-rule exceptions (for
+// example pullover is vertical pull although its sole pattern is shoulder
+// extension). Anything else an exercise lists is a secondary pattern.
+export function primaryPatternsFor(groupId, familyId) {
+  const own = groupsById.get(groupId)?.movement_patterns || [];
+  const extra = typeof familyId === 'string' && has(PRIMARY_GROUPS.primary_pattern_exceptions, familyId)
+    ? PRIMARY_GROUPS.primary_pattern_exceptions[familyId]
+    : [];
+  return Object.freeze([...own, ...extra]);
+}
+
 export function groupForFamilyId(familyId) {
   if (typeof familyId !== 'string' || !has(PRIMARY_GROUPS.families, familyId)) return null;
   return PRIMARY_GROUPS.families[familyId] || null;

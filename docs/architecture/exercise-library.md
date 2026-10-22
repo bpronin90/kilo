@@ -74,7 +74,8 @@ input; no catalog exercise uses it).
 
 Tie rules for hybrids: (1) group by the movement the exercise exists to load, with a
 limiting stabilizer deciding only when no external-load pattern leads (renegade row
-and Copenhagen plank follow their stabilizer); (2) single-joint deltoid and scapular
+and Copenhagen plank follow their stabilizer; dynamic side plank hip lift is trunk
+movement, static side plank is trunk stability); (2) single-joint deltoid and scapular
 work is shoulder isolation, while chest fly stays horizontal push; (3) lat-dominant
 shoulder extension (pullover, straight-arm pulldown) is vertical pull; (4) thruster
 is mixed conditioning, jerk is an Olympic lift, push press stays vertical push;
@@ -92,7 +93,9 @@ Helpers (read-only, nothing persisted or memoized):
   and keep it as `input`. An exact or alias match supplies every field; a family or
   ambiguous candidate set supplies a field only when its members agree on it, so
   unknown equipment never suppresses agreed movement data and muscles are never
-  unioned. `secondaryMovementPatterns` are the patterns outside the curated group.
+  unioned. `secondaryMovementPatterns` are the patterns outside the group's primary motion (the
+  group's own patterns plus `primary_pattern_exceptions` for tie-rule families such as
+  pullover); every exercise keeps at least one primary pattern.
   Results are fresh frozen records carrying dataset, taxonomy, and alias versions.
 
 Warm-up, working, and cooldown are occurrence context, independent of exercise type

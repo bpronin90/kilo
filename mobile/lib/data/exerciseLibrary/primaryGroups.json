@@ -348,7 +348,7 @@
   "shoulder_stretch": "stretching",
   "shrug": "shoulder_isolation",
   "side_bend": "trunk_movement",
-  "side_plank": "trunk_stability",
+  "side_plank": null,
   "single_leg_hop": "jump_throw",
   "sit_up": "trunk_movement",
   "sled_pull": "mixed_conditioning",
@@ -751,7 +751,7 @@
   "plank_shoulder_tap": "trunk_stability",
   "plank_up_down": "trunk_stability",
   "side_plank": "trunk_stability",
-  "side_plank_hip_lift": "trunk_stability",
+  "side_plank_hip_lift": "trunk_movement",
   "weighted_side_plank": "trunk_stability",
   "reverse_plank": "trunk_stability",
   "dead_bug": "trunk_stability",
@@ -929,5 +929,35 @@
   "wrist_flexor_stretch": "stretching",
   "wrist_extensor_stretch": "stretching",
   "neck_side_bend_stretch": "stretching"
+ },
+ "primary_pattern_exceptions": {
+  "straight_arm_pulldown": [
+   "shoulder_extension"
+  ],
+  "pullover": [
+   "shoulder_extension"
+  ],
+  "rear_delt_fly": [
+   "horizontal_pull"
+  ],
+  "copenhagen_plank": [
+   "anti_lateral_flexion"
+  ],
+  "mountain_climber": [
+   "anti_extension",
+   "trunk_rotation"
+  ],
+  "jerk": [
+   "vertical_push"
+  ],
+  "thruster": [
+   "vertical_push"
+  ],
+  "turkish_get_up": [
+   "full_body"
+  ],
+  "windmill": [
+   "full_body"
+  ]
  }
 }
