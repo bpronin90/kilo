@@ -122,7 +122,12 @@ health-data-delete | HTTP/2 401 ;access-control-allow-origin: https://kilo-app.p
 ## Deployed browser flows (2026-10-21)
 
 Production web app `https://kilo-app.pages.dev` against the deployed functions
-above. Headless Chromium (playwright-core 1.63, chromium-1243), viewport
+above. **Rendered web-app revision:** `c0d996ecacfe39901419925cc43b5bd3b2321f6c`
+(GitHub deployment 7241150004, environment `production-web`, status `success`
+at 2026-10-22T01:10:58Z, the latest production-web deployment). Screenshots were
+captured 2026-10-22T01:21:20Z–01:26:29Z, inside that deployment's window; the
+first-use walkthrough that revision added appeared, and was dismissed, in every
+run. Headless Chromium (playwright-core 1.63, chromium-1243), viewport
 390×844. Each flow used its own disposable account
 `kilo-e2e-1552-<a|b|c>@kilo-e2e.invalid`, created through the Auth admin API
 with a confirmed email (Turnstile cannot be passed by automation, and the
@@ -139,6 +144,41 @@ read-only SQL on `auth.*` and `kilo.*`.
 | Account deletion | B | `account-delete` 200, ACAO production | Signed out to the sign-in screen [b-06](b-06-deleted.png). Old refresh token → 400; `auth.users` has 0 rows for B. |
 | Consent grant + upload | C | `consent_grant` 200; one weight entry uploaded | Export showed only C's id across cloud tables. [c-11](c-11-uploaded.png) |
 | Consent withdrawal + health-data deletion | C | `consent_withdraw` 200 (job queued, `deletion_pending`); `health-data-delete` 200 `{"ok":true,"status":"withdrawn"}`, ACAO production | "Cloud Sync is off. Your cloud health data is being deleted; your data on this device is untouched." [c-13](c-13-withdrawn.png). SQL: `weight_entries` 0, consent `withdrawn` with `cloud_data_deleted_at` set, job `complete`. |
+
+### Visual comparison
+
+#1552 changes no `mobile/` production source (`git diff origin/main -- mobile/`
+touches tests only), so no layout changes by construction. What changes is
+which existing state the user reaches.
+
+**Reference (original problem):** the issue's quoted web sign-out failure —
+every sign-out ends on "Could not revoke Android restore key. Sign out again to
+retry." because the browser rejects the revoke `fetch`. No screenshot was taken
+before the function deploy. [a-02](a-02-revoke-failed.png) renders that exact
+state on the revision above: the harness aborts the revoke request, which gives
+the client the same rejected `fetch` (`TypeError`) a CORS block did, and the same
+code path (`useAuthSession.signOut`).
+
+**Checklist** (390×844, Account screen), recorded from the reference:
+
+1. Status line in the existing status area below the legal links: left-aligned
+   with the 16px screen gutter, existing body text size and muted colour.
+2. Long status text wraps within the content width; no clipping and no
+   horizontal overflow.
+3. Sign Out button, Danger Zone card and legal links keep their order, spacing
+   and sizes.
+4. After a successful sign-out the screen returns to the signed-out Sign In form
+   with its existing layout.
+
+**Comparison:**
+
+| State | Screenshot | Result |
+| --- | --- | --- |
+| Revoke rejected (reference / pre-fix state) | [a-02](a-02-revoke-failed.png) | Pass 1–3: message wraps over two lines at the gutter; button, Danger Zone and links unchanged. |
+| Revoke allowed (fixed) | [a-03](a-03-signed-out.png) | Pass 4: the signed-out form renders; the user is no longer stuck. Before the fix this state was unreachable on web. |
+| Account deleted | [b-06](b-06-deleted.png) | Pass 4: the same signed-out form after deletion. |
+| Health-data deletion pending | [c-13](c-13-withdrawn.png) | Pass 1–2: the truthful pending copy wraps inside the Cloud Sync section; Danger Zone unchanged. |
+| Cloud export | [b-04](b-04-export.png) | Server call passes (200, own data only). The visible "Export failed." is the separate delivery defect #1563, unchanged by #1552. |
 
 Found during verification, outside #1552's scope:
 
