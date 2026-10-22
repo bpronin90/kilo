@@ -14,6 +14,7 @@ import { RebuildBaselineAction } from './RebuildBaseline';
 import { MatchExerciseNamesAction } from './MatchExerciseNames';
 import { TidyRecoveryNamesAction } from './TidyRecoveryNames';
 import { GROUP_EDIT_UNAVAILABLE, MovementGroupEditorControl } from './MovementGroupEditor';
+import { groupSourceText } from '../../lib/data/recoveryMovementGroups';
 import { createStyles } from './analyticsRecoveryStyles';
 import { createLogManageStyles } from './logRecoveryManageStyles';
 import { createMovementGroupStyles } from './recoveryMovementGroupStyles';
@@ -65,12 +66,12 @@ export function MovementGroupsManage({ block, weeks, notes, routineTitle, groupE
           {notice ? <Text testID="movement-groups-notice" style={mg.notice}>{notice}</Text> : null}
           {exercises.map(ex => (
             <View key={ex.key} testID={`manage-group-exercise-${ex.key}`} style={mg.exercise}>
-              <View style={mg.exerciseHead}>
-                <Text style={mg.exerciseName}>{ex.name}</Text>
+              <View style={mg.manageHead}>
+                <Text style={mg.manageName}>{ex.name}</Text>
                 <MovementGroupEditorControl exercise={ex} editing={editing} routineTitle={routineTitle} />
               </View>
               <Text style={mg.exerciseMeta}>
-                {`${ex.groupLabel} · ${ex.source === 'override' ? 'Your choice' : 'Automatic'}${ex.origin === 'added' ? ' · added during recovery' : ''}`}
+                {`${ex.groupLabel} · ${groupSourceText(ex)}${ex.origin === 'added' ? ' · added during recovery' : ''}`}
               </Text>
             </View>
           ))}

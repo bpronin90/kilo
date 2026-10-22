@@ -435,3 +435,66 @@ describe('display components never derive (#1315 review)', () => {
     expect([...ROW_STATUS_KINDS]).toEqual(['at_or_above', 'rebuilding', 'early', 'cannot_compare', 'not_trained_yet', 'added']);
   });
 });
+
+describe('movement groups on the shared snapshot (#1581)', () => {
+  const RDL_BASE = '-Romanian Deadlift\n- 100 5\n-Bench\n- 100 5\n-Mystery Machine Thing\n- 50 10';
+  const fixture = (groups) => ({
+    block: mkBlock(captureRecoveryBaselineFromText(RDL_BASE)),
+    weeks: [mkWeek(1, 'w1')],
+    notes: [{ ...note('nb', RDL_BASE), exercise_movement_groups: groups },
+      note('w1', '-Romanian Deadlift\n- 80 5\n-Bench\n- 90 5\n-Mystery Machine Thing\n- 40 10\n-Lat Pulldown\n- 50 10')],
+  });
+  const snap = (groups) => { _resetRecoverySnapshotStore(); return getRecoverySnapshot(fixture(groups)); };
+  const member = (s, key) => s.groupEditor.exercises.find(e => e.key === key);
+
+  test('classifies the frozen record name; keyword fallback is labelled; never re-derived from the key', () => {
+    const s = snap(null);
+    // The frozen baseline stores the coarse alias name; that is what is classified.
+    expect(member(s, 'rdl')).toMatchObject({ name: 'RDL', group: 'hip_hinge', source: 'library' });
+    expect(member(s, 'bench')).toMatchObject({ group: 'push', source: 'keywords', groupLabel: 'Push' });
+    expect(member(s, 'mystery machine thing')).toMatchObject({ group: 'other', source: 'keywords' });
+    expect(member(s, 'lat pulldown')).toMatchObject({ origin: 'added', group: 'vertical_pull', source: 'library' });
+    // A row with no name keeps the coarse keyword answer for its key.
+    const { deriveMovementGroupBreakdown } = require('../lib/data/recoveryMovementGroups');
+    const nameless = deriveMovementGroupBreakdown({ baselineRows: [{ key: 'rdl' }] }).groups[0].exercises[0];
+    expect(nameless).toMatchObject({ group: 'hinge', source: 'keywords' });
+  });
+
+  test('legacy broad and detailed choices regroup display only: strength totals and frozen evidence unchanged', () => {
+    const plain = snap(null);
+    const chosen = snap({ version: 2, overrides: { rdl: 'legs', bench: 'horizontal_push' } });
+    expect(chosen.strength).toEqual(plain.strength);
+    expect(chosen.weeks).toEqual(plain.weeks);
+    const f = fixture({ version: 1, overrides: { rdl: 'legs' } });
+    const frozen = clone(f);
+    _resetRecoverySnapshotStore();
+    getRecoverySnapshot(f);
+    expect(f).toEqual(frozen); // rendering writes nothing back
+    expect(member(chosen, 'rdl')).toMatchObject({ group: 'legs', source: 'override', legacy_choice: true, groupLabel: 'Legs (quad-dominant)', automatic_group: 'hip_hinge' });
+    expect(member(chosen, 'bench')).toMatchObject({ group: 'horizontal_push', source: 'override', legacy_choice: false });
+    const listed = chosen.movementGroups.breakdown.groups.flatMap(g => g.exercises.map(e => e.key));
+    expect(new Set(listed).size).toBe(listed.length);
+    expect(chosen.movementGroups.breakdown.total_count).toBe(plain.movementGroups.breakdown.total_count);
+  });
+
+  test('added lifts are classified from the week note original names, not the alias-grouped name', () => {
+    const block = mkBlock(captureRecoveryBaselineFromText('-Deadlift\n- 100 5'));
+    const notes = [note('nb', '-Deadlift\n- 100 5'), note('w1', '-Deadlift\n- 80 5\n-incline press\n- 50 5\n-pulldowns\n- 50 10\n-Barbell Curl\n- 30 10')];
+    _resetRecoverySnapshotStore();
+    const s = getRecoverySnapshot({ block, weeks: [mkWeek(1, 'w1')], notes });
+    const byKey = (k) => s.groupEditor.exercises.find(e => e.key === k);
+    // "incline press" groups under "Incline DB Press" for history, but the original
+    // text is not a library match: keyword fallback, never library certainty.
+    expect(byKey('incline db press')).toMatchObject({ origin: 'added', name: 'Incline DB Press', group: 'push', source: 'keywords' });
+    expect(byKey('lat pulldown')).toMatchObject({ group: 'pull', source: 'keywords' });
+    expect(byKey('barbell curl')).toMatchObject({ group: 'elbow_flexion', source: 'library' });
+    const panel = s.movementGroups.breakdown.groups.flatMap(g => g.exercises).find(e => e.key === 'incline db press');
+    expect(panel).toMatchObject({ group: 'push', source: 'keywords' });
+  });
+
+  test('an unsupported version is unavailable, rules-only, and never shown as saved', () => {
+    const s = snap({ version: 3, overrides: { rdl: 'legs' } });
+    expect(s.groupEditor.source).toMatchObject({ available: false, reason: 'invalid' });
+    expect(member(s, 'rdl')).toMatchObject({ group: 'hip_hinge', source: 'library' });
+  });
+});

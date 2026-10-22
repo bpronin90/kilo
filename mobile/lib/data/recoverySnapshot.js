@@ -18,7 +18,7 @@ import { movementGroupLabel } from './movementGroups.js';
 import { deriveRecoveryStrength, displayPercent, STRENGTH_STATUS } from './recoveryStrength.js';
 import { deriveRecoveryTotal, deriveLiftStatuses, totalCaption, totalExplainerLines, TOTAL_REASON, TOTAL_EMPTY_COPY } from './recoveryTotal.js';
 import { deriveRecoveryWeekBands } from './recoveryReturnBands.js';
-import { deriveMovementGroupBreakdown, resolveMovementGroupSource } from './recoveryMovementGroups.js';
+import { deriveMovementGroupBreakdown, resolveMovementGroupSource, withOriginalNames } from './recoveryMovementGroups.js';
 
 export const STRENGTH_EMPTY_COPY = Object.freeze({
   pair_unavailable: 'Baseline best-set data unavailable. Rebuild the baseline in Manage block (Log tab) to score strength.',
@@ -234,13 +234,17 @@ export function compactRecoverySummary(snapshot) {
 function _withGroups(core, block, notes, selectedWeek, notesError) {
   const baselineRows = block.baseline && Array.isArray(block.baseline.exercises) ? block.baseline.exercises : [];
   const source = resolveMovementGroupSource({ block, notes, notesError });
+  // Added rows carry an alias-grouped name; classify the week notes' original
+  // parsed names instead (#1581). Frozen baseline rows keep their own name.
+  const weekNoteIds = new Set(core.weekResults.map(w => w && w.note_id).filter(Boolean));
+  const original = withOriginalNames((notes || []).filter(n => n && weekNoteIds.has(n.id) && !n.deleted_at));
   // Numeric breakdown (needs a strength model) for the read-only Analytics panel.
   const movementGroups = core.strength.status === STRENGTH_STATUS.OK ? {
     source,
     breakdown: deriveMovementGroupBreakdown({
       strength: core.strength,
       baselineRows: (block.baseline && block.baseline.exercises) || [],
-      addedRows: (selectedWeek && selectedWeek.added) || [],
+      addedRows: ((selectedWeek && selectedWeek.added) || []).map(original),
       overrides: source.overrides,
     }),
   } : null;
@@ -250,7 +254,7 @@ function _withGroups(core, block, notes, selectedWeek, notesError) {
   const seen = new Set(baselineRows.map(r => r && r.key));
   for (const w of core.weekResults) {
     for (const row of w.added || []) {
-      if (row && row.key && !seen.has(row.key)) { seen.add(row.key); addedRows.push(row); }
+      if (row && row.key && !seen.has(row.key)) { seen.add(row.key); addedRows.push(original(row)); }
     }
   }
   const order = new Map([...baselineRows, ...addedRows].map((r, i) => [r && r.key, i]));

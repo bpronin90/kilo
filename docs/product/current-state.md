@@ -21,7 +21,9 @@ The active application lives in `mobile/` and has five tabs:
 - **Analytics** derives workout, strength, weight, fatigue, and recovery views,
   including a Training breakdown (Movement, Muscles, Equipment) of eligible
   ordinary history placed after Strength and shown as paused baseline history
-  during an active Recovery block.
+  during an active Recovery block. Recovery groups lifts by detailed movement
+  (for example Hip hinge, Vertical pull) while keeping earlier broad group
+  choices as saved.
 
 Progression suggestions are an opt-in feature (off by default, enabled from
 Settings). When on, the deterministic rule engine's double-progression prompts

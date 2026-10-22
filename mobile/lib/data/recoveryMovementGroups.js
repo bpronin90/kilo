@@ -12,19 +12,88 @@
 // selected week. A group with no scored cohort lift has no percent (null), never
 // 0%. Added and unscoreable exercises stay grouped but never enter an average.
 
-import { MOVEMENT_GROUPS, OVERRIDE_STATE, keywordMovementGroup, readMovementOverrides, resolveMovementGroup } from './movementGroups.js';
+//
+// Classification (#1581). A saved choice (version 1 broad or version 2 detailed)
+// always wins, exactly as stored. Otherwise the shared library resolver
+// classifies the record's own frozen display name; when the library cannot (an
+// unknown name, or a record with no name), the existing keyword rules decide and
+// the source says so ('keywords', never presented as library certainty). The
+// normalized key is never fed to the library: it would reconstruct a
+// specificity the record does not hold. Display buckets only: scores, cohort,
+// percent and frozen evidence are read from `strength` unchanged.
+
+import {
+  DETAILED_MOVEMENT_GROUPS, MOVEMENT_GROUPS, OVERRIDE_STATE, isDetailedMovementGroupId, isMovementGroupId,
+  keywordMovementGroup, normalizeOverrideKey, readMovementOverrides,
+} from './movementGroups.js';
+import { UNCLASSIFIED_GROUP_ID, groupForResolution } from './primaryMovementGroups.js';
+import { resolveExerciseName } from './exerciseLibrary';
+import { normalizeExerciseKey, parseWorkoutNote } from '../parser.js';
+
+// Row mapper adding `original_names`: every distinct original parsed exercise
+// name in `notes` whose history key is the row's key. Unparseable notes add none.
+export function withOriginalNames(notes = []) {
+  const byKey = new Map();
+  for (const n of notes) {
+    let sections = [];
+    try { sections = (typeof n.raw_text === 'string' && parseWorkoutNote(n.raw_text).sections) || []; } catch { sections = []; }
+    for (const section of sections) {
+      for (const ex of (section && section.exercises) || []) {
+        const name = ex && typeof ex.name === 'string' ? ex.name.trim() : '';
+        if (!name) continue;
+        const key = normalizeExerciseKey(name);
+        if (!byKey.has(key)) byKey.set(key, new Set());
+        byKey.get(key).add(name);
+      }
+    }
+  }
+  return (row) => (row && byKey.has(row.key) ? { ...row, original_names: [...byKey.get(row.key)] } : row);
+}
+
+// Detailed buckets first (library order), then the broad buckets that only
+// legacy choices and keyword fallback fill.
+const BUCKETS = Object.freeze([...DETAILED_MOVEMENT_GROUPS, ...MOVEMENT_GROUPS]);
+
+// { group, source: 'library' | 'keywords' } for one row, ignoring overrides. A row
+// with `original_names` (an added lift) is classified from those: the library
+// answers only when every original name agrees; otherwise keywords on the first.
+export function automaticRecoveryGroup(row) {
+  const originals = row && Array.isArray(row.original_names) ? row.original_names.filter(n => typeof n === 'string' && n.trim()) : [];
+  if (originals.length > 0) {
+    const ids = new Set(originals.map(n => groupForResolution(resolveExerciseName(n)).groupId));
+    const [only] = ids;
+    if (ids.size === 1 && only !== UNCLASSIFIED_GROUP_ID) return { group: only, source: 'library' };
+    return { group: keywordMovementGroup(originals[0]), source: 'keywords' };
+  }
+  const name = row && typeof row.name === 'string' && row.name.trim() ? row.name : null;
+  if (name) {
+    const { groupId } = groupForResolution(resolveExerciseName(name));
+    if (groupId !== UNCLASSIFIED_GROUP_ID) return { group: groupId, source: 'library' };
+  }
+  return { group: keywordMovementGroup(name || (row && row.key) || ''), source: 'keywords' };
+}
 
 export function deriveMovementGroupBreakdown({ strength = null, baselineRows = [], addedRows = [], overrides = {} } = {}) {
   const scoreByKey = new Map(((strength && strength.lifts) || []).map(l => [l.key, l]));
   const members = [];
+  const seen = new Set();
   const add = (row, origin) => {
-    if (!row || !row.key) return;
+    if (!row || !row.key || seen.has(row.key)) return;
+    seen.add(row.key);
     const name = row.name || row.key;
-    const { group, source } = resolveMovementGroup(row.key, overrides);
+    const auto = automaticRecoveryGroup(row);
+    const k = normalizeOverrideKey(row.key);
+    const own = Object.prototype.hasOwnProperty.call(overrides, k) ? overrides[k] : null;
+    const chosen = own && (isMovementGroupId(own) || isDetailedMovementGroupId(own));
     const lift = origin === 'baseline' ? scoreByKey.get(row.key) : null;
     const percent = lift && lift.in_cohort && Number.isFinite(lift.percent) ? lift.percent : null;
     members.push({
-      key: row.key, name, origin, group, source, automatic_group: keywordMovementGroup(row.key),
+      key: row.key, name, origin,
+      group: chosen ? own : auto.group,
+      source: chosen ? 'override' : auto.source,
+      legacy_choice: chosen ? isMovementGroupId(own) : false,
+      automatic_group: auto.group,
+      automatic_source: auto.source,
       in_cohort: !!(lift && lift.in_cohort),
       percent,
     });
@@ -32,7 +101,7 @@ export function deriveMovementGroupBreakdown({ strength = null, baselineRows = [
   for (const row of baselineRows) add(row, 'baseline');
   for (const row of addedRows) add(row, 'added');
 
-  const groups = MOVEMENT_GROUPS.map(({ id, label }) => {
+  const groups = BUCKETS.map(({ id, label }) => {
     const exercises = members.filter(m => m.group === id);
     const cohort = exercises.filter(m => m.in_cohort);
     const scored = cohort.filter(m => m.percent != null);
@@ -64,4 +133,12 @@ export function resolveMovementGroupSource({ block, notes = [], notesError = nul
   const read = readMovementOverrides(note.exercise_movement_groups);
   if (read.state === OVERRIDE_STATE.INVALID) return { available: false, reason: 'invalid', overrides: {}, noteId };
   return { available: true, reason: null, overrides: read.overrides, noteId };
+}
+
+// How a member got its group, for display. Keyword fallback is named as such so
+// it never reads as library certainty; a legacy broad choice says so.
+export function groupSourceText(ex) {
+  if (!ex) return 'Automatic';
+  if (ex.source === 'override') return ex.legacy_choice ? 'Your earlier broad choice' : 'Your choice';
+  return ex.source === 'keywords' ? 'Automatic (name keywords)' : 'Automatic';
 }

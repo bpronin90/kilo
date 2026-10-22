@@ -10,13 +10,18 @@ import { setCloudTransport } from '../storage/cloudAdapter';
 import { sync } from '../storage/cloud/syncAdapter';
 import { exportBackup, importBackup, IMPORT_MODES } from '../storage/entries/backupImport';
 import { updateWorkoutNoteItem } from '../storage/entries/workoutNotes';
-import { setMovementGroupCore } from '../hooks/entries/movementGroupHooks';
+import { DetailedUnsupported, serverAccepts, setMovementGroupCore } from '../hooks/entries/movementGroupHooks';
 import { buildBootstrapPlan } from '../storage/cloudAdapter';
 import { createSupabaseTransport, resetValidatedUserCacheForTests } from '../storage/cloud/transport';
 import {
   SYNC_TABLES, getDirtyRecords, isTombstone, resetClientIdCacheForTests, resetStampClockForTests, DERIVED_NOTE_FIELDS,
 } from '../storage/syncQueue';
 import { __resetSyncQueue } from '../storage/syncRecovery';
+
+const mockRpc = jest.fn();
+jest.mock('../lib/supabaseClient', () => ({
+  getSupabaseClient: () => ({ schema: () => ({ rpc: (...args) => mockRpc(...args) }) }),
+}));
 
 jest.mock('../hooks/entries/workoutNoteHooks', () => ({
   notifyWorkoutNotes: jest.fn(),
@@ -112,6 +117,74 @@ describe('local write path', () => {
     expect(n.exercise_classifications.deadlift).toBe('progressing');
   });
 
+  test('a detailed choice on a version 1 map writes version 2, keeps the legacy choice, reads back; reset keeps version 2', async () => {
+    await Storage.saveWorkoutNoteItem(note({ exercise_movement_groups: MAP }));
+    const V2 = { version: 2, overrides: { deadlift: 'legs', squat: 'squat' } };
+    expect(await setMovementGroupCore(storage, { noteId: 'wn-1', key: 'Squat', group: 'squat' })).toMatchObject({ ok: true, map: V2 });
+    expect((await stored()).exercise_movement_groups).toEqual(V2);
+    await setMovementGroupCore(storage, { noteId: 'wn-1', key: 'squat', group: null });
+    expect((await stored()).exercise_movement_groups).toEqual({ version: 2, overrides: { deadlift: 'legs' } });
+  });
+
+  test('a failed detailed write leaves the version 1 map untouched; the retry lands', async () => {
+    await Storage.saveWorkoutNoteItem(note({ exercise_movement_groups: MAP }));
+    const failing = { ...storage, updateNote: async () => { throw new Error('offline'); } };
+    expect(await setMovementGroupCore(failing, { noteId: 'wn-1', key: 'squat', group: 'squat' })).toMatchObject({ ok: false });
+    expect((await stored()).exercise_movement_groups).toEqual(MAP);
+    expect((await setMovementGroupCore(storage, { noteId: 'wn-1', key: 'squat', group: 'squat' })).ok).toBe(true);
+    expect((await stored()).exercise_movement_groups).toEqual({ version: 2, overrides: { deadlift: 'legs', squat: 'squat' } });
+  });
+
+  test('concurrent detailed and broad writes all land in one version 2 map', async () => {
+    await Storage.saveWorkoutNoteItem(note());
+    await Promise.all([
+      setMovementGroupCore(storage, { noteId: 'wn-1', key: 'deadlift', group: 'legs' }),
+      setMovementGroupCore(storage, { noteId: 'wn-1', key: 'squat', group: 'squat' }),
+      updateWorkoutNoteItem('wn-1', { title: 'Renamed' }),
+    ]);
+    const n = await stored();
+    expect(n.exercise_movement_groups).toEqual({ version: 2, overrides: { deadlift: 'legs', squat: 'squat' } });
+    expect(n.title).toBe('Renamed');
+  });
+
+  test('a server that does not accept version 2 refuses the detailed write before anything is stored', async () => {
+    await Storage.saveWorkoutNoteItem(note({ exercise_movement_groups: MAP }));
+    const seen = [];
+    const old = { ...storage, serverAccepts: async (map) => { seen.push(map); return false; } };
+    expect(await setMovementGroupCore(old, { noteId: 'wn-1', key: 'squat', group: 'squat' })).toEqual({ ok: false, error: DetailedUnsupported });
+    expect(seen).toEqual([{ version: 2, overrides: { deadlift: 'legs', squat: 'squat' } }]);
+    expect((await stored()).exercise_movement_groups).toEqual(MAP);
+    expect((await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES)).filter(r => r.id === 'wn-1' && r.exercise_movement_groups?.version === 2)).toEqual([]);
+    // A throwing probe is a failure too; a version 1 write never asks the server.
+    const throwing = { ...storage, serverAccepts: async () => { throw new Error('offline'); } };
+    expect((await setMovementGroupCore(throwing, { noteId: 'wn-1', key: 'squat', group: 'squat' })).ok).toBe(false);
+    seen.length = 0;
+    expect((await setMovementGroupCore(old, { noteId: 'wn-1', key: 'squat', group: 'legs' })).ok).toBe(true);
+    expect(seen).toEqual([]);
+    const accepting = { ...storage, serverAccepts: async () => true };
+    expect((await setMovementGroupCore(accepting, { noteId: 'wn-1', key: 'squat', group: 'squat' })).ok).toBe(true);
+  });
+
+  test('serverAccepts: local mode needs no server; cloud mode asks the kilo validator and only an explicit true passes', async () => {
+    mockRpc.mockReset();
+    expect(await serverAccepts({ version: 2, overrides: {} })).toBe(true);
+    expect(mockRpc).not.toHaveBeenCalled();
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    try {
+      mockRpc.mockResolvedValueOnce({ data: true, error: null });
+      expect(await serverAccepts({ version: 2, overrides: { squat: 'squat' } })).toBe(true);
+      expect(mockRpc).toHaveBeenCalledWith('is_valid_exercise_movement_groups', { p_value: { version: 2, overrides: { squat: 'squat' } } });
+      mockRpc.mockResolvedValueOnce({ data: false, error: null });
+      expect(await serverAccepts({ version: 2, overrides: {} })).toBe(false);
+      mockRpc.mockResolvedValueOnce({ data: null, error: { code: 'PGRST202' } });
+      expect(await serverAccepts({ version: 2, overrides: {} })).toBe(false);
+      mockRpc.mockRejectedValueOnce(new Error('network'));
+      expect(await serverAccepts({ version: 2, overrides: {} })).toBe(false);
+    } finally {
+      Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+    }
+  });
+
   test('the overrides are authored content, not a derived cache field', () => {
     expect(DERIVED_NOTE_FIELDS).toContain('exercise_classifications');
     expect(DERIVED_NOTE_FIELDS).not.toContain('exercise_movement_groups');
@@ -131,6 +204,15 @@ describe('backup export and restore', () => {
     expect(Object.prototype.hasOwnProperty.call(await stored('wn-legacy'), 'exercise_movement_groups')).toBe(false);
   });
 
+  test('a version 2 map round-trips export -> restore exactly', async () => {
+    const V2 = { version: 2, overrides: { deadlift: 'legs', squat: 'squat' } };
+    await Storage.saveWorkoutNoteItem(note({ exercise_movement_groups: V2 }));
+    const backup = JSON.parse(JSON.stringify(await exportBackup()));
+    await AsyncStorage.clear();
+    expect((await importBackup(backup, 'replace')).ok).toBe(true);
+    expect((await stored()).exercise_movement_groups).toEqual(V2);
+  });
+
   test('an old backup without the field restores without inventing overrides', async () => {
     const legacy = { version: '3', exported_at: '2026-07-10T00:00:00.000Z', weight_entries: [], workout_notes: [note()], current_workout_id: 'wn-1', weight_goal: null, deload_history: [] };
     expect((await importBackup(legacy, 'replace')).ok).toBe(true);
@@ -140,7 +222,9 @@ describe('backup export and restore', () => {
   test.each([
     ['unknown group id', { version: 1, overrides: { squat: 'quads' } }],
     ['multi-group array', { version: 1, overrides: { squat: ['legs', 'hinge'] } }],
-    ['unsupported version', { version: 2, overrides: {} }],
+    ['unsupported version', { version: 3, overrides: {} }],
+    ['version 1 holding a detailed id', { version: 1, overrides: { squat: 'squat' } }],
+    ['version 2 unknown id', { version: 2, overrides: { squat: 'quads' } }],
     ['extra field', { version: 1, overrides: {}, extra: true }],
   ])('a backup carrying %s is rejected and nothing is restored', async (_l, bad) => {
     await Storage.saveWorkoutNoteItem(note({ id: 'wn-existing' }));
@@ -216,6 +300,16 @@ describe('cloud sync', () => {
     const notes = await Storage.getStorageAdapter().loadWorkoutNotes();
     expect(notes.find(n => n.id === 'wn-a').exercise_movement_groups).toEqual(MAP);
     expect(notes.find(n => n.id === 'wn-b').exercise_movement_groups).toBeUndefined();
+  });
+
+  test('a version 2 map uploads and is pulled by a second device unchanged', async () => {
+    const V2 = { version: 2, overrides: { deadlift: 'legs', squat: 'squat' } };
+    cloud.seed(SYNC_TABLES.WORKOUT_NOTES, { id: 'wn-c', title: 'C', raw_text: 'z', updated_at: '2026-07-02T00:00:00.000Z', exercise_movement_groups: V2 });
+    const adapter = Storage.getStorageAdapter();
+    await adapter.saveWorkoutNoteItem(note({ exercise_movement_groups: V2 }));
+    await sync();
+    expect(cloud.remote(SYNC_TABLES.WORKOUT_NOTES, 'wn-1').exercise_movement_groups).toEqual(V2);
+    expect((await adapter.loadWorkoutNotes()).find(n => n.id === 'wn-c').exercise_movement_groups).toEqual(V2);
   });
 
   test('row-level LWW: the later override edit wins over an earlier remote override', async () => {
