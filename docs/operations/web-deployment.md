@@ -102,15 +102,20 @@ if any `node_modules` path remains.
 
 ## Rollback
 
-Use either path; both take effect in seconds and keep the browser data of
-existing users.
+Rollback changes only which build the origin serves, so users' browser data
+is kept.
 
-- **Cloudflare dashboard (fastest).** Workers & Pages → `kilo-app` →
+- **Cloudflare rollback (fastest; tested).** Workers & Pages → `kilo-app` →
   Deployments → choose an earlier production deployment → **⋯ → Rollback to
-  this deployment**.
+  this deployment**. API equivalent:
+  `POST /accounts/<account>/pages/projects/kilo-app/deployments/<id>/rollback`.
+  Tested on 2026-10-22: the live origin switched builds within about 3 seconds
+  in each direction, and a saved weigh-in survived both switches (see the
+  [evidence](../evidence/public-web-launch/README.md#rollback)).
 - **Redeploy a known-good commit.** Actions → **Web Deploy** → Run workflow →
   enter the full SHA of an earlier `main` commit. The workflow rebuilds that
-  commit with the current variables.
+  commit with the current variables, which takes a few minutes. This path
+  cannot run until the workflow is on `main`.
 
 Afterwards confirm the deployment list shows the intended commit and reload
 the production URL. The next successful `main` push deploys over a rollback,

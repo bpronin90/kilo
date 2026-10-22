@@ -58,6 +58,22 @@ to the Git-connected `kilo-app` project created only a preview deployment
 (`https://50707ff7.kilo-app.pages.dev`), and production was unchanged. This is
 the method the deploy workflow uses. **Pass.**
 
+## Rollback
+
+Script: [`scripts/rollback.mjs`](scripts/rollback.mjs) uses one persistent
+browser profile at 390×844 against `https://kilo-app.pages.dev`, with Cloudflare
+rollback API calls between steps (2026-10-22).
+
+| Step (UTC) | Production deployment | Live bundle | Weigh-in 177.7 after reload |
+|---|---|---|---|
+| 00:16:01 seed | `05d7a923` (`main` @ `a1085ad2`) | `index-a7506e33…` | present (`rollback-1-before.png`) |
+| rollback to `59e66a50` (`main` @ `fce31aff`) | canonical switched; live in ~3 s | `index-0e5d1f1f…` | present (`rollback-2-rolled-back.png`) |
+| roll forward to `05d7a923` | canonical switched; live in ~3 s | `index-a7506e33…` | present (`rollback-3-restored.png`) |
+
+Production ended on the deployment it started on. The page errors logged in
+these runs are the pre-existing icon-font failure that this PR fixes. **Pass.**
+The workflow's redeploy-by-SHA path can be exercised only after merge.
+
 ## Authentication on the deployed origin
 
 Script: [`scripts/auth2.mjs`](scripts/auth2.mjs)
