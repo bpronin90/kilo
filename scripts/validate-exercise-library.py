@@ -175,7 +175,7 @@ NORMALIZE_SAMPLES = [
     "Barbell Bench Pre\u00df", "Barbell Bench Press\u0345", "\u1f72", "\u1fb2", "\u1f70\u03b9",
     "\u03a3\u03a4\u0391\u03a3", "\u03c3\u03c4\u03b1\u03c2", "R.D.L.", " D.B.  RDL", "Push-Up",
     "\uFB01x", "\u0130stanbul", "Farmer\u2019s Walk", "\uFF22\uFF22 bench", "a_b",
-    "5x5 @ 100kg", "Pre\u1e9e", "\u0131ncline", "\u13a0\uab70",
+    "5x5 @ 100kg", "\u1e97 bar row", "\u01f0 curl", "\u0390 raise", "Pre\u1e9e", "\u0131ncline", "\u13a0\uab70",
 ]
 
 

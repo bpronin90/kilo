@@ -121,6 +121,12 @@ describe('casefold parity with committed Python-generated fixture', () => {
     expect(normalizeExerciseName(input)).toBe(expected);
   });
 
+  it('recomposes casefold output before filtering marks', () => {
+    expect(normalizeExerciseName('\u1e97 bar row')).toBe('\u1e97 bar row');
+    expect(resolveExerciseName('\u1e97 bar row').matchType).toBe('unknown');
+    expect(resolveExerciseName('T bar row').exerciseId).toBe('t_bar_row');
+  });
+
   it('resolves capital sharp s and keeps dotless i distinct', () => {
     expect(resolveExerciseName('Barbell Bench Pre\u1e9e')).toMatchObject({
       matchType: 'exact',

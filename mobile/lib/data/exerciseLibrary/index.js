@@ -102,7 +102,9 @@ export function foldCase(text) {
 
 export function normalizeExerciseName(input) {
   if (typeof input !== 'string') return '';
+  // Recompose after casefold, before filtering: casefold can emit base + mark.
   const text = foldCase(input.normalize('NFKC'))
+    .normalize('NFKC')
     .replace(/[‘’'`]/g, '')
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
