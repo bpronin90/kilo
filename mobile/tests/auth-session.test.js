@@ -1245,3 +1245,233 @@ describe('native recovery deep-link handling', () => {
     expect(ref.current.recoveryError).toBe('');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Unusable auth error messages (#1564). A provider-side 500 on sign-up reached
+// the Account screen as the literal "{}". Every direct SDK-error return path
+// and the shared thrown-error normalizer must return a readable fallback for
+// empty/whitespace, "{}", missing/null, and non-string messages, keep useful
+// messages, and keep the failure free of success-only side effects.
+// ---------------------------------------------------------------------------
+describe('unusable auth error messages fall back to readable text (#1564)', () => {
+  const UNUSABLE_ERRORS = [
+    ['empty string', { message: '' }],
+    ['whitespace only', { message: '   \n\t' }],
+    ['literal {}', { name: 'AuthUnknownError', status: 500, message: '{}' }],
+    ['{} with surrounding whitespace', { message: '  {}  ' }],
+    ['null message', { message: null }],
+    ['missing message', { status: 500 }],
+    ['numeric message', { message: 500 }],
+    ['object message', { message: { code: 'unexpected_failure' } }],
+  ];
+
+  // Each action: how to make its SDK call resolve an error, how to invoke it,
+  // its action-specific fallback, and any extra result fields it keeps.
+  const ACTIONS = [
+    {
+      name: 'signInWithPassword',
+      fail: (error) => mockAuth.signInWithPassword.mockResolvedValue({ data: null, error }),
+      run: (h) => h.signInWithPassword('a@b.com', 'pw'),
+      fallback: 'Sign in failed. Try again.',
+      extra: { unconfirmed: false },
+    },
+    {
+      name: 'signUpWithPassword',
+      fail: (error) => mockAuth.signUp.mockResolvedValue({ data: null, error }),
+      run: (h) => h.signUpWithPassword('a@b.com', 'pw'),
+      fallback: 'Account could not be created. Try again later.',
+    },
+    {
+      name: 'resendSignupConfirmation',
+      fail: (error) => mockAuth.resend.mockResolvedValue({ data: null, error }),
+      run: (h) => h.resendSignupConfirmation('a@b.com'),
+      fallback: 'Confirmation email could not be sent. Try again later.',
+    },
+    {
+      name: 'signOut',
+      fail: (error) => mockAuth.signOut.mockResolvedValue({ error }),
+      run: (h) => h.signOut(),
+      fallback: 'Sign out failed. Try again.',
+      revoke: true,
+    },
+    {
+      name: 'resetPasswordForEmail',
+      fail: (error) => mockAuth.resetPasswordForEmail.mockResolvedValue({ error }),
+      run: (h) => h.resetPasswordForEmail('a@b.com', {}),
+      fallback: 'Password reset email could not be sent. Try again later.',
+    },
+    {
+      name: 'signInWithOAuth',
+      fail: (error) => mockAuth.signInWithOAuth.mockResolvedValue({ data: null, error }),
+      run: (h) => h.signInWithOAuth('github'),
+      fallback: 'Sign in could not be started. Try again.',
+    },
+    {
+      name: 'handleAuthCallbackUrl code exchange',
+      fail: (error) => mockAuth.exchangeCodeForSession.mockResolvedValue({ data: null, error }),
+      run: (h) => h.handleAuthCallbackUrl('https://app/?code=abc'),
+      fallback: 'Sign in did not complete.',
+    },
+    {
+      name: 'handleAuthCallbackUrl session lookup',
+      // Armed after mount so the restore probe keeps its default resolution.
+      failAfterMount: (error) => mockAuth.getSession.mockResolvedValueOnce({ data: { session: null }, error }),
+      run: (h) => h.handleAuthCallbackUrl('https://app/'),
+      fallback: 'Sign in did not complete.',
+    },
+    {
+      name: 'updatePassword',
+      fail: (error) => mockAuth.updateUser.mockResolvedValue({ data: null, error }),
+      run: (h) => h.updatePassword('new-pw'),
+      fallback: 'Password could not be updated. Try again.',
+    },
+  ];
+
+  async function runFailure(action, error) {
+    const restore = action.revoke ? withConfirmedRevoke() : null;
+    try {
+      action.fail?.(error);
+      const { ref } = renderAuthHook();
+      await flush();
+      action.failAfterMount?.(error);
+      const signedInBefore = ref.current.signedIn;
+      let result;
+      await act(async () => { result = await action.run(ref.current); });
+      return { result, ref, signedInBefore };
+    } finally {
+      restore?.();
+    }
+  }
+
+  describe.each(ACTIONS.map((a) => [a.name, a]))('%s', (_name, action) => {
+    test.each(UNUSABLE_ERRORS)('%s returns the readable fallback', async (_label, error) => {
+      const { result, ref, signedInBefore } = await runFailure(action, error);
+      expect(result).toEqual({ ok: false, error: action.fallback, ...(action.extra || {}) });
+      expect(result.error).not.toMatch(/\{\}|\[object Object\]/);
+      // A formatting fallback never turns a failure into a session change.
+      expect(ref.current.signedIn).toBe(signedInBefore);
+    });
+
+    test('a useful string message is preserved', async () => {
+      const { result } = await runFailure(action, { message: 'Email rate limit exceeded' });
+      expect(result).toEqual({ ok: false, error: 'Email rate limit exceeded', ...(action.extra || {}) });
+    });
+  });
+
+  test('sign-in fallback keeps the email_not_confirmed flag', async () => {
+    mockAuth.signInWithPassword.mockResolvedValue({ data: null, error: { message: '{}', code: 'email_not_confirmed' } });
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.signInWithPassword('a@b.com', 'pw'); });
+    expect(result).toEqual({ ok: false, error: 'Sign in failed. Try again.', unconfirmed: true });
+  });
+
+  test('signOut keeps the session and skips the wipe when the provider error is unusable', async () => {
+    const restore = withConfirmedRevoke();
+    try {
+      mockAuth.signOut.mockResolvedValue({ error: { message: '{}' } });
+      const { ref } = renderAuthHook();
+      await flush();
+      let result;
+      await act(async () => { result = await ref.current.signOut({ wipeLocalData: true }); });
+      expect(result).toEqual({ ok: false, error: 'Sign out failed. Try again.' });
+      expect(ref.current.signedIn).toBe(true);
+      expect(mockWipeSensitiveDeviceData).not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+
+  test('updatePassword keeps the recovery session when the provider error is unusable', async () => {
+    mockAuth.updateUser.mockResolvedValue({ data: null, error: { message: '' } });
+    const { ref } = renderAuthHook();
+    await flush();
+    await act(async () => { mockAuth._emit('PASSWORD_RECOVERY', { user: { email: 'a@b.com' } }); });
+    let result;
+    await act(async () => { result = await ref.current.updatePassword('new-pw'); });
+    expect(result.error).toBe('Password could not be updated. Try again.');
+    expect(ref.current.passwordRecovery).toBe(true);
+  });
+
+  const NETWORK_FALLBACK = 'A network error occurred. Check your connection and try again.';
+  const UNUSABLE_THROWN = [
+    ['Error with empty message', new Error('')],
+    ['Error with whitespace message', new Error('   ')],
+    ['Error with "{}" message', new Error('{}')],
+    ['Error with padded "{}" message', new Error(' {} ')],
+    ['object with null message', { message: null }],
+    ['object with non-string message', { message: { status: 500 } }],
+    ['thrown null', null],
+    ['thrown string', 'boom'],
+  ];
+
+  test.each(UNUSABLE_THROWN)('thrown %s normalizes through networkErrorResult', async (_label, thrown) => {
+    mockAuth.signUp.mockRejectedValueOnce(thrown);
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.signUpWithPassword('a@b.com', 'pw'); });
+    expect(result).toEqual({ ok: false, error: NETWORK_FALLBACK });
+  });
+
+  test('a useful thrown message is preserved through networkErrorResult', async () => {
+    mockAuth.updateUser.mockRejectedValueOnce(new Error('Failed to fetch'));
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.updatePassword('new-pw'); });
+    expect(result).toEqual({ ok: false, error: 'Failed to fetch' });
+  });
+
+  describe('Android restore setSession', () => {
+    const { Platform } = require('react-native');
+    const nativeMock = require('./mocks/androidRestoreCredentials');
+    let previousOS;
+    let previousFetch;
+
+    beforeEach(async () => {
+      previousOS = Platform.OS;
+      previousFetch = global.fetch;
+      Platform.OS = 'android';
+      nativeMock.__reset();
+      nativeMock.__setResult('getRestoreCredential', {
+        status: 'success',
+        credentialJson: JSON.stringify({ id: 'cred-id-123', response: {} }),
+      });
+      await require('@react-native-async-storage/async-storage').setItem('kilo.auth.androidRestoreCredentialId', 'cred-id-123');
+      const json = (body) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+      global.fetch = jest.fn()
+        .mockImplementationOnce(() => json({ version: 1, challenge: 'c' }))
+        .mockImplementationOnce(() => json({ version: 1, access_token: 'new-tok', refresh_token: 'new-ref' }));
+    });
+
+    afterEach(async () => {
+      Platform.OS = previousOS;
+      global.fetch = previousFetch;
+      await require('@react-native-async-storage/async-storage').clear();
+    });
+
+    async function restoreWith(setSessionResult) {
+      mockAuth.setSession = jest.fn().mockResolvedValue(setSessionResult);
+      const { ref } = renderAuthHook();
+      await flush();
+      let result;
+      await act(async () => { result = await ref.current.androidRestoreSession(); });
+      expect(mockAuth.setSession).toHaveBeenCalledWith({ access_token: 'new-tok', refresh_token: 'new-ref' });
+      return result;
+    }
+
+    test.each(UNUSABLE_ERRORS)('%s returns the restore fallback', async (_label, error) => {
+      expect(await restoreWith({ error })).toEqual({ ok: false, error: 'Restore failed.' });
+    });
+
+    test('a useful setSession message is preserved', async () => {
+      expect(await restoreWith({ error: { message: 'Invalid session' } })).toEqual({ ok: false, error: 'Invalid session' });
+    });
+
+    test('success shape is unchanged', async () => {
+      expect(await restoreWith({ error: null })).toEqual({ ok: true });
+    });
+  });
+});
