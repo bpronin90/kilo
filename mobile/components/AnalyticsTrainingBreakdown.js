@@ -9,37 +9,35 @@ import { MetricsHeader, RangeSelector, ViewTabs } from './trainingBreakdown/Brea
 import { EquipmentView, MovementView, MusclesView } from './trainingBreakdown/BreakdownViews';
 import { BreakdownSheet } from './trainingBreakdown/BreakdownSheet';
 import { resolveSheet } from './trainingBreakdown/sheetContent';
-import { useLocalDay } from './trainingBreakdown/useLocalDay';
 
-// Training breakdown dashboard (#1588, replacing the #1580 lists). The range
-// (default 90D, in memory only) and every drill-down live in this tree and
-// affect this section only. Data comes solely from #1589's
-// deriveTrainingBreakdownForRange over the verified Recovery-filtered
-// population; a null result (unverified population, unusable pairing, invalid
-// date) shows the unavailable state, never an empty or unfiltered breakdown.
-export const DEFAULT_TRAINING_BREAKDOWN_RANGE = '90D';
+// Training breakdown dashboard (#1588, replacing the #1580 lists). The session
+// window (#1597: Last 4 / Last 12 / All, default Last 12, in memory only) and
+// every drill-down live in this tree and affect this section only. Data comes
+// solely from deriveTrainingBreakdownForRange over the verified Recovery-filtered
+// population; a null result (unverified population, unusable pairing) shows the
+// unavailable state, never an empty or unfiltered breakdown. Windows are
+// positional, so nothing here depends on the clock.
+export const DEFAULT_TRAINING_BREAKDOWN_RANGE = 'last12';
 
 const EMPTY_COPY = {
-  '30D': 'No completed sets in the last 30 days.',
-  '90D': 'No completed sets in the last 90 days.',
+  last4: 'No completed sets in the last 4 sessions of any exercise.',
+  last12: 'No completed sets in the last 12 sessions of any exercise.',
   All: 'No completed sets in eligible history yet. Log a working set to see it here.',
 };
 
 export function AnalyticsTrainingBreakdown({
-  parsedSections = null, populationVerified = false, isLoading = false, hasError = false, paused = false, onLayout, now: nowOverride = null,
+  parsedSections = null, populationVerified = false, isLoading = false, hasError = false, paused = false, onLayout,
 }) {
   const { colors, kuaPalette: kua, mode } = useTheme();
   const p = useMemo(() => resolveBreakdownPalette(colors, kua, mode), [colors, kua, mode]);
   const styles = useMemo(() => createTrainingBreakdownStyles(colors, kua, mode), [colors, kua, mode]);
-  const today = useLocalDay();
-  const now = nowOverride || today;
   const [range, setRange] = useState(DEFAULT_TRAINING_BREAKDOWN_RANGE);
   const [view, setView] = useState('movement');
   const [stack, setStack] = useState([]);
 
   const breakdown = useMemo(
-    () => (isLoading || hasError ? null : deriveTrainingBreakdownForRange(parsedSections, range, { now, populationVerified: populationVerified === true })),
-    [parsedSections, range, now, populationVerified, isLoading, hasError],
+    () => (isLoading || hasError ? null : deriveTrainingBreakdownForRange(parsedSections, range, { populationVerified: populationVerified === true })),
+    [parsedSections, range, populationVerified, isLoading, hasError],
   );
 
   const onOpen = useCallback((desc, push = false) => setStack((s) => (push ? [...s, desc] : [desc])), []);

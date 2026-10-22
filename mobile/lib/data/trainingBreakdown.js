@@ -23,7 +23,7 @@ import { getExerciseMetadata } from './exerciseMetadata';
 import { UNCLASSIFIED_GROUP_ID } from './primaryMovementGroups';
 import { OVERRIDE_STATE, movementGroupLabel, readMovementOverrides, resolveMovementGroup } from './movementGroups';
 import { MOVEMENT_COMPARISONS, MUSCLE_REGIONS, regionForMuscle } from './trainingBreakdownMappings';
-import { selectRangePopulation } from './trainingBreakdownRange';
+import { resolveWindow, streamKey, windowKeeper } from './trainingBreakdownRange';
 
 export const TRAINING_BREAKDOWN_SCOPE = 'Eligible ordinary history';
 
@@ -61,8 +61,6 @@ function finish(map) {
 
 const knownList = (value) => (Array.isArray(value) && value.length > 0 ? value : null);
 
-// Counts one exercise occurrence: completed strength sets, timed-hold sets, and
-// logged entries (a cardio/non-lift exercise's non-skipped units, parsed or not).
 // Cardio / non-lift activity: the library's own cardio type, or a cardio-style name
 // the library does not know as a strength exercise (mirrors the keyword list in
 // exerciseCatalog's isStrengthExerciseName, without its warm-up-name exclusions, which
@@ -71,27 +69,42 @@ const CARDIO_NAME_RE = /\b(treadmill|bike|bicycle|cycling|elliptical|run|walk|sw
 const isCardioActivity = (name, meta) => meta.fields.activityType === 'cardio'
   || (CARDIO_NAME_RE.test(name) && meta.fields.activityType !== 'strength');
 
-function countOccurrence(exercise, kind, nonLift) {
-  const out = { strength: 0, timed: 0, entries: 0 };
-  if (kind === 'warmup') return out;
-  const units = _occurrenceEntries({ ...exercise, kind }).filter((u) => u && !u.skipped);
+// One exercise occurrence as its ordered eligible session units (#1597), each
+// with what it contributes. Only units that count toward the breakdown are
+// returned, so a skipped entry, an all-skipped row, a strength-unparsed row or an
+// empty prescription never occupies a session-window slot. Summing every unit
+// reproduces the pre-#1597 per-occurrence tallies exactly.
+function occurrenceUnits(exercise, kind, nonLift) {
+  if (kind === 'warmup') return [];
+  const entries = _occurrenceEntries({ ...exercise, kind });
+  const out = [];
   if (nonLift) {
     // A logged entry is a row with a performed set or an unparsed row; a row whose
     // sets are all skipped is not activity. Bare unparsed rows ("5 min 9") are the
     // exercise's unparsed_positions (unparsed_rows also holds preserved comments,
-    // which are not activity, and rows already present as session entries).
+    // which are not activity, and rows already present as session entries). A bare
+    // row sits before the session entry at its `pos`; ties keep array order.
     const performed = (u) => !!u.unparsed || (Array.isArray(u.sets) && u.sets.some((x) => x && !x.skipped));
-    const bareUnparsed = (exercise.unparsed_positions || []).length;
-    out.entries = units.filter(performed).length + bareUnparsed;
+    const bare = (exercise.unparsed_positions || []).map((b, i) => ({ pos: Number(b?.pos) || 0, i }))
+      .sort((a, b) => a.pos - b.pos || a.i - b.i);
+    const activity = { strength: 0, timed: 0, entries: 1 };
+    let next = 0;
+    entries.forEach((u, idx) => {
+      while (next < bare.length && bare[next].pos <= idx) { out.push(activity); next += 1; }
+      if (u && !u.skipped && performed(u)) out.push(activity);
+    });
+    while (next < bare.length) { out.push(activity); next += 1; }
     return out;
   }
-  for (const unit of units) {
-    if (unit.unparsed || !unit.sets) continue;
+  for (const unit of entries) {
+    if (!unit || unit.skipped || unit.unparsed || !unit.sets) continue;
+    const c = { strength: 0, timed: 0, entries: 0 };
     for (const set of unit.sets) {
       if (!set || set.skipped) continue;
-      if (set.duration_seconds > 0) out.timed += 1;
-      else if (set.rep_count > 0) out.strength += 1;
+      if (set.duration_seconds > 0) c.timed += 1;
+      else if (set.rep_count > 0) c.strength += 1;
     }
+    if (c.strength + c.timed > 0) out.push(c);
   }
   return out;
 }
@@ -104,12 +117,38 @@ export function deriveTrainingBreakdown(parsedSections) {
   return accumulate(parsedSections).result;
 }
 
-function accumulate(parsedSections) {
+// Walks the population in its positional session order, calling
+// visit({ note, noteIndex, name, meta, units, key, read }) per occurrence with units.
+function walk(parsedSections, metaCache, visit) {
   const lists = parsedSections?.noteSectionsList;
   const notes = parsedSections?.normalNotes;
   const sectionLists = Array.isArray(lists) ? lists : [parsedSections?.allSections || []];
   const paired = Array.isArray(lists) && Array.isArray(notes) && notes.length === lists.length;
+  sectionLists.forEach((sections, noteIndex) => {
+    const note = paired ? notes[noteIndex] : null;
+    const read = readMovementOverrides(note ? note.exercise_movement_groups : null);
+    for (const section of sections || []) {
+      for (const exercise of section.exercises || []) {
+        const name = exercise.name;
+        let meta = metaCache.get(name);
+        if (!meta) { meta = getExerciseMetadata(name); metaCache.set(name, meta); }
+        const units = occurrenceUnits(exercise, section.kind, isCardioActivity(name, meta));
+        if (units.length > 0) visit({ note, noteIndex, name, meta, units, key: streamKey(name), read });
+      }
+    }
+  });
+}
 
+// `size` (#1597): when set, only each stream's newest `size` session units count.
+function accumulate(parsedSections, size = null) {
+  const metaCache = new Map();
+  let keep = null;
+  if (size) {
+    const totals = new Map();
+    walk(parsedSections, metaCache, ({ key, units }) => totals.set(key, (totals.get(key) || 0) + units.length));
+    keep = windowKeeper(totals, size);
+  }
+  const ordinals = new Map();
   const movement = newBucketMap();
   const unclassified = newBucketMap();
   const primary = newBucketMap();
@@ -120,67 +159,61 @@ function accumulate(parsedSections) {
   const timed = newBucketMap();
   const regions = newBucketMap();
   const seenExercises = new Set();
-  const metaCache = new Map();
   const unreadableNotes = new Set();
   const cov = { total: 0, movement: 0, primary: 0, secondary: 0, equipment: 0, overridden: 0 };
 
-  sectionLists.forEach((sections, noteIndex) => {
-    const note = paired ? notes[noteIndex] : null;
-    const read = readMovementOverrides(note ? note.exercise_movement_groups : null);
+  walk(parsedSections, metaCache, ({ note, noteIndex, name, meta, units, key, read }) => {
     const overrides = read.state === OVERRIDE_STATE.OVERRIDES ? read.overrides : {};
-    for (const section of sections || []) {
-      for (const exercise of section.exercises || []) {
-        const name = exercise.name;
-        let meta = metaCache.get(name);
-        if (!meta) { meta = getExerciseMetadata(name); metaCache.set(name, meta); }
-        const nonLift = isCardioActivity(name, meta);
-        const { strength, timed: timedSets, entries } = countOccurrence(exercise, section.kind, nonLift);
-        if (strength + timedSets + entries === 0) continue;
-        // Original-name identity, not the alias-grouped history key, so "RDL" and
-        // "Romanian Deadlift" stay distinct names behind the breakdown.
-        const key = String(name).trim().toLowerCase();
-        if (strength > 0) seenExercises.add(key);
-        if (timedSets + entries > 0) addTo(timed, 'timed', 'Timed and cardio activity', name, key, timedSets + entries, { unit: 'entry' });
-        if (strength === 0) continue;
-        if (read.state === OVERRIDE_STATE.INVALID && note) unreadableNotes.add(note.id ?? noteIndex);
+    let strength = 0; let timedSets = 0; let entries = 0;
+    for (const u of units) {
+      const ordinal = ordinals.get(key) || 0;
+      ordinals.set(key, ordinal + 1);
+      if (keep && !keep(key, ordinal)) continue;
+      strength += u.strength; timedSets += u.timed; entries += u.entries;
+    }
+    // Original-name identity, not the alias-grouped history key, so "RDL" and
+    // "Romanian Deadlift" stay distinct names behind the breakdown.
+    if (strength > 0) seenExercises.add(key);
+    if (strength + timedSets + entries === 0) return;
+    if (timedSets + entries > 0) addTo(timed, 'timed', 'Timed and cardio activity', name, key, timedSets + entries, { unit: 'entry' });
+    if (strength === 0) return;
+    if (read.state === OVERRIDE_STATE.INVALID && note) unreadableNotes.add(note.id ?? noteIndex);
 
-        cov.total += strength;
+    cov.total += strength;
 
-        const chosen = resolveMovementGroup(name, overrides);
-        if (chosen.source === 'override') {
-          cov.movement += strength;
-          cov.overridden += strength;
-          addTo(movement, `legacy:${chosen.group}`, movementGroupLabel(chosen.group), name, key, strength, { source: 'override' });
-        } else if (meta.primaryGroup.id !== UNCLASSIFIED_GROUP_ID) {
-          cov.movement += strength;
-          addTo(movement, meta.primaryGroup.id, meta.primaryGroup.label, name, key, strength, { source: 'library' });
-        } else {
-          addTo(unclassified, UNCLASSIFIED_GROUP_ID, 'Unclassified', name, key, strength);
-        }
+    const chosen = resolveMovementGroup(name, overrides);
+    if (chosen.source === 'override') {
+      cov.movement += strength;
+      cov.overridden += strength;
+      addTo(movement, `legacy:${chosen.group}`, movementGroupLabel(chosen.group), name, key, strength, { source: 'override' });
+    } else if (meta.primaryGroup.id !== UNCLASSIFIED_GROUP_ID) {
+      cov.movement += strength;
+      addTo(movement, meta.primaryGroup.id, meta.primaryGroup.label, name, key, strength, { source: 'library' });
+    } else {
+      addTo(unclassified, UNCLASSIFIED_GROUP_ID, 'Unclassified', name, key, strength);
+    }
 
-        const prim = knownList(meta.fields.primaryMuscles);
-        if (prim) {
-          cov.primary += strength;
-          for (const m of prim) addTo(primary, m, humanizeLibraryId(m), name, key, strength);
-          // A set counts once per region however many of its primaries sit there.
-          const touched = new Set(prim.map(regionForMuscle).filter(Boolean));
-          for (const r of touched) addTo(regions, r, r, name, key, strength);
-        } else {
-          addTo(unknownMuscles, 'unknown', 'Unknown muscles', name, key, strength);
-        }
-        if (Array.isArray(meta.fields.secondaryMuscles)) {
-          cov.secondary += strength;
-          for (const m of meta.fields.secondaryMuscles) addTo(secondary, m, humanizeLibraryId(m), name, key, strength);
-        }
+    const prim = knownList(meta.fields.primaryMuscles);
+    if (prim) {
+      cov.primary += strength;
+      for (const m of prim) addTo(primary, m, humanizeLibraryId(m), name, key, strength);
+      // A set counts once per region however many of its primaries sit there.
+      const touched = new Set(prim.map(regionForMuscle).filter(Boolean));
+      for (const r of touched) addTo(regions, r, r, name, key, strength);
+    } else {
+      addTo(unknownMuscles, 'unknown', 'Unknown muscles', name, key, strength);
+    }
+    if (Array.isArray(meta.fields.secondaryMuscles)) {
+      cov.secondary += strength;
+      for (const m of meta.fields.secondaryMuscles) addTo(secondary, m, humanizeLibraryId(m), name, key, strength);
+    }
 
-        if (Array.isArray(meta.fields.equipment)) {
-          cov.equipment += strength;
-          if (meta.fields.equipment.length === 0) addTo(equipment, NO_EQUIPMENT_ID, 'No equipment needed', name, key, strength);
-          for (const e of meta.fields.equipment) addTo(equipment, e, humanizeLibraryId(e), name, key, strength);
-        } else {
-          addTo(unknownEquipment, 'unknown', 'Unknown equipment', name, key, strength);
-        }
-      }
+    if (Array.isArray(meta.fields.equipment)) {
+      cov.equipment += strength;
+      if (meta.fields.equipment.length === 0) addTo(equipment, NO_EQUIPMENT_ID, 'No equipment needed', name, key, strength);
+      for (const e of meta.fields.equipment) addTo(equipment, e, humanizeLibraryId(e), name, key, strength);
+    } else {
+      addTo(unknownEquipment, 'unknown', 'Unknown equipment', name, key, strength);
     }
   });
 
@@ -232,18 +265,19 @@ function comparisons(movementGroups) {
   });
 }
 
-// #1589: the breakdown for one range ('30D' | '90D' | 'All') plus
+// #1597: the breakdown for one session window ('last4' | 'last12' | 'All') plus
 // `muscles.regions` and `movement.comparisons`. `parsedSections` must come from a
 // verified Recovery population; pass `populationVerified: false` when membership
 // is unknown and the result is null rather than an unfiltered or empty breakdown.
-// Bounded ranges also return null without usable note/section pairing; All keeps
-// the legacy allSections fallback. Pure: no input mutation, storage or caching.
-export function deriveTrainingBreakdownForRange(parsedSections, range, { now = new Date(), populationVerified = true } = {}) {
+// Bounded windows also return null without usable note/section pairing; All keeps
+// the legacy allSections fallback and applies no window. No clock is read; any
+// other option (e.g. a stale `now`) is ignored. Pure: no input mutation, storage
+// or caching.
+export function deriveTrainingBreakdownForRange(parsedSections, windowId, { populationVerified = true } = {}) {
   if (!populationVerified) return null;
-  const selection = selectRangePopulation(parsedSections, range, now);
+  const selection = resolveWindow(parsedSections, windowId);
   if (!selection) return null;
-  const input = selection.all ? parsedSections : { normalNotes: selection.notes, noteSectionsList: selection.sectionsList };
-  const { result, regions } = accumulate(input);
+  const { result, regions } = accumulate(parsedSections, selection.all ? null : selection.size);
   return {
     ...result,
     movement: { ...result.movement, comparisons: comparisons(result.movement.groups) },

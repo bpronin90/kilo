@@ -42,7 +42,7 @@ function Key({ styles, p }) {
   );
 }
 
-const RANGE_TEXT = { '30D': 'last 30 days', '90D': 'last 90 days', All: 'all time' };
+const RANGE_TEXT = { last4: 'last 4 sessions per exercise', last12: 'last 12 sessions per exercise', All: 'all eligible sessions' };
 
 function Method({ styles, label, children }) {
   return <Text style={styles.methodText}><Text style={styles.methodStrong}>{label}</Text> {children}</Text>;
@@ -56,7 +56,7 @@ function methodology(styles, range) {
         <Text style={styles.meta}>Eligible ordinary history · {RANGE_TEXT[range]}</Text>
         <View style={styles.method} testID="training-breakdown-methodology">
           <Method styles={styles} label="Completed sets">are working sets with reps. Warm-ups, skipped sets and entries, unparsed rows and empty prescriptions are not counted. Notes kept out of ordinary analytics by Recovery are excluded; ordinary deload notes count.</Method>
-          <Method styles={styles} label="Range.">30D and 90D include notes dated today and the previous 29 or 89 days on this device&apos;s local calendar. Notes with a missing or unreadable date appear only in All.</Method>
+          <Method styles={styles} label="Sessions.">Kilo records sessions, not per-session dates. Last 4 and Last 12 keep each exercise&apos;s own newest 4 or 12 logged sessions, in notebook order across your notes; a row with several sets is one session. An exercise with fewer sessions shows all of them. Timed and cardio entries use the same per-exercise windows. Last 4 is roughly four weeks only for an exercise you log once a week. All uses every eligible session.</Method>
           <Method styles={styles} label="Movement">puts each set in exactly one group: the library group, or the group you saved in that note (✎ your choice, shown with its original label). Unclassified sets are listed with the groups.</Method>
           <Method styles={styles} label="Compared">sums library groups only. Push = horizontal and vertical push; Pull = horizontal and vertical pull; Knee-dominant = squat, lunge/step and knee extension; Hip-dominant = hip hinge and hip extension. Saved group choices and Unclassified sets are left out, and each share uses only the two included sides. It describes what you logged; it is not a recommendation.</Method>
           <Method styles={styles} label="Muscles and equipment overlap.">One compound set counts under every muscle or implement it involves, so these counts never add up to your completed sets. They are sets, not measured stimulus or fatigue.</Method>
@@ -106,7 +106,7 @@ function regionSheet(styles, p, b, id, onOpen) {
       <>
         <Text style={styles.meta}>{plural(region.sets, 'set targets', 'sets target')} {region.label.toLowerCase()} as primary · muscle rows overlap</Text>
         <Key styles={styles} p={p} />
-        {ids.length === 0 ? <Text style={styles.placeholderText}>No muscles in this region were trained in this range.</Text> : null}
+        {ids.length === 0 ? <Text style={styles.placeholderText}>No muscles in this region were trained in this window.</Text> : null}
         {ids.map((m, i) => {
           const ps = prim.get(m)?.sets || 0;
           const ss = sec.get(m)?.sets || 0;

@@ -4,35 +4,38 @@ import { Text } from 'react-native';
 import { ThemeProvider } from '../theme/ThemeContext';
 import { AnalyticsTrainingBreakdown, DEFAULT_TRAINING_BREAKDOWN_RANGE } from '../components/AnalyticsTrainingBreakdown';
 import { deriveTrainingBreakdownForRange } from '../lib/data/trainingBreakdown';
-import { parseWorkoutNote } from '../lib/parser';
+import { makeWorkoutNoteItem } from '../lib/data/exerciseCatalog';
+import { deriveParsedSections } from '../screens/analytics/analyticsDerivations';
 
 jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({ __esModule: true, default: jest.fn(() => 'light') }));
 jest.mock('@expo/vector-icons/MaterialIcons', () => ({ __esModule: true, default: () => null }), { virtual: true });
 
-// #1588: the dashboard consumes #1589's deriveTrainingBreakdownForRange over a
-// paired, verified population. Fixtures are parsed note text with real dates.
-const NOW = new Date(2026, 9, 22, 12, 0, 0);
-const iso = (daysAgo) => {
-  const d = new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate() - daysAgo);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+// #1588/#1597: the dashboard consumes deriveTrainingBreakdownForRange over a
+// paired, verified population. Fixtures are REAL-shaped notes: built by
+// makeWorkoutNoteItem, parsed from raw_text through deriveParsedSections, and
+// carrying NO `date` field (#1597: the old invented dates hid empty 30D/90D).
 const RECENT = [
   'Monday', '-Barbell Bench Press: 3x5', '135 5,5,5', '-Mystery Machine Thing: 3x10', '50 10,10',
   '-Back Squat: 2x5', '225 5,5', '-Barbell Row: 2x8', '135 8,8', '-Plank: 3x30s', '30', '30',
   '-Bike 5 min', '- 5 min',
 ].join('\n');
 const OLD = ['Monday', '-Romanian Deadlift: 4x8', '185 8,8,8,8', '-Face Pull: 3x15', '40 15,15,15'].join('\n');
+// A growing notebook: 14 weekly bench sessions with unequal set counts.
+const HISTORY = ['Monday', '-Barbell Bench Press: 3x5', ...Array.from({ length: 14 }, (_, i) => `135 ${Array((i % 3) + 1).fill(5).join(',')}`)].join('\n');
 
 function population(specs) {
-  const normalNotes = specs.map((s, i) => ({ id: s.id || `n${i}`, date: s.date, raw_text: s.text, ...(s.extra || {}) }));
-  const noteSectionsList = normalNotes.map((n) => parseWorkoutNote(n.raw_text).sections);
-  return { normalNotes, noteSectionsList, allSections: noteSectionsList.flat() };
+  const notes = specs.map((s) => ({ ...makeWorkoutNoteItem({ title: 'Routine', raw_text: s.text }), ...(s.id ? { id: s.id } : {}), ...(s.extra || {}) }));
+  notes.forEach((n) => { if ('date' in n) throw new Error('fixture notes must not carry a date'); });
+  return deriveParsedSections(notes, notes[notes.length - 1] || null, new Set());
 }
+// History order is array order: oldest first.
 const pop = population([
-  { id: 'recent', date: iso(3), text: RECENT },
-  { id: 'old', date: iso(60), text: OLD, extra: { exercise_movement_groups: { version: 1, overrides: { 'face pull': 'pull' } } } },
-  { id: 'ancient', date: iso(200), text: OLD },
+  { id: 'history', text: HISTORY },
+  { id: 'ancient', text: OLD },
+  { id: 'old', text: OLD, extra: { exercise_movement_groups: { version: 1, overrides: { 'face pull': 'pull' } } } },
+  { id: 'recent', text: RECENT },
 ]);
+const derive = (p, w) => deriveTrainingBreakdownForRange(p, w, { populationVerified: true });
 
 const mounted = [];
 afterEach(() => {
@@ -41,7 +44,7 @@ afterEach(() => {
 async function render(props) {
   let root;
   await act(async () => {
-    root = renderer.create(<ThemeProvider><AnalyticsTrainingBreakdown now={NOW} populationVerified {...props} /></ThemeProvider>);
+    root = renderer.create(<ThemeProvider><AnalyticsTrainingBreakdown populationVerified {...props} /></ThemeProvider>);
   });
   mounted.push(root);
   return root;
@@ -57,12 +60,13 @@ const completed = (root) => [].concat(byId(root, 'training-breakdown-completed-s
 const sheetTitle = (root) => [].concat(byId(root, 'training-breakdown-sheet-title')[0].props.children).join('');
 
 describe('AnalyticsTrainingBreakdown dashboard (#1588)', () => {
-  test('defaults to 90D and renders the metrics header, tabs and Movement view from the range API', async () => {
-    expect(DEFAULT_TRAINING_BREAKDOWN_RANGE).toBe('90D');
+  test('defaults to Last 12 and renders the metrics header, tabs and Movement view from the window API', async () => {
+    expect(DEFAULT_TRAINING_BREAKDOWN_RANGE).toBe('last12');
     const root = await render({ parsedSections: pop });
-    const expected = deriveTrainingBreakdownForRange(pop, '90D', { now: NOW, populationVerified: true });
+    const expected = derive(pop, 'last12');
     expect(completed(root)).toBe(String(expected.totals.completedSets));
-    expect(byId(root, 'training-breakdown-range-90D')[0].props.accessibilityState.selected).toBe(true);
+    expect(expected.isEmpty).toBe(false);
+    expect(byId(root, 'training-breakdown-range-last12')[0].props.accessibilityState.selected).toBe(true);
     expect(all(root)).toContain('Compared');
     expect(has(root, 'training-breakdown-compare-push_pull')).toBe(true);
     expect(has(root, 'training-breakdown-compare-knee_hip')).toBe(true);
@@ -72,24 +76,46 @@ describe('AnalyticsTrainingBreakdown dashboard (#1588)', () => {
     expect(all(root)).toMatch(/% classified/);
   });
 
-  test('each range re-derives from dated notes and only this section changes', async () => {
+  test('selector labels, accessibility and order', async () => {
     const root = await render({ parsedSections: pop });
-    const counts = {};
-    for (const r of ['30D', '90D', 'All']) {
-      await press(root, `training-breakdown-range-${r}`);
-      counts[r] = completed(root);
-      expect(counts[r]).toBe(String(deriveTrainingBreakdownForRange(pop, r, { now: NOW, populationVerified: true }).totals.completedSets));
+    const opts = [['last4', 'Last 4', 'Last 4 sessions per exercise'], ['last12', 'Last 12', 'Last 12 sessions per exercise'], ['All', 'All', 'All eligible sessions']];
+    for (const [id, text, a11y] of opts) {
+      const node = byId(root, `training-breakdown-range-${id}`)[0];
+      expect(node.props.accessibilityLabel).toBe(a11y);
+      expect(node.props.accessibilityRole).toBe('radio');
+      expect(texts(root)).toContain(text);
     }
-    expect(Number(counts['30D'])).toBeLessThan(Number(counts['90D']));
-    expect(Number(counts['90D'])).toBeLessThan(Number(counts.All));
+    expect(all(root)).not.toMatch(/30D|90D/);
   });
 
-  test('an unverified population, unusable pairing or invalid date shows unavailable, never empty or unfiltered', async () => {
+  test('each window re-derives from date-free notes with distinct nonempty totals', async () => {
+    const root = await render({ parsedSections: pop });
+    const counts = {};
+    for (const w of ['last4', 'last12', 'All']) {
+      await press(root, `training-breakdown-range-${w}`);
+      expect(byId(root, `training-breakdown-range-${w}`)[0].props.accessibilityState.selected).toBe(true);
+      counts[w] = completed(root);
+      expect(counts[w]).toBe(String(derive(pop, w).totals.completedSets));
+    }
+    expect(Number(counts.last4)).toBeGreaterThan(0);
+    expect(Number(counts.last4)).toBeLessThan(Number(counts.last12));
+    expect(Number(counts.last12)).toBeLessThan(Number(counts.All));
+  });
+
+  test('sheets use the selected window\'s breakdown', async () => {
+    const root = await render({ parsedSections: pop });
+    await press(root, 'training-breakdown-range-last4');
+    await press(root, 'training-breakdown-group-horizontal_push');
+    const g = derive(pop, 'last4').movement.groups.find((x) => x.id === 'horizontal_push');
+    expect(all(root)).toContain(`${g.sets} sets · ${g.exercises.length} exercise`);
+    expect(g.sets).not.toBe(derive(pop, 'All').movement.groups.find((x) => x.id === 'horizontal_push').sets);
+  });
+
+  test('an unverified population or unusable pairing shows unavailable, never empty or unfiltered', async () => {
     for (const props of [
       { parsedSections: pop, populationVerified: false },
       { parsedSections: pop, populationVerified: undefined },
       { parsedSections: { ...pop, noteSectionsList: pop.noteSectionsList.slice(1) } },
-      { parsedSections: pop, now: new Date('invalid') },
     ]) {
       const root = await render(props);
       expect(has(root, 'training-breakdown-unavailable')).toBe(true);
@@ -98,41 +124,33 @@ describe('AnalyticsTrainingBreakdown dashboard (#1588)', () => {
     }
   });
 
-  test('a range with no notes shows its own empty state while other ranges stay reachable', async () => {
-    const onlyOld = population([{ date: iso(200), text: OLD }]);
-    const root = await render({ parsedSections: onlyOld });
-    expect(has(root, 'training-breakdown-empty')).toBe(true);
-    expect(all(root)).toContain('No completed sets in the last 90 days.');
-    await press(root, 'training-breakdown-range-30D');
-    expect(all(root)).toContain('No completed sets in the last 30 days.');
+  test('empty history shows each window\'s own empty copy', async () => {
+    const root = await render({ parsedSections: population([{ text: 'Monday\n-Barbell Bench Press: 3x5' }]) });
+    expect(all(root)).toContain('No completed sets in the last 12 sessions of any exercise.');
+    await press(root, 'training-breakdown-range-last4');
+    expect(all(root)).toContain('No completed sets in the last 4 sessions of any exercise.');
     await press(root, 'training-breakdown-range-All');
-    expect(has(root, 'training-breakdown-empty')).toBe(false);
-    expect(completed(root)).toBe('7');
+    expect(all(root)).toContain('No completed sets in eligible history yet.');
   });
 
-  test('a new local day re-derives bounded ranges (date rollover)', async () => {
-    const root = await render({ parsedSections: pop });
-    const before = completed(root);
-    await act(async () => {
-      root.update(<ThemeProvider><AnalyticsTrainingBreakdown parsedSections={pop} populationVerified now={new Date(2026, 9, 22 + 31, 9)} /></ThemeProvider>);
-    });
-    expect(completed(root)).not.toBe(before);
-    expect(completed(root)).toBe(String(deriveTrainingBreakdownForRange(pop, '90D', { now: new Date(2026, 9, 22 + 31, 9), populationVerified: true }).totals.completedSets));
+  test('activity-only history stays visible in every window', async () => {
+    const root = await render({ parsedSections: population([{ text: 'Monday\n-Bike\n- 5 min\n5 min 9' }]) });
+    for (const w of ['last4', 'last12', 'All']) {
+      await press(root, `training-breakdown-range-${w}`);
+      expect(has(root, 'training-breakdown-empty')).toBe(false);
+      expect(has(root, 'training-breakdown-timed-stat')).toBe(true);
+    }
   });
 
-  test('the device clock rolling past local midnight refreshes the range without new props', async () => {
+  test('clock independence: the passage of days never changes a window', async () => {
     jest.useFakeTimers({ now: new Date(2026, 9, 22, 23, 59, 0) });
     try {
-      const recentOnly = population([{ date: iso(29), text: RECENT }]);
-      let root;
-      await act(async () => {
-        root = renderer.create(<ThemeProvider><AnalyticsTrainingBreakdown parsedSections={recentOnly} populationVerified /></ThemeProvider>);
-      });
-      mounted.push(root);
-      await press(root, 'training-breakdown-range-30D');
-      expect(has(root, 'training-breakdown-completed-sets')).toBe(true);
-      await act(async () => { jest.advanceTimersByTime(2 * 60 * 1000); });
-      expect(has(root, 'training-breakdown-empty')).toBe(true);
+      const root = await render({ parsedSections: pop });
+      await press(root, 'training-breakdown-range-last4');
+      const before = completed(root);
+      await act(async () => { jest.advanceTimersByTime(40 * 24 * 60 * 60 * 1000); });
+      expect(completed(root)).toBe(before);
+      expect(before).toBe(String(derive(pop, 'last4').totals.completedSets));
     } finally {
       jest.useRealTimers();
     }
@@ -140,16 +158,17 @@ describe('AnalyticsTrainingBreakdown dashboard (#1588)', () => {
 
   test('history changes (new note props) recompute the breakdown', async () => {
     const root = await render({ parsedSections: pop });
-    const more = population([{ id: 'recent', date: iso(3), text: RECENT }, { id: 'today', date: iso(0), text: OLD }]);
+    const more = population([{ id: 'history', text: HISTORY }, { id: 'recent', text: RECENT }, { id: 'today', text: HISTORY }]);
     await act(async () => {
-      root.update(<ThemeProvider><AnalyticsTrainingBreakdown parsedSections={more} populationVerified now={NOW} /></ThemeProvider>);
+      root.update(<ThemeProvider><AnalyticsTrainingBreakdown parsedSections={more} populationVerified /></ThemeProvider>);
     });
-    expect(completed(root)).toBe(String(deriveTrainingBreakdownForRange(more, '90D', { now: NOW, populationVerified: true }).totals.completedSets));
+    expect(completed(root)).not.toBe(String(derive(pop, 'last12').totals.completedSets));
+    expect(completed(root)).toBe(String(derive(more, 'last12').totals.completedSets));
   });
 
   test('group, all-groups, saved-choice and Unclassified sheets match the derivation buckets', async () => {
     const root = await render({ parsedSections: pop });
-    const b = deriveTrainingBreakdownForRange(pop, '90D', { now: NOW, populationVerified: true });
+    const b = derive(pop, 'last12');
     await press(root, 'training-breakdown-group-horizontal_push');
     expect(sheetTitle(root)).toBe('Horizontal push');
     const g = b.movement.groups.find((x) => x.id === 'horizontal_push');
@@ -172,7 +191,7 @@ describe('AnalyticsTrainingBreakdown dashboard (#1588)', () => {
   });
 
   test('Unclassified stays reachable with five or fewer classified groups', async () => {
-    const root = await render({ parsedSections: population([{ date: iso(1), text: RECENT }]) });
+    const root = await render({ parsedSections: population([{ text: RECENT }]) });
     expect(has(root, 'training-breakdown-more-groups')).toBe(true);
     expect(all(root)).toMatch(/Unclassified · 2 sets/);
   });
@@ -201,7 +220,7 @@ describe('AnalyticsTrainingBreakdown dashboard (#1588)', () => {
     expect(has(root, 'training-breakdown-region-muscle-pectoralis_major')).toBe(true);
     await press(root, 'training-breakdown-sheet-close');
 
-    const b = deriveTrainingBreakdownForRange(pop, '90D', { now: NOW, populationVerified: true });
+    const b = derive(pop, 'last12');
     const sec = b.muscles.secondary.find((m) => m.id === 'anterior_deltoid');
     await press(root, 'training-breakdown-region-shoulders');
     expect(all(root)).toContain(`+${sec.sets}`);
@@ -241,11 +260,13 @@ describe('AnalyticsTrainingBreakdown dashboard (#1588)', () => {
     expect(text).toContain('Push = horizontal and vertical push');
     expect(text).toContain('Saved group choices and Unclassified sets are left out');
     expect(text).toContain('only the two included sides');
-    expect(text).toContain('appear only in All');
+    expect(text).toContain('Kilo records sessions, not per-session dates');
+    expect(text).toContain('a row with several sets is one session');
+    expect(text).not.toMatch(/calendar|missing or unreadable date/);
   });
 
   test('unreadable saved choices fall back to library groups and say so', async () => {
-    const bad = population([{ date: iso(1), text: OLD, extra: { exercise_movement_groups: { version: 99, overrides: 'x' } } }]);
+    const bad = population([{ text: OLD, extra: { exercise_movement_groups: { version: 99, overrides: 'x' } } }]);
     const root = await render({ parsedSections: bad });
     expect(has(root, 'training-breakdown-overrides-unreadable')).toBe(true);
   });
@@ -291,7 +312,7 @@ const KNOWN_EQUIPMENT = [
   ['Kettlebell Swing', 3], ['Smith Machine Squat', 2], ['Trap Bar Deadlift', 2],
 ];
 const note = (entries) => ['Monday', ...entries.flatMap(([n, s]) => lines(n, s))].join('\n');
-const fixture = (entries) => population([{ date: iso(1), text: note(entries) }]);
+const fixture = (entries) => population([{ text: note(entries) }]);
 
 describe('Training breakdown scaling and strips (#1593)', () => {
   const unknownDominant = fixture([...KNOWN_EQUIPMENT, ['Mystery Machine Thing', 20], ['Odd Sled Move', 20], ['Weird Rig Lift', 20]]);
@@ -303,7 +324,7 @@ describe('Training breakdown scaling and strips (#1593)', () => {
   }
 
   test('dashboard and All-equipment sheet scale to the largest known item and cap Unknown', async () => {
-    const b = deriveTrainingBreakdownForRange(unknownDominant, '90D', { now: NOW, populationVerified: true });
+    const b = derive(unknownDominant, 'last12');
     const [lead, second] = b.equipment.items;
     expect(b.equipment.items.length).toBeGreaterThan(6);
     expect(b.equipment.unknown.sets).toBeGreaterThan(lead.sets);
@@ -326,7 +347,7 @@ describe('Training breakdown scaling and strips (#1593)', () => {
 
   test('Unknown below the known maximum keeps its proportional width', async () => {
     const p = fixture([...KNOWN_EQUIPMENT, ['Mystery Machine Thing', 2]]);
-    const b = deriveTrainingBreakdownForRange(p, '90D', { now: NOW, populationVerified: true });
+    const b = derive(p, 'last12');
     expect(b.equipment.unknown.sets).toBeLessThan(b.equipment.items[0].sets);
     const root = await equipmentRoot(p);
     expect(barWidth(root, 'training-breakdown-equipment-unknown')).toBeCloseTo((b.equipment.unknown.sets / b.equipment.items[0].sets) * 100, 5);
@@ -338,7 +359,7 @@ describe('Training breakdown scaling and strips (#1593)', () => {
     expect(all(unknownOnly)).toContain('4| 100%');
     const knownOnly = await equipmentRoot(fixture(KNOWN_EQUIPMENT.slice(0, 3)));
     expect(has(knownOnly, 'training-breakdown-equipment-unknown')).toBe(false);
-    const b = deriveTrainingBreakdownForRange(fixture(KNOWN_EQUIPMENT.slice(0, 3)), '90D', { now: NOW, populationVerified: true });
+    const b = derive(fixture(KNOWN_EQUIPMENT.slice(0, 3)), 'last12');
     b.equipment.items.forEach((it) => {
       const w = barWidth(knownOnly, `training-breakdown-equipment-${it.id}`);
       expect(w).toBeGreaterThanOrEqual(3);
@@ -348,10 +369,10 @@ describe('Training breakdown scaling and strips (#1593)', () => {
 
   test('All-groups sheet scales to the largest classified group (incl. saved choices) and caps Unclassified', async () => {
     const p = population([
-      { date: iso(1), text: note([['Barbell Bench Press', 6], ['Back Squat', 3], ['Mystery Machine Thing', 20], ['Odd Sled Move', 20]]) },
-      { date: iso(2), text: note([['Face Pull', 9]]), extra: { exercise_movement_groups: { version: 1, overrides: { 'face pull': 'pull' } } } },
+      { text: note([['Barbell Bench Press', 6], ['Back Squat', 3], ['Mystery Machine Thing', 20], ['Odd Sled Move', 20]]) },
+      { text: note([['Face Pull', 9]]), extra: { exercise_movement_groups: { version: 1, overrides: { 'face pull': 'pull' } } } },
     ]);
-    const b = deriveTrainingBreakdownForRange(p, '90D', { now: NOW, populationVerified: true });
+    const b = derive(p, 'last12');
     const [lead, ...rest] = b.movement.groups;
     expect(lead.source).toBe('override');
     expect(b.movement.unclassified.sets).toBeGreaterThan(lead.sets);
@@ -372,7 +393,7 @@ describe('Training breakdown scaling and strips (#1593)', () => {
   });
 
   test('empty data renders no bars and no NaN widths', async () => {
-    const root = await render({ parsedSections: population([{ date: iso(200), text: OLD }]) });
+    const root = await render({ parsedSections: population([{ text: 'Monday\n-Barbell Bench Press: 3x5' }]) });
     expect(has(root, 'training-breakdown-empty')).toBe(true);
     expect(all(root)).not.toMatch(/NaN|Infinity/);
   });
@@ -396,7 +417,7 @@ describe('Training breakdown scaling and strips (#1593)', () => {
           const kua = KUA_PALETTES[court][mode];
           const p = resolveBreakdownPalette({}, kua, mode);
           const styles = createTrainingBreakdownStyles({}, kua, mode);
-          const b = deriveTrainingBreakdownForRange(p90, '90D', { now: NOW, populationVerified: true });
+          const b = derive(p90, 'last12');
           let root;
           act(() => { root = renderer.create(<MusclesView styles={styles} p={p} breakdown={b} onOpen={() => {}} />); });
           mounted.push(root);
