@@ -134,6 +134,42 @@ empty exclusion set.
   recorded (a generic weighted exercise never implies a vest or belt).
 - **Coverage.** Each view reports its own field-specific known-set coverage.
 
+### Ranges, regions and comparisons (#1589)
+
+`deriveTrainingBreakdownForRange(parsedSections, range, { now, populationVerified })`
+in `trainingBreakdown.js` returns the `deriveTrainingBreakdown` shape plus
+`muscles.regions` and `movement.comparisons`; `deriveTrainingBreakdown` itself is
+unchanged, and the All result minus those two fields deep-equals it. Nothing is
+persisted or cached; range selection and invalidation belong to the caller (#1588).
+
+- **Ranges** (`trainingBreakdownRange.js`): `30D`, `90D`, `All`. Selection runs over
+  the recovery-filtered `normalNotes`/`noteSectionsList` from `deriveParsedSections`,
+  keeping each note paired with its sections. The date is `note.date` only;
+  `YYYY-MM-DD` is a device-local calendar date. Bounded ranges are today through
+  today-(N-1) local calendar days inclusive (no N x 24h), future dates excluded;
+  notes with a missing or unparseable date appear only in All. `now` is injectable.
+- **Degradation.** `populationVerified: false` (Recovery membership unknown) returns
+  `null` for every range. Bounded ranges also return `null` without usable note
+  pairing or a valid `now`; they never fall back to `allSections`. All keeps the
+  legacy `allSections` fallback.
+- **Regions** (`trainingBreakdownMappings.js`, `MUSCLE_REGIONS`: ordered
+  `[{ id, label, muscles }]`, ids `chest back shoulders arms legs core`). Each
+  `muscles.regions` entry is `{ id, label, sets, exercises: [{ key, name, sets }] }`,
+  zero-set regions included. A region's sets are distinct completed sets with at
+  least one primary muscle in it: once per region, possibly in several regions;
+  secondary involvement never counts. `validateRegionCoverage(ids)` returns ids
+  mapping to zero or several regions; tests require every bundled primary id to map
+  to exactly one. `regionForMuscle(id)` serves per-muscle strips and region sheets.
+- **Comparisons** (`MOVEMENT_COMPARISONS`: `[{ id, label, sides: [{ id, label, groups }] }]`).
+  `push_pull`: push = horizontal/vertical push, pull = horizontal/vertical pull;
+  `knee_hip`: knee = squat, lunge_step, knee_extension, hip = hip_hinge,
+  hip_extension. Output entries are `{ id, label, totalSets, sides: [{ id, label,
+  sets, share }] }`; `totalSets` is the two sides' sum and shares are 0 when it is 0.
+  Saved override (`legacy:*`) buckets and Unclassified are on neither side. Counts
+  are descriptive only: no balance verdict, score, stimulus or fatigue claim.
+- **Short names** (`MUSCLE_SHORT_NAMES`, `muscleShortName(id, fallback)`): display
+  labels such as Glutes or Side delts. They never change ids, keys or grouping.
+
 ## Recovery movement groups (#1581)
 
 `mobile/lib/data/recoveryMovementGroups.js` places each Recovery lift (baseline roster
