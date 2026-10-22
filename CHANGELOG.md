@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.21.1 - 2026-10-22
+
+- Issue #1593: Training breakdown equipment and movement-group bars now scale to the largest known item, with Unknown and Unclassified capped at full width; the chest muscle reads "Pecs"; and body-region strips keep the same shade direction on every tile.
+
+## 1.21.0 - 2026-10-22
+
+- Issue #1588: The Analytics Training breakdown is now a dashboard: a 30D / 90D / All range, a completed-sets header, Push vs Pull and Knee vs Hip comparisons, ranked movement tiles, a body-region heatmap, equipment bars, and bottom sheets that show the exercises behind every number.
+
 ## 1.20.0 - 2026-10-22
 
 - Issue #1581: Recovery movement groups now use detailed movement groups (such as Hip hinge or Vertical pull), and the group editor offers them, while every earlier broad group choice is kept exactly as saved.
