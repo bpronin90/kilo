@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Training Breakdown · Hybrid</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#080D18;--card:#101728;--head:#131D32;--sec:#0E1524;--border:#1C2742;--p:#3B82F6;--pl:#60A5FA;--pc:#17233D;--pcb:#2A3F6D;--on:#F0F4FC;--var:#8C9BB3;--alt:#A78BFA;--ghost:rgba(96,165,250,.26)}
+*{box-sizing:border-box;margin:0}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-align:left}
+body{background:var(--bg);color:var(--on);font-family:'Space Grotesk',system-ui,sans-serif;width:390px;min-height:844px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+.wrap{padding:12px 16px 32px;display:flex;flex-direction:column;gap:12px}
+.bar-top{display:flex;justify-content:space-between;align-items:center}
+.bar-top h1{font-size:22px;font-weight:700;letter-spacing:-.02em}
+.range{display:flex;background:var(--sec);border:1px solid var(--border);border-radius:10px;padding:2px}
+.range button{font-size:12.5px;font-weight:600;color:var(--var);padding:6px 10px;border-radius:8px}
+.range button.on{background:var(--pc);color:var(--pl);box-shadow:inset 0 0 0 1px var(--pcb)}
+.hero{display:flex;justify-content:space-between;align-items:flex-end;padding:4px 0 2px}
+.hero .n{font-size:46px;font-weight:700;letter-spacing:-.045em;line-height:.95}
+.hero .l{font-size:12.5px;color:var(--var);margin-top:6px}
+.side{display:flex;gap:8px}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:8px 10px;min-width:72px}
+.stat b{display:block;font-size:17px;font-weight:700}
+.stat span{font-size:11px;color:var(--var)}
+.stat.tap span::after{content:' ›';color:var(--pl)}
+.tabs{display:flex;align-items:center;gap:20px;border-bottom:1px solid var(--border)}
+.tabs button{color:var(--var);font-size:15px;font-weight:600;padding:8px 0 10px;position:relative}
+.tabs button.on{color:var(--on)}.tabs button.on::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:3px;border-radius:2px;background:var(--p)}
+.tabs .i{margin-left:auto;width:28px;height:28px;border-radius:99px;border:1px solid var(--border);display:grid;place-items:center;font-size:13px;color:var(--var);padding:0;text-align:center}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.ch{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;font-weight:600}
+.ch span{font-size:11.5px;color:var(--var);font-weight:500}
+/* comparison */
+.cmp{display:flex;flex-direction:column;gap:5px}
+.cmp .lbl{display:flex;justify-content:space-between;font-size:12.5px;color:var(--var)}
+.cmp .lbl b{color:var(--on);font-weight:700;margin:0 3px}
+.cmp .track{display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px}
+.cmp .track i{display:block;height:100%}
+.cmp .pc{display:flex;justify-content:space-between;font-size:11px;color:var(--var)}
+/* tiles */
+.tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+.tile{border-radius:12px;padding:10px;display:flex;flex-direction:column;justify-content:space-between;min-height:66px;gap:6px}
+.tile .t{font-size:12px;font-weight:600;line-height:1.2}
+.tile .v{font-size:20px;font-weight:700;letter-spacing:-.02em;line-height:1}
+.tile .v small{font-size:11px;font-weight:600;opacity:.75;margin-left:3px}
+.tile.more{background:var(--sec);border:1px dashed var(--pcb);color:var(--pl);justify-content:center;align-items:center;text-align:center}
+.tile.more .v{font-size:18px}.tile.more .t{color:var(--var);font-weight:500}
+.foot{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--var);padding-top:2px}
+.foot button{color:var(--var);font-size:12px}.foot button b{color:var(--on)}
+.foot button::after{content:' ›';color:var(--pl)}
+.hatch{background:repeating-linear-gradient(135deg,#2a3550 0 3px,transparent 3px 6px)}
+/* regions */
+.regions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.reg{border-radius:12px;padding:10px 11px;display:flex;flex-direction:column;gap:7px;min-height:84px}
+.reg .top{display:flex;justify-content:space-between;align-items:baseline}
+.reg .t{font-size:13px;font-weight:600}.reg .v{font-size:20px;font-weight:700;letter-spacing:-.02em}
+.cells{display:flex;gap:3px;margin-top:auto}
+.cells i{flex:1;height:6px;border-radius:2px;background:rgba(255,255,255,.14)}
+.reg .m{font-size:11px;opacity:.8}
+.legend{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--var)}
+.legend .g{flex:1;height:5px;border-radius:3px;background:linear-gradient(90deg,rgba(59,130,246,.16),rgba(59,130,246,.95))}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--pl);background:var(--pc);border:1px solid var(--pcb);border-radius:99px;padding:3px 9px;font-weight:600}
+/* ranked rows */
+.rows{display:flex;flex-direction:column}
+.row{display:grid;grid-template-columns:1fr auto;gap:5px 10px;padding:8px 0;border-top:1px solid var(--border);width:100%}
+.row:first-child{border-top:0}
+.row .lb{font-size:13.5px;font-weight:600;display:flex;gap:6px;align-items:center}
+.row .nm{font-size:13.5px;font-weight:700;text-align:right}.row .nm small{font-size:11.5px;color:var(--var);font-weight:500;margin-left:5px}
+.row .bar{grid-column:1/-1;height:7px;background:var(--sec);border-radius:4px;overflow:hidden;display:flex}
+.row .bar i{display:block;height:100%;background:var(--p);border-radius:4px}
+.row .bar i.s{background:var(--ghost);border-radius:0 4px 4px 0}
+.row.unk .lb,.row.unk .nm{color:var(--var)}.row.unk .bar i{background:repeating-linear-gradient(135deg,#3a4664 0 3px,transparent 3px 6px)}
+.tag{font-size:10px;font-weight:700;color:var(--pl);background:var(--pc);border:1px solid var(--pcb);border-radius:99px;padding:1px 6px}
+.allbtn{height:38px;border:1px dashed var(--border);border-radius:10px;color:var(--pl);font-size:13px;font-weight:600;text-align:center}
+/* sheet */
+.scrim{position:fixed;top:0;left:0;width:390px;height:100vh;background:rgba(3,6,12,.62);opacity:0;pointer-events:none;transition:.2s}
+.sheet{position:fixed;left:0;bottom:0;width:390px;background:var(--head);border-top:1px solid var(--pcb);border-radius:22px 22px 0 0;padding:10px 18px 26px;transform:translateY(105%);transition:.25s cubic-bezier(.2,.8,.2,1);max-height:80vh;overflow:auto;visibility:hidden}
+body.open .scrim{opacity:1;pointer-events:auto}body.open .sheet{transform:none;visibility:visible}
+.grab{width:40px;height:4px;border-radius:2px;background:var(--border);margin:0 auto 12px}
+.sh{display:flex;align-items:center;gap:10px}
+.sh .back{width:30px;height:30px;border-radius:99px;border:1px solid var(--border);text-align:center;color:var(--pl)}
+.sh h3{font-size:18px;font-weight:700}
+.meta{font-size:12.5px;color:var(--var);margin:3px 0 10px}
+.keys{display:flex;gap:12px;font-size:11px;color:var(--var);margin-bottom:4px}.keys i{display:inline-block;width:10px;height:6px;border-radius:2px;margin-right:5px}
+.method{font-size:13px;line-height:1.55;color:var(--var);display:flex;flex-direction:column;gap:9px}.method b{color:var(--on)}
+</style></head>
+<body>
+<div class="wrap">
+  <div class="bar-top"><h1>Analytics</h1><div class="range" id="range"></div></div>
+  <div class="hero" id="hero"></div>
+  <div class="tabs" id="tabs"></div>
+  <div id="body" style="display:flex;flex-direction:column;gap:10px"></div>
+</div>
+<div class="scrim" id="scrim"></div><div class="sheet" id="sheet"><div class="grab"></div><div id="sb"></div></div>
+<script src="data-hybrid.js"></script>
+<script>
+const REGIONS={Chest:['pectoralis_major'],Back:['latissimus_dorsi','rhomboids','erector_spinae','upper_trapezius','lower_trapezius'],Shoulders:['anterior_deltoid','lateral_deltoid','posterior_deltoid','infraspinatus'],Arms:['biceps_brachii','triceps_brachii','brachialis','brachioradialis','forearm_flexors'],Legs:['quadriceps','gluteus_maximus','hamstrings','hip_adductors','gastrocnemius','soleus'],Core:['rectus_abdominis','obliques','transversus_abdominis','hip_flexors']};
+const SHORT={pectoralis_major:'Pecs',latissimus_dorsi:'Lats',erector_spinae:'Spinal erectors',upper_trapezius:'Upper traps',lower_trapezius:'Lower traps',anterior_deltoid:'Front delts',lateral_deltoid:'Side delts',posterior_deltoid:'Rear delts',biceps_brachii:'Biceps',triceps_brachii:'Triceps',forearm_flexors:'Forearms',gluteus_maximus:'Glutes',hip_adductors:'Adductors',gastrocnemius:'Calves',rectus_abdominis:'Abs',transversus_abdominis:'Deep core',hip_flexors:'Hip flexors'};
+// Comparisons sum library movement groups only; saved legacy choices and
+// unclassified sets are outside both sides (stated in the info sheet).
+const CMP=[['Push',['horizontal_push','vertical_push'],'Pull',['horizontal_pull','vertical_pull']],['Knee-dominant',['squat','lunge_step','knee_extension'],'Hip-dominant',['hip_hinge','hip_extension']]];
+const RANGES={'30D':30,'90D':90,'All':1e9};
+const P=new URLSearchParams(location.search);
+let range=P.get('range')||'90D',view=P.get('view')||'movement',D,stack=[];
+const $=s=>document.querySelector(s),pct=(n,d)=>d?Math.round(n/d*100):0,lbl=(id,f)=>SHORT[id]||f;
+const heat=(v,max)=>{const t=max?v/max:0;return `background:rgba(59,130,246,${(.14+t*.8).toFixed(2)});color:${t>.5?'#fff':'var(--on)'}`};
+function head(){
+  $('#range').innerHTML=Object.keys(RANGES).map(r=>`<button class="${r===range?'on':''}" data-r="${r}">${r}</button>`).join('');
+  $('#range').querySelectorAll('button').forEach(b=>b.onclick=()=>{range=b.dataset.r;render()});
+  const t=D.totals;
+  $('#hero').innerHTML=`<div><div class="n">${t.completedSets}</div><div class="l">completed sets</div></div>
+  <div class="side"><div class="stat"><b>${t.exerciseCount}</b><span>exercises</span></div><button class="stat tap" id="timedBtn"><b>${t.activityEntries}</b><span>timed/cardio</span></button></div>`;
+  $('#timedBtn').onclick=()=>D.timed&&open(exSheet(D.timed,'entries','Not counted as strength sets'));
+  $('#tabs').innerHTML=['movement','muscles','equipment'].map(v=>`<button class="${v===view?'on':''}" data-v="${v}">${v[0].toUpperCase()+v.slice(1)}</button>`).join('')+`<button class="i" id="info" aria-label="How this is counted">i</button>`;
+  $('#tabs').querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{view=b.dataset.v;render()});
+  $('#info').onclick=()=>open(info());}
+const sum=(ids)=>D.movement.groups.filter(g=>ids.includes(g.id)).reduce((s,g)=>s+g.sets,0);
+function cmp([ln,lids,rn,rids]){const l=sum(lids),r=sum(rids),t=l+r;
+  return `<div class="cmp"><div class="lbl"><span>${ln}<b>${l}</b></span><span><b>${r}</b>${rn}</span></div>
+  <div class="track"><i style="flex:${l||0.0001};background:var(--p)"></i><i style="flex:${r||0.0001};background:var(--alt)"></i></div>
+  <div class="pc"><span>${pct(l,t)}%</span><span>${pct(r,t)}%</span></div></div>`;}
+function movement(){const M=D.movement,g=M.groups,T=D.totals.completedSets,max=g[0]?.sets||1,SHOW=5;
+  const spans=['span 3','span 3','span 2','span 2','span 2'];
+  let tiles=g.slice(0,SHOW).map((b,i)=>`<button class="tile" data-g="${b.id}" style="grid-column:${spans[i]};${heat(b.sets,max)}"><span class="t">${b.label}${b.source==='override'?' ✎':''}</span><span class="v">${b.sets}<small>${pct(b.sets,T)}%</small></span></button>`).join('');
+  const rest=g.length-SHOW;
+  const more=rest>0?`<button class="tile more" id="moreG" style="grid-column:span 6;min-height:40px;flex-direction:row;gap:8px"><span class="t">+${rest} more groups${M.unclassified?' incl. unclassified':''}</span><span style="font-size:13px;font-weight:600">View all ›</span></button>`:'';
+  return `<div class="card"><div class="ch">Compared<span>sets in library groups</span></div>${CMP.map(cmp).join('<div style="height:2px"></div>')}</div>
+  <div class="card"><div class="ch">Movement groups<span>each set counted once</span></div><div class="tiles">${tiles}${more}</div>
+  <div class="foot"><span>${pct(M.coverage.knownSets,T)}% classified</span>${M.overriddenSets?`<span>✎ ${M.overriddenSets} sets use your saved group</span>`:''}</div></div>`;}
+function muscles(){const M=D.muscles,R=M.regions,max=R[0]?.sets||1,pm=new Map(M.primary.map(b=>[b.id,b.sets]));const mmax=M.primary[0]?.sets||1;
+  const order=Object.keys(REGIONS);
+  const tiles=order.map(r=>{const b=R.find(x=>x.id===r)||{sets:0};const cells=REGIONS[r].map(id=>{const v=pm.get(id)||0;return `<i style="background:${v?`rgba(255,255,255,${(.22+v/mmax*.73).toFixed(2)})`:'rgba(255,255,255,.1)'}"></i>`}).join('');
+    const top=REGIONS[r].filter(id=>pm.get(id)).sort((a,c)=>pm.get(c)-pm.get(a))[0];
+    return `<button class="reg" data-reg="${r}" style="${heat(b.sets,max)}"><div class="top"><span class="t">${r}</span><span class="v">${b.sets}</span></div><span class="m">${top?`Most: ${lbl(top)}`:'No primary sets'}</span><div class="cells">${cells}</div></button>`}).join('');
+  return `<div class="card"><div class="ch">Body regions<span>primary sets per region</span></div><div class="regions">${tiles}</div>
+  <div class="legend"><span>Fewer</span><span class="g"></span><span>More sets</span></div>
+  <div class="foot"><span class="pill">Overlapping counts</span>${M.unknown?`<button data-unkm><b>${M.unknown.sets}</b> sets · unknown muscles</button>`:''}</div></div>`;}
+function rows(list,T,{tail}={}){const mx=Math.max(1,list[0]?.sets||0,tail?.sets||0),w=n=>Math.max(3,n/mx*100);return `<div class="rows">${list.map(b=>`<button class="row" data-e="${b.id}"><span class="lb">${b.label}</span><span class="nm">${b.sets}<small>${pct(b.sets,T)}%</small></span><span class="bar"><i style="width:${w(b.sets)}%"></i></span></button>`).join('')}
+  ${tail?`<button class="row unk" data-e="unknown"><span class="lb">${tail.label}</span><span class="nm">${tail.sets}<small>${pct(tail.sets,T)}%</small></span><span class="bar"><i style="width:${w(tail.sets)}%"></i></span></button>`:''}</div>`;}
+function equipment(){const E=D.equipment,T=D.totals.completedSets,SHOW=6;
+  return `<div class="card"><div class="ch">Share of sets using each<span class="pill">Overlapping counts</span></div>${rows(E.items.slice(0,SHOW),T,{tail:E.unknown})}
+  ${E.items.length>SHOW?`<button class="allbtn" id="allE">All ${E.items.length} equipment ›</button>`:''}
+  <div class="foot"><span>Equipment known for ${pct(E.coverage.knownSets,T)}% of sets</span></div></div>`;}
+// ---------- sheets ----------
+function exSheet(b,unit='sets',sub=''){const m=b.exercises[0]?.sets||1;
+  return {title:b.label,html:`<div class="meta">${b.sets} ${unit} · ${b.exercises.length} exercise${b.exercises.length===1?'':'s'}${sub?` · ${sub}`:''}</div>
+  <div class="rows">${b.exercises.map(e=>`<div class="row"><span class="lb" style="font-weight:500">${e.name}</span><span class="nm">${e.sets}</span><span class="bar"><i style="width:${e.sets/m*100}%;background:var(--pl)"></i></span></div>`).join('')}</div>`};}
+function groupsSheet(){const M=D.movement,T=D.totals.completedSets,mx=M.groups[0]?.sets||1,w=n=>Math.max(3,n/mx*100);
+  return {title:'All movement groups',html:`<div class="meta">${T} sets · each set in one group</div><div class="rows">${M.groups.map(b=>`<button class="row" data-g="${b.id}"><span class="lb">${b.label}${b.source==='override'?' <span class="tag">your choice</span>':''}</span><span class="nm">${b.sets}<small>${pct(b.sets,T)}%</small></span><span class="bar"><i style="width:${w(b.sets)}%"></i></span></button>`).join('')}
+  ${M.unclassified?`<button class="row unk" data-g="unclassified"><span class="lb">Unclassified</span><span class="nm">${M.unclassified.sets}<small>${pct(M.unclassified.sets,T)}%</small></span><span class="bar"><i style="width:${w(M.unclassified.sets)}%"></i></span></button>`:''}</div>`};}
+function regionSheet(r){const M=D.muscles,pm=new Map(M.primary.map(b=>[b.id,b])),sm=new Map(M.secondary.map(b=>[b.id,b]));
+  const ids=REGIONS[r].filter(id=>pm.has(id)||sm.has(id)).sort((a,c)=>(pm.get(c)?.sets||0)-(pm.get(a)?.sets||0));
+  const max=Math.max(1,...ids.map(id=>(pm.get(id)?.sets||0)+(sm.get(id)?.sets||0)));const reg=M.regions.find(x=>x.id===r);
+  return {title:r,html:`<div class="meta">${reg?reg.sets:0} sets target ${r.toLowerCase()} as primary · muscle rows overlap</div>
+  <div class="keys"><span><i style="background:var(--p)"></i>Primary</span><span><i style="background:var(--ghost)"></i>Secondary</span></div>
+  <div class="rows">${ids.map(id=>{const p=pm.get(id)?.sets||0,s=sm.get(id)?.sets||0;return `<button class="row" data-m="${id}"><span class="lb">${lbl(id,(pm.get(id)||sm.get(id)).label)}</span><span class="nm">${p}${s?`<small>+${s}</small>`:''}</span><span class="bar"><i style="width:${p/max*100}%"></i><i class="s" style="width:${s/max*100}%"></i></span></button>`}).join('')}</div>`};}
+function muscleSheet(id){const M=D.muscles,p=M.primary.find(b=>b.id===id),s=M.secondary.find(b=>b.id===id);const name=lbl(id,(p||s).label);
+  const part=(b,k)=>b?`<div class="keys" style="margin-top:12px"><span>${k} · ${b.sets} sets</span></div>`+exSheet(b).html.replace(/<div class="meta">.*?<\/div>/,''):'';
+  return {title:name,html:`<div class="meta">${p?p.sets:0} primary · ${s?s.sets:0} secondary</div>${part(p,'Primary target')}${part(s,'Secondary involvement')}`};}
+function equipSheet(){const E=D.equipment,T=D.totals.completedSets;return {title:'All equipment',html:`<div class="meta">Share of ${T} sets · one set can use several</div>${rows(E.items,T,{tail:E.unknown})}`};}
+function info(){return {title:'How this is counted',html:`<div class="meta">Eligible ordinary history · ${range==='All'?'all time':'last '+RANGES[range]+' days'}</div><div class="method">
+<p><b>Completed sets</b> are working sets with reps. Warm-ups, skipped sets, unparsed rows and Recovery notes are excluded.</p>
+<p><b>Movement</b> puts each set in exactly one group: the library group, or the group you saved in that note (✎).</p>
+<p><b>Compared</b> sums library groups only: Push = horizontal + vertical push, Pull = horizontal + vertical pull, Knee-dominant = squat, lunge/step, knee extension, Hip-dominant = hip hinge, hip extension. It describes what you logged; it is not a recommendation.</p>
+<p><b>Muscles and equipment overlap.</b> One compound set counts under every muscle or implement it involves, so they never add up to your total. Counts are sets, not stimulus or fatigue.</p>
+<p><b>Unknown</b> means the library doesn't recognise the exercise. It is never guessed.</p>
+<p><b>Timed and cardio</b> entries are tallied separately from strength sets.</p></div>`};}
+function paint(){const s=stack[stack.length-1];$('#sb').innerHTML=`<div class="sh">${stack.length>1?'<button class="back" id="back">‹</button>':''}<h3>${s.title}</h3></div>${s.html}`;
+  const b=$('#back');if(b)b.onclick=()=>{stack.pop();paint()};wire($('#sb'));}
+function open(s,push=false){stack=push?[...stack,s]:[s];paint();document.body.classList.add('open');}
+$('#scrim').onclick=()=>{document.body.classList.remove('open');stack=[]};
+function wire(root){const inSheet=root.id==='sb';
+  root.querySelectorAll('[data-g]').forEach(b=>b.onclick=()=>{const id=b.dataset.g,M=D.movement,g=id==='unclassified'?M.unclassified:M.groups.find(x=>x.id===id);open(exSheet(g,'sets',g.source==='override'?'your saved group':''),inSheet)});
+  root.querySelectorAll('[data-reg]').forEach(b=>b.onclick=()=>open(regionSheet(b.dataset.reg)));
+  root.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>open(muscleSheet(b.dataset.m),true));
+  root.querySelectorAll('[data-unkm]').forEach(b=>b.onclick=()=>open(exSheet(D.muscles.unknown)));
+  root.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>{const E=D.equipment,id=b.dataset.e;open(exSheet(id==='unknown'?E.unknown:E.items.find(x=>x.id===id)),inSheet)});
+  const mg=root.querySelector('#moreG');if(mg)mg.onclick=()=>open(groupsSheet());
+  const ae=root.querySelector('#allE');if(ae)ae.onclick=()=>open(equipSheet());}
+function render(){D=KILO_PROTO.derive(RANGES[range],REGIONS);head();$('#body').innerHTML=view==='muscles'?muscles():view==='equipment'?equipment():movement();wire($('#body'));}
+render();
+// Screenshot hooks: ?drill=<selector>[,<selector>] clicks through in order.
+(P.get('drill')||'').split(',').filter(Boolean).forEach(sel=>{const el=document.querySelector(sel);if(el)el.click();});
+</script></body></html>

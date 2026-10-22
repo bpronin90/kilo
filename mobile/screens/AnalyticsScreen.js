@@ -489,7 +489,8 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   const trainingBreakdown = (
     <AnalyticsTrainingBreakdown
       key="training-breakdown-section"
-      breakdown={analytics.trainingBreakdown}
+      parsedSections={parsedSections}
+      populationVerified={recoveryFilter.ready}
       isLoading={isNotesLoading}
       hasError={!!notesError && notes.length === 0}
       paused={isActiveRecovery}
