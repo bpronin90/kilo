@@ -145,9 +145,11 @@ so revert or fix the faulty change on `main` before merging anything else.
   id. Signing in never changes or erases local data by itself; history owned by
   another account requires an explicit purge-or-upload choice before sync
   starts. See [Cloud Sync](../architecture/cloud-sync.md).
-- **Session invalidation.** Sign-out is meant to end the session and return
-  storage to local-only mode, offering an explicit device-wipe; on the web it
-  currently fails (see below). Clearing site data removes the session.
+- **Session invalidation.** Sign-out first asks the server to revoke the
+  account's restore credentials, then ends the session and returns storage to
+  local-only mode, offering an explicit device-wipe. If that request fails, the
+  user stays signed in and sees "Could not complete sign-out. Please try
+  again." Clearing site data removes the session.
 - **Offline and sync failure.** Local reads and writes do not depend on
   Supabase, so the app keeps working offline or when Supabase is unreachable;
   retry and conflict behavior is in [Cloud Sync](../architecture/cloud-sync.md).
