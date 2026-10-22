@@ -55,7 +55,7 @@ await page.getByText('Welcome to Kilo', { exact: true }).waitFor();
 await page.waitForTimeout(700);
 if (await overlay.count()) throw new Error('Tour restarted after completion/reload');
 await page.getByRole('tab', { name: 'More', exact: true }).click();
-await page.getByText('Help', { exact: true }).click();
+await page.getByRole('button', { name: 'App Guide', exact: true }).click();
 await page.getByRole('button', { name: 'Replay walkthrough', exact: true }).click();
 await waitStep('Home', 1);
 await shot('replay-home');

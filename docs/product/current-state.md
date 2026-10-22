@@ -32,7 +32,7 @@ disabling suggestions does not change a note.
   sync, help, and product information.
 
 A verified empty installation offers a skippable, five-step walkthrough over the
-real tabs after startup. More → Help → Replay walkthrough starts it again at
+real tabs after startup. More → App Guide (Help) → Replay walkthrough starts it again at
 Home. Skip leaves the current screen usable; Done returns Home. Dismissal is a
 device-local preference outside fitness backups and account sync. Unreadable
 preferences or unverified local data suppress automatic launch; manual replay
