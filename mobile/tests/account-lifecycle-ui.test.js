@@ -1290,6 +1290,183 @@ describe('AccountScreen CAPTCHA lifecycle', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Auth feedback placement and announcement (#1565): the Account status renders
+// inside the action block it belongs to (never detached after LegalLinks), in a
+// polite live region that stays mounted while its branch is shown.
+// ---------------------------------------------------------------------------
+
+describe('AccountScreen auth feedback placement (#1565)', () => {
+  let originalPlatformOS;
+
+  beforeEach(() => {
+    originalPlatformOS = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+    global.window = { location: { href: '', origin: 'https://kilo-app.example.com' } };
+  });
+
+  afterEach(() => {
+    Object.defineProperty(Platform, 'OS', { value: originalPlatformOS, configurable: true });
+  });
+
+  function findButtonByTitle(tree, title) {
+    return tree.root.find((node) => (
+      typeof node.type === 'string'
+      && typeof node.props.onPress === 'function'
+      && node.props.children?.props?.children === title
+    ));
+  }
+
+  function render(auth) {
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth }));
+    });
+    return tree;
+  }
+
+  const statusHosts = (tree) => tree.root.findAll((n) => typeof n.type === 'string' && n.props.accessibilityLabel === 'Account status');
+  const regionHosts = (tree) => tree.root.findAll((n) => typeof n.type === 'string' && n.props.testID === 'account-status-region');
+
+  // Document-order list of labels, test IDs, and text from the rendered tree.
+  function order(json, out = []) {
+    if (Array.isArray(json)) { json.forEach((j) => order(j, out)); return out; }
+    if (json == null) return out;
+    if (typeof json === 'string') { out.push(json); return out; }
+    if (json.props?.accessibilityLabel) out.push(`label:${json.props.accessibilityLabel}`);
+    if (json.props?.testID) out.push(`testID:${json.props.testID}`);
+    (json.children || []).forEach((c) => order(c, out));
+    return out;
+  }
+
+  // The rendered node whose direct children include the status region: the
+  // auth action block the feedback belongs to.
+  function statusBlock(json) {
+    if (Array.isArray(json)) return json.map(statusBlock).find(Boolean) || null;
+    if (!json || typeof json === 'string') return null;
+    if ((json.children || []).some((c) => c?.props?.testID === 'account-status-region')) return json;
+    return statusBlock(json.children || []);
+  }
+
+  function expectSingleAnnouncedStatus(tree, text) {
+    expect(statusHosts(tree)).toHaveLength(1);
+    expect(statusHosts(tree)[0].props.children).toEqual(text);
+    const regions = regionHosts(tree);
+    expect(regions).toHaveLength(1);
+    expect(regions[0].props.accessibilityLiveRegion).toBe('polite');
+    // Announced in place: no focus is forced onto the message.
+    expect(regions[0].props.accessible).toBeUndefined();
+    expect(regions[0].props.autoFocus).toBeUndefined();
+  }
+
+  function expectBefore(list, first, second) {
+    expect(list.indexOf(first)).toBeGreaterThanOrEqual(0);
+    expect(list.indexOf(second)).toBeGreaterThanOrEqual(0);
+    expect(list.indexOf(first)).toBeLessThan(list.indexOf(second));
+  }
+
+  function expectSignedOutPlacement(tree) {
+    const list = order(tree.toJSON());
+    for (const control of ['Sign In', 'Create Account', 'label:Reset Password', 'label:Continue with GitHub']) {
+      expectBefore(list, control, 'label:Account status');
+    }
+    expectBefore(list, 'label:Account status', 'label:Privacy Policy');
+    const block = order(statusBlock(tree.toJSON()));
+    expect(block).toContain('label:Email');
+    expect(block).toContain('label:Continue with GitHub');
+  }
+
+  test('keeps an empty live region mounted, out of flow, before any status', () => {
+    const tree = render(makeResolvedAuthProp(null));
+    expect(statusHosts(tree)).toHaveLength(0);
+    const regions = regionHosts(tree);
+    expect(regions).toHaveLength(1);
+    expect(regions[0].props.accessibilityLiveRegion).toBe('polite');
+    expect(regions[0].props.style).toEqual(expect.objectContaining({ position: 'absolute' }));
+  });
+
+  test('invalid sign-in renders beside the sign-in controls, before legal links', async () => {
+    const auth = makeResolvedAuthProp(null, { signInWithPassword: jest.fn().mockResolvedValue({ ok: false, error: 'Invalid login credentials' }) });
+    const tree = render(auth);
+    await act(async () => { await findButtonByTitle(tree, 'Sign In').props.onPress(); });
+    expectSingleAnnouncedStatus(tree, 'Invalid login credentials If you signed up with GitHub, use Continue with GitHub.');
+    expectSignedOutPlacement(tree);
+  });
+
+  test('rejected sign-up renders beside the sign-in controls, before legal links', async () => {
+    const auth = makeResolvedAuthProp(null, { signUpWithPassword: jest.fn().mockResolvedValue({ ok: false, error: 'Signups not allowed for this instance' }) });
+    const tree = render(auth);
+    await act(async () => { await findButtonByTitle(tree, 'Create Account').props.onPress(); });
+    expectSingleAnnouncedStatus(tree, 'Signups not allowed for this instance');
+    expectSignedOutPlacement(tree);
+  });
+
+  test('missing and expired CAPTCHA feedback renders in the sign-in block', async () => {
+    const missing = 'Complete the security verification and try again.';
+    const auth = makeResolvedAuthProp(null, { signInWithPassword: jest.fn().mockResolvedValue({ ok: false, error: missing }) });
+    const tree = render(auth);
+    await act(async () => { await findButtonByTitle(tree, 'Sign In').props.onPress(); });
+    expect(statusHosts(tree)[0].props.children).toMatch(/^Complete the security verification/);
+    expectSignedOutPlacement(tree);
+
+    act(() => { tree.root.findByType(CaptchaChallenge).props.onExpired(); });
+    expectSingleAnnouncedStatus(tree, 'Security verification expired. Complete the new challenge and try again.');
+    expectSignedOutPlacement(tree);
+  });
+
+  test('failed sign-out renders directly after Sign Out, before Danger Zone and legal links', async () => {
+    const error = 'Could not revoke restore key. Sign out again to retry.';
+    const tree = render(makeResolvedAuthProp(FAKE_SESSION, { signOut: jest.fn().mockResolvedValue({ ok: false, error }) }));
+    await act(async () => { await findButtonByTitle(tree, 'Sign Out').props.onPress(); });
+    expectSingleAnnouncedStatus(tree, error);
+    const block = statusBlock(tree.toJSON());
+    const children = block.children;
+    const signOutIndex = children.findIndex((c) => order(c).includes('Sign Out'));
+    expect(children[signOutIndex + 1].props.testID).toBe('account-status-region');
+    const list = order(tree.toJSON());
+    expectBefore(list, 'label:Account status', 'Danger Zone');
+    expectBefore(list, 'label:Account status', 'label:Delete account');
+    expectBefore(list, 'label:Account status', 'label:Privacy Policy');
+  });
+
+  test('confirmation resend feedback renders beside the confirmation actions', async () => {
+    const auth = makeResolvedAuthProp(null, {
+      signUpWithPassword: jest.fn().mockResolvedValue({ ok: true, session: null }),
+      resendSignupConfirmation: jest.fn().mockResolvedValue({ ok: false, error: 'Email rate limit exceeded' }),
+    });
+    const tree = render(auth);
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'Email' }).props.onChangeText('fresh@test.com'); });
+    await act(async () => { await findButtonByTitle(tree, 'Create Account').props.onPress(); });
+    // The confirmation panel carries the pending message; no status line yet.
+    expect(statusHosts(tree)).toHaveLength(0);
+    await act(async () => { await tree.root.findByProps({ accessibilityLabel: 'Resend confirmation email' }).props.onPress(); });
+    expectSingleAnnouncedStatus(tree, 'Email rate limit exceeded');
+    const list = order(tree.toJSON());
+    expectBefore(list, 'label:Resend confirmation email', 'label:Account status');
+    expectBefore(list, 'label:Back to Sign In', 'label:Account status');
+    expect(order(statusBlock(tree.toJSON()))).toContain('label:Confirmation pending');
+  });
+
+  test('successful sign-in keeps its feedback when the screen moves to the signed-in branch', async () => {
+    const auth = makeResolvedAuthProp(null, { signInWithPassword: jest.fn().mockResolvedValue({ ok: true }) });
+    const tree = render(auth);
+    await act(async () => { await findButtonByTitle(tree, 'Sign In').props.onPress(); });
+    act(() => { tree.update(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(FAKE_SESSION) })); });
+    expectSingleAnnouncedStatus(tree, 'Signed in.');
+    const list = order(tree.toJSON());
+    expectBefore(list, 'Sign Out', 'label:Account status');
+    expectBefore(list, 'label:Account status', 'Danger Zone');
+  });
+
+  test('successful sign-out keeps its feedback when the screen moves to the signed-out branch', async () => {
+    const tree = render(makeResolvedAuthProp(FAKE_SESSION));
+    await act(async () => { await findButtonByTitle(tree, 'Sign Out').props.onPress(); });
+    act(() => { tree.update(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(null) })); });
+    expectSingleAnnouncedStatus(tree, 'Signed out.');
+    expectSignedOutPlacement(tree);
+  });
+});
+
 // CloudSyncRecovery (status summary, consent, sync phases) moved to
 // BackupScreen's Cloud section (#822) — see tests/backup-screen.test.js for
 // its coverage. AccountScreen itself never renders it now, in any auth state.
