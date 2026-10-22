@@ -16,6 +16,7 @@ import { Linking, Platform } from 'react-native';
 import { getCaptchaConfig } from '../lib/captchaConfig';
 import { getSupabaseClient, getSupabaseConfig, hasSupabaseConfig, callAndroidRestoreApi, clearAndroidRestoreCredentialId, enrollAndroidRestoreCredential, loadAndroidRestoreCredentialId, saveAndroidRestoreCredentialId } from '../lib/supabaseClient';
 import { revokeRestoreCredentialsBeforeSignOut } from '../lib/signOutRevocation';
+import { authErrorResult, usableAuthMessage } from '../lib/authErrorMessage';
 import { wipeSensitiveDeviceData } from '../storage/secureStorage';
 import { isAndroidRestoreCredentialsAvailable, getRestoreCredential as nativeGetRestoreCredential, clearRestoreCredential as nativeClearRestoreCredential } from 'android-restore-credentials';
 
@@ -34,7 +35,7 @@ const LOCAL_ONLY_RESULT = Object.freeze({
 // rejects unhandled and the UI shows nothing at all — no status text, no
 // error — on what was actually a failed request (#831).
 function networkErrorResult(e) {
-  return { ok: false, error: e?.message || 'A network error occurred. Check your connection and try again.' };
+  return { ok: false, error: usableAuthMessage(e?.message, 'A network error occurred. Check your connection and try again.') };
 }
 
 // Deep link the app registers for both the GitHub OAuth callback and the
@@ -237,7 +238,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
         // Distinguish an unconfirmed account from a generic bad-credentials
         // error so the screen can offer the resend-confirmation action instead
         // of a dead-end "invalid login" message (#799).
-        return { ok: false, error: error.message, unconfirmed: error.code === 'email_not_confirmed' };
+        return { ...authErrorResult(error, 'Sign in failed. Try again.'), unconfirmed: error.code === 'email_not_confirmed' };
       }
       if (data?.session?.access_token) enrollAndroidRestoreCredential(getSupabaseConfig()?.url, data.session.access_token);
       return { ok: true, session: data?.session || null };
@@ -257,7 +258,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
         password,
         ...(challenge.captchaToken ? { options: { captchaToken: challenge.captchaToken } } : {}),
       });
-      if (error) return { ok: false, error: error.message };
+      if (error) return authErrorResult(error, 'Account could not be created. Try again later.');
       return { ok: true, session: data?.session || null };
     } catch (e) {
       return networkErrorResult(e);
@@ -279,7 +280,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
         email,
         ...(challenge.captchaToken ? { options: { captchaToken: challenge.captchaToken } } : {}),
       });
-      if (error) return { ok: false, error: error.message };
+      if (error) return authErrorResult(error, 'Confirmation email could not be sent. Try again later.');
       return { ok: true };
     } catch (e) {
       return networkErrorResult(e);
@@ -313,7 +314,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
         clearFailed = await Promise.allSettled([nativeClearRestoreCredential(), clearAndroidRestoreCredentialId()]).then(([nc]) => nc.status === 'rejected' || nc.value?.status !== 'success');
       }
       const { error } = await client.auth.signOut();
-      if (error) return { ok: false, error: error.message };
+      if (error) return authErrorResult(error, 'Sign out failed. Try again.');
       applySession(null);
       if (options?.wipeLocalData) {
         const wipeResult = await wipeDeviceData();
@@ -346,7 +347,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
             }
           : undefined,
       );
-      if (error) return { ok: false, error: error.message };
+      if (error) return authErrorResult(error, 'Password reset email could not be sent. Try again later.');
       // Record that a recovery is in flight so a returning web callback error
       // (expired/used link) can be attributed to recovery without a URL marker.
       // No-op on native (no localStorage).
@@ -427,7 +428,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
       : undefined;
     try {
       const { data, error } = await client.auth.signInWithOAuth({ provider, options: oauthOptions });
-      if (error) return { ok: false, error: error.message };
+      if (error) return authErrorResult(error, 'Sign in could not be started. Try again.');
       return { ok: true, url: data?.url || null };
     } catch (e) {
       return networkErrorResult(e);
@@ -479,7 +480,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
       if (codeMatch && typeof client.auth.exchangeCodeForSession === 'function') {
         const code = decodeURIComponent(codeMatch[1]);
         const { data, error } = await client.auth.exchangeCodeForSession(code);
-        if (error) return { ok: false, error: error.message };
+        if (error) return authErrorResult(error, 'Sign in did not complete.');
         if (!data?.session) return { ok: false, error: 'Sign in did not complete.' };
         applySession(data.session);
         if (!isRecovery && data.session.access_token) enrollAndroidRestoreCredential(getSupabaseConfig()?.url, data.session.access_token);
@@ -489,7 +490,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
       // Fallback for web implicit flow: supabase-js with detectSessionInUrl=true
       // restores the session from the URL fragment automatically.
       const { data, error } = await client.auth.getSession();
-      if (error) return { ok: false, error: error.message };
+      if (error) return authErrorResult(error, 'Sign in did not complete.');
       if (!data?.session) return { ok: false, error: 'Sign in did not complete.' };
       applySession(data.session);
       if (!isRecovery && data.session.access_token) enrollAndroidRestoreCredential(getSupabaseConfig()?.url, data.session.access_token);
@@ -541,7 +542,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
     if (!client) return LOCAL_ONLY_RESULT;
     try {
       const { data, error } = await client.auth.updateUser({ password });
-      if (error) return { ok: false, error: error.message };
+      if (error) return authErrorResult(error, 'Password could not be updated. Try again.');
       if (mountedRef.current) {
         setPasswordRecovery(false);
         setRecoveryError('');
@@ -569,7 +570,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
       const ver = await callAndroidRestoreApi(supabaseUrl, 'restore-verification', assertion);
       if (!ver.ok || ver.body?.version !== 1 || !ver.body?.access_token || !ver.body?.refresh_token) return { ok: false, error: 'Restore failed.' };
       const { error: e } = await client.auth.setSession({ access_token: ver.body.access_token, refresh_token: ver.body.refresh_token });
-      return e ? { ok: false, error: e.message } : { ok: true };
+      return e ? authErrorResult(e, 'Restore failed.') : { ok: true };
     } catch (e) { return networkErrorResult(e); }
   }, [requireClient]);
 
