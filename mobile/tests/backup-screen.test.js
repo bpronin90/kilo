@@ -1011,3 +1011,228 @@ describe('BackupScreen unfinished rename recovery when signed out (#1417)', () =
     expect(tree.root.findByProps({ title: 'Export Cloud Copy' }).props.disabled).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Web export delivery (#1563). react-native-web's Share rejects when
+// `navigator.share` is absent, which used to turn a valid export into
+// "Export failed." with no artifact. Each export now downloads a real file on
+// web when it cannot share. jest-expo has no DOM, so a minimal document stub
+// records the download anchor and URL.createObjectURL hands back the Blob so
+// the downloaded bytes themselves are asserted. Synthetic data only.
+// ---------------------------------------------------------------------------
+describe('BackupScreen web export delivery (#1563)', () => {
+  const originalOS = Platform.OS;
+  const hadDocument = 'document' in globalThis;
+  const originalDocument = globalThis.document;
+  const originalShare = globalThis.navigator?.share;
+  const SIGNED_IN = { configured: true, loading: false, signedIn: true, user: { id: 'u1', email: 'a@test.com' } };
+  const ACCOUNT_JSON = JSON.stringify({ version: 3, account: { id: 'u1' }, note: 'Kniebeuge — 100 kg ✓' });
+  let downloads;
+  let clickThrows;
+
+  // On web, platformAlert routes confirmations to WebAlertHost; capture them
+  // the same way the native Alert.alert spy does.
+  const { setWebAlertHandler } = require('../lib/platformAlert');
+
+  beforeEach(() => {
+    Platform.OS = 'web';
+    setWebAlertHandler((title, message, buttons) => { lastAlert = { title, message, buttons }; });
+    delete globalThis.navigator.share;
+    downloads = [];
+    clickThrows = false;
+    const blobs = new Map();
+    jest.spyOn(URL, 'createObjectURL').mockImplementation((blob) => { const url = `blob:kilo/${blobs.size + 1}`; blobs.set(url, blob); return url; });
+    jest.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    // Fake timers hold the deferred revokeObjectURL instead of leaving a live
+    // 30s handle behind each download.
+    jest.useFakeTimers();
+    globalThis.document = {
+      // react-native's HoverState probes document listeners when it loads.
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      body: { appendChild: jest.fn(), removeChild: jest.fn() },
+      createElement: () => {
+        const anchor = { style: {} };
+        anchor.click = () => {
+          if (clickThrows) throw new Error('Downloads blocked');
+          downloads.push({ fileName: anchor.download, blob: blobs.get(anchor.href) });
+        };
+        return anchor;
+      },
+    };
+  });
+
+  afterEach(() => {
+    Platform.OS = originalOS;
+    setWebAlertHandler(null);
+    jest.clearAllTimers();
+    jest.useRealTimers();
+    if (originalShare) globalThis.navigator.share = originalShare;
+    else delete globalThis.navigator.share;
+    if (hadDocument) globalThis.document = originalDocument;
+    else delete globalThis.document;
+  });
+
+  function rejectShareWith(name) {
+    globalThis.navigator.share = jest.fn();
+    jest.spyOn(Share, 'share').mockRejectedValue(Object.assign(new Error(name), { name }));
+  }
+
+  async function confirm(tree, title) {
+    act(() => { findButton(tree, title).props.onPress(); });
+    await act(async () => { await alertButton('Export anyway').onPress(); });
+  }
+
+  async function exportAccountData(serverExport) {
+    const tree = renderScreen({ auth: { ...SIGNED_IN, serverExport } });
+    await flush();
+    await act(async () => { await findButton(tree, 'Export Account Data').props.onPress(); });
+    return tree;
+  }
+
+  test('Export Account Data downloads the server payload when Web Share is absent', async () => {
+    const tree = await exportAccountData(jest.fn().mockResolvedValue({ ok: true, json: ACCOUNT_JSON }));
+
+    expect(downloads).toHaveLength(1);
+    expect(downloads[0].fileName).toMatch(/^kilo-account-export-\d{4}-\d{2}-\d{2}\.json$/);
+    expect(downloads[0].blob.type).toBe('application/json;charset=utf-8');
+    expect(await downloads[0].blob.text()).toBe(ACCOUNT_JSON);
+    expect(JSON.parse(await downloads[0].blob.text()).account.id).toBe('u1');
+    expect(statusMatches(tree, /Account data exported\./)).toBe(true);
+    expect(statusMatches(tree, /Export failed/)).toBe(false);
+    expect(findButton(tree, 'Export Account Data').props.disabled).toBe(false);
+  });
+
+  test('Export Account Data: a non-cancellation share rejection falls back to a download', async () => {
+    rejectShareWith('NotAllowedError');
+    const tree = await exportAccountData(jest.fn().mockResolvedValue({ ok: true, json: ACCOUNT_JSON }));
+
+    expect(Share.share).toHaveBeenCalledWith({ message: ACCOUNT_JSON });
+    expect(await downloads[0].blob.text()).toBe(ACCOUNT_JSON);
+    expect(statusMatches(tree, /Account data exported\./)).toBe(true);
+  });
+
+  test('Export Account Data: cancelling the share is neutral — no download, banner, or success claim', async () => {
+    rejectShareWith('AbortError');
+    const tree = await exportAccountData(jest.fn().mockResolvedValue({ ok: true, json: ACCOUNT_JSON }));
+
+    expect(downloads).toHaveLength(0);
+    expect(statusMatches(tree, /Account data exported\.|Export failed/)).toBe(false);
+    expect(findButton(tree, 'Export Account Data').props.disabled).toBe(false);
+  });
+
+  test('Export Account Data: a server failure never downloads or claims success', async () => {
+    const tree = await exportAccountData(jest.fn().mockResolvedValue({ ok: false, error: 'Server export unavailable.' }));
+
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(statusMatches(tree, /Server export unavailable\./)).toBe(true);
+    expect(statusMatches(tree, /Account data exported\./)).toBe(false);
+  });
+
+  test('Export Account Data: when share and download both fail it reports a retryable failure', async () => {
+    rejectShareWith('DataError');
+    clickThrows = true;
+    const tree = await exportAccountData(jest.fn().mockResolvedValue({ ok: true, json: ACCOUNT_JSON }));
+
+    expect(statusMatches(tree, /Export failed\./)).toBe(true);
+    expect(statusMatches(tree, /Account data exported\./)).toBe(false);
+    expect(findButton(tree, 'Export Account Data').props.disabled).toBe(false);
+  });
+
+  test('Export Local Backup downloads the snapshot after the unencrypted-data gate', async () => {
+    const onExport = jest.fn().mockResolvedValue({ ok: true, json: ACCOUNT_JSON });
+    const tree = renderScreen({ onExport });
+    act(() => { findButton(tree, 'Export Local Backup').props.onPress(); });
+    expect(lastAlert.title).toBe('Export is unencrypted');
+    expect(onExport).not.toHaveBeenCalled();
+    await act(async () => { await alertButton('Export anyway').onPress(); });
+
+    expect(downloads[0].fileName).toMatch(/^kilo-backup-\d{4}-\d{2}-\d{2}\.json$/);
+    expect(downloads[0].blob.type).toBe('application/json;charset=utf-8');
+    expect(await downloads[0].blob.text()).toBe(ACCOUNT_JSON);
+    expect(statusMatches(tree, /Backup downloaded\./)).toBe(true);
+    expect(findButton(tree, 'Export Local Backup').props.disabled).toBe(false);
+  });
+
+  test('Export Local Backup: a successful share is kept and nothing downloads', async () => {
+    globalThis.navigator.share = jest.fn();
+    jest.spyOn(Share, 'share').mockResolvedValue(undefined);
+    const tree = renderScreen({ onExport: jest.fn().mockResolvedValue({ ok: true, json: VALID_JSON }) });
+    await confirm(tree, 'Export Local Backup');
+
+    expect(Share.share).toHaveBeenCalledWith({ message: VALID_JSON });
+    expect(downloads).toHaveLength(0);
+    expect(statusMatches(tree, /Export failed/)).toBe(false);
+  });
+
+  test('Export Local Backup: cancelling the share does not download or fail', async () => {
+    rejectShareWith('AbortError');
+    const tree = renderScreen({ onExport: jest.fn().mockResolvedValue({ ok: true, json: VALID_JSON }) });
+    await confirm(tree, 'Export Local Backup');
+
+    expect(downloads).toHaveLength(0);
+    expect(statusMatches(tree, /Export failed|Backup downloaded/)).toBe(false);
+  });
+
+  test('Export Local Backup: an upstream export failure downloads nothing', async () => {
+    const tree = renderScreen({ onExport: jest.fn().mockResolvedValue({ ok: false, error: 'Storage read failed.' }) });
+    await confirm(tree, 'Export Local Backup');
+
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(statusMatches(tree, /Storage read failed\./)).toBe(true);
+  });
+
+  test('Export Workouts CSV downloads a CSV built from live notes', async () => {
+    mockLoadWorkoutNotes.mockResolvedValue([
+      { id: 'n1', title: 'Jour de poussée', isCurrent: true, raw_text: 'Monday\n-Bench\n- 100 5' },
+    ]);
+    const tree = renderScreen();
+    await confirm(tree, 'Export Workouts CSV');
+
+    expect(downloads[0].fileName).toMatch(/^kilo-workouts-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(downloads[0].blob.type).toBe('text/csv;charset=utf-8');
+    const csv = await downloads[0].blob.text();
+    expect(csv).toContain('routine_title');
+    expect(csv).toContain('Jour de poussée');
+    expect(mockLoadWeightEntriesRaw).not.toHaveBeenCalled();
+    expect(statusMatches(tree, /CSV downloaded\./)).toBe(true);
+  });
+
+  test('Export Weight CSV falls back to a download when sharing rejects', async () => {
+    rejectShareWith('NotAllowedError');
+    mockLoadWeightEntriesRaw.mockResolvedValue([
+      { id: 'w1', entry_type: 'weight', date: '2026-01-01', logged_at: '2026-01-01T08:00:00.000Z', weight_value: 180, note: '' },
+    ]);
+    const tree = renderScreen();
+    await confirm(tree, 'Export Weight CSV');
+
+    expect(downloads[0].fileName).toMatch(/^kilo-weight-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(downloads[0].blob.type).toBe('text/csv;charset=utf-8');
+    const csv = await downloads[0].blob.text();
+    expect(csv).toContain('weight_value_lb');
+    expect(csv).toContain('180');
+    expect(statusMatches(tree, /CSV downloaded\./)).toBe(true);
+  });
+
+  test('CSV export: a failed download reports the failure and releases busy state', async () => {
+    clickThrows = true;
+    const tree = renderScreen();
+    await confirm(tree, 'Export Weight CSV');
+
+    expect(statusMatches(tree, /Export failed: Downloads blocked/)).toBe(true);
+    expect(statusMatches(tree, /CSV downloaded/)).toBe(false);
+    expect(findButton(tree, 'Export Weight CSV').props.disabled).toBe(false);
+  });
+
+  test('Export Cloud Copy (hosted here) downloads the identity-scoped snapshot', async () => {
+    mockExportCloud = jest.fn().mockResolvedValue({ ok: true, json: ACCOUNT_JSON });
+    const tree = renderScreen({ auth: SIGNED_IN });
+    await flush();
+    await act(async () => { await findButton(tree, 'Export Cloud Copy').props.onPress(); });
+
+    expect(mockExportCloud).toHaveBeenCalledWith({ id: 'u1', email: 'a@test.com' });
+    expect(downloads[0].fileName).toMatch(/^kilo-cloud-export-\d{4}-\d{2}-\d{2}\.json$/);
+    expect(await downloads[0].blob.text()).toBe(ACCOUNT_JSON);
+    expect(statusMatches(tree, /Cloud export ready\./)).toBe(true);
+  });
+});

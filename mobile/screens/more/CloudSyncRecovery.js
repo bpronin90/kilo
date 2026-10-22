@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Share, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Button, SectionTitle } from '../../components/UI';
 import { useThemedStyles } from '../../theme/ThemeContext';
 import { useSyncRecovery, useCloudExport } from '../../hooks/useEntries';
@@ -8,6 +8,7 @@ import * as Storage from '../../storage/entries';
 import { SYNC_STATUS } from '../../storage/syncRecovery';
 import { subscribeDirtyQueue } from '../../storage/syncQueue';
 import { getPendingSyncIntent } from '../../storage/cloud/syncAdapter';
+import { deliverTextExport, EXPORT_DELIVERY } from '../../lib/exportDelivery';
 import { OWNER_UNCLAIMED, getLocalDataOwner } from '../../storage/entries/localDataOwner';
 import { HealthDataConsent } from './HealthDataConsent';
 import {
@@ -209,8 +210,8 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
         setStatus(result.error || 'Cloud export failed.');
         return;
       }
-      await Share.share({ message: result.json });
-      setStatus('Cloud export ready.');
+      const outcome = await deliverTextExport(result.json, { name: 'cloud-export', format: 'json' });
+      if (outcome !== EXPORT_DELIVERY.CANCELLED) setStatus('Cloud export ready.');
     } catch {
       setStatus('Cloud export failed.');
     } finally {

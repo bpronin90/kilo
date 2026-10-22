@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Platform, Share, Text, TextInput, View } from 'react-native';
+import { AccessibilityInfo, Platform, Text, TextInput, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
 import { ScreenShell } from './ScreenShell';
@@ -12,6 +12,7 @@ import { exportWorkoutsCsv, exportWeightCsv } from '../lib/interoperability/kilo
 import { createStyles } from './backup/backupStyles';
 import { useReducedMotion } from '../lib/useReducedMotion';
 import { writeExportFile, writeCsvExportFile, readNewestBackupFile } from './backup/BackupActions';
+import { deliverTextExport, EXPORT_DELIVERY } from '../lib/exportDelivery';
 
 // The one section of Data & Backup a typed navigation intent can land on
 // (#903), named here rather than in the shell: App.js validates an intent's
@@ -102,8 +103,8 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
         setCloudExportStatus(result.error || 'Export failed.');
         return;
       }
-      await Share.share({ message: result.json });
-      setCloudExportStatus('Account data exported.');
+      const outcome = await deliverTextExport(result.json, { name: 'account-export', format: 'json' });
+      if (outcome !== EXPORT_DELIVERY.CANCELLED) setCloudExportStatus('Account data exported.');
     } catch {
       setCloudExportStatus('Export failed.');
     } finally {
@@ -191,10 +192,11 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
         }
       }
 
-      // Fallback (and the iOS/web path). The pre-share warning in handleExport
-      // makes the unencrypted, readable nature of this payload explicit before
-      // it leaves the device.
-      await Share.share({ message: result.json });
+      // Fallback (and the iOS/web path; web downloads a file when it cannot
+      // share). The pre-share warning in handleExport makes the unencrypted,
+      // readable nature of this payload explicit before it leaves the device.
+      const outcome = await deliverTextExport(result.json, { name: 'backup', format: 'json' });
+      if (outcome === EXPORT_DELIVERY.DOWNLOADED) setStatus({ ok: true, message: 'Backup downloaded.' });
     } catch (e) {
       console.error('[BackupScreen] export threw:', e);
       setStatus({ ok: false, message: e?.message ? `Export failed: ${e.message}` : 'Export failed.' });
@@ -244,7 +246,8 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
         }
       }
 
-      await Share.share({ message: csvText });
+      const outcome = await deliverTextExport(csvText, { name: kind, format: 'csv' });
+      if (outcome === EXPORT_DELIVERY.DOWNLOADED) setStatus({ ok: true, message: 'CSV downloaded.' });
     } catch (e) {
       console.error('[BackupScreen] CSV export threw:', e);
       setStatus({ ok: false, message: e?.message ? `Export failed: ${e.message}` : 'Export failed.' });
