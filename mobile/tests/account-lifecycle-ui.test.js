@@ -459,6 +459,80 @@ describe('deleteAccount', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Web origin (#1552): a browser CORS rejection surfaces as fetch throwing a
+// TypeError before any response is readable. Export and delete must fail
+// closed: no local sign-out, the session kept, and the user free to retry.
+// ---------------------------------------------------------------------------
+
+describe('web export and delete fail closed on a rejected fetch', () => {
+  let originalPlatformOS;
+  beforeEach(() => {
+    originalPlatformOS = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+  });
+  afterEach(() => {
+    Object.defineProperty(Platform, 'OS', { value: originalPlatformOS, configurable: true });
+  });
+
+  test('a CORS-rejected export reports failure and keeps the session', async () => {
+    mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const { ref } = renderHook();
+    await flush();
+
+    let result;
+    await act(async () => { result = await ref.current.serverExport(); });
+
+    expect(result).toEqual({ ok: false, error: 'Failed to fetch' });
+    expect(mockAuth.signOut).not.toHaveBeenCalled();
+    expect(ref.current.signedIn).toBe(true);
+  });
+
+  test('a CORS-rejected delete does not sign out, and a retry completes deletion', async () => {
+    mockFetch
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) });
+    const { ref } = renderHook();
+    await flush();
+
+    let result;
+    await act(async () => { result = await ref.current.deleteAccount(); });
+    expect(result).toEqual({ ok: false, error: 'Failed to fetch' });
+    expect(mockAuth.signOut).not.toHaveBeenCalled();
+    expect(ref.current.signedIn).toBe(true);
+
+    await act(async () => { result = await ref.current.deleteAccount(); });
+    expect(result.ok).toBe(true);
+    expect(mockAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(ref.current.signedIn).toBe(false);
+  });
+
+  test('a server refusal of delete keeps the session', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({ error: 'Unauthorized' }) });
+    const { ref } = renderHook();
+    await flush();
+
+    let result;
+    await act(async () => { result = await ref.current.deleteAccount(); });
+    expect(result).toEqual({ ok: false, error: 'Unauthorized' });
+    expect(mockAuth.signOut).not.toHaveBeenCalled();
+  });
+
+  test('without a session bearer neither export nor delete reaches the network', async () => {
+    const { ref } = renderHook();
+    await flush();
+    mockAuth.getSession.mockResolvedValue({ data: { session: null }, error: null });
+
+    let exported;
+    let deleted;
+    await act(async () => { exported = await ref.current.serverExport(); });
+    await act(async () => { deleted = await ref.current.deleteAccount(); });
+    expect(exported).toEqual({ ok: false, error: 'Not signed in.' });
+    expect(deleted).toEqual({ ok: false, error: 'Not signed in.' });
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Legal link placement in the Signed-In view (issue #330). LegalLinks moved
 // from AccountLifecycle to AccountScreen's signed-in block directly (#822),
 // since it sits below the Danger Zone container now, not inside it.

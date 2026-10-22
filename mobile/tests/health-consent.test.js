@@ -29,7 +29,7 @@ jest.mock('../storage/cloud/consent', () => {
   };
 });
 
-const { fetchActiveConsentRevision, grantConsent } = require('../storage/cloud/consent');
+const { fetchActiveConsentRevision, grantConsent, requestHealthDataDeletion } = require('../storage/cloud/consent');
 const { HealthDataConsent } = require('../screens/more/HealthDataConsent');
 
 // The digest the database seeded for catalog revision 1, from
@@ -256,5 +256,60 @@ describe('protocol and denial codes', () => {
     // to the consent surface.
     expect(isConsentDenial(DENIAL_CODES.CLIENT_UPDATE_REQUIRED)).toBe(false);
     expect(isConsentDenial(DENIAL_CODES.HEALTH_DATA_DELETION_PENDING)).toBe(false);
+  });
+});
+
+// The purge kick is the one consent call that goes to an Edge Function rather than
+// PostgREST, so on web it depends on CORS (#1552). It is best-effort: the
+// consent_withdraw RPC already queued the durable job, so a rejected kick must
+// resolve to a truthful failure and never throw past the withdrawal flow.
+describe('requestHealthDataDeletion transport', () => {
+  const REST_URL = 'https://example.supabase.co/rest/v1';
+  const fakeClient = (session) => ({
+    rest: { url: REST_URL },
+    auth: { getSession: jest.fn().mockResolvedValue({ data: { session } }) },
+  });
+  let fetchMock;
+  beforeEach(() => {
+    fetchMock = jest.fn();
+    global.fetch = (...args) => fetchMock(...args);
+  });
+
+  it('posts the session bearer to health-data-delete', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true, status: 'withdrawn' }) });
+    const result = await requestHealthDataDeletion(fakeClient({ access_token: 'tok-abc' }));
+    expect(fetchMock).toHaveBeenCalledWith('https://example.supabase.co/functions/v1/health-data-delete', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer tok-abc' },
+    });
+    expect(result).toEqual({ ok: true, status: 'withdrawn' });
+  });
+
+  it('reports a CORS or network rejection as a failure without throwing', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+    const result = await requestHealthDataDeletion(fakeClient({ access_token: 'tok-abc' }));
+    expect(result).toEqual({ ok: false, error: 'Failed to fetch' });
+  });
+
+  it('keeps a still-running purge as pending, not failed', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 202, json: async () => ({ ok: false, status: 'deletion_pending', retrying: true }) });
+    const result = await requestHealthDataDeletion(fakeClient({ access_token: 'tok-abc' }));
+    // `ok` is not asserted: the 202 body's own `ok: false` currently overwrites
+    // the client's `ok: true` (consent.js spreads the body last). The caller
+    // ignores the result, so `pending` is the signal that matters here.
+    expect(result.pending).toBe(true);
+    expect(result.status).toBe('deletion_pending');
+  });
+
+  it('surfaces a server refusal as a failure', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 401, json: async () => ({ error: 'Unauthorized' }) });
+    const result = await requestHealthDataDeletion(fakeClient({ access_token: 'stale' }));
+    expect(result).toEqual({ ok: false, error: 'Unauthorized' });
+  });
+
+  it('sends nothing without a session bearer', async () => {
+    const result = await requestHealthDataDeletion(fakeClient(null));
+    expect(result).toEqual({ ok: false, error: 'Not signed in.' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

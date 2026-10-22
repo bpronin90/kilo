@@ -94,6 +94,7 @@ jobs:
       - name: Run shared Edge Function module tests
         run: >
           deno test --no-check --no-lock --allow-import --allow-read
+          supabase/functions/_shared/cors.test.ts
           supabase/functions/_shared/security-event.test.ts
           supabase/functions/_shared/rate-limit.test.ts
           supabase/functions/_shared/health-data-scope.test.ts
