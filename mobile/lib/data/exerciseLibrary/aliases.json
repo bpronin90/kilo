@@ -1,0 +1,41 @@
+{
+ "alias_version": 1,
+ "aliases": [
+  {
+   "alias": "Romanian deadlifts",
+   "target": "Romanian deadlift"
+  },
+  {
+   "alias": "Romanian dead lift",
+   "target": "Romanian deadlift"
+  },
+  {
+   "alias": "Romanian dead lifts",
+   "target": "Romanian deadlift"
+  },
+  {
+   "alias": "RDLs",
+   "target": "RDL"
+  },
+  {
+   "alias": "R.D.L.s",
+   "target": "RDL"
+  },
+  {
+   "alias": "hip thrusts",
+   "target": "hip thrust"
+  },
+  {
+   "alias": "leg curls",
+   "target": "leg curl"
+  },
+  {
+   "alias": "overhead presses",
+   "target": "overhead press"
+  },
+  {
+   "alias": "lat pulldowns",
+   "target": "lat pulldown"
+  }
+ ]
+}

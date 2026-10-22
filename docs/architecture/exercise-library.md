@@ -49,6 +49,60 @@ casefold and full-pipeline outputs are committed in
 `mobile/tests/fixtures/exercise-library-negative.json` (`--regen-casefold`), so Jest
 needs no live Python for them. Regeneration requires Python with Unicode 15.x data.
 
+## Kilo aliases
+
+`aliases.json` holds Kilo-specific spellings (for example `Romanian deadlifts`) as
+`{ alias, target }`, where `target` is an input the library already resolves. They
+are consulted only when the library answers `unknown`, so they never shadow a library
+record, and the source dataset is untouched. An alias keeps its target's match type
+(`family_only` or `ambiguous`); results carry `source: 'kilo_alias'` and `aliasTarget`
+so provenance is visible. There is no stemming; add spellings individually and bump
+`alias_version`.
+
+## Primary movement taxonomy (#1579)
+
+`primaryGroups.json` is an explicit, curated mapping: every catalog exercise has
+exactly one primary group, plus a family entry (the group when all members agree,
+otherwise `null`). Movement patterns and muscles stay separate dataset fields; the
+group is never "the first listed pattern or muscle". The 26 stable IDs: horizontal
+push, vertical push, horizontal pull, vertical pull, squat, lunge/step, hip hinge,
+hip extension, knee flexion, knee extension, calf/ankle, shoulder isolation, elbow
+flexion, elbow extension, hip abduction/adduction, forearm/grip, trunk movement,
+trunk stability, loaded carry, Olympic lift, jump/throw, mixed conditioning, cardio,
+mobility, stretching, and `unclassified` (the result for unknown or disagreeing
+input; no catalog exercise uses it).
+
+Tie rules for hybrids: (1) group by the movement the exercise exists to load, with a
+limiting stabilizer deciding only when no external-load pattern leads (renegade row
+and Copenhagen plank follow their stabilizer; dynamic side plank hip lift is trunk
+movement, static side plank is trunk stability); (2) single-joint deltoid and scapular
+work is shoulder isolation, while chest fly stays horizontal push; (3) lat-dominant
+shoulder extension (pullover, straight-arm pulldown) is vertical pull; (4) thruster
+is mixed conditioning, jerk is an Olympic lift, push press stays vertical push;
+(5) glute-ham raise is knee flexion with hip extension as a secondary pattern;
+(6) loaded locomotion without a carried implement (sled) is mixed conditioning.
+
+Helpers (read-only, nothing persisted or memoized):
+
+- `primaryMovementGroups.js`: `resolvePrimaryMovementGroup(input, { overrides })`
+  returns `groupId`, `basis` (`exercise`, `family`, `candidates`, or `none`) and the
+  untouched legacy `movementGroups.js` result. A user's saved override stays
+  authoritative in `legacy`; the library group never narrows or replaces it.
+- `exerciseMetadata.js`: `getExerciseMetadata(input)` and
+  `enrichParsedExercises(list)` accept the original parsed name (string or `{ name }`)
+  and keep it as `input`. An exact or alias match supplies every field; a family or
+  ambiguous candidate set supplies a field only when its members agree on it, so
+  unknown equipment never suppresses agreed movement data and muscles are never
+  unioned. `secondaryMovementPatterns` are the patterns outside the group's primary motion (the
+  group's own patterns plus `primary_pattern_exceptions` for tie-rule families such as
+  pullover); every exercise keeps at least one primary pattern.
+  Results are fresh frozen records carrying dataset, taxonomy, and alias versions.
+
+Warm-up, working, and cooldown are occurrence context, independent of exercise type
+and ignored here. Classification implies no equivalent fatigue and no prescription
+eligibility. `exercise_classifications` (persisted progression status) is unrelated
+and is not read or recomputed.
+
 ## Validation
 
 - `python3 scripts/validate-exercise-library.py` checks vocabulary and references,
