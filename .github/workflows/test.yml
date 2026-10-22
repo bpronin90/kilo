@@ -102,3 +102,4 @@ jobs:
           supabase/functions/_shared/unexpected-error.test.ts
           supabase/functions/android-restore-credentials/handler.test.ts
           supabase/functions/account-export/index.test.ts
+          supabase/functions/account-delete/index.test.ts

@@ -28,6 +28,8 @@ process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'anon-key';
 
 const { Platform } = require('react-native');
 
+const NEUTRAL_RETRY_ERROR = 'Could not complete sign-out. Please try again.';
+
 const SUPABASE_URL = 'https://example.supabase.co';
 const FAKE_SESSION = { access_token: 'tok-abc', refresh_token: 'ref-abc', user: { id: 'uid-1' } };
 
@@ -517,7 +519,7 @@ describe('signOut with Android revocation', () => {
     await act(async () => { result = await ref.current.signOut(); });
 
     expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/revoke/i);
+    expect(result.error).toBe(NEUTRAL_RETRY_ERROR);
     expect(mockAuth.signOut).not.toHaveBeenCalled();
   });
 
@@ -532,8 +534,43 @@ describe('signOut with Android revocation', () => {
     await act(async () => { result = await ref.current.signOut(); });
 
     expect(result.ok).toBe(false);
-    expect(result.error).toContain('revoke');
+    expect(result.error).toBe(NEUTRAL_RETRY_ERROR);
     expect(mockAuth.signOut).not.toHaveBeenCalled();
+  });
+
+  // Revoke runs on every platform, so its retryable failure copy must not
+  // name an Android key or imply the server revoked anything (#1558).
+  describe.each([
+    ['web', 'web', null],
+    ['ios', 'ios', null],
+    ['android without native restore support', 'android', 'unavailable'],
+  ])('retryable failure copy on %s', (_label, os, nativeStatus) => {
+    beforeEach(() => {
+      Platform.OS = os;
+      if (nativeStatus) {
+        ['createRestoreCredential', 'getRestoreCredential', 'clearRestoreCredential']
+          .forEach((m) => nativeMock.__setResult(m, { status: nativeStatus }));
+      }
+    });
+
+    test.each([
+      ['server error', () => mockFetch.mockResolvedValueOnce(fakeRes({ error: 'Revocation failed' }, 500))],
+      ['rejected fetch', () => mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'))],
+    ])('%s: neutral copy, ok false, no local signOut', async (_kind, failRevoke) => {
+      failRevoke();
+      const { ref } = renderAuthHook();
+      await flush();
+
+      let result;
+      await act(async () => { result = await ref.current.signOut(); });
+
+      expect(result).toEqual({ ok: false, error: NEUTRAL_RETRY_ERROR });
+      expect(result.error).not.toMatch(/android|restore key|revoked|signed out/i);
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/v1/revoke'), expect.anything());
+      expect(mockAuth.signOut).not.toHaveBeenCalled();
+      expect(nativeMock.clearRestoreCredential).not.toHaveBeenCalled();
+      expect(ref.current.signedIn).toBe(true);
+    });
   });
 
   test('native clear unavailable/unsupported surfaces as incomplete-cleanup message', async () => {
@@ -625,7 +662,7 @@ describe('web signOut revocation', () => {
     let result;
     await act(async () => { result = await ref.current.signOut(); });
     expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/retry/i);
+    expect(result.error).toBe(NEUTRAL_RETRY_ERROR);
     expect(mockAuth.signOut).not.toHaveBeenCalled();
     expect(ref.current.signedIn).toBe(true);
 
