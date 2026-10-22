@@ -586,6 +586,80 @@ describe('signOut with Android revocation', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Web sign-out (#1552): the browser reaches revoke only through CORS, and a
+// CORS or network rejection makes fetch throw before any response exists.
+// ---------------------------------------------------------------------------
+
+describe('web signOut revocation', () => {
+  beforeEach(() => {
+    Platform.OS = 'web';
+  });
+
+  test('revokes with the current session bearer and no credential id, then signs out', async () => {
+    mockFetch.mockResolvedValueOnce(fakeRes({ version: 1, revoked: true }));
+    const { ref } = renderAuthHook();
+    await flush();
+
+    let result;
+    await act(async () => { result = await ref.current.signOut(); });
+
+    expect(result).toEqual({ ok: true });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${SUPABASE_URL}/functions/v1/android-restore-credentials/v1/revoke`);
+    expect(init.method).toBe('POST');
+    expect(init.headers.Authorization).toBe(`Bearer ${FAKE_SESSION.access_token}`);
+    expect(JSON.parse(init.body)).toEqual({});
+    expect(mockAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(nativeMock.clearRestoreCredential).not.toHaveBeenCalled();
+  });
+
+  test('a rejected fetch fails closed: no local sign-out, session kept, retry succeeds', async () => {
+    mockFetch
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(fakeRes({ version: 1, revoked: true }));
+    const { ref } = renderAuthHook();
+    await act(async () => { mockAuth._emit('SIGNED_IN', FAKE_SESSION); });
+    await flush();
+
+    let result;
+    await act(async () => { result = await ref.current.signOut(); });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/retry/i);
+    expect(mockAuth.signOut).not.toHaveBeenCalled();
+    expect(ref.current.signedIn).toBe(true);
+
+    await act(async () => { result = await ref.current.signOut(); });
+    expect(result).toEqual({ ok: true });
+    expect(mockAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(ref.current.signedIn).toBe(false);
+  });
+
+  test('a server refusal (401) fails closed without local sign-out', async () => {
+    mockFetch.mockResolvedValueOnce(fakeRes({ error: 'Unauthorized' }, 401));
+    const { ref } = renderAuthHook();
+    await flush();
+
+    let result;
+    await act(async () => { result = await ref.current.signOut(); });
+    expect(result.ok).toBe(false);
+    expect(mockAuth.signOut).not.toHaveBeenCalled();
+  });
+
+  test('a rejected session lookup fails closed without calling revoke or signing out', async () => {
+    const { ref } = renderAuthHook();
+    await flush();
+    mockAuth.getSession.mockRejectedValueOnce(new Error('network error'));
+
+    let result;
+    await act(async () => { result = await ref.current.signOut(); });
+    expect(result.ok).toBe(false);
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockAuth.signOut).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Account delete: device clear, no extra revoke call
 // ---------------------------------------------------------------------------
 

@@ -257,9 +257,10 @@ function setup(options: { identity?: RestoreIdentity; config?: RestoreConfig | n
     verifyRegistration: verifyRegistrationResponse,
     verifyAuthentication: verifyAuthenticationResponse,
   })
-  const call = async (route: string, body: unknown, token?: string) => {
+  const call = async (route: string, body: unknown, token?: string, origin?: string) => {
     const headers: Record<string, string> = { 'content-type': 'application/json', 'x-forwarded-for': CLIENT_IP }
     if (token) headers.authorization = `Bearer ${token}`
+    if (origin) headers.origin = origin
     const res = await handler(new Request(`https://edge.test/android-restore-credentials/v1/${route}`, {
       method: 'POST',
       headers,
@@ -267,7 +268,7 @@ function setup(options: { identity?: RestoreIdentity; config?: RestoreConfig | n
     }))
     return { status: res.status, body: await res.json(), headers: res.headers }
   }
-  return { db, call, revokedSessions: fake.revokedSessions }
+  return { db, call, handler, revokedSessions: fake.revokedSessions }
 }
 
 async function enroll(ctx: ReturnType<typeof setup>, token = OWNER_TOKEN) {
@@ -820,6 +821,88 @@ Deno.test('a registration challenge from a signed-out session cannot be used by 
   const result = await ctx.call('registration-verification', { version: 1, credential }, 'owner-next-jwt')
   assertEquals(result.status, 400, 'the old session\'s challenge is refused')
   assert(!ctx.db.credentials.has(authenticator.credentialId), 'nothing was stored')
+})
+
+// ---------------------------------------------------------------------------
+// Browser origin (#1552): the production web app reaches revoke via CORS
+// ---------------------------------------------------------------------------
+
+const WEB_ORIGIN = 'https://kilo-app.pages.dev'
+
+async function preflight(ctx: ReturnType<typeof setup>, origin?: string) {
+  const headers: Record<string, string> = {
+    'access-control-request-method': 'POST',
+    'access-control-request-headers': 'authorization,content-type',
+  }
+  if (origin) headers.origin = origin
+  return await ctx.handler(new Request('https://edge.test/android-restore-credentials/v1/revoke', { method: 'OPTIONS', headers }))
+}
+
+Deno.test('the production web origin can preflight revoke without a bearer', async () => {
+  const ctx = setup()
+  const { authenticator } = await enroll(ctx)
+  const eventsBefore = ctx.db.events.length
+  const res = await preflight(ctx, WEB_ORIGIN)
+  assertEquals(res.status, 200, 'preflight succeeds')
+  assertEquals(res.headers.get('access-control-allow-origin'), WEB_ORIGIN, 'the exact origin is advertised')
+  assert(res.headers.get('access-control-allow-methods')!.includes('POST'), 'POST is allowed')
+  const allowed = res.headers.get('access-control-allow-headers')!
+  assert(allowed.includes('authorization') && allowed.includes('content-type'), `allow-headers: ${allowed}`)
+  assertEquals(res.headers.get('vary'), 'Origin', 'responses vary by Origin')
+  assertEquals(res.headers.get('access-control-allow-credentials'), null, 'no ambient credentials')
+  assert(!ctx.db.credentials.get(authenticator.credentialId)!.revoked, 'a preflight revokes nothing')
+  assertEquals(ctx.db.events.length, eventsBefore, 'a preflight touches no state')
+  assertEquals(ctx.revokedSessions, [], 'a preflight ends no session')
+})
+
+Deno.test('other origins get no Access-Control-Allow-Origin on preflight or POST', async () => {
+  const ctx = setup()
+  for (const origin of ['https://evil.example', 'https://abc123.kilo-app.pages.dev', 'https://kilo-app.pages.dev.evil.example', 'null', undefined]) {
+    const pre = await preflight(ctx, origin)
+    assertEquals(pre.headers.get('access-control-allow-origin'), null, `preflight from ${origin} is not allowed`)
+    const post = await ctx.call('revoke', {}, undefined, origin)
+    assertEquals(post.headers.get('access-control-allow-origin'), null, `POST from ${origin} is not readable`)
+  }
+})
+
+Deno.test('a browser revoke without a valid bearer is readable, rejected, and changes nothing', async () => {
+  const ctx = setup()
+  const { authenticator } = await enroll(ctx)
+  for (const token of [undefined, 'forged-token']) {
+    const result = await ctx.call('revoke', {}, token, WEB_ORIGIN)
+    assertEquals(result.status, 401, `bearer ${token} is rejected`)
+    assertEquals(result.headers.get('access-control-allow-origin'), WEB_ORIGIN, 'the rejection is browser-readable')
+  }
+  assert(!ctx.db.credentials.get(authenticator.credentialId)!.revoked, 'nothing is revoked')
+  assertEquals(ctx.revokedSessions, [], 'no session is ended')
+})
+
+Deno.test('a browser revoke keeps revoke-all and global sign-out semantics', async () => {
+  const ctx = setup()
+  const { authenticator } = await enroll(ctx)
+  const result = await ctx.call('revoke', {}, OWNER_TOKEN, WEB_ORIGIN)
+  assertEquals({ status: result.status, body: result.body }, { status: 200, body: { version: 1, revoked: true } }, 'revoked')
+  assertEquals(result.headers.get('access-control-allow-origin'), WEB_ORIGIN, 'the success is browser-readable')
+  assert(ctx.db.credentials.get(authenticator.credentialId)!.revoked, 'the key is revoked')
+  assertEquals(ctx.revokedSessions, [`global:${OWNER_TOKEN}`], 'every session is ended')
+})
+
+Deno.test('a failed browser revoke is readable so the client can report a retry', async () => {
+  const { identity } = fakeIdentity({ signOutEverywhere: () => Promise.resolve({ ok: false, code: 'http_500' }) })
+  const ctx = setup({ identity })
+  await enroll(ctx)
+  const result = await ctx.call('revoke', {}, OWNER_TOKEN, WEB_ORIGIN)
+  assertEquals(result.status, 500, 'the failure is reported')
+  assertEquals(result.headers.get('access-control-allow-origin'), WEB_ORIGIN, 'the error is browser-readable')
+})
+
+Deno.test('the allowed web origin does not satisfy the WebAuthn origin check', async () => {
+  const ctx = setup()
+  const { authenticator } = await enroll(ctx)
+  const options = await restoreOptions(ctx, authenticator.credentialId)
+  const credential = await assertionResponse(authenticator, { challenge: options.challenge, rpId: RP_ID, origin: WEB_ORIGIN })
+  const result = await ctx.call('restore-verification', { version: 1, credential }, undefined, WEB_ORIGIN)
+  assertEquals({ status: result.status, body: result.body }, REJECTED, 'a web-origin assertion cannot restore')
 })
 
 // ---------------------------------------------------------------------------
