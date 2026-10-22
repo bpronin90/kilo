@@ -22,7 +22,7 @@ node capture.cjs <dist> <before|after> [<playwright node_modules dir>] [<chromiu
 - **Default** (Equipment, All equipment, Muscles, Pecs, large text): reproduces the reported data exactly — 907 completed sets, Unknown equipment **519 / 57%**, Barbell 118 / 13%, Cable machine 78 / 9%; regions Chest 52, Back 162, Shoulders 130, Arms 96, Legs 275, Core 57.
 - **Unclassified-dominant** (All movement groups): default fixture plus two unrecognised exercises ("Mystery Sled Thing", "Odd Machine Move", 6 sets every 2 days) → 1447 sets, Unclassified **627 / 43%**, largest classified group Squat 104, saved-choice group "Pull ✎" 12. The sheet is scrolled to its Unclassified row.
 
-Every capture reported `overflowX: false` and no Training-breakdown button below 44×44.
+Large-text shots scale every text node after the target view/sheet has mounted (fixed after review; earlier captures scaled before the view switch). Every capture reported `overflowX: false` and no Training-breakdown button below 44×44.
 
 ## Checklist (written before coding, from the originals and approved reference)
 
@@ -63,8 +63,8 @@ Every capture reported `overflowX: false` and no Training-breakdown button below
 | pecs-region-hard-dark | [before](before/pecs-region-hard-dark.png) | [after](after/pecs-region-hard-dark.png) | PASS — region sheet title Chest, row reads Pecs. |
 | pecs-detail-hard-dark | [before](before/pecs-detail-hard-dark.png) | [after](after/pecs-detail-hard-dark.png) | PASS — muscle sheet title Pecs (before: Chest), back button present. |
 | pecs-back-hard-dark | [before](before/pecs-back-hard-dark.png) | [after](after/pecs-back-hard-dark.png) | PASS — back returns to the Chest region sheet. |
-| large-text-muscles-hard-dark | [before](before/large-text-muscles-hard-dark.png) | [after](after/large-text-muscles-hard-dark.png) | PASS — at 1.3× text "Most: Pecs" and region labels fit without clipping; no horizontal overflow. |
-| large-text-equipment-hard-dark | [before](before/large-text-equipment-hard-dark.png) | [after](after/large-text-equipment-hard-dark.png) | PASS — labels/counts fit; bars scaled to Barbell; Unknown capped. |
+| large-text-muscles-hard-dark | [before](before/large-text-muscles-hard-dark.png) | [after](after/large-text-muscles-hard-dark.png) | PASS — 1.3× text applied after the Muscles view mounts (card labels enlarged): "Most: Pecs", "Shoulders 130" and all region labels fit without clipping or wrapping changes vs before; no horizontal overflow. |
+| large-text-equipment-hard-dark | [before](before/large-text-equipment-hard-dark.png) | [after](after/large-text-equipment-hard-dark.png) | PASS — 1.3× text applied after the Equipment view mounts: row labels/counts enlarged and fit; Barbell full width, Cable machine ~66%; header pill wraps to its own line as before (unchanged from before capture). Unknown row is below the fold at this size. |
 
 Permitted differences vs the reference: theme-token colours (Kilo court palettes instead of the prototype hex), and sample data (the app fixture, not the prototype's). In light themes strips are dark (the surface ink), whereas the dark-only reference uses white; this is the same rule (one polarity per theme, from the palette's surface ink) applied to a light surface, where white strips would vanish on low-intensity tiles.
 

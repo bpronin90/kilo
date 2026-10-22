@@ -145,8 +145,6 @@ async function shoot(browser, base, [file, theme, appearance, view, actions, opt
   if (await own.isVisible().catch(() => false)) { await own.getByText('Not Now').click(); await page.waitForTimeout(600); }
   await page.getByText('Analytics', { exact: true }).last().click();
   await page.waitForTimeout(1500);
-  if (opts.scale) await page.addStyleTag({ content: `html { font-size: ${opts.scale * 100}% } div[dir], div { } *{ }` }).catch(() => {});
-  if (opts.scale) await page.evaluate((s) => { document.querySelectorAll('div[dir="auto"], span').forEach((el) => { const fs = parseFloat(getComputedStyle(el).fontSize); if (fs && !el.dataset.scaled) { el.style.fontSize = `${fs * s}px`; el.dataset.scaled = '1'; } }); }, opts.scale);
   if (opts.recovery) {
     const disc = page.getByText('Baseline training · paused during Recovery').first();
     await disc.scrollIntoViewIfNeeded();
@@ -172,6 +170,9 @@ async function shoot(browser, base, [file, theme, appearance, view, actions, opt
     await loc.click();
     await page.waitForTimeout(500);
   }
+  // Scale text after the target view/sheet has mounted so its labels are enlarged too.
+  if (opts.scale) await page.addStyleTag({ content: `html { font-size: ${opts.scale * 100}% } div[dir], div { } *{ }` }).catch(() => {});
+  if (opts.scale) await page.evaluate((s) => { document.querySelectorAll('div[dir="auto"], span').forEach((el) => { const fs = parseFloat(getComputedStyle(el).fontSize); if (fs && !el.dataset.scaled) { el.style.fontSize = `${fs * s}px`; el.dataset.scaled = '1'; } }); }, opts.scale);
   if (opts.scrollTo) { await page.getByTestId(opts.scrollTo).last().scrollIntoViewIfNeeded(); }
   await page.waitForTimeout(600);
   const target = path.join(out, `${file}.png`);
