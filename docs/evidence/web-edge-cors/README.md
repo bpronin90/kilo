@@ -1,7 +1,6 @@
 # Web Edge Function CORS (#1552) — verification evidence
 
-Durable evidence for issue #1552. Sections marked **PENDING** are not claimed
-until filled with real results.
+Durable evidence for issue #1552.
 
 ## Before: production preflight probes (2026-10-21)
 
@@ -120,10 +119,37 @@ account-delete | HTTP/2 401 ;access-control-allow-origin: https://kilo-app.pages
 health-data-delete | HTTP/2 401 ;access-control-allow-origin: https://kilo-app.pages.dev;{"error":"Unauthorized"}
 ```
 
-## Deployed browser flows — PENDING disposable test accounts
+## Deployed browser flows (2026-10-21)
 
-At `https://kilo-app.pages.dev`, separate disposable accounts: sign-out
-(including a controlled revoke-network failure, then a successful retry),
-cloud export (contains only the test user's data), account deletion (account
-cannot regain access), consent withdrawal + health-data deletion (access
-blocked immediately, durable job queued, purge completes or reports pending).
+Production web app `https://kilo-app.pages.dev` against the deployed functions
+above. Headless Chromium (playwright-core 1.63, chromium-1243), viewport
+390×844. Each flow used its own disposable account
+`kilo-e2e-1552-<a|b|c>@kilo-e2e.invalid`, created through the Auth admin API
+with a confirmed email (Turnstile cannot be passed by automation, and the
+project mailer rejects reserved test domains); the resulting session was
+injected into the app's `sb-…-auth-token` storage key. All other steps went
+through the app UI. Results were cross-checked by refresh-token exchange and
+read-only SQL on `auth.*` and `kilo.*`.
+
+| Flow | Account | Calls (status, `Access-Control-Allow-Origin`) | Outcome |
+| --- | --- | --- | --- |
+| Sign-out, revoke network aborted | A | `revoke` aborted by the test harness | "Could not revoke Android restore key. Sign out again to retry." User stays signed in — fails closed. [a-02](a-02-revoke-failed.png) |
+| Sign-out retry | A | `android-restore-credentials/v1/revoke` 200, ACAO `https://kilo-app.pages.dev` | "Signed out." [a-03](a-03-signed-out.png). Old refresh token → 400. SQL: 0 sessions, 0 unrevoked restore credentials. (`/auth/v1/logout` 403 afterwards is expected: the session was already revoked server-side.) |
+| Cloud export | B | `account-export` 200, ACAO production | Payload contains only B's user id. Delivering the file then fails on web (`Share.share`, "Export failed.") — separate defect, [#1563](https://github.com/bpronin90/kilo/issues/1563). [b-04](b-04-export.png) |
+| Account deletion | B | `account-delete` 200, ACAO production | Signed out to the sign-in screen [b-06](b-06-deleted.png). Old refresh token → 400; `auth.users` has 0 rows for B. |
+| Consent grant + upload | C | `consent_grant` 200; one weight entry uploaded | Export showed only C's id across cloud tables. [c-11](c-11-uploaded.png) |
+| Consent withdrawal + health-data deletion | C | `consent_withdraw` 200 (job queued, `deletion_pending`); `health-data-delete` 200 `{"ok":true,"status":"withdrawn"}`, ACAO production | "Cloud Sync is off. Your cloud health data is being deleted; your data on this device is untouched." [c-13](c-13-withdrawn.png). SQL: `weight_entries` 0, consent `withdrawn` with `cloud_data_deleted_at` set, job `complete`. |
+
+Found during verification, outside #1552's scope:
+
+- **Account deletion for any user with consent history returns 500**
+  (`evidence_key_missing`): production lacks the `KILO_EVIDENCE_KEY` /
+  `KILO_EVIDENCE_KEY_ID` function secrets, so `account-delete` correctly
+  refuses to archive consent evidence without pseudonymization. Affects all
+  platforms; operator action required. Reproduced with account C (CORS was
+  fine: the 500 carried ACAO). Tracked separately.
+- Follow-ups from the sign-in/sign-out audit: #1556–#1565.
+
+Account B was deleted by the flow. Accounts A (signed out, no data) and C
+(consent withdrawn, health data purged) remain until C can be deleted through
+the app once the evidence key is configured.

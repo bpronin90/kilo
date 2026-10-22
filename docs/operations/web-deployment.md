@@ -146,8 +146,8 @@ so revert or fix the faulty change on `main` before merging anything else.
   another account requires an explicit purge-or-upload choice before sync
   starts. See [Cloud Sync](../architecture/cloud-sync.md).
 - **Session invalidation.** Sign-out is meant to end the session and return
-  storage to local-only mode, offering an explicit device-wipe; on the web it
-  currently fails (see below). Clearing site data removes the session.
+  storage to local-only mode, offering an explicit device-wipe. Clearing site
+  data removes the session.
 - **Offline and sync failure.** Local reads and writes do not depend on
   Supabase, so the app keeps working offline or when Supabase is unreachable;
   retry and conflict behavior is in [Cloud Sync](../architecture/cloud-sync.md).
@@ -157,19 +157,17 @@ so revert or fix the faulty change on `main` before merging anything else.
 
 ### Known web gaps
 
-Kilo's Supabase Edge Functions deliberately return no
-`Access-Control-Allow-Origin` header to browsers (`supabase/functions/_shared/cors.ts`),
-so every web call to them fails. Until
-[#1552](https://github.com/bpronin90/kilo/issues/1552) opens them to the
-production origin, the following do **not** work on the web; cloud accounts on
-the web are not launch-ready:
+Kilo's Supabase Edge Functions allow exactly one browser origin,
+`https://kilo-app.pages.dev` (`supabase/functions/_shared/cors.ts`); preview
+deployments and other origins get no `Access-Control-Allow-Origin` and cannot
+call them. The bearer token, not CORS, is the trust boundary. Web sign-out,
+cloud export, account deletion, and health-data deletion were verified on
+production for [#1552](../evidence/web-edge-cors/README.md).
+Remaining gaps:
 
-- **Sign-out** fails with "Could not revoke Android restore key. Sign out again
-  to retry." because it first calls `android-restore-credentials/v1/revoke`.
-  Clearing the site's data ends the session but also deletes all local data,
-  so export a backup first.
-- **Cloud account export, account deletion, and health-data deletion**
-  (`account-export`, `account-delete`, `health-data-delete`).
+- **Cloud export download** reaches the server but the file cannot be saved
+  where Web Share is unavailable
+  ([#1563](https://github.com/bpronin90/kilo/issues/1563)).
 - **Cancelled GitHub sign-in** returns signed out without a message.
 
 ## Web limitations
