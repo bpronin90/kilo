@@ -1,0 +1,81 @@
+{
+ "B": "Monday\n-Barbell Bench Press: 3x5\n150 5,5,5\n-Romanian Deadlift: 3x8\n135 8,8,8\n-Barbell Back Squat: 3x5\n185 5,5,5\n-Lat Pulldown: 3x10\n100 10,10,10\n-Barbell Curl: 3x10\n40 10,10,10\n-Mystery Machine Thing: 3x10\n50 10,10,10",
+ "W": "Monday\n-Barbell Bench Press: 3x5\n140 5,5,5\n-Romanian Deadlift: 3x8\n125 8,8,8\n-Barbell Back Squat: 3x5\n175 5,5,5\n-Lat Pulldown: 3x10\n90 10,10,10\n-Barbell Curl: 3x10\n35 10,10,10\n-Mystery Machine Thing: 3x10\n45 10,10,10",
+ "baseline": {
+  "version": 2,
+  "exercises": [
+   {
+    "key": "bench press",
+    "name": "Bench Press",
+    "exercise_class": "weighted",
+    "best_e1rm_weight": 150,
+    "best_e1rm_reps": 5,
+    "top_weight": 150,
+    "volume": 2250,
+    "sets_completed": 3,
+    "routine_order": 0,
+    "basis": "complete"
+   },
+   {
+    "key": "rdl",
+    "name": "RDL",
+    "exercise_class": "weighted",
+    "best_e1rm_weight": 135,
+    "best_e1rm_reps": 8,
+    "top_weight": 135,
+    "volume": 3240,
+    "sets_completed": 3,
+    "routine_order": 1,
+    "basis": "complete"
+   },
+   {
+    "key": "barbell back squat",
+    "name": "Barbell Back Squat",
+    "exercise_class": "weighted",
+    "best_e1rm_weight": 185,
+    "best_e1rm_reps": 5,
+    "top_weight": 185,
+    "volume": 2775,
+    "sets_completed": 3,
+    "routine_order": 2,
+    "basis": "complete"
+   },
+   {
+    "key": "lat pulldown",
+    "name": "Lat Pulldown",
+    "exercise_class": "weighted",
+    "best_e1rm_weight": 100,
+    "best_e1rm_reps": 10,
+    "top_weight": 100,
+    "volume": 3000,
+    "sets_completed": 3,
+    "routine_order": 3,
+    "basis": "complete"
+   },
+   {
+    "key": "barbell curl",
+    "name": "Barbell Curl",
+    "exercise_class": "weighted",
+    "best_e1rm_weight": 40,
+    "best_e1rm_reps": 10,
+    "top_weight": 40,
+    "volume": 1200,
+    "sets_completed": 3,
+    "routine_order": 4,
+    "basis": "complete"
+   },
+   {
+    "key": "mystery machine thing",
+    "name": "Mystery Machine Thing",
+    "exercise_class": "weighted",
+    "best_e1rm_weight": 50,
+    "best_e1rm_reps": 10,
+    "top_weight": 50,
+    "volume": 1500,
+    "sets_completed": 3,
+    "routine_order": 5,
+    "basis": "complete"
+   }
+  ]
+ }
+}
