@@ -11,9 +11,11 @@ approved hybrid dashboard.
 
 ## Setup (local only)
 
-- Rendered commit: **`80dd85933d2ad48837492ba843ce2d9d2bc59fa6`**. That commit contains every
-  production change. Later commits on the branch add only this evidence directory, which
-  cannot affect rendering.
+- Rendered commits: **`80dd85933d2ad48837492ba843ce2d9d2bc59fa6`** for all shots, then
+  **`172e38e71d5842ba0acdcbe52dd565c8591bc989`** for 03, 16–19, 34 and 37. That second commit fixes
+  review feedback: Unknown hatch bars now render at their full proportional length. It changes only
+  `Hatch` in `BreakdownRows.js`, which renders on the Equipment view and the Unknown/equipment sheets.
+  Every shot that uses it was recaptured. The other shots draw no hatch, so their evidence still applies.
 - Build: `EXPO_PUBLIC_SUPABASE_URL=https://mockproj.supabase.co EXPO_PUBLIC_SUPABASE_ANON_KEY=local-anon-key npx expo export --platform web --output-dir <dist>` (run from `mobile/`).
 - Driver: [`capture.cjs`](capture.cjs). Run it as `node capture.cjs <dist> after [<playwright node_modules dir>] [<chromium path>]`,
   optionally with `ONLY=<regex>`. It uses headless Chromium at a **390x844 viewport, deviceScaleFactor 2**.
@@ -79,7 +81,7 @@ Each difference below is either a permitted theme-token difference or a contract
 - **Colour:** everything comes from the court palette. Heat uses `primary` opacity steps over
   `surfaceCard`. The comparison's second series is `onSurfaceVariant` instead of the prototype's purple.
   Pills and the selected range use `primaryContainer`/`primaryOnContainer`. Unknown rows use a
-  hatched `onSurfaceVariant` bar. Tile text is `onSurface` or `onPrimary`, whichever has more contrast
+  hatched `onSurfaceVariant` bar (solid tinted base at the proportional width, with clipped stripes). Tile text is `onSurface` or `onPrimary`, whichever has more contrast
   against the composited fill. As a result, the highest-intensity tiles in dark mode get dark text
   (e.g. Squat/Legs), where the prototype used white.
 - **Type:** numerals use Kilo's JetBrains Mono metric tokens. The prototype used Space Grotesk.
