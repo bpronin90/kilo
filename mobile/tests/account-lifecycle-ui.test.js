@@ -81,7 +81,7 @@ jest.mock('../components/UI', () => {
 });
 jest.mock('../hooks/useEntries', () => ({
   useSyncRecovery: () => mockSyncRecovery,
-  useCloudExport: () => ({ exportCloud: jest.fn() }),
+  useCloudExport: () => ({ exportCloud: (...args) => mockExportCloud(...args) }),
 }));
 
 jest.mock('../storage/cloud/syncAdapter', () => ({
@@ -97,6 +97,7 @@ let mockSession;
 let mockAuth;
 let mockSyncRecovery;
 let mockPendingSyncIntent;
+let mockExportCloud = jest.fn();
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: () => ({ auth: mockAuth }),
@@ -1604,5 +1605,125 @@ describe('MoreScreen recovery auto-navigation', () => {
       tree.update(React.createElement(MoreScreen, { isActive: true, auth: makeRecoveryAuth({ passwordRecovery: true }) }));
     });
     expect(tree.root.findByProps({ accessibilityLabel: 'New Password' })).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Export Cloud Copy web delivery (#1563). The panel's export used Share.share,
+// which react-native-web rejects without `navigator.share`, so a valid local
+// snapshot ended as "Cloud export failed." On web it now downloads a file when
+// it cannot share. A minimal document stub records the download anchor, and
+// URL.createObjectURL hands back the Blob so its bytes are asserted.
+// ---------------------------------------------------------------------------
+describe('CloudSyncRecovery Export Cloud Copy on web (#1563)', () => {
+  const hadDocument = 'document' in globalThis;
+  const originalDocument = globalThis.document;
+  const originalShare = globalThis.navigator?.share;
+  const SNAPSHOT = JSON.stringify({ version: 3, cloud: { account: { id: 'uid-1', email: 'a@test.com' } }, note: 'Übung ✓' });
+  let originalPlatformOS;
+  let downloads;
+  let clickThrows;
+
+  beforeEach(() => {
+    originalPlatformOS = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+    delete globalThis.navigator.share;
+    jest.useFakeTimers();
+    downloads = [];
+    clickThrows = false;
+    mockExportCloud = jest.fn().mockResolvedValue({ ok: true, json: SNAPSHOT });
+    const blobs = new Map();
+    jest.spyOn(URL, 'createObjectURL').mockImplementation((blob) => { const url = `blob:kilo/${blobs.size + 1}`; blobs.set(url, blob); return url; });
+    jest.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    globalThis.document = {
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      body: { appendChild: jest.fn(), removeChild: jest.fn() },
+      createElement: () => {
+        const anchor = { style: {} };
+        anchor.click = () => {
+          if (clickThrows) throw new Error('Downloads blocked');
+          downloads.push({ fileName: anchor.download, blob: blobs.get(anchor.href) });
+        };
+        return anchor;
+      },
+    };
+  });
+
+  afterEach(() => {
+    Object.defineProperty(Platform, 'OS', { value: originalPlatformOS, configurable: true });
+    jest.clearAllTimers();
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+    if (originalShare) globalThis.navigator.share = originalShare;
+    else delete globalThis.navigator.share;
+    if (hadDocument) globalThis.document = originalDocument;
+    else delete globalThis.document;
+  });
+
+  function rejectShareWith(name) {
+    const { Share } = require('react-native');
+    globalThis.navigator.share = jest.fn();
+    return jest.spyOn(Share, 'share').mockRejectedValue(Object.assign(new Error(name), { name }));
+  }
+
+  async function exportCloudCopy() {
+    let tree;
+    act(() => { tree = renderer.create(React.createElement(CloudSyncRecovery, { user: FAKE_SESSION.user })); });
+    await flush();
+    const button = () => tree.root.findAll((n) => n.props.title === 'Export Cloud Copy' && 'onPress' in n.props)[0];
+    await act(async () => { await button().props.onPress(); });
+    return { tree, button, text: () => JSON.stringify(tree.toJSON()) };
+  }
+
+  test('downloads the identity-scoped snapshot when Web Share is absent', async () => {
+    const { text, button } = await exportCloudCopy();
+
+    expect(mockExportCloud).toHaveBeenCalledWith({ id: 'uid-1', email: 'a@test.com' });
+    expect(downloads).toHaveLength(1);
+    expect(downloads[0].fileName).toMatch(/^kilo-cloud-export-\d{4}-\d{2}-\d{2}\.json$/);
+    expect(downloads[0].blob.type).toBe('application/json;charset=utf-8');
+    expect(await downloads[0].blob.text()).toBe(SNAPSHOT);
+    expect(JSON.parse(await downloads[0].blob.text()).cloud.account.id).toBe('uid-1');
+    expect(text()).toMatch(/Cloud export ready\./);
+    expect(text()).not.toMatch(/Cloud export failed/);
+    expect(button().props.disabled).toBe(false);
+  });
+
+  test('a non-cancellation share rejection falls back to a download', async () => {
+    const share = rejectShareWith('NotAllowedError');
+    const { text } = await exportCloudCopy();
+
+    expect(share).toHaveBeenCalledWith({ message: SNAPSHOT });
+    expect(await downloads[0].blob.text()).toBe(SNAPSHOT);
+    expect(text()).toMatch(/Cloud export ready\./);
+  });
+
+  test('cancelling the share is neutral: no download, failure, or success claim', async () => {
+    rejectShareWith('AbortError');
+    const { text, button } = await exportCloudCopy();
+
+    expect(downloads).toHaveLength(0);
+    expect(text()).not.toMatch(/Cloud export ready|Cloud export failed/);
+    expect(button().props.disabled).toBe(false);
+  });
+
+  test('an upstream snapshot failure downloads nothing', async () => {
+    mockExportCloud = jest.fn().mockResolvedValue({ ok: false, error: 'Local snapshot unreadable.' });
+    const { text } = await exportCloudCopy();
+
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(text()).toMatch(/Local snapshot unreadable\./);
+    expect(text()).not.toMatch(/Cloud export ready/);
+  });
+
+  test('share and download both failing shows a retryable failure and releases busy', async () => {
+    rejectShareWith('DataError');
+    clickThrows = true;
+    const { text, button } = await exportCloudCopy();
+
+    expect(text()).toMatch(/Cloud export failed\./);
+    expect(text()).not.toMatch(/Cloud export ready/);
+    expect(button().props.disabled).toBe(false);
   });
 });
