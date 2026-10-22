@@ -42,6 +42,9 @@ export function selectRangePopulation(parsedSections, range, now) {
   const notes = parsedSections?.normalNotes;
   const lists = parsedSections?.noteSectionsList;
   if (!Array.isArray(notes) || !Array.isArray(lists) || notes.length !== lists.length) return null;
+  // Every pair must be usable: a note object with its own section array. A missing
+  // entry is an unusable population, not an empty one.
+  if (!notes.every((n) => n && typeof n === 'object') || !lists.every(Array.isArray)) return null;
   if (!(now instanceof Date) || Number.isNaN(now.getTime())) return null;
   const today = localDayOf(now);
   const earliest = today - (RANGE_DAYS[range] - 1);

@@ -96,6 +96,12 @@ describe('population boundary (#1589)', () => {
     const ps = parsed([note('a', '2026-10-20', bench(2))]);
     expect(deriveTrainingBreakdownForRange({ ...ps, normalNotes: [] }, '90D', { now: NOON })).toBeNull();
     expect(deriveTrainingBreakdownForRange(ps, '30D', { now: new Date('bad') })).toBeNull();
+    for (const range of ['30D', '90D']) {
+      expect(deriveTrainingBreakdownForRange({ normalNotes: [{ id: 'n', date: '2026-10-20' }], noteSectionsList: [null] }, range, { now: NOON })).toBeNull();
+      expect(deriveTrainingBreakdownForRange({ normalNotes: [null], noteSectionsList: [[]] }, range, { now: NOON })).toBeNull();
+    }
+    // A valid empty section array stays a usable (empty) pair.
+    expect(deriveTrainingBreakdownForRange({ normalNotes: [{ id: 'n', date: '2026-10-20' }], noteSectionsList: [[]] }, '30D', { now: NOON }).isEmpty).toBe(true);
   });
 
   test('unverified Recovery membership never becomes an empty exclusion set', () => {
