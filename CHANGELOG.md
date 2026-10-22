@@ -1,5 +1,77 @@
 # Changelog
 
+## 1.20.0 - 2026-10-22
+
+- Issue #1581: Recovery movement groups now use detailed movement groups (such as Hip hinge or Vertical pull), and the group editor offers them, while every earlier broad group choice is kept exactly as saved.
+
+## 1.19.0 - 2026-10-22
+
+- Issue #1580: Analytics now has a Training breakdown after Strength with Movement, Muscles and Equipment views of the sets you logged, including coverage for exercises that are not classified.
+
+## 1.18.13 - 2026-10-22
+
+- Issue #1579: Added a curated primary movement taxonomy and read-only exercise metadata helpers for future workout analytics; no visible behavior changes yet.
+
+## 1.18.12 - 2026-10-22
+
+- Issue #1578: Added an offline exercise metadata library and deterministic name resolver for future workout analytics; no visible behavior changes yet.
+
+## 1.18.11 - 2026-10-22
+
+- Issue #1566: The Edge Function deploy script now refuses to deploy unless both consent-evidence secret names are configured, and the backend runbook documents how operators provision and rotate them. Account deletion for users with consent history stays blocked until those secrets are set.
+
+## 1.18.10 - 2026-10-22
+
+- Issue #1565: Account sign-in, sign-up, security-verification, confirmation, and sign-out messages now appear right below the buttons they relate to instead of at the bottom of the screen, and screen readers on web and Android announce them when they change.
+
+## 1.18.9 - 2026-10-22
+
+- Issue #1564: When a sign-in, sign-up, sign-out, password reset, or other account action fails without a readable error message, Kilo now shows a clear fallback message instead of a literal `{}` or blank status.
+
+## 1.18.8 - 2026-10-22
+
+- Issue #1563: On the web, Export Account Data, Export Local Backup, the two CSV exports, and Export Cloud Copy now download a .json or .csv file when the browser cannot share, instead of reporting "Export failed." Cancelling a share no longer shows an error.
+
+## 1.18.7 - 2026-10-22
+
+- Issue #1562: Android restore-key requests, including sign-out from the web app, now return a readable error instead of an unreadable server failure when a backend dependency fails unexpectedly. The failure never returns a session or reports the sign-out as complete, and a session minted just before a failed eligibility re-check is revoked.
+
+## 1.18.6 - 2026-10-22
+
+- Issue #1561: Withdrawing health-data consent now returns a readable error instead of an unreadable server failure when a backend dependency fails unexpectedly, including from the web app. The failure never reports the cloud health data as erased; the queued deletion still completes on the next retry.
+
+## 1.18.5 - 2026-10-22
+
+- Issue #1560: Account deletion now returns a readable error instead of an unreadable server failure when a backend dependency fails unexpectedly, including from the web app. The failure never reports the account as deleted.
+
+## 1.18.4 - 2026-10-22
+
+- Issue #1559: Account export now returns a readable error instead of an unreadable server failure when a backend dependency fails unexpectedly, including from the web app.
+
+## 1.18.3 - 2026-10-22
+
+- Issue #1558: When sign-out cannot reach the server, the error now reads "Could not complete sign-out. Please try again." on every platform instead of mentioning an Android restore key.
+
+## 1.18.2 - 2026-10-22
+
+- Issue #1557: Signing out no longer reports success when your session has already expired and Kilo could not revoke your restore key. You are asked to sign in again before signing out.
+
+## 1.18.1 - 2026-10-22
+
+- Issue #1556: After you withdraw health-data consent, a cloud deletion that is still finishing is now treated as an accepted, in-progress request instead of a failed one.
+
+## 1.18.0 - 2026-10-22
+
+- Issue #1553: New empty installations get a skippable walkthrough of Kilo’s five main screens. Replay it anytime from More → Help → Replay walkthrough.
+
+## 1.17.1 - 2026-10-22
+
+- Issue #1552: On the web app, signing out, exporting your cloud account, deleting your account, and the immediate health-data purge after withdrawing consent no longer fail with a network error.
+
+## 1.17.0 - 2026-10-22
+
+- Issue #1548: Kilo is now available as a public web app at https://kilo-app.pages.dev, deployed automatically from `main` after tests pass.
+
 ## 1.16.51 - 2026-10-21
 
 - Issue #1546: Upgraded the app to Expo SDK 58 (React Native 0.88) with an Android Gradle Plugin 9 toolchain. Installed apps need the new store or preview build; older builds no longer receive over-the-air updates built for this version.
