@@ -7,6 +7,8 @@ import * as Updates from 'expo-updates';
 import { ThemeProvider, KuaStyleGate, useKuaStyle, useTheme } from './theme/ThemeContext';
 import { ThemeHydrationGate } from './app/ThemeHydrationGate';
 import { useKuaFonts } from './theme/typography';
+import { WelcomeWalkthrough } from './components/WelcomeWalkthrough';
+import { useWelcomeWalkthrough } from './hooks/useWelcomeWalkthrough';
 import { TabBar } from './components/TabBar';
 import { OwnershipPrompt } from './components/OwnershipPrompt';
 import { TabBarLayoutContext, TabBarScrollContext, TAB_BAR_VISUAL_GAP, useTabBarAutoHide } from './components/TabBarLayout';
@@ -160,6 +162,14 @@ function ShellView({ onDeviceDataWiped }) {
   // nothing later (tabs, theme, retries, refreshes) shows it again.
   const [localReady, markLocalReady] = useAppLocalReadyLatch();
   const startupCovered = !localReady;
+  const [firstUse, setFirstUse] = useState('loading');
+  const walkthrough = useWelcomeWalkthrough({
+    ready: localReady,
+    firstUse,
+    blocked: !!(ownershipPrompt || auth.loading || auth.passwordRecovery || auth.recoveryError || auth.deviceWipeRequired),
+    activeTab,
+    navigate: handleTabPress,
+  });
 
   // #1209: scroll-direction auto-hide. ScreenShell forwards every scroll to
   // tabBarScroll.onScroll; the bar shows again on tab change.
@@ -228,6 +238,7 @@ function ShellView({ onDeviceDataWiped }) {
           importantForAccessibility={activeTab === 'Home' ? 'auto' : 'no-hide-descendants'}
         >
           <MemoHomeScreen
+            onFirstUseStatus={setFirstUse}
             weightEntries={weightHook.entries}
             workoutNote={noteHook.currentNote}
             currentId={noteHook.currentId}
@@ -314,6 +325,7 @@ function ShellView({ onDeviceDataWiped }) {
           importantForAccessibility={activeTab === 'More' ? 'auto' : 'no-hide-descendants'}
         >
           <MemoMoreScreen
+            onReplayWalkthrough={walkthrough.replay}
             isActive={activeTab === 'More'}
             auth={stableAuth}
             registerBackConsumer={registerBackConsumer}
@@ -349,9 +361,9 @@ function ShellView({ onDeviceDataWiped }) {
         <View
           testID="app-shell-layer"
           style={styles.shellLayer}
-          pointerEvents={startupCovered ? 'none' : 'auto'}
-          accessibilityElementsHidden={startupCovered}
-          importantForAccessibility={startupCovered ? 'no-hide-descendants' : 'auto'}
+          pointerEvents={startupCovered || walkthrough.active ? 'none' : 'auto'}
+          accessibilityElementsHidden={startupCovered || walkthrough.active}
+          importantForAccessibility={startupCovered || walkthrough.active ? 'no-hide-descendants' : 'auto'}
         >
         <View style={styles.topSafeArea} testID="top-safe-area" />
         {/* Dark chrome needs light status-bar glyphs and vice versa. */}
@@ -415,6 +427,8 @@ function ShellView({ onDeviceDataWiped }) {
           style={{ marginBottom: restTimerBannerClearance }}
         />}
         <TabBar
+          onAnchorChange={walkthrough.measureAnchor}
+          anchorRequest={walkthrough.active ? walkthrough.request : null}
           tabs={TABS}
           activeTab={activeTab}
           hidden={tabBarHidden}
@@ -432,6 +446,7 @@ function ShellView({ onDeviceDataWiped }) {
           />
         ) : null}
         </View>
+        <WelcomeWalkthrough tour={walkthrough} anchorVisible={!tabBarHidden} />
         {startupCovered ? <AppStartupOverlay /> : null}
       </View>
     </AppLocalReadyContext.Provider>

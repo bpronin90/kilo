@@ -36,6 +36,7 @@ export function MoreScreen({
   onExport,
   onImport,
   onCreateRoutineFromImport,
+  onReplayWalkthrough,
   fatigueMultiplier,
   onUpdateFatigueMultiplier,
   navSubviewView = null,
@@ -123,7 +124,10 @@ export function MoreScreen({
   }, [isActive, inSubView, registerBackConsumer, onOwnsBackChange]);
 
   if (activeView === 'help') {
-    return <HelpScreen onBack={() => showView('menu')} />;
+    return <HelpScreen onBack={() => showView('menu')} onReplayWalkthrough={() => {
+      showView('menu');
+      onReplayWalkthrough?.();
+    }} />;
   }
 
   if (activeView === 'about') {

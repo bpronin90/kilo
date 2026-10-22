@@ -114,3 +114,13 @@ test('exposes no chip, table-of-contents, or scroll-to navigation controls', () 
   expect(buttons.length).toBe(TOPIC_TITLES.length + 1); // topics + the shell "← Back"
   act(() => tree.unmount());
 });
+
+
+test('Replay walkthrough is a clearly labelled action with no local-data writes', () => {
+  const replay = jest.fn();
+  let tree;
+  act(() => { tree = renderer.create(<HelpScreen onBack={() => {}} onReplayWalkthrough={replay} />); });
+  act(() => topicRow(tree, 'Replay walkthrough').props.onPress());
+  expect(replay).toHaveBeenCalledTimes(1);
+  act(() => tree.unmount());
+});

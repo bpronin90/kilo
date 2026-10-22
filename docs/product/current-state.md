@@ -31,6 +31,13 @@ disabling suggestions does not change a note.
 - **More** contains profile, settings, reminders, backup/import, account, cloud
   sync, help, and product information.
 
+A verified empty installation offers a skippable, five-step walkthrough over the
+real tabs after startup. More → Help → Replay walkthrough starts it again at
+Home. Skip leaves the current screen usable; Done returns Home. Dismissal is a
+device-local preference outside fitness backups and account sync. Unreadable
+preferences or unverified local data suppress automatic launch; manual replay
+remains available. Existing Home welcome actions and Log guidance remain.
+
 The retired browser prototype is preserved in
 [`docs/archive/browser-prototype/`](../archive/browser-prototype/) for historical
 reference. It is not an active runtime or test target.

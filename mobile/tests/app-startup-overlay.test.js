@@ -45,13 +45,16 @@ jest.mock('../screens/HomeScreen', () => {
   const { View } = require('react-native');
   const timing = require('../storage/entries/startupTiming');
   const { AppLocalReadyContext } = require('../components/AppStartupOverlay');
-  function HomeScreen({ loading, onNavigate }) {
+  function HomeScreen({ loading, onNavigate, onFirstUseStatus }) {
     const signal = React.useContext(AppLocalReadyContext);
     const [release] = React.useState(timing.claimAppLocalReady);
     React.useEffect(() => release, [release]);
     const [, bump] = React.useReducer((x) => x + 1, 0);
     globalThis.__homeNavigate = onNavigate;
     globalThis.__homeBump = bump;
+    React.useEffect(() => {
+      if (globalThis.__homeFirstUse) onFirstUseStatus?.(globalThis.__homeFirstUse);
+    }, [onFirstUseStatus, globalThis.__homeFirstUse]);
     const settled = !loading && globalThis.__homeLocalReady;
     React.useEffect(() => {
       if (settled) { release(); signal?.(); }
@@ -134,6 +137,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   timing._resetStartupScheduling();
   globalThis.__homeLocalReady = false;
+  globalThis.__homeFirstUse = null;
   loopStart = jest.fn();
   loopStop = jest.fn();
   jest.spyOn(Animated, 'loop').mockImplementation(() => ({ start: loopStart, stop: loopStop, reset: jest.fn() }));
@@ -363,6 +367,21 @@ describe('shell lifecycle', () => {
     expect(layer(c).props.importantForAccessibility).toBe('auto');
     expect(layer(c).props.accessibilityElementsHidden).toBe(false);
     await renderer.act(async () => c.unmount());
+  });
+
+  test('verified empty alone never starts the tour over startup; local-ready releases it', async () => {
+    globalThis.__homeFirstUse = 'empty';
+    const c = await mountApp();
+    expect(layer(c).props.pointerEvents).toBe('none');
+    expect(byTestId(c, 'app-startup-overlay')).toHaveLength(1);
+    const { WelcomeWalkthrough } = require('../components/WelcomeWalkthrough');
+    expect(c.root.findByType(WelcomeWalkthrough).props.tour.active).toBe(false);
+    await reportLocalReady(c);
+    expect(byTestId(c, 'app-startup-overlay')).toHaveLength(0);
+    expect(c.root.findByType(WelcomeWalkthrough).props.tour.active).toBe(true);
+    await renderer.act(async () => c.root.findByType(WelcomeWalkthrough).props.tour.skip());
+    expect(layer(c).props.pointerEvents).toBe('auto');
+    expect(c.root.findByType(WelcomeWalkthrough).props.tour.active).toBe(false);
   });
 
   test('sync and reminders start only after the local-ready commit', async () => {
