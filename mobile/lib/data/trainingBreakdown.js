@@ -75,11 +75,11 @@ function countOccurrence(exercise, kind, nonLift) {
   const units = _occurrenceEntries({ ...exercise, kind }).filter((u) => u && !u.skipped);
   if (nonLift) {
     // A logged entry is a row with a performed set or an unparsed row; a row whose
-    // sets are all skipped is not activity. Bare unparsed rows ("5 min 9") live only
-    // in unparsed_rows, so add those not already present as session entries.
+    // sets are all skipped is not activity. Bare unparsed rows ("5 min 9") are the
+    // exercise's unparsed_positions (unparsed_rows also holds preserved comments,
+    // which are not activity, and rows already present as session entries).
     const performed = (u) => !!u.unparsed || (Array.isArray(u.sets) && u.sets.some((x) => x && !x.skipped));
-    const sessionUnparsed = units.filter((u) => u.unparsed).length;
-    const bareUnparsed = Math.max(0, (exercise.unparsed_rows || []).length - sessionUnparsed);
+    const bareUnparsed = (exercise.unparsed_positions || []).length;
     out.entries = units.filter(performed).length + bareUnparsed;
     return out;
   }

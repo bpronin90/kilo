@@ -62,6 +62,13 @@ describe('deriveTrainingBreakdown counting (#1580)', () => {
     expect(skipped.isEmpty).toBe(true);
   });
 
+  test('preserved comments are not activity entries', () => {
+    expect(sectionsOnly('Monday\n-Bike\n-\n-- sore knee').isEmpty).toBe(true);
+    expect(sectionsOnly('Monday\n-Bike\n-- 20 min planned').isEmpty).toBe(true);
+    expect(sectionsOnly('Monday\n-Bike\n- 5 min\n-- done').totals.activityEntries).toBe(1);
+    expect(sectionsOnly('Monday\n-Bike\n10 5\n5 min 9\n-- note').totals.activityEntries).toBe(2);
+  });
+
   test('a library strength exercise with a cardio-style name keeps its strength sets', () => {
     const b = sectionsOnly('Monday\n-Bicycle Crunch: 3x20\n20,20,20');
     expect(b.totals).toMatchObject({ completedSets: 3, activityEntries: 0 });
