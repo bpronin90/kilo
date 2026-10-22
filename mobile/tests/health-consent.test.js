@@ -291,14 +291,37 @@ describe('requestHealthDataDeletion transport', () => {
     expect(result).toEqual({ ok: false, error: 'Failed to fetch' });
   });
 
-  it('keeps a still-running purge as pending, not failed', async () => {
+  it('keeps a still-running purge as accepted and pending, not failed', async () => {
+    // The exact body health-data-delete sends with its 202.
     fetchMock.mockResolvedValue({ ok: true, status: 202, json: async () => ({ ok: false, status: 'deletion_pending', retrying: true }) });
     const result = await requestHealthDataDeletion(fakeClient({ access_token: 'tok-abc' }));
-    // `ok` is not asserted: the 202 body's own `ok: false` currently overwrites
-    // the client's `ok: true` (consent.js spreads the body last). The caller
-    // ignores the result, so `pending` is the signal that matters here.
+    expect(result.ok).toBe(true);
     expect(result.pending).toBe(true);
-    expect(result.status).toBe('deletion_pending');
+    expect(result).toEqual({ ok: true, pending: true, status: 'deletion_pending', retrying: true });
+  });
+
+  it('does not let 202 body flags override the normalized pending outcome', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 202, json: async () => ({ ok: false, pending: false, status: 'deletion_pending' }) });
+    const result = await requestHealthDataDeletion(fakeClient({ access_token: 'tok-abc' }));
+    expect(result).toEqual({ ok: true, pending: true, status: 'deletion_pending' });
+  });
+
+  it('keeps a 202 with an unreadable body accepted and pending', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 202, json: async () => { throw new SyntaxError('bad json'); } });
+    const result = await requestHealthDataDeletion(fakeClient({ access_token: 'tok-abc' }));
+    expect(result).toEqual({ ok: true, pending: true });
+  });
+
+  it('never reports a completed deletion as pending, whatever the body says', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: false, pending: true, status: 'no_pending_deletion' }) });
+    const result = await requestHealthDataDeletion(fakeClient({ access_token: 'tok-abc' }));
+    expect(result).toEqual({ ok: true, status: 'no_pending_deletion' });
+  });
+
+  it('reports a server error with malformed JSON as a failure', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => { throw new SyntaxError('bad json'); } });
+    const result = await requestHealthDataDeletion(fakeClient({ access_token: 'tok-abc' }));
+    expect(result).toEqual({ ok: false, error: 'Deletion request failed.' });
   });
 
   it('surfaces a server refusal as a failure', async () => {
@@ -310,6 +333,12 @@ describe('requestHealthDataDeletion transport', () => {
   it('sends nothing without a session bearer', async () => {
     const result = await requestHealthDataDeletion(fakeClient(null));
     expect(result).toEqual({ ok: false, error: 'Not signed in.' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing when the cloud client is not configured', async () => {
+    const result = await requestHealthDataDeletion(null);
+    expect(result).toEqual({ ok: false, error: 'Cloud is not configured.' });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

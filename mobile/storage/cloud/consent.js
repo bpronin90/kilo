@@ -206,14 +206,22 @@ export async function requestHealthDataDeletion(client = getSupabaseClient()) {
       headers: { Authorization: `Bearer ${token}` },
     });
     const body = await res.json().catch(() => ({}));
-    // 202 means the purge is still running and will be retried; that is a normal
-    // outcome, not a failure the user should be asked to do anything about.
-    if (res.status === 202) return { ok: true, pending: true, ...body };
     if (!res.ok) return { ok: false, error: body?.error || 'Deletion request failed.' };
-    return { ok: true, ...body };
+    // The client owns the outcome flags; the body only contributes metadata. The
+    // server's 202 body says `ok: false` (its purge has not finished), which must
+    // not turn an accepted request into a failure here.
+    const { ok: _ok, pending: _pending, ...meta } = isPlainObject(body) ? body : {};
+    // 202 means the request was accepted and the purge is still running and will
+    // be retried: a normal outcome, but not a claim that the data is erased yet.
+    if (res.status === 202) return { ...meta, ok: true, pending: true };
+    return { ...meta, ok: true };
   } catch (e) {
     return { ok: false, error: e?.message || 'Deletion request failed.' };
   }
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function getFunctionsBase(client) {
