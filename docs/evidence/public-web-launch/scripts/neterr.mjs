@@ -1,0 +1,12 @@
+import { chromium } from 'playwright-core';
+const b = await chromium.launch({ executablePath: process.env.HOME + '/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome' });
+const p = await b.newPage({ viewport: { width: 390, height: 844 } });
+const errs = new Map(); const reqs = [];
+p.on('pageerror', e => errs.set(e.message + ' | ' + (e.stack||'').split('\n').slice(0,3).join(' / '), (errs.get(e.message)||0)+1));
+p.on('console', m => m.type()==='error' && errs.set('CONSOLE '+m.text().slice(0,200), 1));
+p.on('response', r => { const u = r.url(); if (r.status()>=300 || /font|ttf|woff|otf/i.test(u)) reqs.push(r.status()+' '+u.slice(0,120)); });
+p.on('requestfailed', r => reqs.push('FAILED '+r.url().slice(0,120)+' '+r.failure()?.errorText));
+await p.goto(process.argv[2], { waitUntil: 'networkidle' }); await p.waitForTimeout(6000);
+console.log([...errs.keys()].slice(0,5).join('\n')); console.log('count', errs.size);
+console.log([...new Set(reqs)].slice(0,15).join('\n'));
+await b.close();

@@ -59,6 +59,7 @@ testing and phone-runbook entry pages. Detailed guides live in the folders above
 | Join the beta and send feedback (participants) | [Beta Tester Guide](testing/tester-guide.md) |
 | Deploy migrations/functions and expose the owned schema | [Backend Activation](operations/backend-activation.md) — includes the unresolved production deployment instruction |
 | Configure public signup, CAPTCHA, SMTP and OAuth | [Auth Activation](operations/auth-activation.md) |
+| Publish, verify or roll back the public web app | [Web Deployment](operations/web-deployment.md) |
 | Respond to a stuck consent-erasure job | [Health-Deletion Operations](operations/health-deletion-operations.md) |
 | Configure security-event monitoring or investigate an alert | [Security Monitoring](security/security-monitoring.md) |
 | Triage a vulnerability or manage an incident | [Security Incident Response](security/security-incident-response.md) |

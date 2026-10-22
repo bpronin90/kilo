@@ -54,8 +54,8 @@ also authorizes its subdomains.
    - **Sitekey**: public; this goes into client build configuration.
    - **Secret key**: private; this goes only into Supabase Auth.
 
-Never paste the secret key into this repository, `mobile/.env`, EAS, Cloudflare
-Pages build variables, an issue, a PR, or chat. If the previous secret's handling
+Never paste the secret key into this repository, `mobile/.env`, EAS, GitHub
+Actions variables or secrets, an issue, a PR, or chat. If the previous secret's handling
 is uncertain, rotate it in Cloudflare and use the replacement below. Cloudflare's
 [setup guide](https://developers.cloudflare.com/turnstile/get-started/) explains
 the public-sitekey/private-secret split.
@@ -83,22 +83,22 @@ For native EAS builds:
 4. Confirm both names appear in each environment. The repository's EAS profiles
    already select `preview` or `production` as appropriate.
 
-For the Cloudflare Pages web build:
+For the web build, which GitHub Actions builds and uploads to Cloudflare Pages
+(see [Web Deployment](web-deployment.md)):
 
-1. Open Cloudflare → **Workers & Pages** → the Kilo Pages project → **Settings →
-   Environment variables**.
-2. Add `EXPO_PUBLIC_TURNSTILE_SITE_KEY` with the Sitekey to both preview and
-   production build environments.
+1. Open GitHub → the repository → **Settings → Secrets and variables → Actions →
+   Variables**.
+2. Set the repository variable `EXPO_PUBLIC_TURNSTILE_SITE_KEY` to the Sitekey.
+   Use a variable, not a secret.
 3. The web build does not need `EXPO_PUBLIC_TURNSTILE_ORIGIN`; it uses the page's
    current origin.
-4. Trigger a new preview/production deployment. The value is embedded at build
-   time, so changing the variable does not alter an existing deployment.
+4. Redeploy (Actions → **Web Deploy** → Run workflow with the current `main`
+   SHA). The value is embedded at build time, so changing the variable does not
+   alter an existing deployment.
 
 These are public values because Expo embeds `EXPO_PUBLIC_` variables in the app
 bundle. See Expo's
-[environment-variable guidance](https://docs.expo.dev/eas/environment-variables/manage/)
-and Cloudflare Pages'
-[build-variable instructions](https://developers.cloudflare.com/pages/configuration/build-configuration/).
+[environment-variable guidance](https://docs.expo.dev/eas/environment-variables/manage/).
 
 #### 4. Build replacements before enabling Supabase
 
@@ -203,7 +203,8 @@ action on web or Android.
 **GitHub setup:**
 
 1. In GitHub, create an OAuth App for Kilo.
-2. Set the homepage to the production web origin.
+2. Set the homepage to the production web origin
+   (`https://kilo-app.pages.dev`; see [Web Deployment](web-deployment.md)).
 3. Set the authorization callback to
    `https://<project-ref>.supabase.co/auth/v1/callback`.
 
@@ -214,8 +215,8 @@ to the allow-listed client URL.
 
 1. In Authentication → Providers → GitHub, enable the provider and enter the
    OAuth App client ID and secret.
-2. In Authentication → URL Configuration, allow the production web origin,
-   required local web origins, and `kilo://auth/callback`.
+2. In Authentication → URL Configuration, allow the production web origin
+   (`https://kilo-app.pages.dev/**`), required local web origins, and `kilo://auth/callback`.
 3. Keep the GitHub client secret in provider configuration only; never expose it
    to the app.
 
