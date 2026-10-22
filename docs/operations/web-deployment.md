@@ -146,8 +146,8 @@ so revert or fix the faulty change on `main` before merging anything else.
   another account requires an explicit purge-or-upload choice before sync
   starts. See [Cloud Sync](../architecture/cloud-sync.md).
 - **Session invalidation.** Sign-out is meant to end the session and return
-  storage to local-only mode, offering an explicit device-wipe. Clearing site
-  data removes the session.
+  storage to local-only mode, offering an explicit device-wipe; on the web it
+  currently fails (see below). Clearing site data removes the session.
 - **Offline and sync failure.** Local reads and writes do not depend on
   Supabase, so the app keeps working offline or when Supabase is unreachable;
   retry and conflict behavior is in [Cloud Sync](../architecture/cloud-sync.md).
