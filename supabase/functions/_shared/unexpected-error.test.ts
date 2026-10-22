@@ -34,15 +34,26 @@ async function quietly<T>(fn: () => Promise<T>): Promise<{ result: T; logs: stri
   }
 }
 
-Deno.test('errorKind keeps identifier-shaped names and drops anything else', () => {
+Deno.test('errorKind echoes only allowlisted built-in names', () => {
   assertEquals(errorKind(new TypeError('x')), 'TypeError', 'built-in')
+  assertEquals(errorKind(new DOMException('x', 'AbortError')), 'AbortError', 'abort')
   const custom = new Error('x')
+  custom.name = 'secret_bearer_token_value'
+  assertEquals(errorKind(custom), 'other', 'identifier-shaped custom name')
   custom.name = 'token abc@example.test'
-  assertEquals(errorKind(custom), 'unknown', 'free-text name')
-  custom.name = 'A'.repeat(65)
-  assertEquals(errorKind(custom), 'unknown', 'overlong name')
-  assertEquals(errorKind('string thrown'), 'unknown', 'non-Error')
-  assertEquals(errorKind(undefined), 'unknown', 'undefined')
+  assertEquals(errorKind(custom), 'other', 'free-text name')
+  assertEquals(errorKind('string thrown'), 'other', 'non-Error')
+  assertEquals(errorKind(undefined), 'other', 'undefined')
+})
+
+Deno.test('an identifier-shaped secret error name never reaches the log', async () => {
+  const err = new Error('x')
+  err.name = 'secret_bearer_token_value'
+  const handler = withUnexpectedErrorResponse('fn', () => Promise.reject(err))
+  const { result, logs } = await quietly(() => handler(request()))
+  assertEquals(result.status, 500, 'status')
+  assertEquals(logs, [JSON.stringify(['fn unexpected error', { kind: 'other' }])], 'classified as other')
+  assertEquals(logs.join('').includes('secret_bearer_token_value'), false, 'secret absent')
 })
 
 Deno.test('unexpectedErrorResponse is a JSON 500 with the shared CORS policy and extra headers', async () => {

@@ -14,10 +14,10 @@
 //
 // What leaves the process is deliberately minimal:
 //   - Response body: a fixed generic message. No stack, no upstream text.
-//   - Log line: the source label and the error's constructor name only. An
-//     error message may quote row data, a bearer token, or an email, so it is
-//     never logged; the name ("TypeError", "FetchError") is enough to tell a
-//     transport outage from a code defect.
+//   - Log line: the source label and a fixed error classification only (see
+//     errorKind). An error message may quote row data, a bearer token, or an
+//     email, so it is never logged; "TypeError" vs "AbortError" vs "other" is
+//     enough to tell a transport outage from a code defect.
 
 import { corsHeaders } from './cors.ts'
 
@@ -25,11 +25,18 @@ export const UNEXPECTED_ERROR_BODY = { error: 'Internal Server Error' } as const
 
 type Handler = (req: Request) => Promise<Response>
 
-// A bounded, identifier-shaped class name, or 'unknown'. Custom error classes
-// can set `name` to anything, so it is validated rather than trusted.
+// A fixed classification, never caller-controlled text. `name` is mutable (a
+// custom error class or upstream code can set it to anything, including a
+// token-shaped identifier), so it is only echoed when it exactly matches a
+// built-in class; everything else, non-Error throws included, is 'other'.
+const KNOWN_ERROR_KINDS: readonly string[] = [
+  'Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError',
+  'AggregateError', 'AbortError', 'TimeoutError',
+]
+
 export function errorKind(err: unknown): string {
   const name = err instanceof Error ? err.name : undefined
-  return typeof name === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name) ? name : 'unknown'
+  return typeof name === 'string' && KNOWN_ERROR_KINDS.includes(name) ? name : 'other'
 }
 
 // The sanitized 500 for a request, carrying the shared per-request CORS policy
