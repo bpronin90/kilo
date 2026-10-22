@@ -8,6 +8,7 @@ import {
   DATASET_VERSION,
   SOURCE_PROVENANCE,
   normalizeExerciseName,
+  foldCase,
   resolveExerciseName,
   resolveExerciseId,
   getExercise,
@@ -106,7 +107,7 @@ describe('normalization parity with the independent validator', () => {
     const inputs = [
       'Barbell Bench Pre\u00df', 'Barbell Bench Press\u0345', '\u1f72', '\u1fb2', '\u1f70\u03b9',
       '\u03a3\u03a4\u0391\u03a3', '\u03c3\u03c4\u03b1\u03c2', 'R.D.L.', ' D.B.  RDL', 'Push-Up',
-      '\uFB01x', '\u0130stanbul', 'Farmer\u2019s Walk', '\uFF22\uFF22 bench', 'a_b', '5x5 @ 100kg',
+      '\uFB01x', '\u0130stanbul', 'Farmer\u2019s Walk', '\uFF22\uFF22 bench', 'a_b', '5x5 @ 100kg', 'Pre\u1e9e', '\u0131ncline', '\u13a0\uab70',
     ];
     const code = [
       'import json,sys,importlib.util as u',
@@ -119,6 +120,33 @@ describe('normalization parity with the independent validator', () => {
     });
     expect(r.status).toBe(0);
     expect(inputs.map(normalizeExerciseName)).toEqual(JSON.parse(r.stdout));
+  });
+
+  it('foldCase equals Python casefold() for every code point', () => {
+    const code = [
+      'import json',
+      'print(json.dumps({i: chr(i).casefold() for i in range(0x110000)',
+      '  if not 0xD800 <= i < 0xE000 and chr(i).casefold() != chr(i)}))',
+    ].join('\n');
+    const r = spawnSync('python3', ['-c', code], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    expect(r.status).toBe(0);
+    const py = JSON.parse(r.stdout);
+    const mismatches = [];
+    for (let i = 0; i < 0x110000; i += 1) {
+      if (i >= 0xd800 && i < 0xe000) continue;
+      const ch = String.fromCodePoint(i);
+      const expected = py[i] ?? ch;
+      if (foldCase(ch) !== expected) mismatches.push(i.toString(16));
+    }
+    expect(mismatches).toEqual([]);
+  });
+
+  it('resolves capital sharp s and keeps dotless i distinct', () => {
+    expect(resolveExerciseName('Barbell Bench Pre\u1e9e')).toMatchObject({
+      matchType: 'exact',
+      exerciseId: 'barbell_bench_press',
+    });
+    expect(resolveExerciseName('\u0131ncline barbell bench press').matchType).toBe('unknown');
   });
 
   it('applies full case folding to lookups', () => {

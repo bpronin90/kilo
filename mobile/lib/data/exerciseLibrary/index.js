@@ -48,19 +48,66 @@ function foldInitialisms(tokens) {
   return out;
 }
 
+// Code points where upper->lower differs from Unicode casefold(), as
+// `codepoint=folded.codepoints` hex. Generated from Python str.casefold() against
+// JS toUpperCase().toLowerCase(); the parity test re-derives it exhaustively.
+const CASEFOLD_EXCEPTIONS = new Map(
+  [
+    '131=131 13a0=13a0 13a1=13a1 13a2=13a2 13a3=13a3 13a4=13a4 13a5=13a5 13a6=13a6 13a7=13a7 ',
+    '13a8=13a8 13a9=13a9 13aa=13aa 13ab=13ab 13ac=13ac 13ad=13ad 13ae=13ae 13af=13af 13b0=13b0 ',
+    '13b1=13b1 13b2=13b2 13b3=13b3 13b4=13b4 13b5=13b5 13b6=13b6 13b7=13b7 13b8=13b8 13b9=13b9 ',
+    '13ba=13ba 13bb=13bb 13bc=13bc 13bd=13bd 13be=13be 13bf=13bf 13c0=13c0 13c1=13c1 13c2=13c2 ',
+    '13c3=13c3 13c4=13c4 13c5=13c5 13c6=13c6 13c7=13c7 13c8=13c8 13c9=13c9 13ca=13ca 13cb=13cb ',
+    '13cc=13cc 13cd=13cd 13ce=13ce 13cf=13cf 13d0=13d0 13d1=13d1 13d2=13d2 13d3=13d3 13d4=13d4 ',
+    '13d5=13d5 13d6=13d6 13d7=13d7 13d8=13d8 13d9=13d9 13da=13da 13db=13db 13dc=13dc 13dd=13dd ',
+    '13de=13de 13df=13df 13e0=13e0 13e1=13e1 13e2=13e2 13e3=13e3 13e4=13e4 13e5=13e5 13e6=13e6 ',
+    '13e7=13e7 13e8=13e8 13e9=13e9 13ea=13ea 13eb=13eb 13ec=13ec 13ed=13ed 13ee=13ee 13ef=13ef ',
+    '13f0=13f0 13f1=13f1 13f2=13f2 13f3=13f3 13f4=13f4 13f5=13f5 13f8=13f0 13f9=13f1 13fa=13f2 ',
+    '13fb=13f3 13fc=13f4 13fd=13f5 1c89=1c89 1e9e=73.73 a7cb=a7cb a7cc=a7cc a7ce=a7ce a7d2=a7d2 ',
+    'a7d4=a7d4 a7da=a7da a7dc=a7dc ab70=13a0 ab71=13a1 ab72=13a2 ab73=13a3 ab74=13a4 ab75=13a5 ',
+    'ab76=13a6 ab77=13a7 ab78=13a8 ab79=13a9 ab7a=13aa ab7b=13ab ab7c=13ac ab7d=13ad ab7e=13ae ',
+    'ab7f=13af ab80=13b0 ab81=13b1 ab82=13b2 ab83=13b3 ab84=13b4 ab85=13b5 ab86=13b6 ab87=13b7 ',
+    'ab88=13b8 ab89=13b9 ab8a=13ba ab8b=13bb ab8c=13bc ab8d=13bd ab8e=13be ab8f=13bf ab90=13c0 ',
+    'ab91=13c1 ab92=13c2 ab93=13c3 ab94=13c4 ab95=13c5 ab96=13c6 ab97=13c7 ab98=13c8 ab99=13c9 ',
+    'ab9a=13ca ab9b=13cb ab9c=13cc ab9d=13cd ab9e=13ce ab9f=13cf aba0=13d0 aba1=13d1 aba2=13d2 ',
+    'aba3=13d3 aba4=13d4 aba5=13d5 aba6=13d6 aba7=13d7 aba8=13d8 aba9=13d9 abaa=13da abab=13db ',
+    'abac=13dc abad=13dd abae=13de abaf=13df abb0=13e0 abb1=13e1 abb2=13e2 abb3=13e3 abb4=13e4 ',
+    'abb5=13e5 abb6=13e6 abb7=13e7 abb8=13e8 abb9=13e9 abba=13ea abbb=13eb abbc=13ec abbd=13ed ',
+    'abbe=13ee abbf=13ef 10d50=10d50 10d51=10d51 10d52=10d52 10d53=10d53 10d54=10d54 ',
+    '10d55=10d55 10d56=10d56 10d57=10d57 10d58=10d58 10d59=10d59 10d5a=10d5a 10d5b=10d5b ',
+    '10d5c=10d5c 10d5d=10d5d 10d5e=10d5e 10d5f=10d5f 10d60=10d60 10d61=10d61 10d62=10d62 ',
+    '10d63=10d63 10d64=10d64 10d65=10d65 16ea0=16ea0 16ea1=16ea1 16ea2=16ea2 16ea3=16ea3 ',
+    '16ea4=16ea4 16ea5=16ea5 16ea6=16ea6 16ea7=16ea7 16ea8=16ea8 16ea9=16ea9 16eaa=16eaa ',
+    '16eab=16eab 16eac=16eac 16ead=16ead 16eae=16eae 16eaf=16eaf 16eb0=16eb0 16eb1=16eb1 ',
+    '16eb2=16eb2 16eb3=16eb3 16eb4=16eb4 16eb5=16eb5 16eb6=16eb6 16eb7=16eb7 16eb8=16eb8',
+  ]
+    .join('')
+    .split(' ')
+    .map((entry) => {
+      const [cp, folded] = entry.split('=');
+      return [
+        String.fromCodePoint(parseInt(cp, 16)),
+        String.fromCodePoint(...folded.split('.').map((h) => parseInt(h, 16))),
+      ];
+    }),
+);
+
+export function foldCase(text) {
+  let out = '';
+  for (const ch of text) {
+    out += CASEFOLD_EXCEPTIONS.get(ch) ?? ch.toUpperCase().toLowerCase();
+  }
+  return out;
+}
+
 export function normalizeExerciseName(input) {
   if (typeof input !== 'string') return '';
-  const text = input
-    .normalize('NFKC')
-    .toUpperCase()
-    .toLowerCase()
-    .replace(/\u03c2/g, '\u03c3')
+  const text = foldCase(input.normalize('NFKC'))
     .replace(/[‘’'`]/g, '')
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
   if (!text) return '';
-  // upper->lower applies the full (multi-character) Unicode case mappings, so it
-  // matches casefold for these inputs (e.g. ss, final sigma, U+0345); re-normalize.
+  // Full Unicode casefold (foldCase), then re-normalize.
   return foldInitialisms(text.split(' ')).join(' ').normalize('NFKC');
 }
 
