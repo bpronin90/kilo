@@ -1,9 +1,7 @@
 # Web Edge Function CORS (#1552) — verification evidence
 
-Durable evidence for issue #1552. Sections marked **PENDING** require explicit
-owner authorization to redeploy the four functions to production project
-`ogzhnscdqcdrhfqcobuv`, plus owner-approved disposable test accounts; they are
-not claimed until filled with real results.
+Durable evidence for issue #1552. Sections marked **PENDING** are not claimed
+until filled with real results.
 
 ## Before: production preflight probes (2026-10-21)
 
@@ -65,22 +63,64 @@ section), `mobile/tests/android-restore-credentials-client.test.js` (web sign-ou
 `mobile/tests/account-lifecycle-ui.test.js` (web export/delete),
 `mobile/tests/health-consent.test.js` (purge-kick transport).
 
-## Deployment record — PENDING owner authorization
+## Deployment record (2026-10-21)
 
-- Authorization: _not yet granted_
-- Functions: `android-restore-credentials`, `account-export`, `account-delete`, `health-data-delete`
-- Deployed source SHA: _pending_
-- Commands/results: _pending_ (`supabase functions deploy <name> --project-ref ogzhnscdqcdrhfqcobuv`; `verify_jwt = false` preserved from `supabase/config.toml`)
-- Rollback target: redeploy the same four functions from `main` before this change (`9c8990ec`)
+- Authorization: owner, in-session ("get it all done", following the request to
+  authorize redeploying the four functions); the owner ran the deploy command
+  themselves after the agent's attempt was held by a permission gate.
+- Functions and resulting versions: `android-restore-credentials` v2,
+  `account-export` v7, `account-delete` v8, `health-data-delete` v6
+- Deployed source SHA: `6ea143435a1a1c1fe7a1cb865904ccb791a67a28` (PR #1554 head)
+- Command: `supabase functions deploy <name> --project-ref ogzhnscdqcdrhfqcobuv --use-api`
+  for each function; each returned `Deployed Functions.`
+- Post-deploy `supabase functions list`: `verify_jwt` is `false` on all four
+  (unchanged, matching `supabase/config.toml`). No other function, schema, or
+  project Auth setting was touched.
+- Rollback target: redeploy the same four functions from `9c8990ec` (`main`
+  before this change).
 
-## After: production probes — PENDING deployment
+## After: production probes (2026-10-21, post-deploy)
 
-Same matrix as above. Expected: ACAO `https://kilo-app.pages.dev` only for the
-production origin; none for attacker, preview, `null`, or absent Origin;
-allowed-origin unauthenticated POST returns a browser-readable 401 with no
-protected action.
+Same request matrix as the before section. Only the exact production origin
+receives `Access-Control-Allow-Origin`; attacker, Pages preview, `null`, and
+absent Origin receive none. `Vary` now includes `Origin` (the gateway merges it
+with its own `Accept-Encoding`). No `Access-Control-Allow-Credentials`.
 
-## Deployed browser flows — PENDING deployment and test accounts
+```text
+android-restore-credentials/v1/revoke | https://kilo-app.pages.dev | HTTP/2 200 ;access-control-allow-origin: https://kilo-app.pages.dev;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+android-restore-credentials/v1/revoke | https://evil.example | HTTP/2 200 ;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+android-restore-credentials/v1/revoke | https://abc123.kilo-app.pages.dev | HTTP/2 200 ;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+android-restore-credentials/v1/revoke | null | HTTP/2 200 ;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+android-restore-credentials/v1/revoke | - | HTTP/2 200 ;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+account-export | https://kilo-app.pages.dev | HTTP/2 200 ;access-control-allow-origin: https://kilo-app.pages.dev;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+account-export | https://evil.example | HTTP/2 200 ;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+account-export | https://abc123.kilo-app.pages.dev | HTTP/2 200 ;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+account-export | null | HTTP/2 200 ;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+account-export | - | HTTP/2 200 ;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+account-delete | https://kilo-app.pages.dev | HTTP/2 200 ;access-control-allow-origin: https://kilo-app.pages.dev;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+account-delete | https://evil.example | HTTP/2 200 ;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+account-delete | https://abc123.kilo-app.pages.dev | HTTP/2 200 ;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+account-delete | null | HTTP/2 200 ;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+account-delete | - | HTTP/2 200 ;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+health-data-delete | https://kilo-app.pages.dev | HTTP/2 200 ;access-control-allow-origin: https://kilo-app.pages.dev;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+health-data-delete | https://evil.example | HTTP/2 200 ;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+health-data-delete | https://abc123.kilo-app.pages.dev | HTTP/2 200 ;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+health-data-delete | null | HTTP/2 200 ;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+health-data-delete | - | HTTP/2 200 ;vary: Accept-Encoding, Origin;access-control-allow-methods: POST, OPTIONS;
+```
+
+Unauthenticated `POST` (body `{}`, no bearer) from the production origin:
+each is a browser-readable 401 and performs no protected action (each function
+rejects before any data access; see the bearer tests in PR #1554).
+
+```text
+android-restore-credentials/v1/revoke | HTTP/2 401 ;access-control-allow-origin: https://kilo-app.pages.dev;{"error":"Unauthorized"}
+account-export | HTTP/2 401 ;access-control-allow-origin: https://kilo-app.pages.dev;{"error":"Unauthorized"}
+account-delete | HTTP/2 401 ;access-control-allow-origin: https://kilo-app.pages.dev;{"error":"Unauthorized"}
+health-data-delete | HTTP/2 401 ;access-control-allow-origin: https://kilo-app.pages.dev;{"error":"Unauthorized"}
+```
+
+## Deployed browser flows — PENDING disposable test accounts
 
 At `https://kilo-app.pages.dev`, separate disposable accounts: sign-out
 (including a controlled revoke-network failure, then a successful retry),
