@@ -1,0 +1,17 @@
+{
+  "description": "Six mutations of the V3 library that the validator must each reject.",
+  "mutations": [
+    {"id": "duplicate-exercise-id", "expect": "duplicate exercise id",
+     "ops": [{"op": "set", "path": ["exercises", 1, "id"], "value": "barbell_bench_press"}]},
+    {"id": "unknown-equipment", "expect": "not in vocabulary",
+     "ops": [{"op": "set", "path": ["exercises", 0, "equipment"], "value": ["barbell", "antigravity_boots"]}]},
+    {"id": "dangling-family", "expect": "unknown family_id",
+     "ops": [{"op": "set", "path": ["exercises", 0, "family_id"], "value": "no_such_family"}]},
+    {"id": "alias-collision", "expect": "normalized collision",
+     "ops": [{"op": "append", "path": ["exercises", 1, "aliases"], "value": "B.B. Bench-Press"}]},
+    {"id": "redirect-to-missing-exercise", "expect": "unknown",
+     "ops": [{"op": "set", "path": ["deprecated_id_redirects", "assisted_pull_up"], "value": "ghost_pull_up"}]},
+    {"id": "ambiguity-shadowed-by-exercise", "expect": "shadowed by exercise",
+     "ops": [{"op": "set", "path": ["ambiguous_names", 0, "input"], "value": "Barbell Bench Press"}]}
+  ]
+}

@@ -63,6 +63,10 @@ See [Runtime Shape](architecture/native-runtime.md#runtime-shape).
 
 See [Screen Routing](architecture/native-runtime.md#screen-routing).
 
+## Exercise Library
+
+See [Exercise Library](architecture/exercise-library.md).
+
 ## Tracked-lift lifecycle
 
 See [Tracked-lift lifecycle](architecture/workout-analytics-ownership.md#tracked-lift-lifecycle).
