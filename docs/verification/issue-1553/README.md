@@ -3,7 +3,7 @@
 Reference: [issue #1553 and its visual checklist](https://github.com/bpronin90/kilo/issues/1553),
 [existing KUA foundation](../../design/kinetic-utilitarian-athletic/foundation.md), and the existing five app screens and floating tab bar.
 
-Rendered commit: `a9d4d064e9dbb682db8e5feee5ecfa7744635529`.
+Rendered commit: `af64a47e397e69b071520fd69ce08a21378e7d23`.
 The subsequent evidence/documentation commit changes no app source, tests, assets,
 fonts, dependencies, or rendering configuration, so these renders apply to its head too.
 
@@ -71,8 +71,8 @@ node docs/verification/issue-1553/capture.mjs
 `CAPTURE_URL` can override the localhost URL. The script creates a fresh browser
 context and writes the images plus a commit/viewport/geometry report.
 
-Targeted checks: 229 tests passed in the walkthrough, walkthrough-storage, Home,
-Help, app-navigation, and app-startup-overlay suites. These cover preference
+Targeted checks: 614 tests passed in the walkthrough, walkthrough-storage, Home,
+Help, app-navigation, app-startup-overlay, and theme-rendering suites. These cover preference
 failures, write failure, loading/error/populated/empty reads, stale anchors, rapid
 taps, navigation, replay, system Back, interruption, cleanup, and startup gating.
 The explicit Allowed Files scope check also passed.
