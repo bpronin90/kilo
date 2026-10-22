@@ -48,6 +48,25 @@ describe('deriveTrainingBreakdown counting (#1580)', () => {
     expect(b.movement.coverage.totalSets).toBe(0);
   });
 
+  test('working sets of names the warm-up catalog lists stay strength sets', () => {
+    const b = sectionsOnly('Monday\n-Bodyweight squats: 3x10\n10,10,10\n-Band pull-aparts: 3x15\n15,15,15');
+    expect(b.totals).toMatchObject({ completedSets: 6, activityEntries: 0, exerciseCount: 2 });
+    expect(b.movement.coverage.totalSets).toBe(6);
+  });
+
+  test('mixed parsed and bare unparsed cardio rows are all counted; fully skipped rows are not', () => {
+    expect(sectionsOnly('Monday\n-Bike\n10 5\n5 min 9').totals.activityEntries).toBe(2);
+    expect(sectionsOnly('Monday\n-Bike\n5 min 9').totals.activityEntries).toBe(1);
+    const skipped = sectionsOnly('Monday\n-Bike\n10 -,-');
+    expect(skipped.totals.activityEntries).toBe(0);
+    expect(skipped.isEmpty).toBe(true);
+  });
+
+  test('a library strength exercise with a cardio-style name keeps its strength sets', () => {
+    const b = sectionsOnly('Monday\n-Bicycle Crunch: 3x20\n20,20,20');
+    expect(b.totals).toMatchObject({ completedSets: 3, activityEntries: 0 });
+  });
+
   test('a warm-up cardio entry and a cardio header without rows add nothing', () => {
     expect(sectionsOnly('Monday\n+Warmup\n-Bike\n10 5').isEmpty).toBe(true);
     expect(sectionsOnly('Monday\n-Treadmill 20 min').isEmpty).toBe(true);

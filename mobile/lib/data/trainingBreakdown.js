@@ -19,7 +19,6 @@
 // back, and it does not touch exercise_classifications or any history key.
 
 import { _occurrenceEntries } from '../parser/analytics.js';
-import { isStrengthExerciseName } from './exerciseCatalog';
 import { getExerciseMetadata } from './exerciseMetadata';
 import { UNCLASSIFIED_GROUP_ID } from './primaryMovementGroups';
 import { OVERRIDE_STATE, movementGroupLabel, readMovementOverrides, resolveMovementGroup } from './movementGroups';
@@ -62,12 +61,26 @@ const knownList = (value) => (Array.isArray(value) && value.length > 0 ? value :
 
 // Counts one exercise occurrence: completed strength sets, timed-hold sets, and
 // logged entries (a cardio/non-lift exercise's non-skipped units, parsed or not).
+// Cardio / non-lift activity: the library's own cardio type, or a cardio-style name
+// the library does not know as a strength exercise (mirrors the keyword list in
+// exerciseCatalog's isStrengthExerciseName, without its warm-up-name exclusions, which
+// would turn a working "Bodyweight squats" or "Band pull-aparts" set into activity).
+const CARDIO_NAME_RE = /\b(treadmill|bike|bicycle|cycling|elliptical|run|walk|swim|cardio|rowing machine|ski erg)\b/i;
+const isCardioActivity = (name, meta) => meta.fields.activityType === 'cardio'
+  || (CARDIO_NAME_RE.test(name) && meta.fields.activityType !== 'strength');
+
 function countOccurrence(exercise, kind, nonLift) {
   const out = { strength: 0, timed: 0, entries: 0 };
   if (kind === 'warmup') return out;
   const units = _occurrenceEntries({ ...exercise, kind }).filter((u) => u && !u.skipped);
   if (nonLift) {
-    out.entries = units.length > 0 ? units.length : (exercise.unparsed_rows || []).length;
+    // A logged entry is a row with a performed set or an unparsed row; a row whose
+    // sets are all skipped is not activity. Bare unparsed rows ("5 min 9") live only
+    // in unparsed_rows, so add those not already present as session entries.
+    const performed = (u) => !!u.unparsed || (Array.isArray(u.sets) && u.sets.some((x) => x && !x.skipped));
+    const sessionUnparsed = units.filter((u) => u.unparsed).length;
+    const bareUnparsed = Math.max(0, (exercise.unparsed_rows || []).length - sessionUnparsed);
+    out.entries = units.filter(performed).length + bareUnparsed;
     return out;
   }
   for (const unit of units) {
@@ -113,7 +126,7 @@ export function deriveTrainingBreakdown(parsedSections) {
         const name = exercise.name;
         let meta = metaCache.get(name);
         if (!meta) { meta = getExerciseMetadata(name); metaCache.set(name, meta); }
-        const nonLift = !isStrengthExerciseName(name) || meta.fields.activityType === 'cardio';
+        const nonLift = isCardioActivity(name, meta);
         const { strength, timed: timedSets, entries } = countOccurrence(exercise, section.kind, nonLift);
         if (strength + timedSets + entries === 0) continue;
         // Original-name identity, not the alias-grouped history key, so "RDL" and
