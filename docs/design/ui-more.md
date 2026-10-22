@@ -43,3 +43,15 @@ the active accent treatment. Settings' fatigue multiplier is a 44dp stepper
 Account and Backup actions stay in the error-tinted, bordered 16px-radius
 **Danger Zone** containers owned by those screens, as required by
 `docs/design/ui-design-rules.md` §14.
+
+Account auth feedback (`AuthStatusMessage`, #1565) renders inside the action
+block it belongs to, as one more item in that block's 12px column: signed out,
+after the sign-in/create/reset/OAuth buttons and before the legal links; signed
+in, directly after Sign Out and before the Danger Zone; on the confirmation
+panel, after the resend and back actions. The text is `body-md` with a 22px
+line height in `onSurface` (`colors.text` in legacy mode) and wraps within the
+column. Each branch keeps one polite live region (`accessibilityLiveRegion`,
+`aria-live="polite"` on web) mounted while it is shown; it sits out of flow
+while empty, so it adds no gap, and it never takes focus. Feedback from an
+action that switches branches, such as "Signed in." or "Signed out.", appears
+in the new branch's region.

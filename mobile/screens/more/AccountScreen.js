@@ -12,6 +12,7 @@ import { useKuaTypography } from '../../theme/typography';
 import { GEOMETRY } from '../../theme/spacing';
 import { KILO_AUTH_REDIRECT } from '../../hooks/useAuthSession';
 import { AccountLifecycle } from './AccountLifecycle';
+import { AuthStatusMessage } from './AuthStatusMessage';
 import { LegalLinks } from './LegalLinks';
 import { SetNewPasswordScreen } from './SetNewPasswordScreen';
 import { withAlpha } from '../../theme/styleHelpers';
@@ -243,6 +244,7 @@ export function AccountScreen({ onBack, auth }) {
             textStyle={styles.actionButtonText}
             onPress={() => run(() => auth.signOut().then((r) => (r.ok ? { ok: true, message: r.message ?? 'Signed out.' } : r)))}
           />
+          <AuthStatusMessage status={status} />
           <View style={styles.dangerZone}>
             <View style={styles.dangerZoneHeading}>
               <MaterialIcons name="warning" size={16} style={[styles.dangerZoneHeadingText, { fontSize: 16, marginRight: 6 }]} accessible={false} />
@@ -305,6 +307,7 @@ export function AccountScreen({ onBack, auth }) {
             onPress={handleBackToSignIn}
             accessibilityLabel="Back to Sign In"
           />
+          <AuthStatusMessage status={status} />
         </View>
       ) : (
         <View style={styles.accountBlock}>
@@ -434,14 +437,10 @@ export function AccountScreen({ onBack, auth }) {
               accessibilityLabel="Restore from another device"
             />
           )}
+          <AuthStatusMessage status={status} />
           <LegalLinks />
         </View>
       )}
-      {status ? (
-        <Text style={styles.accountStatus} accessibilityLabel="Account status">
-          {status}
-        </Text>
-      ) : null}
     </ScreenShell>
   );
 }
@@ -463,11 +462,6 @@ const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create(
     color: kua ? kua.onSurface : colors.text,
     lineHeight: 22,
     marginBottom: 12,
-  },
-  accountStatus: {
-    fontSize: TYPOGRAPHY['body-md'].fontSize,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginTop: 16,
   },
   // Overrides applied to every auth-flow Button's style/textStyle props
   // (Sign In, Sign Out, Create Account, Reset Password, GitHub, CAPTCHA
