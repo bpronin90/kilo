@@ -1,8 +1,8 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { TRAINING_BREAKDOWN_RANGES } from '../../lib/data/trainingBreakdownRange';
+import { TRAINING_BREAKDOWN_WINDOWS } from '../../lib/data/trainingBreakdownRange';
 
-// Range selector, compact metrics header, and view tabs (#1588).
+// Session-window selector (#1597), compact metrics header, and view tabs (#1588).
 
 export const VIEWS = [
   { key: 'movement', label: 'Movement' },
@@ -10,10 +10,16 @@ export const VIEWS = [
   { key: 'equipment', label: 'Equipment' },
 ];
 
+export const WINDOW_LABELS = {
+  last4: { text: 'Last 4', a11y: 'Last 4 sessions per exercise' },
+  last12: { text: 'Last 12', a11y: 'Last 12 sessions per exercise' },
+  All: { text: 'All', a11y: 'All eligible sessions' },
+};
+
 export function RangeSelector({ styles, range, onChange }) {
   return (
-    <View style={styles.range} accessibilityRole="radiogroup" accessibilityLabel="Training breakdown range">
-      {TRAINING_BREAKDOWN_RANGES.map((r) => {
+    <View style={styles.range} accessibilityRole="radiogroup" accessibilityLabel="Training breakdown session window">
+      {TRAINING_BREAKDOWN_WINDOWS.map((r) => {
         const on = r === range;
         return (
           <Pressable
@@ -23,9 +29,9 @@ export function RangeSelector({ styles, range, onChange }) {
             style={[styles.rangeOption, on && styles.rangeOptionOn]}
             accessibilityRole="radio"
             accessibilityState={{ selected: on }}
-            accessibilityLabel={r === 'All' ? 'All time' : `Last ${r.replace('D', '')} days`}
+            accessibilityLabel={WINDOW_LABELS[r].a11y}
           >
-            <Text style={[styles.rangeText, on && styles.rangeTextOn]} accessible={false}>{r}</Text>
+            <Text style={[styles.rangeText, on && styles.rangeTextOn]} accessible={false}>{WINDOW_LABELS[r].text}</Text>
           </Pressable>
         );
       })}

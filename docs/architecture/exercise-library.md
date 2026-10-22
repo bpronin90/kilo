@@ -134,24 +134,39 @@ empty exclusion set.
   recorded (a generic weighted exercise never implies a vest or belt).
 - **Coverage.** Each view reports its own field-specific known-set coverage.
 
-### Ranges, regions and comparisons (#1589)
+### Session windows, regions and comparisons (#1589, #1597)
 
-`deriveTrainingBreakdownForRange(parsedSections, range, { now, populationVerified })`
+`deriveTrainingBreakdownForRange(parsedSections, window, { populationVerified })`
 in `trainingBreakdown.js` returns the `deriveTrainingBreakdown` shape plus
 `muscles.regions` and `movement.comparisons`; `deriveTrainingBreakdown` itself is
 unchanged, and the All result minus those two fields deep-equals it. Nothing is
-persisted or cached; range selection and invalidation belong to the caller (#1588).
+persisted or cached; window selection belongs to the caller (#1588).
 
-- **Ranges** (`trainingBreakdownRange.js`): `30D`, `90D`, `All`. Selection runs over
-  the recovery-filtered `normalNotes`/`noteSectionsList` from `deriveParsedSections`,
-  keeping each note paired with its sections. The date is `note.date` only;
-  `YYYY-MM-DD` is a device-local calendar date. Bounded ranges are today through
-  today-(N-1) local calendar days inclusive (no N x 24h), future dates excluded;
-  notes with a missing or unparseable date appear only in All. `now` is injectable.
+- **Session windows** (`trainingBreakdownRange.js`, #1597): `last4`, `last12`,
+  `All` (UI default `last12`). Workout notes carry no per-session date (a note is a
+  growing routine notebook; `saved_at`/`updated_at` date the whole note), so the
+  former `30D`/`90D` ranges, which read a nonexistent `note.date`, were always
+  empty and are removed. Windows are positional and per exercise: stream identity
+  is the original-name key `String(name).trim().toLowerCase()` across all eligible
+  notes (no alias merging, no per-note reset); order is notes in their array
+  order, then sections/exercises in parsed order, then `_occurrenceEntries` order,
+  never a timestamp or heading sort. A slot is one eligible logged session unit
+  (a multi-set row is one session): strength/timed units with at least one counted
+  set, and for cardio/non-lift exercises each performed or unparsed session entry
+  plus each bare `unparsed_positions` row (interleaved at its `pos`). Warm-ups,
+  skipped entries, all-skipped rows, strength-unparsed rows, comments and empty
+  prescriptions take no slot. `last4`/`last12` keep each stream's newest 4/12
+  units with all their counted sets and their own source note, so note-scoped
+  overrides resolve per retained unit; shorter streams are kept whole. `All`
+  applies no window. Last 4 approximates four weeks only for an exercise logged
+  once weekly; it is not a calendar or app-wide "last N workouts" promise. No clock
+  is read, so there is no date-rollover invalidation; a stray `now` option is
+  ignored.
 - **Degradation.** `populationVerified: false` (Recovery membership unknown) returns
-  `null` for every range. Bounded ranges also return `null` without usable note
-  pairing or a valid `now`; they never fall back to `allSections`. All keeps the
-  legacy `allSections` fallback.
+  `null` for every window. Bounded windows also return `null` without usable note
+  pairing; they never fall back to `allSections`. All keeps the legacy
+  `allSections` fallback. Recovery-excluded notes contribute neither counts nor
+  window depth; deload notes count.
 - **Regions** (`trainingBreakdownMappings.js`, `MUSCLE_REGIONS`: ordered
   `[{ id, label, muscles }]`, ids `chest back shoulders arms legs core`). Each
   `muscles.regions` entry is `{ id, label, sets, exercises: [{ key, name, sets }] }`,
