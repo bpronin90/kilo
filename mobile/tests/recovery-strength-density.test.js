@@ -362,7 +362,7 @@ describe('nested movement groups (#1537)', () => {
     press(root, 'movement-group-row-push');
     expect(host(root, 'movement-group-exercise-bench')).toHaveLength(1);
     expect(host(root, 'movement-group-exercise-squat')).toHaveLength(0);
-    press(root, 'movement-group-row-legs');
+    press(root, 'movement-group-row-squat');
     expect(host(root, 'movement-group-exercise-squat')).toHaveLength(1);
     press(root, 'movement-group-row-push');
     expect(host(root, 'movement-group-exercise-bench')).toHaveLength(0);
@@ -373,9 +373,9 @@ describe('nested movement groups (#1537)', () => {
     const root = mountMG(['-Bench\n- 80 5\n-Squat\n- 60 5']);
     tap(root, 'Expand movement groups');
     expect(host(root, 'movement-group-value-push')[0].props.children).toBe('80%');
-    expect(host(root, 'movement-group-value-legs')[0].props.children).toBe('60%');
+    expect(host(root, 'movement-group-value-squat')[0].props.children).toBe('60%');
     expect(host(root, 'movement-group-value-arms')[0].props.children).toBe('No score');
-    expect(host(root, 'movement-group-value-core')[0].props.children).toBe('No score');
+    expect(host(root, 'movement-group-value-trunk_stability')[0].props.children).toBe('No score');
     expect(texts(host(root, 'movement-group-row-arms')[0])).toEqual(['Arms', 'None scored · 1 in baseline', 'No score']);
     expect(texts(host(root, 'movement-group-row-push')[0])).toEqual(['Push', '1 of 1 scored · 2 in baseline', '80%']);
     expect(host(root, 'movement-group-row-push')[0].props.accessibilityLabel).toBe('Push: 80% of baseline strength. 1 of 1 lift in the average scored · 2 lifts in the baseline.');
@@ -393,12 +393,12 @@ describe('nested movement groups (#1537)', () => {
     const ids = host(root, 'movement-group-push')[0].findAll(n => typeof n.type === 'string' && /^movement-group-exercise-(?!value)/.test(n.props.testID || '')).map(n => n.props.testID);
     expect(ids).toEqual(['movement-group-exercise-bench', 'movement-group-exercise-incline bench press']);
     const bench = host(root, 'movement-group-exercise-bench')[0];
-    expect(texts(bench)).toEqual(['Bench', '80%', 'In the average · Automatic']);
-    expect(bench.props.accessibilityLabel).toBe('Bench: 80% of baseline strength. In the average. Automatic.');
+    expect(texts(bench)).toEqual(['Bench', '80%', 'In the average · Automatic (name keywords)']);
+    expect(bench.props.accessibilityLabel).toBe('Bench: 80% of baseline strength. In the average. Automatic (name keywords).');
     expect(StyleSheetFlat(bench.findAll(n => n.props.style && StyleSheetFlat(n).width === '80%')[0]).width).toBe('80%');
     const ohp = host(root, 'movement-group-exercise-incline bench press')[0];
-    expect(texts(ohp)).toEqual(['Incline Bench Press', 'No score', 'Not in the average · Automatic']);
-    expect(ohp.props.accessibilityLabel).toBe('Incline Bench Press: no score. Not in the average. Automatic.');
+    expect(texts(ohp)).toEqual(['Incline Bench Press', 'No score', 'Not in the average · Automatic (name keywords)']);
+    expect(ohp.props.accessibilityLabel).toBe('Incline Bench Press: no score. Not in the average. Automatic (name keywords).');
     expect(ohp.findAll(n => n.props.style && StyleSheetFlat(n).height === 6)).toHaveLength(0);
   });
 
