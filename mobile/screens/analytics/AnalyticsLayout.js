@@ -7,11 +7,12 @@ import { AnalyticsFatigueCard } from '../../components/AnalyticsFatigueCard';
 // Analytics is the evidence surface: Home owns the summary, so the tab opens
 // straight into analysis rather than an overview of the same signals.
 //
-// Normal training:   Strength → Routine Health → Progressive Overload →
+// Normal training:   Strength → Training breakdown → Routine Health → Progressive Overload →
 //                    Weight Trends → Recovery history (only when it exists).
 // Active Recovery:   Recovery → Weight Trends → `Baseline training · paused
 //                    during Recovery` disclosure (collapsed by default) holding
-//                    Strength → Progressive Overload → Routine Health.
+//                    Strength → Training breakdown → Progressive Overload →
+//                    Routine Health.
 //
 // Pure ordering: every argument is an already-built element (or null), so the
 // two hierarchies cannot drift in what they render — only where.
@@ -20,6 +21,7 @@ export function orderAnalyticsSections({
   baselineExpanded,
   banners = [],
   strength,
+  trainingBreakdown = null,
   progressiveOverload,
   weight,
   routineHealth,
@@ -27,14 +29,14 @@ export function orderAnalyticsSections({
   disclosure,
 }) {
   if (!isActiveRecovery) {
-    return [...banners, strength, routineHealth, progressiveOverload, weight, recovery];
+    return [...banners, strength, trainingBreakdown, routineHealth, progressiveOverload, weight, recovery];
   }
   return [
     ...banners,
     recovery,
     weight,
     disclosure,
-    ...(baselineExpanded ? [strength, progressiveOverload, routineHealth] : []),
+    ...(baselineExpanded ? [strength, trainingBreakdown, progressiveOverload, routineHealth] : []),
   ];
 }
 

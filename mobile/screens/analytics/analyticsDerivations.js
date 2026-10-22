@@ -7,6 +7,7 @@ import {
 } from '../../lib/data';
 import { deriveExerciseProgress } from '../../lib/data/exerciseProgress';
 import { normalizeExerciseKey } from '../../lib/parser/workoutPure';
+import { deriveTrainingBreakdown } from '../../lib/data/trainingBreakdown';
 import { projectWorkoutHistoryPopulation, isExcludedByNoteIds } from '../../lib/data/workoutHistoryPopulation';
 
 // `excludedNoteIds` (#699) is the set of recovery-linked note ids whose block
@@ -93,7 +94,11 @@ export function deriveAnalytics(parsedSections, trackedLifts, oneKSelections, mu
   const oneK = derive1kTotalFromSectionsList(noteSectionsList || [], oneKSelections);
   const oneKSeries = derive1kTotalSeriesFromSectionsList(noteSectionsList || [], oneKSelections);
 
-  return { signals, oneK, oneKSeries, nameDisplayMap, perDaySignals, nonWeightedMetrics, reentry, progressionSuggestions, exerciseProgress: progress.summary };
+  // #1580: additive, read-only library breakdown of the same ordinary-history
+  // sections; no existing result above reads it.
+  const trainingBreakdown = deriveTrainingBreakdown(parsedSections);
+
+  return { signals, oneK, oneKSeries, nameDisplayMap, perDaySignals, nonWeightedMetrics, reentry, progressionSuggestions, exerciseProgress: progress.summary, trainingBreakdown };
 }
 
 const _LEADING_DAY_RE = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;

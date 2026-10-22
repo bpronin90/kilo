@@ -39,6 +39,7 @@ import {
 import { createStyles } from './analytics/analyticsStyles';
 import { AnalyticsWeightTrendsCard } from '../components/AnalyticsWeightTrendsCard';
 import { AnalyticsStrengthSection, AnalyticsBig3MappingCard } from '../components/AnalyticsStrengthSection';
+import { AnalyticsTrainingBreakdown } from '../components/AnalyticsTrainingBreakdown';
 import { AnalyticsProgressiveOverloadSection } from './analytics/AnalyticsProgressiveOverload';
 import { orderAnalyticsSections, BaselineDisclosureToggle, AnalyticsRoutineHealth } from './analytics/AnalyticsLayout';
 
@@ -483,6 +484,17 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       )}
     />
   );
+  // #1580: held back like the other ordinary aggregates until the Recovery
+  // boundary is verified, so an unknown membership is never read as "nothing excluded".
+  const trainingBreakdown = (
+    <AnalyticsTrainingBreakdown
+      key="training-breakdown-section"
+      breakdown={analytics.trainingBreakdown}
+      isLoading={isNotesLoading}
+      hasError={!!notesError && notes.length === 0}
+      paused={isActiveRecovery}
+    />
+  );
   const progressiveOverload = (
     <AnalyticsProgressiveOverloadSection
       key="progressive-overload-section"
@@ -545,6 +557,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     baselineExpanded: !baselineCollapsed,
     banners,
     strength,
+    trainingBreakdown,
     progressiveOverload,
     weight,
     routineHealth,

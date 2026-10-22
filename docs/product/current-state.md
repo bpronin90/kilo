@@ -18,7 +18,10 @@ The active application lives in `mobile/` and has five tabs:
 - **Log** creates and edits workout routines, sessions, deloads, and recovery
   blocks from canonical note text.
 - **Weight** records weigh-ins and goals and presents history and trends.
-- **Analytics** derives workout, strength, weight, fatigue, and recovery views.
+- **Analytics** derives workout, strength, weight, fatigue, and recovery views,
+  including a Training breakdown (Movement, Muscles, Equipment) of eligible
+  ordinary history placed after Strength and shown as paused baseline history
+  during an active Recovery block.
 
 Progression suggestions are an opt-in feature (off by default, enabled from
 Settings). When on, the deterministic rule engine's double-progression prompts

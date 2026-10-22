@@ -103,6 +103,36 @@ and ignored here. Classification implies no equivalent fatigue and no prescripti
 eligibility. `exercise_classifications` (persisted progression status) is unrelated
 and is not read or recomputed.
 
+## Training breakdown in Analytics (#1580)
+
+`mobile/lib/data/trainingBreakdown.js` (`deriveTrainingBreakdown`) turns the library
+into an additive `trainingBreakdown` result of `deriveAnalytics()`; no existing signal,
+history key, selection, or save-time field reads it. It uses the sections
+`deriveParsedSections` already projected through `workoutHistoryPopulation`, so the
+Recovery exclusion boundary is applied once, there. The screen holds the section in its
+pending state until that boundary is verified; unknown membership is never fed in as an
+empty exclusion set.
+
+- **Counting.** Logged session units come from the existing `_occurrenceEntries`
+  semantics, so a collapsed row such as `135 5,5,5` is its three parsed sets. Warm-up
+  sections, skipped entries and sets, unparsed rows, and empty prescriptions add
+  nothing; a deload note counts like any ordinary note. Sets with a duration are
+  tallied as timed activity and never become strength sets.
+- **Identity.** Enrichment reads the original parsed name (`getExerciseMetadata`), so
+  `RDL` and `Romanian Deadlift` stay distinct names behind each row even though legacy
+  history grouping may merge them. Library IDs describe metadata and do not replace
+  `normalizeExerciseKey()`.
+- **Movement.** Each completed set sits in exactly one bucket and the buckets plus
+  `unclassified` reconcile to the total. A note-scoped authored choice
+  (`exercise_movement_groups` on that set's own note) wins and keeps its legacy label;
+  an unreadable map falls back to the library group and is reported.
+- **Muscles and equipment.** Primary-target and secondary-involvement counts are
+  separate and multi-attributed, as are implements; they are not summed into a unique
+  set total and do not claim measured stimulus or fatigue. Unknown values stay
+  unknown without losing the movement group, and the library's equipment is shown as
+  recorded (a generic weighted exercise never implies a vest or belt).
+- **Coverage.** Each view reports its own field-specific known-set coverage.
+
 ## Validation
 
 - `python3 scripts/validate-exercise-library.py` checks vocabulary and references,
