@@ -10,7 +10,7 @@ import { callAndroidRestoreApi } from './supabaseClient';
 // platform, or a persisted bearer — none of those is authorization.
 
 // A lookup or revoke request that failed in transit; repeating it can work.
-export const REVOKE_FAILED_ERROR = 'Could not revoke Android restore key. Sign out again to retry.';
+export const REVOKE_FAILED_ERROR = 'Could not complete sign-out. Please try again.';
 
 // The lookup resolved without a usable bearer (auth error, no session, or no
 // access token). The SDK may already have removed the session, so another
