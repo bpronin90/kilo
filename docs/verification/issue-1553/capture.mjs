@@ -17,6 +17,7 @@ const overlay = page.getByTestId('welcome-walkthrough');
 const waitStep = async (name, number) => {
   await overlay.getByRole('heading', { name: `${name}, ${number} of 5`, exact: true }).waitFor();
   await page.waitForTimeout(300);
+  if (await page.getByRole('tab').count()) throw new Error('Background tabs exposed while tour is modal');
 };
 const shot = (name) => page.screenshot({ path: `${dir}/${name}.png` });
 const storage = () => page.evaluate(() => Object.fromEntries(Object.keys(localStorage).sort().map((key) => [key, localStorage.getItem(key)])));
@@ -48,7 +49,7 @@ for (const [index, tab] of ['Home', 'Log', 'Weight', 'Analytics', 'More'].entrie
 }
 await overlay.getByRole('button', { name: 'Done', exact: true }).click();
 await overlay.waitFor({ state: 'detached' });
-await page.getByRole('tab', { name: 'Home', exact: true, selected: true }).waitFor();
+await page.getByTestId('tab-content-Home').waitFor({state:'visible'});
 await page.reload();
 await page.getByText('Welcome to Kilo', { exact: true }).waitFor();
 await page.waitForTimeout(700);
@@ -72,7 +73,7 @@ await overlay.locator('[dir="auto"]').evaluateAll((nodes) => {
 await shot('log-large-text');
 await overlay.getByRole('button', { name: 'Skip', exact: true }).click();
 await overlay.waitFor({ state: 'detached' });
-await page.getByRole('tab', { name: 'Log', exact: true, selected: true }).waitFor();
+await page.getByTestId('tab-content-Log').waitFor({state:'visible'});
 const after = await storage();
 const changedKeys = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((key) => before[key] !== after[key]);
 await page.reload();

@@ -360,6 +360,7 @@ function ShellView({ onDeviceDataWiped }) {
             the accessibility tree and takes no touches. */}
         <View
           testID="app-shell-layer"
+          aria-hidden={walkthrough.active || undefined}
           style={styles.shellLayer}
           pointerEvents={startupCovered || walkthrough.active ? 'none' : 'auto'}
           accessibilityElementsHidden={startupCovered || walkthrough.active}

@@ -457,7 +457,7 @@ describe('HomeScreen holds its loading state while the recovery boundary is unve
   test.each([
     [{ history: [], loading: true }, 'loading'],
     [{ history: [], loading: false, error: new Error('disk') }, 'unavailable'],
-    [{ history: [{ id: 'past-deload' }], loading: false }, 'populated'],
+    [{ history: [{ id: 'past-deload', completed_at: '2026-10-01T12:00:00Z', session_count: 1 }], loading: false }, 'populated'],
   ])('deload history must also establish emptiness: %j', async (historyState, expected) => {
     AsyncStorage.getItem.mockImplementation(async () => null);
     const spy = jest.spyOn(useEntriesModule, 'useDeloadHistory').mockReturnValue(historyState);

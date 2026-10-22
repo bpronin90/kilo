@@ -379,9 +379,11 @@ describe('shell lifecycle', () => {
     await reportLocalReady(c);
     expect(byTestId(c, 'app-startup-overlay')).toHaveLength(0);
     expect(c.root.findByType(WelcomeWalkthrough).props.tour.active).toBe(true);
+    expect(layer(c).props['aria-hidden']).toBe(true);
     await renderer.act(async () => c.root.findByType(WelcomeWalkthrough).props.tour.skip());
     expect(layer(c).props.pointerEvents).toBe('auto');
     expect(c.root.findByType(WelcomeWalkthrough).props.tour.active).toBe(false);
+    expect(layer(c).props['aria-hidden']).toBeUndefined();
   });
 
   test('sync and reminders start only after the local-ready commit', async () => {
