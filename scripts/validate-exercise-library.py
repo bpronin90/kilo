@@ -29,7 +29,7 @@ EXERCISE_KEYS = {"id", "name", "aliases", "family_id", "activity_type", "movemen
 
 
 def normalize(text):
-    t = unicodedata.normalize("NFKC", text).lower()
+    t = unicodedata.normalize("NFKC", unicodedata.normalize("NFKC", text).casefold())
     t = re.sub(r"['‘’`]", "", t)
     t = re.sub(r"[^\w]+|_", " ", t).strip()
     out, run = [], ""

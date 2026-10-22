@@ -53,11 +53,13 @@ export function normalizeExerciseName(input) {
   const text = input
     .normalize('NFKC')
     .toLowerCase()
+    .replace(/\u00df/g, 'ss')
+    .replace(/\u03c2/g, '\u03c3')
     .replace(/[‘’'`]/g, '')
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
   if (!text) return '';
-  // casefold: lower-casing can leave final-sigma/eszett forms; normalize again.
+  // Lower-casing plus eszett/final-sigma folds approximate Unicode casefold; re-normalize.
   return foldInitialisms(text.split(' ')).join(' ').normalize('NFKC');
 }
 

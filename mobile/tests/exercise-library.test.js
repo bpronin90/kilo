@@ -87,6 +87,11 @@ describe('normalization', () => {
     expect(normalizeExerciseName('Farmer’s Walk')).toBe('farmers walk');
     expect(normalizeExerciseName('ＢＢ bench')).toBe('bb bench');
     expect(normalizeExerciseName(null)).toBe('');
+    expect(normalizeExerciseName('Barbell Bench Pre\u00df')).toBe('barbell bench press');
+    expect(resolveExerciseName('Barbell Bench Pre\u00df')).toMatchObject({
+      matchType: 'exact',
+      exerciseId: 'barbell_bench_press',
+    });
   });
 
   it('never discards explicit qualifiers', () => {
