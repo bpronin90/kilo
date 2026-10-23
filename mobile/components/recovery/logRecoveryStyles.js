@@ -36,7 +36,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderColor: kua ? kua.primary : colors.accent,
   },
   stateZone: {
-    backgroundColor: kua ? kua.surfaceCard : colors.subtleBg,
+    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
     paddingHorizontal: 18,
     paddingTop: 18,
     paddingBottom: 16,
