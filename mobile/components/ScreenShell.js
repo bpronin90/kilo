@@ -20,8 +20,12 @@ export const ScrollContext = createContext({ onScroll: () => {} });
  *   area inset (ensures content clears the absolute TabBar, whatever its
  *   rendered height)
  * - Top safe area: Handled via localized SafeAreaView in the headerWrapper
+ * - `header` (#1600, additive): a fixed element rendered above the scroll, in
+ *   place of the in-scroll title block (e.g. <RootHeader />). Scroll child 0
+ *   stays an empty slot, so existing `stickyHeaderIndices` keep their meaning
+ *   and the first block starts one 16px gap below the header hairline.
  */
-export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, keyboardShouldPersistTaps, onScroll: propOnScroll, style, children, stickyHeaderIndices, onBack }, ref) => {
+export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, header = null, keyboardShouldPersistTaps, onScroll: propOnScroll, style, children, stickyHeaderIndices, onBack }, ref) => {
   const styles = useThemedStyles(createStyles);
   const version = `v${pkg.version}`;
   const { onScroll: contextOnScroll } = useContext(ScrollContext);
@@ -67,6 +71,7 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
           </View>
         </View>
       )}
+      {header}
       <ScrollView
         ref={setScrollRef}
         style={styles.scroll}
@@ -80,31 +85,33 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
         scrollEventThrottle={16}
         stickyHeaderIndices={stickyHeaderIndices}
       >
-        <View style={styles.headerWrapper}>
-          <View style={styles.header}>
-            {!title && (
-              <View style={styles.titleRow}>
-                <Text style={styles.title}>Kilo</Text>
-                <Text style={styles.version}>{version}</Text>
-              </View>
-            )}
-            {title && (
-              <View style={styles.titleRow}>
-                <View style={[styles.titleGroup, typeof title === 'string' && styles.titleGroupShrink]}>
-                  {typeof title === 'string' ? (
-                    <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
-                      {title}
-                    </Text>
-                  ) : (
-                    title
-                  )}
+        {header ? <View testID="screen-shell-header-slot" /> : (
+          <View style={styles.headerWrapper}>
+            <View style={styles.header}>
+              {!title && (
+                <View style={styles.titleRow}>
+                  <Text style={styles.title}>Kilo</Text>
+                  <Text style={styles.version}>{version}</Text>
                 </View>
-                {!onBack && headerRight}
-              </View>
-            )}
-            {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+              )}
+              {title && (
+                <View style={styles.titleRow}>
+                  <View style={[styles.titleGroup, typeof title === 'string' && styles.titleGroupShrink]}>
+                    {typeof title === 'string' ? (
+                      <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
+                        {title}
+                      </Text>
+                    ) : (
+                      title
+                    )}
+                  </View>
+                  {!onBack && headerRight}
+                </View>
+              )}
+              {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+            </View>
           </View>
-        </View>
+        )}
         {children}
       </ScrollView>
     </View>

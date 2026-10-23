@@ -1,0 +1,111 @@
+/* Shared prototype foundation. Values are copied from mobile/theme/colors.js (KUA court
+   palettes), typography.js and spacing.js. Nothing here is a new token: prototypes only
+   alias the existing role names to CSS custom properties.
+   Tracked copy (docs/design/app-redesign-v3, #1600): the bulky fonts/ folder is not copied.
+   Space Grotesk / JetBrains Mono point at the production assets in mobile/assets/fonts/;
+   MaterialIcons points at the @expo/vector-icons copy, present after `npm install` in mobile/.
+   Without it, icons fall back to blank glyphs; layout and type are unaffected. */
+@font-face { font-family: 'SG'; src: url('../../../../mobile/assets/fonts/SpaceGrotesk-Regular.ttf'); font-weight: 400; }
+@font-face { font-family: 'SG'; src: url('../../../../mobile/assets/fonts/SpaceGrotesk-Medium.ttf'); font-weight: 500; }
+@font-face { font-family: 'SG'; src: url('../../../../mobile/assets/fonts/SpaceGrotesk-SemiBold.ttf'); font-weight: 600; }
+@font-face { font-family: 'SG'; src: url('../../../../mobile/assets/fonts/SpaceGrotesk-Bold.ttf'); font-weight: 700; }
+@font-face { font-family: 'JBM'; src: url('../../../../mobile/assets/fonts/JetBrainsMono-Medium.ttf'); font-weight: 500; }
+@font-face { font-family: 'JBM'; src: url('../../../../mobile/assets/fonts/JetBrainsMono-SemiBold.ttf'); font-weight: 600; }
+@font-face { font-family: 'JBM'; src: url('../../../../mobile/assets/fonts/JetBrainsMono-Bold.ttf'); font-weight: 700; }
+@font-face { font-family: 'MI'; src: url('../../../../mobile/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf'); }
+
+/* ---- Hard Court ---- */
+[data-court="hard"][data-mode="light"] {
+  --bg:#EEF3F9; --card:#FFFFFF; --card-header:#EEF3F9; --section:#EEF3F9; --border:#DDE6F2;
+  --primary:#0A4ABF; --primary-mark:#0A4ABF; --pc:#E1ECFB; --pc-border:#9BC1F5; --on-pc:#083B9A;
+  --on:#0E1726; --muted:#5A687A; --completion:#006C4A; --on-primary:#FFFFFF; --tabbar:#FFFFFF;
+  --error:#BA1A1A; --error-text:#B3261E; --success:#006C4A; --warning:#B45309;
+  --s1:#0C7489; --s2:#C2410C; --s3:#7C3AED; --band-at:#00704C; --band-reb:#A66300; --band-early:#B3261E;
+  --scrim:rgba(0,0,0,.5); --shadow:0 1px 2px rgba(14,23,38,.06);
+}
+[data-court="hard"][data-mode="dark"] {
+  --bg:#080D18; --card:#101728; --card-header:#131D32; --section:#0E1524; --border:#1C2742;
+  --primary:#3B82F6; --primary-mark:#60A5FA; --pc:#17233D; --pc-border:#2A3F6D; --on-pc:#60A5FA;
+  --on:#F0F4FC; --muted:#8C9BB3; --completion:#10B981; --on-primary:#080D18; --tabbar:#080D18;
+  --error:#BA1A1A; --error-text:#F2705C; --success:#10B981; --warning:#FBBF24;
+  --s1:#22D3EE; --s2:#F59E0B; --s3:#A78BFA; --band-at:#34D399; --band-reb:#FBBF24; --band-early:#F2705C;
+  --scrim:rgba(0,0,0,.7); --shadow:0 2px 10px rgba(0,0,0,.35);
+}
+/* ---- Clay Court ---- */
+[data-court="clay"][data-mode="light"] {
+  --bg:#F8F5EE; --card:#FFFDF9; --card-header:#F2EDE4; --section:#F2EDE4; --border:#E5DFD3;
+  --primary:#A23E19; --primary-mark:#A23E19; --pc:#FBECE5; --pc-border:#E89A7A; --on-pc:#7E2E0F;
+  --on:#1A1918; --muted:#585550; --completion:#1E5B3A; --on-primary:#FFFFFF; --tabbar:#F8F5EE;
+  --error:#BA1A1A; --error-text:#B3261E; --success:#006C4A; --warning:#B45309;
+  --s1:#0C7489; --s2:#C2410C; --s3:#7C3AED; --band-at:#1E6B43; --band-reb:#9A5F00; --band-early:#A8311C;
+  --scrim:rgba(0,0,0,.5); --shadow:0 1px 2px rgba(26,25,24,.05);
+}
+[data-court="clay"][data-mode="dark"] {
+  --bg:#141211; --card:#1F1C1A; --card-header:#181513; --section:#1A1816; --border:#2C2723;
+  --primary:#D86538; --primary-mark:#F08B62; --pc:#341B13; --pc-border:#5C2E1E; --on-pc:#F08B62;
+  --on:#F5F3F0; --muted:#A89F96; --completion:#2CA864; --on-primary:#141211; --tabbar:#141211;
+  --error:#BA1A1A; --error-text:#F2705C; --success:#10B981; --warning:#FBBF24;
+  --s1:#22D3EE; --s2:#F59E0B; --s3:#A78BFA; --band-at:#4FBF7F; --band-reb:#E5A93C; --band-early:#F0805F;
+  --scrim:rgba(0,0,0,.7); --shadow:0 2px 10px rgba(0,0,0,.35);
+}
+/* ---- Grass Court ---- */
+[data-court="grass"][data-mode="light"] {
+  --bg:#F4F8F5; --card:#FFFFFF; --card-header:#F4F8F5; --section:#F2F7F4; --border:#E0EAE3;
+  --primary:#1E5B3A; --primary-mark:#1E5B3A; --pc:#E8F4EC; --pc-border:#A3D4B3; --on-pc:#14452B;
+  --on:#111813; --muted:#556B5C; --completion:#1E5B3A; --on-primary:#FFFFFF; --tabbar:#F4F8F5;
+  --error:#BA1A1A; --error-text:#B3261E; --success:#006C4A; --warning:#B45309;
+  --s1:#0C7489; --s2:#C2410C; --s3:#7C3AED; --band-at:#17692F; --band-reb:#8F6A00; --band-early:#B52A2A;
+  --scrim:rgba(0,0,0,.5); --shadow:0 1px 2px rgba(17,24,19,.05);
+}
+[data-court="grass"][data-mode="dark"] {
+  --bg:#0C130F; --card:#15201A; --card-header:#0C130F; --section:#111A15; --border:#1F3025;
+  --primary:#2CA864; --primary-mark:#4ADE80; --pc:#132B1C; --pc-border:#235235; --on-pc:#4ADE80;
+  --on:#F0F5F2; --muted:#91A398; --completion:#2CA864; --on-primary:#0C130F; --tabbar:#0C130F;
+  --error:#BA1A1A; --error-text:#F2705C; --success:#10B981; --warning:#FBBF24;
+  --s1:#22D3EE; --s2:#F59E0B; --s3:#A78BFA; --band-at:#4ADE80; --band-reb:#E5B83C; --band-early:#F26E6E;
+  --scrim:rgba(0,0,0,.7); --shadow:0 2px 10px rgba(0,0,0,.35);
+}
+
+/* Typography roles (typography.js). */
+:root {
+  --sg: 'SG', system-ui, sans-serif;
+  --mono: 'JBM', Menlo, 'Courier New', monospace;
+  --r-xs:2px; --r-sm:4px; --r-md:6px; --r-lg:8px; --r-xl:12px; --r-2xl:16px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { background: #2a2a2e; }
+body { font-family: var(--sg); color: var(--on); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+input, textarea { font: inherit; color: inherit; }
+.mi { font-family: 'MI'; font-weight: normal; font-style: normal; line-height: 1; display: inline-block; font-feature-settings: 'liga'; -webkit-font-smoothing: antialiased; }
+.t-hxl { font: 700 32px/36px var(--sg); letter-spacing: -0.02em; }
+.t-hlg { font: 600 28px/32px var(--sg); letter-spacing: -0.02em; }
+.t-hmd { font: 600 22px/28px var(--sg); letter-spacing: -0.01em; }
+.t-hsm { font: 600 18px/24px var(--sg); }
+.t-blg { font: 400 16px/24px var(--sg); }
+.t-bmd { font: 400 14px/20px var(--sg); }
+.t-bsm { font: 400 13px/18px var(--sg); }
+.t-md  { font: 700 36px/40px var(--mono); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.t-mdm { font: 700 28px/32px var(--mono); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.t-llg { font: 600 14px/20px var(--mono); letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+.t-lmd { font: 500 12px/16px var(--mono); letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+.t-lsm { font: 500 11px/14px var(--mono); letter-spacing: .06em; font-variant-numeric: tabular-nums; }
+.up { text-transform: uppercase; }
+.muted { color: var(--muted); }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* Device frame: the page IS the 390x844 phone; wider windows show a control rail. */
+.stage { min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; gap: 28px; padding: 24px 16px; }
+.phone { width: 390px; height: 844px; position: relative; overflow: hidden; background: var(--bg); border-radius: 0; flex: none; }
+@media (min-width: 720px) { .phone { border-radius: 28px; box-shadow: 0 30px 80px rgba(0,0,0,.45); } }
+@media (max-width: 719px) { .stage { padding: 0; gap: 0; } #rail, .rail { display: none !important; } html, body { background: var(--bg); } }
+.full .phone { height: auto; min-height: 844px; }
+.full .scroll { position: static !important; overflow: visible !important; height: auto !important; }
+.rail { width: 260px; color: #e8e8ec; font: 13px/1.5 var(--sg); display: flex; flex-direction: column; gap: 14px; position: sticky; top: 24px; }
+.rail h1 { font: 700 18px/1.2 var(--sg); }
+.rail h2 { font: 500 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: #9a9aa6; margin-bottom: 6px; }
+.rail .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.rail .opts button { padding: 6px 10px; border-radius: 6px; background: #3a3a40; color: #e8e8ec; font-size: 12px; }
+.rail .opts button.on { background: #e8e8ec; color: #1a1a1e; font-weight: 600; }
+.rail a { color: #9cc3ff; }
+.rail p { color: #b8b8c2; }

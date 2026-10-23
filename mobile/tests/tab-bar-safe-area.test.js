@@ -2,7 +2,7 @@ import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 import { ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { TabBar } from '../components/TabBar';
+import { TabBar, TAB_INDICATOR_HEIGHT } from '../components/TabBar';
 import { ScreenShell } from '../components/ScreenShell';
 import {
   TabBarLayoutContext, TabBarScrollContext, TAB_BAR_VISUAL_GAP, TAB_BAR_HEIGHT_FALLBACK,
@@ -10,13 +10,16 @@ import {
   useTabBarAutoHide,
 } from '../components/TabBarLayout';
 import { TAB_ICON_MAP } from '../components/Icon';
+import { centeredColumnInsets, SHELL_GUTTER } from '../components/adaptiveLayout';
 
 // Phone portrait window: jest-react-native's default 750dp width is past the
 // 640dp content cap, which would center the bar (#1126) instead of testing the
-// phone gutter this suite pins.
+// phone gutter this suite pins. The wide-window test swaps `mockWindow`.
+const PHONE_WINDOW = { width: 411, height: 891, scale: 2, fontScale: 1 };
+let mockWindow = PHONE_WINDOW;
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   __esModule: true,
-  default: () => ({ width: 411, height: 891, scale: 2, fontScale: 1 }),
+  default: () => mockWindow,
 }));
 
 jest.mock('@expo/vector-icons/MaterialIcons', () => {
@@ -129,15 +132,21 @@ const renderWithInsets = (child, bottom, top = 0) => {
   return component;
 };
 
+const flatStyle = (node) => StyleSheet.flatten(node.props.style);
+const findBand = (component) =>
+  component.root.find((node) => typeof node.type === 'string' && node.props.testID === 'tab-bar-band');
+
 describe('safe-area layout', () => {
-  test('TabBar adds the runtime bottom inset to its visual gap', () => {
+  test('docked TabBar sits on the runtime bottom inset; its band reaches both edges and the screen bottom', () => {
     const component = renderWithInsets(
       <TabBar tabs={['Home']} activeTab="Home" onTabPress={() => {}} />,
       0
     );
     const surface = findSurface(component);
     const zeroStyles = [].concat(surface.props.style).reduce((acc, style) => Object.assign(acc, style || {}), {});
-    expect(zeroStyles.bottom).toBe(TAB_BAR_VISUAL_GAP);
+    // Docked (#1600): flush with the bottom edge, no floating gap.
+    expect(zeroStyles.bottom).toBe(0);
+    expect(flatStyle(findBand(component)).bottom).toBe(-0);
 
     act(() => {
       component.update(
@@ -148,10 +157,62 @@ describe('safe-area layout', () => {
     });
     const insetStyles = [].concat(findSurface(component).props.style)
       .reduce((acc, style) => Object.assign(acc, style || {}), {});
-    expect(insetStyles.bottom).toBe(TAB_BAR_VISUAL_GAP + 32);
+    // The tab row rides on the inset; the card-coloured band extends through
+    // the inset band below it and out to both window edges, so the dock reads
+    // as reaching the screen edge while the tabs keep the 16/16 column.
+    expect(insetStyles.bottom).toBe(32);
     expect(insetStyles.left).toBe(16);
     expect(insetStyles.right).toBe(16);
+    const band = flatStyle(findBand(component));
+    expect(band.bottom).toBe(-32);
+    expect(band.left).toBe(-16);
+    expect(band.right).toBe(-16);
+    expect(band.top).toBe(0);
     act(() => component.unmount());
+  });
+
+  test('docked TabBar: top hairline on the card background, no floating radius or shadow', () => {
+    const component = renderWithInsets(
+      <TabBar tabs={['Home', 'Log']} activeTab="Home" onTabPress={() => {}} />,
+      0
+    );
+    const style = flatStyle(findSurface(component));
+    expect(style.position).toBe('absolute');
+    expect(style.borderRadius).toBeUndefined();
+    expect(style.borderWidth).toBeUndefined();
+    expect(style.shadowOpacity).toBeUndefined();
+    expect(style.elevation).toBeUndefined();
+    const band = flatStyle(findBand(component));
+    expect(band.position).toBe('absolute');
+    expect(band.borderTopWidth).toBe(1);
+    expect(band.borderTopColor).toBeDefined();
+    expect(band.backgroundColor).toBeDefined();
+    expect(band.borderRadius).toBeUndefined();
+    // The band is decoration only: it never takes a touch.
+    expect(findBand(component).props.pointerEvents).toBe('none');
+    act(() => component.unmount());
+  });
+
+  test('wide window: tabs align with the centered content column; the band spans the window', () => {
+    mockWindow = { width: 1024, height: 768, scale: 2, fontScale: 1 };
+    try {
+      const component = renderWithInsets(
+        <TabBar tabs={['Home', 'Log']} activeTab="Home" onTabPress={() => {}} />,
+        0
+      );
+      const style = flatStyle(findSurface(component));
+      const column = centeredColumnInsets(1024, { left: 0, right: 0 });
+      expect(style.left).toBe(column.left);
+      expect(style.right).toBe(column.right);
+      // Same column ScreenShell content uses: 640dp minus both 16dp gutters.
+      expect(1024 - style.left - style.right).toBe(640 - 2 * SHELL_GUTTER);
+      const band = flatStyle(findBand(component));
+      expect(band.left).toBe(-column.left);
+      expect(band.right).toBe(-column.right);
+      act(() => component.unmount());
+    } finally {
+      mockWindow = PHONE_WINDOW;
+    }
   });
 
   test('ScreenShell adds bottom inset once and does not apply top inset', () => {
@@ -240,7 +301,7 @@ describe('KUA icon foundation', () => {
     expect(Object.keys(TAB_ICON_MAP)).toHaveLength(5);
   });
 
-  test('TabBar renders one icon per tab at 20dp', () => {
+  test('TabBar renders one icon per tab at 24dp', () => {
     const component = renderWithInsets(
       <TabBar tabs={KUA_TABS} activeTab="Home" onTabPress={() => {}} />,
       0
@@ -248,7 +309,7 @@ describe('KUA icon foundation', () => {
     const icons = findIcons(component);
     expect(icons).toHaveLength(KUA_TABS.length);
     icons.forEach((icon) => {
-      expect(icon.props['data-size']).toBe(20);
+      expect(icon.props['data-size']).toBe(24);
     });
     act(() => component.unmount());
   });
@@ -270,26 +331,76 @@ describe('KUA icon foundation', () => {
     act(() => component.unmount());
   });
 
-  test('Active tab label uses bold weight; inactive uses regular weight (non-color indicator)', () => {
+  test('Active tab label uses the bold mono face; inactive uses medium (non-color indicator)', () => {
     const component = renderWithInsets(
       <TabBar tabs={KUA_TABS} activeTab="Analytics" onTabPress={() => {}} />,
       0
     );
-    // Find Text nodes that hold tab labels (they carry the fontWeight style).
     const texts = component.root.findAll(
       (node) => typeof node.type === 'string' && node.type === 'Text'
     );
-    // Analytics is index 3 in KUA_TABS.
-    const activeText = texts.find((t) => {
-      const s = [].concat(t.props.style).reduce((a, s) => Object.assign(a, s || {}), {});
-      return s.fontWeight === '700';
+    expect(texts).toHaveLength(KUA_TABS.length);
+    const styles = texts.map((t) => StyleSheet.flatten(t.props.style));
+    // Analytics is index 3 in KUA_TABS. Bold vs medium is carried by the
+    // weight-named family once fonts load, or by fontWeight on the fallback.
+    const face = (s) => `${s.fontFamily}|${s.fontWeight}`;
+    const active = styles[3];
+    const inactive = styles.filter((_, i) => i !== 3);
+    expect(face(active)).toMatch(/Bold|700/);
+    inactive.forEach((s) => {
+      expect(face(s)).toMatch(/Medium|500/);
+      expect(face(s)).not.toBe(face(active));
     });
-    const inactiveText = texts.find((t) => {
-      const s = [].concat(t.props.style).reduce((a, s) => Object.assign(a, s || {}), {});
-      return s.fontWeight === '500';
+    act(() => component.unmount());
+  });
+
+  test('Labels are 11px uppercase mono and keep the tab name as text', () => {
+    const component = renderWithInsets(
+      <TabBar tabs={KUA_TABS} activeTab="Home" onTabPress={() => {}} />,
+      0
+    );
+    const texts = component.root.findAll((node) => typeof node.type === 'string' && node.type === 'Text');
+    texts.forEach((t, i) => {
+      const s = StyleSheet.flatten(t.props.style);
+      expect(s.fontSize).toBe(11);
+      expect(s.textTransform).toBe('uppercase');
+      expect(String(s.fontFamily)).toMatch(/JetBrainsMono|monospace|Courier|Menlo/);
+      expect(t.props.children).toBe(KUA_TABS[i]);
     });
-    expect(activeText).toBeDefined();
-    expect(inactiveText).toBeDefined();
+    act(() => component.unmount());
+  });
+
+  test('Only the active tab carries the 2-3dp top indicator, tinted like its icon', () => {
+    const component = renderWithInsets(
+      <TabBar tabs={KUA_TABS} activeTab="Weight" onTabPress={() => {}} />,
+      0
+    );
+    const indicators = component.root.findAll(
+      (node) => typeof node.type === 'string' && node.props.testID === 'tab-bar-indicator'
+    );
+    expect(indicators).toHaveLength(1);
+    const style = StyleSheet.flatten(indicators[0].props.style);
+    expect(style.height).toBe(TAB_INDICATOR_HEIGHT);
+    expect(TAB_INDICATOR_HEIGHT).toBeGreaterThanOrEqual(2);
+    expect(TAB_INDICATOR_HEIGHT).toBeLessThanOrEqual(3);
+    expect(style.position).toBe('absolute');
+    expect(style.top).toBeLessThanOrEqual(0);
+    // Inside the Weight tab (index 2), not floating elsewhere in the bar.
+    const weightTab = findTabs(component)[2];
+    expect(weightTab.findAll((n) => n.props.testID === 'tab-bar-indicator').length).toBeGreaterThan(0);
+    const activeIcon = findIcons(component)[2];
+    expect(style.backgroundColor).toBe(activeIcon.props['data-color']);
+    act(() => component.unmount());
+  });
+
+  test('Every tab stays a >=44dp touch target', () => {
+    const component = renderWithInsets(
+      <TabBar tabs={KUA_TABS} activeTab="Home" onTabPress={() => {}} />,
+      0
+    );
+    findTabs(component).forEach((tab) => {
+      expect(StyleSheet.flatten(tab.props.style).minHeight).toBeGreaterThanOrEqual(44);
+    });
     act(() => component.unmount());
   });
 

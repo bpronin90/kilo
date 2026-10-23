@@ -124,7 +124,7 @@ Source: `mobile/components/ScreenShell.js`
 | Property | Value | Line |
 |---|---|---|
 | Content horizontal padding | `16` | `63` |
-| Content bottom padding | `measured TabBar height + 24 + bottom safe-area inset` (tab bar clearance) | `51-52` |
+| Content bottom padding | `measured TabBar height + 4 + bottom safe-area inset` (tab bar clearance) | `51-52` |
 | Gap between top-level children | `16` | `65` |
 | Header paddingTop | `8` | `71` |
 | Header paddingBottom | `8` | `72` |
@@ -141,17 +141,32 @@ Current values live in `styles` at the bottom of `ScreenShell.js`
 sticky back-header (`onBack`) uses `paddingHorizontal: 16`, `paddingVertical: 12`
 with a 1px `cardBorder` bottom.
 
-The absolute `TabBar` keeps 16px horizontal insets and a 4px visual bottom
-gap (`TAB_BAR_VISUAL_GAP` in `mobile/components/TabBarLayout.js`), then adds
-the runtime bottom safe-area inset from `react-native-safe-area-context`. The
-bar's own rendered height is never added to that offset. `TabBar` reports its
-rendered height through `onLayout`; `mobile/App.js` owns that measurement in
-state and provides it to every `ScreenShell` via `TabBarLayoutContext`, which
-adds it to the shared 4px gap and the bottom inset for scroll clearance.
-`SafeAreaProvider` is owned by `mobile/App.js`; `ScreenShell` consumes only
-the bottom inset so existing top spacing is unchanged.
+`ScreenShell` takes an optional `header` node (#1600). It renders fixed above
+the scroll, after the `onBack` bar, and replaces the in-scroll title block.
+Scroll child 0 stays as an empty slot, so `stickyHeaderIndices` keep their
+meaning. Without `header`, the existing title/subtitle block is unchanged. Root
+tabs pass `RootHeader` here (below).
 
-The compact `TabBar` auto-hides on user-driven scroll (`useTabBarAutoHide` and
+The `TabBar` is docked (redesign v3, #1600): it sits on the bottom safe-area
+inset with no floating gap, radius or shadow. A full-bleed band in the
+`tabBarBg` colour (`colors.card` outside the KUA gate) with a 1px
+`surfaceBorder` top hairline spans the window and fills the inset beneath the
+bar. The five tabs themselves keep the `centeredColumnInsets()` offsets
+(16/16 on a phone), so they line up with the content column on wide windows.
+Each tab is at least 60dp tall with a 24dp icon over an 11px uppercase mono
+label. The active tab draws a 2dp indicator (`TAB_INDICATOR_HEIGHT`) at its top
+edge and a bold label, both in `primaryOnContainer`. Inactive tabs use
+`onSurfaceVariant`.
+
+The bar's own height is never added to its bottom offset. `TabBar` reports its
+rendered height (tabs plus hairline; `TAB_BAR_HEIGHT_FALLBACK` 61 before the
+first layout) through `onLayout`. `mobile/App.js` owns that measurement in
+state and provides it to every `ScreenShell` via `TabBarLayoutContext`, which
+adds it to the 4px `TAB_BAR_VISUAL_GAP` and the bottom inset for scroll
+clearance. `SafeAreaProvider` is owned by `mobile/App.js`; `ScreenShell`
+consumes only the bottom inset so existing top spacing is unchanged.
+
+The docked `TabBar` auto-hides on user-driven scroll (`useTabBarAutoHide` and
 `nextTabBarScrollState` in `mobile/components/TabBarLayout.js`): a downward
 drag past `TAB_BAR_SCROLL_THRESHOLD` (8dp) slides it off with a translateY
 only, never a fade, and it stays opaque whenever shown. It is shown again on
@@ -169,7 +184,44 @@ more than 8dp from that new baseline. Programmatic scrolls (`userDriven` false,
 for example `scrollToEnd`) re-baseline and reveal at either boundary but never
 hide. A hidden bar keeps `pointerEvents="none"` and no-hide-descendants
 accessibility semantics, and scroll clearance above is unchanged by hidden
-state.
+state. The hide distance includes the bottom inset and the indicator, so no
+sliver of the band or indicator stays on screen.
+
+### RootHeader (`components/RootHeader.js`, #1600)
+
+The redesign root-tab header. Pass it to `ScreenShell` as `header`.
+
+- `title`: one line at 28/700 in the display face, with role `header`.
+- `context` (optional): one line under the title in the 12px mono label style,
+  uppercase by default (`uppercaseContext={false}` keeps case). A node is
+  rendered as given.
+- `right` (optional): actions, usually `RootHeaderAction`
+  (`{ icon, label, onPress, text?, disabled? }`). Each is at least 44×44dp,
+  role `button`, and named by `label`. Pressed feedback is a fill, never
+  opacity.
+- A full-width 1px `surfaceBorder` bottom hairline (`hairline={false}` drops
+  it). Horizontal padding follows `centeredColumnInsets()`.
+
+Root tabs have no back chevron; sub-screens keep `onBack`. Home keeps its
+wordmark and sync header and does not use `RootHeader`. Tabs adopt it in their
+own redesign issues.
+
+### Redesign primitives (`components/ui/RedesignPrimitives.js`, #1600)
+
+Flat panel building blocks for redesign v3. Import them from this file; they
+are not part of the `UI.js` barrel.
+
+| Component | Use |
+|---|---|
+| `Panel` | `surfaceCard` fill, `radius-2xl`, 1px `surfaceBorder`, clipped, no padding. `active` gives the screen's one 2px `primary` border; `dashed` for empty or placeholder panels |
+| `PanelSection` | Padded block (16/14, gap 8) inside a `Panel`; `divider` adds the 1px top hairline |
+| `HairlineRow` | At least 48dp: optional icon, 16px title, optional 13px subtitle, `right` slot, chevron when `onPress`. Pressable rows are buttons named "title, subtitle". `divider` for every row after the first |
+| `Disclosure` | At least 48dp toggle with `expanded` state and an expand chevron; children render only when open. Controlled (`expanded` + `onToggle`) or uncontrolled (`defaultExpanded`) |
+| `MonoLabel` | 12px uppercase mono label, `tone` `muted` (default) or `primary` |
+
+Rules: no panel inside a panel, no text under 12px, and press feedback is a
+fill. `Card` remains the padded content card. Colours come from the KUA court
+palette, with the legacy palette outside the KUA gate.
 
 ---
 

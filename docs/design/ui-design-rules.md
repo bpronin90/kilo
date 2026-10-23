@@ -26,6 +26,10 @@ the changelog and archived roadmaps.
   edge and the same top offset.
 - The screen title is a single 34/700 line inside the shell header. Do not
   re-implement per-screen titles at other sizes or with custom top padding.
+  Redesign v3 root tabs instead pass `RootHeader` (28/700 title, optional mono
+  context, right actions, bottom hairline) as `ScreenShell`'s `header`, as each
+  tab's redesign issue adopts it; Home keeps its wordmark header. See
+  [RootHeader](ui-shared-components.md#rootheader-componentsrootheaderjs-1600).
 - Anything you want spaced as a "top-level block" must be a direct child of the
   shell so it inherits the 16px gap. Do not wrap several panels in an extra
   `View` unless that wrapper is itself one logical block — a stray wrapper
@@ -205,7 +209,8 @@ the changelog and archived roadmaps.
   fixed pixel widths on panels, and do not branch layout on device type — read
   `useWindowDimensions()` so a live resize re-lays out in place.
 - `TabBar` uses the same `centeredColumnInsets()` offsets as `ScreenShell`, so
-  the bar and content column stay aligned on wide windows. Both add the left
+  the tabs and content column stay aligned on wide windows; only its
+  background band and top hairline run full width. Both add the left
   and right safe-area insets (landscape cut-out or side navigation bar) to the
   16px gutter. Phone portrait resolves to the original 16/16 offsets.
 - Centered dialogs and sheets spread `dialogWidthStyle` (560px cap) and every
@@ -216,10 +221,11 @@ the changelog and archived roadmaps.
 - Popovers anchored to a measured window position close on a window-size change
   rather than floating at a stale offset; nothing else is dismissed by a resize.
 - Native bottom navigation uses the runtime bottom safe-area inset without
-  device checks. Add that inset once to both the tab bar's 4px visual gap and
-  `ScreenShell`'s content clearance (measured `TabBar` height + 4px gap +
-  inset); do not apply it as a second top inset. The bar's own height is not
-  added to its bottom offset — only `ScreenShell`'s clearance depends on it.
+  device checks. The docked tab bar (#1600) sits directly on that inset, and
+  its band fills the inset beneath it. `ScreenShell`'s content clearance is the
+  measured `TabBar` height + 4px gap + inset. Do not apply the inset as a
+  second top inset. The bar's own height is not added to its bottom offset;
+  only `ScreenShell`'s clearance depends on it.
 
 ## 10. Anti-patterns (what caused the fixed problems)
 

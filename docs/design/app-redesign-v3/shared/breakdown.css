@@ -1,0 +1,26 @@
+/* Training breakdown (preserved #1588 structure) */
+.tb-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 14px 16px 6px; }
+.tb-hero .t-md { font-size: 48px; line-height: 52px; }
+.tb-chips { display: flex; gap: 6px; }
+.tb-chip { border: 1px solid var(--border); border-radius: var(--r-xl); padding: 6px 10px; display: flex; flex-direction: column; }
+.tb-chip b { font: 700 16px/20px var(--mono); } .tb-chip span { font: 400 12px/16px var(--sg); color: var(--muted); }
+.tb-tabs { display: flex; gap: 18px; padding: 0 16px; border-bottom: 1px solid var(--border); }
+.tb-tabs button { min-height: 44px; font: 600 15px/20px var(--sg); color: var(--muted); position: relative; }
+.tb-tabs button.on { color: var(--on); }
+.tb-tabs button.on::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; background: var(--primary-mark); }
+.tb-tabs .info { margin-left: auto; color: var(--muted); }
+.cmp { padding: 12px 16px; display: flex; flex-direction: column; gap: 4px; }
+.cmp .lr { display: flex; justify-content: space-between; font: 400 14px/20px var(--sg); color: var(--muted); }
+.cmp .lr b { font: 700 15px/20px var(--mono); color: var(--on); }
+.cmp .pb { display: flex; height: 10px; gap: 3px; }
+.cmp .pb i { border-radius: var(--r-xs); }
+.cmp .pc2 { display: flex; justify-content: space-between; font: 500 11px/14px var(--mono); color: var(--muted); }
+.tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; padding: 4px 16px 12px; }
+.tile { border-radius: var(--r-xl); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-height: 72px; text-align: left; }
+.tile b { font: 600 14px/18px var(--sg); }
+.tile .tv { font: 700 22px/24px var(--mono); }
+.tile .tv small { font: 500 11px/14px var(--mono); margin-left: 4px; opacity: .85; }
+.tile.w3 { grid-column: span 3; } .tile.w2 { grid-column: span 2; }
+.tb-more { margin: 0 16px 12px; border: 1px dashed var(--border); border-radius: var(--r-xl); min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; font: 400 13px/18px var(--sg); color: var(--muted); }
+.tb-more b { color: var(--primary-mark); font-weight: 600; }
+
