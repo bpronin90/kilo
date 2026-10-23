@@ -195,15 +195,17 @@ stubs app logic. You can also pass a whole scenario object
 
 ```
 docs/evidence/app-redesign-v3/<rid>/
-  capture.cjs     # node <rid>/capture.cjs <dist> <pw>; writes after/*.png + manifest
+  capture.cjs     # node <rid>/capture.cjs <dist> <pw> [workDir]; writes after/*.png
   fixtures.cjs    # optional overlays
   README.md       # the issue's evidence note
-  after/          # PNGs (+ manifest.json, smoke/)
+  after/          # generated PNGs only (smoke shots as smoke-*.png)
 ```
 
 `r1/capture.cjs` is a worked example. It covers first screens across four
 themes, tab-bar behaviour states, an overlay, a wide window, emulated insets, a
 manifest with `verifyTheme()` and `tabBar()` per shot, and the smoke run.
+Issue scopes track PNGs only under `after/`, so manifests go to a work
+directory outside the repo and the evidence README quotes their results.
 
 The evidence README records the reference images, the viewport and DPR, the
 rendered commit, the export and capture commands, fixture setup and a pass/fail
