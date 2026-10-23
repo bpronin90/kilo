@@ -1,7 +1,6 @@
 import React from 'react';
 import { View } from 'react-native';
 import { ErrorBanner } from '../../components/UI';
-import { AnalyticsRecoverySection } from '../../components/AnalyticsRecoverySection';
 import { AnalyticsWeightTrendsCard } from '../../components/AnalyticsWeightTrendsCard';
 import { AnalyticsStrengthSection, AnalyticsBig3MappingCard } from '../../components/AnalyticsStrengthSection';
 import { AnalyticsTrainingBreakdown } from '../../components/AnalyticsTrainingBreakdown';
@@ -90,23 +89,11 @@ export function buildAnalyticsContent(p) {
     <AnalyticsRoutineHealth key="routine-health" styles={styles} isActiveRecovery={p.isActiveRecovery} {...p.routineHealthProps} />
   );
   // The Recovery chapter always has its navigation entries, so the `recovery`
-  // anchor (#770) is never an empty slot; the section renders inside it only
-  // when it has something to say (#716).
+  // anchor (#770) is never an empty slot; the section (built by the screen)
+  // renders inside it only when it has something to say (#716).
   const recovery = (
     <View key="recovery-section" testID="recovery-section-anchor" style={styles.recoveryChapterBody} onLayout={nav.layoutFor('recovery')}>
-      <AnalyticsRecoverySection
-        blocks={p.recovery.blocks}
-        weeks={p.recovery.weeks}
-        notes={p.notes} notesError={p.notesError}
-        stateReady={p.recovery.ready}
-        stateLoading={p.recovery.loading}
-        stateRefreshing={p.recovery.refreshing}
-        stateStale={p.recovery.stale}
-        stateError={p.recovery.error}
-        onRetry={p.recovery.retry}
-        oneKSelections={p.oneKSelections}
-        title={null}
-      />
+      {p.recoverySection}
       <RecoveryChapterEntries
         activeBlockId={p.isActiveRecovery ? p.activeRecoveryBlockId : null}
         completedCount={p.recovery.completedCount}

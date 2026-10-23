@@ -1,6 +1,9 @@
 # R3 (#1602) evidence: Analytics chapters and navigation
 
-Rendered commit: `7622a318f8702ab55615a62f8657d4727072a5e2` (product code is identical at the PR head; later commits add this README only).
+Rendered commit: `7622a318f8702ab55615a62f8657d4727072a5e2`. The only later product change moves
+construction of the identical `<AnalyticsRecoverySection … title={null} />` element (same props)
+from `AnalyticsSectionContent.js` into `AnalyticsScreen.js` so the screen visibly wires
+`oneKSelections` (#1351 source contract); the rendered tree is unchanged, so these captures still apply.
 Viewport: 390x844 CSS px, DPR 2 (PHONE), UTC, fixed clock `2026-10-23T12:00:00Z`.
 Themes: every state in `hard-dark` + `clay-light`; first screen also `grass-light` + `clay-dark`.
 

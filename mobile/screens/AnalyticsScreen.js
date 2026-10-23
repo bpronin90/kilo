@@ -4,6 +4,7 @@ import { useLocalCalendarDay, localDayToDate } from '../hooks/useLocalCalendarDa
 import { ScreenShell } from '../components/ScreenShell';
 import { RootHeader } from '../components/RootHeader';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
+import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection';
 import { deriveWeightGoalAnalytics, resolveOneKSelections, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, useWeightGoal, useDeloadHistory, useFeatureToggles, useRecoveryBlockState, useActiveTrainingContext } from '../hooks/useEntries';
 import { useRecoveryAnalyticsFilter } from '../hooks/entries/recoveryBlockHooks';
@@ -355,6 +356,23 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     };
   }, [analytics.oneK, unit]);
 
+  // Recovery evidence reuses Home's resolved Big 3 selections (#1351); the
+  // chapter header titles it, so the section's own title is off (#1602).
+  const recoverySection = (
+    <AnalyticsRecoverySection
+      blocks={recoveryBlocks}
+      weeks={recoveryWeeks}
+      notes={notes} notesError={notesError}
+      stateReady={recoveryReady}
+      stateLoading={recoveryStateLoading}
+      stateRefreshing={recoveryRefreshing}
+      stateStale={recoveryStale}
+      stateError={recoveryStateError}
+      onRetry={retryRecoveryState}
+      oneKSelections={oneKSelections}
+      title={null}
+    />
+  );
   const screenContent = buildAnalyticsContent({
     styles, colors, kua, nav, chapters, onNavigate,
     notes, notesError, refreshNotes, weightError, refreshWeightEntries,
@@ -377,9 +395,9 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       sinceDeload, sessionCount, deloadModeEnabled, fatigueTrackingEnabled,
       checkInHistory, fatigueExpanded, setFatigueExpanded, handleCheckInEdit,
     },
+    recoverySection,
     recovery: {
-      blocks: recoveryBlocks, weeks: recoveryWeeks, ready: recoveryReady, loading: recoveryStateLoading,
-      refreshing: recoveryRefreshing, stale: recoveryStale, error: recoveryStateError, retry: retryRecoveryState,
+      ready: recoveryReady, stale: recoveryStale,
       completedCount: recoveryBlocks.filter(b => isLiveRecord(b) && b.completed_at).length,
     },
   });
