@@ -4,9 +4,11 @@ These screenshots come from the real app: an Expo web export driven by the
 shared harness (`../capture.cjs`, `../fixtures.cjs`, both unchanged) with
 issue-local overlays (`fixtures.cjs`).
 
-- **Rendered commit:** `11675b9814e1867ac4f45110da9f31f595fc958b`. The
-  `mobile/` tree is unchanged by later commits on this branch, which add only
-  this README.
+- **Rendered commit:** `11675b9814e1867ac4f45110da9f31f595fc958b` for every
+  state except Recovery. `log-recovery-*` was re-rendered at
+  `cbdcae5ba999ada59fc47869c3b7cdeeea285247`, the commit that keeps the Recovery
+  state zone on `surfaceSection`. That commit changes no other screen. Later
+  commits touch only this README.
 - **Viewport:** 390×844 CSS px at 2x, UTC, clock fixed at `2026-10-23T12:00Z`.
 - **Themes:**
   - Every state in hard-dark and clay-light.
@@ -76,7 +78,8 @@ All files are in [`after/`](after/). The fixture for each state:
   each exercise.
 - **Recovery copy is unchanged.** The panel keeps production's kicker
   (`CURRENT TRAINING` / `RECOVERY BLOCK`), headline, week table and action
-  zone. Only the panel border and the kicker/headline type were restyled.
+  zone, including the zone's `surfaceSection` fill (pinned by `theme-rendering`).
+  Only the panel border and the kicker/headline type were restyled.
 - **Plates** opens the existing centred `PlateCalculatorModal`, not a new sheet.
 - **`← Home` web back bar.** It sits above the header in web captures and
   comes from R1's shell, not from this change.
