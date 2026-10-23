@@ -69,6 +69,12 @@ jest.mock('../components/ScreenShell', () => {
 
 jest.mock('../hooks/useEntries');
 
+// #1606: the collapse target holds only the title; it is found by its label.
+function collapseHeader(root) {
+  return root.findAll(n => n.props && typeof n.props.onPress === 'function'
+    && /^(Collapse|Expand) /.test(n.props.accessibilityLabel || ''))[0] || null;
+}
+
 // Walk up from a matching Text node to its Nth Pressable (onPress) ancestor,
 // nearest first. `depth` defaults to the nearest one; pass 2 to reach the
 // enclosing container Pressable when the matched text sits inside its own
@@ -126,7 +132,7 @@ describe('LogActiveRoutineCard: header collapses, body edits (separate handlers)
 
   test('tapping the header calls toggleCollapsed, not the body handler', () => {
     const { root, props } = renderCard();
-    const header = pressableAround(root, t => t.includes('Current routine'));
+    const header = collapseHeader(root);
     render.act(() => { header.props.onPress(); });
     expect(props.toggleCollapsed).toHaveBeenCalledTimes(1);
     expect(props.handleNoteBodyPress).not.toHaveBeenCalled();
@@ -233,12 +239,14 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     expect(title.props.ellipsizeMode).toBe('tail');
 
     // Identity only: title, subtitle, badge — and not one nested control.
-    const header = pressableAround(root, t => t.includes('Current routine'));
+    const header = collapseHeader(root);
     expect(nestedPressablesUnder(header).length).toBe(0);
-    // #1244: the Routine actions trigger is the header's sibling, not in the body.
-    const headerRow = header.parent.parent;
-    expect(headerRow.findAll(n => n.props && n.props.accessibilityLabel === 'Routine actions').length).toBeGreaterThan(0);
-    expect(header.findAll(n => n.type === 'Text' && String(n.props.children).includes('Recovery Week')).length)
+    // #1244/#1606: the Routine actions trigger is the collapse target's sibling
+    // (standalone mount), never nested in it; identity + badge sit beneath.
+    expect(header.findAll(n => n.props && n.props.accessibilityLabel === 'Routine actions').length).toBe(0);
+    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Routine actions').length).toBeGreaterThan(0);
+    expect(header.props.accessibilityLabel).toContain('Recovery Week 2');
+    expect(root.findAll(n => n.type === 'Text' && String(n.props.children).includes('Current routine')).length)
       .toBeGreaterThan(0);
 
     const infoColumn = findStyled(root, s => s.flex === 1 && 'minWidth' in s);
@@ -252,17 +260,14 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     // #1021: Edit, Share, Copy, and Share as Image consolidated into the
     // three-dot menu; both skip actions live there too, leaving Week A/B as the
     // only shrinkable 44dp pill in the strip.
-    const pills = findStyled(root, s => s.minHeight === 44 && s.flexShrink === 1);
-    expect(pills.length).toBe(1); // Week A/B
-    for (const pill of pills) {
-      const style = flatStyle(pill);
+    // #1606: Week A/B is a two-option radio group; each option keeps a 44dp target.
+    const weekRadios = root.findAll(n => typeof n.type === 'string' && n.props.accessibilityRole === 'radio');
+    expect(weekRadios.map(n => n.props.accessibilityLabel)).toEqual(['Week A', 'Week B']);
+    for (const radio of weekRadios) {
+      const style = flatStyle(radio);
+      expect(style.minHeight).toBe(44);
       expect(style.justifyContent).toBe('center');
     }
-
-    // gap:12 minus hitSlop's top+bottom (or left+right) must leave >=4dp of
-    // effective separation between two pills stacked on wrapped lines.
-    const weekPill = pressableAround(root, t => t === 'Week A' || t === 'Week B');
-    expect(weekPill.props.hitSlop).toEqual({ top: 4, bottom: 4, left: 4, right: 4 });
 
     // The consolidated menu trigger is icon-only, 44dp, and not an oversized
     // visible pill — no visible text, no fill/border chrome to compete with
@@ -683,13 +688,18 @@ describe('Log action hierarchy (#711)', () => {
   describe('active card action strip', () => {
     test('the Week A/B switch moved out of the header into the strip and still toggles', () => {
       const { root, props } = renderActiveCard({ hasABWeeks: true, effectiveActiveWeek: 'A' });
-      const header = pressableAround(root, t => t.includes('Current routine'));
+      const header = collapseHeader(root);
       expect(header.findAll(n => n !== header && n.props && typeof n.props.onPress === 'function').length).toBe(0);
 
       const weekBtn = pressableAround(root, t => t === 'Week B');
-      expect(weekBtn.props.accessibilityLabel).toBe('Switch to Week B');
-      expect(weekBtn.props.accessibilityState).toEqual({ selected: false });
+      expect(weekBtn.props.accessibilityLabel).toBe('Week B');
+      expect(weekBtn.props.accessibilityRole).toBe('radio');
+      expect(weekBtn.props.accessibilityState).toEqual({ checked: false, selected: false });
       render.act(() => { weekBtn.props.onPress({ stopPropagation: jest.fn() }); });
+      expect(props.handleToggleWeek).toHaveBeenCalledTimes(1);
+      // Re-selecting the already active week is a no-op.
+      const weekA = pressableAround(root, t => t === 'Week A');
+      render.act(() => { weekA.props.onPress({ stopPropagation: jest.fn() }); });
       expect(props.handleToggleWeek).toHaveBeenCalledTimes(1);
       expect(props.toggleCollapsed).not.toHaveBeenCalled();
     });

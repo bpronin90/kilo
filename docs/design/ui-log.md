@@ -38,6 +38,40 @@ touching it at all; #918 reaches exactly one property on it —
 `currentNoteTitle`'s ink — and nothing else about that card. No exception to
 date changes any size, weight, spacing, layout, fill, or border value on it.
 
+### Redesign v3 Log (#1606, owner-approved R7)
+
+#1606 is the owner-approved app-wide redesign exception for the Log read view;
+it supersedes the locks above for the files it lists. The editor is unchanged.
+
+- **Root header:** title `Log`, an outlined `Plates` button and a labelled `⋯`
+  (`Routine actions`). They appear only while a current routine is readable.
+  Both open the one plate calculator and the one Routine actions sheet
+  (`components/log/LogRoutineActionSheet.js`, owned by
+  `screens/log/LogRoutineReadView.js`). The sheet keeps its items, labels and
+  order. The card renders its own copy only when mounted standalone.
+- **Routine panel:** title (collapse target), identity line, and `Week A`/`Week B`
+  as a radio group. There is no week number, because production has no
+  week-number concept.
+- **Sticky day index** (`screens/log/LogDayIndex.js`): one chip per parsed day
+  group with a heading, in note order, keyed by group index. Tapping a chip
+  scrolls to that group. A pinned copy sits under the header while the card's
+  own index is scrolled away. Offsets reset on note, A/B slice or text change.
+- **Exercises** (`WorkoutContentRenderer` `presentation="log"` →
+  `components/log/LogExerciseRows.js`):
+  - Each exercise shows its newest 3 sessions: older ones muted, the latest bold
+    with `LAST`.
+  - `N earlier sessions` expands the rest in place. Folded rows stay mounted
+    but hidden.
+  - Skips, annotations and kg/BW/timed lines render as before. Unparsed or
+    warning rows are never folded.
+  - Fold state is keyed by note + slice + text + occurrence.
+  - Deload lines render bold without `LAST` or `Track`. Other callers keep the
+    default presentation.
+- **Active panels:** the current routine, the active deload (`Active deload`
+  kicker) and the active Recovery block share the 2px primary border. All their
+  actions are unchanged.
+- **Deferred to R8 (#1607):** the history icon/sheet and the timer presentation.
+
 ### Action hierarchy (#711)
 
 Routine-card headers carry identity only (`ui-design-rules.md` §14). Every
@@ -46,7 +80,7 @@ action is placed by how often it is used:
 | Tier | Actions | Location |
 |---|---|---|
 | Primary — every session | `Track` a lift, `Edit`, `Week A/B`, `Skip week` | Active card body; `Week A/B` in the one action strip under its header (`LogActiveRoutineCard.js` `actionStrip`); `Edit`, `Skip week` and `Remove skip` lead the Routine actions menu (#1327) |
-| Occasional — workout-time tool | `Plate calculator` | A labelled compact `Plates` button in the card header beside the Routine actions trigger (#1445, one tap, no sheet), plus the Routine actions menu entry after the skip actions and before `Copy` (#1375); both open `PlateCalculatorModal` with an empty, typed target. Rendered note weights are plain text with no tap target or dashed cue, so nothing in the note body competes with double-tap-to-edit or text selection. Analytics Strength keeps its prefilled per-lift entry. |
+| Occasional — workout-time tool | `Plate calculator` | A labelled `Plates` button in the Log root header beside the Routine actions `⋯` (#1445, moved by #1606; one tap, no sheet), plus the Routine actions menu entry after the skip actions and before `Copy` (#1375); both open `PlateCalculatorModal` with an empty, typed target. Rendered note weights are plain text with no tap target or dashed cue, so nothing in the note body competes with double-tap-to-edit or text selection. Analytics Strength keeps its prefilled per-lift entry. |
 | Secondary — occasional | viewed-card `Week A/B`, `Set as current routine` (the body's one filled action), `Edit routine`, share/copy family, `Delete routine` last | Non-current row's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management, in that order |
 | Quick access — reachable without opening (#756, #836; the per-row quick action retired #843) | `New routine` (icon + visible label, the section's ONE create-routine affordance) | A sibling row of the section title, OUTSIDE the collection disclosure entirely (#843, #847) — present and identical whether the collection is collapsed or expanded (`LogPreviousRoutines.js` `topRow`) |
 | Rare — once per training block | `Start recovery block` | A persistent, low-emphasis row directly under the current routine card (`LogScreenContent.js` `recoveryStartRow`), the first row of the one outlined Recovery entry group (`recoveryEntryGroup`, #1325), never nested in a menu or disclosure; absent whenever a block cannot be started (#823, superseding #724's routine-management placement) |

@@ -50,7 +50,6 @@ import { buildRecoveryAnalyticsFilter } from '../lib/data/recoveryAnalyticsFilte
 // #1021: the New Routine editor's secondary Import routine action opens this
 // same preview MoreScreen already uses — reused in place, not duplicated.
 import { RoutineImportScreen } from '../components/RoutineImportScreen';
-import { LogActiveRoutineCard } from '../components/LogActiveRoutineCard';
 import { LogScreenEditorCard } from '../components/LogScreenEditorCard';
 import { RecoveryBlockStartModal } from '../components/RecoveryBlockStartModal';
 import { RecoveryBlockWeekModal } from '../components/RecoveryBlockWeekModal';
@@ -66,6 +65,8 @@ import { createStyles } from './log/logScreenStyles';
 import { LogScreenContent, buildLogRecovery, EditorHeaderActions } from './log/LogScreenContent';
 import { useLogScreenController } from './log/LogScreenStates';
 import { useLogRecoveryManage } from './log/useLogRecoveryManage';
+import { useLogRoutineReadView } from './log/LogRoutineReadView';
+import { LogActiveRoutineCard } from '../components/LogActiveRoutineCard';
 
 // Scroll offset where the 44dp docked timer's countdown starts to clip (8dp header padding + 12dp).
 const DOCKED_TIMER_HANDOFF_SCROLL_Y = 12;
@@ -446,6 +447,13 @@ export function LogScreen({
   useEffect(() => { onRestTimerDockedChange?.(restTimerDockVisible); }, [restTimerDockVisible, onRestTimerDockedChange]);
   useEffect(() => () => onRestTimerDockedChange?.(false), [onRestTimerDockedChange]);
 
+  // #1606: the routine read view (card, root-header actions, day index store).
+  const routineView = useLogRoutineReadView({
+    currentEditor, currentId, workoutNoteTitle, workoutNoteText, toggleCollapsed, isCollapsed, trackedLifts,
+    handleToggleTrack, currentRecoveryWeekNumber, currentIsPausedBaseline, visibleProgressionSuggestions,
+    mutedProgressionRows, handleMuteProgression, handleUnmuteProgression, handleDismissProgression, readScrollRef,
+  });
+
   // #1021: the New Routine editor's secondary Import routine action opens
   // this in place of the ordinary read/editor pair below. `add` is the same
   // note-store write the import preview is wired to everywhere else
@@ -460,26 +468,6 @@ export function LogScreen({
       />
     );
   }
-
-  const activeRoutineCard = (
-    <LogActiveRoutineCard
-      workoutNoteTitle={workoutNoteTitle} hasABWeeks={currentEditor.hasABWeeks} effectiveActiveWeek={currentEditor.effectiveActiveWeek}
-      handleToggleWeek={currentEditor.handleToggleWeek} enterCurrentEditor={currentEditor.enterCurrentEditor} handleNoteBodyPress={currentEditor.handleNoteBodyPress}
-      handleSkipWeek={currentEditor.handleSkipWeek} handleUnskipWeek={currentEditor.handleUnskipWeek} canUnskipWeek={currentEditor.canUnskipWeek}
-      skipWeekStatus={currentEditor.skipWeekStatus} toggleCollapsed={toggleCollapsed} isCollapsed={isCollapsed}
-      dayGroups={currentEditor.dayGroups} noteError={currentEditor.noteError} trackedLifts={trackedLifts}
-      handleToggleTrack={handleToggleTrack} roughNoteId={currentEditor.roughNoteId} currentId={currentId}
-      roughFlaggedNames={currentEditor.roughFlaggedNames} activeEditText={currentEditor.activeEditText}
-      // #954: the full stored body, not the active-week slice, so a
-      // shared A/B routine carries both halves byte-for-byte.
-      routineRawText={workoutNoteText} onExerciseSourceJump={currentEditor.handleExerciseSourceJump} recoveryWeekNumber={currentRecoveryWeekNumber}
-      baselinePaused={currentIsPausedBaseline} progressionSuggestions={visibleProgressionSuggestions} mutedProgressionRows={mutedProgressionRows}
-      onMuteProgression={handleMuteProgression} onUnmuteProgression={handleUnmuteProgression} onDismissProgression={handleDismissProgression}
-      // #1010: the production Apply-to-note path — the card forwards
-      // the exact rendered record and surfaces the persisted result.
-      onApplyProgression={currentEditor.handleApplyProgressionSuggestion}
-    />
-  );
 
   return (
     <>
@@ -502,7 +490,10 @@ export function LogScreen({
         recoveryStale={recoveryStale} recoveryStateError={recoveryStateError} recoveryMutationsAllowed={recoveryMutationsAllowed}
         showRecoveryStartInManagement={showRecoveryStartInManagement} openStartRecoveryBlock={openStartRecoveryBlock} showRecoveryEntry={showRecoveryEntry}
         newestCompletedRecoveryBlock={newestCompletedRecoveryBlock} otherNotes={otherNotes}
-        guardedHandleDeleteRoutine={guardedHandleDeleteRoutine} recoveryWeekNumberByNoteId={recoveryWeekNumberByNoteId} activeRoutineCard={activeRoutineCard}
+        guardedHandleDeleteRoutine={guardedHandleDeleteRoutine} recoveryWeekNumberByNoteId={recoveryWeekNumberByNoteId} activeRoutineCard={(
+          <LogActiveRoutineCard {...routineView.cardProps} handleSkipWeek={currentEditor.handleSkipWeek} handleUnskipWeek={currentEditor.handleUnskipWeek} />
+        )}
+        routineHeaderActions={routineView.headerActions} dayNav={routineView.dayNav} days={routineView.days} isCollapsed={isCollapsed}
       />
 
       <ScreenShell

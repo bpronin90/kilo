@@ -65,6 +65,12 @@
 // LogScreenStates.js (not in this issue's Allowed Files) keeps working with
 // `useThemedStyles(createStyles)` and falls back to legacy colors.
 //
+// Authorized exception (#1606), the owner-approved redesign v3 Log layout
+// (docs/design/app-redesign-v3 "Log"): the Routine/Deload/Recovery segmented
+// control takes 44dp mono segments; the root header, routine card, day index
+// and inline session rows carry their own approved redesign in the files that
+// render them.
+//
 // No other styling exception is authorized.
 
 import { StyleSheet } from 'react-native';
@@ -168,9 +174,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   tabToggleItem: {
     flex: 1,
-    paddingVertical: 9,
+    minHeight: 44,
+    paddingHorizontal: 8,
     borderRadius: GEOMETRY['radius-lg'],
     alignItems: 'center',
+    justifyContent: 'center',
   },
   tabToggleItemActive: kua ? {
     backgroundColor: kua.primary,
@@ -183,17 +191,16 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     elevation: 1,
   },
   tabToggleText: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
-    fontWeight: '500',
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '500' }),
     textTransform: 'uppercase',
-    letterSpacing: 0.48,
+    letterSpacing: 0.72,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   tabToggleTextActive: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }),
     fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 0.48,
+    letterSpacing: 0.72,
     color: kua ? kua.onPrimary : colors.text,
   },
   // Persistent `Start recovery block` entry point (#823): a low-emphasis

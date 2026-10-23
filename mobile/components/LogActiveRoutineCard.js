@@ -29,28 +29,28 @@
 // and chips use primaryContainer/primaryOnContainer; action menu uses
 // surfaceCard bg / surfaceBorder dividers; skip and status lines use
 // on-surface-variant. No behavioral, data, or navigation change.
-import React, { useContext, useEffect, useMemo, useState } from 'react';
-import { AccessibilityInfo, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
+//
+// #1606 (redesign v3 "Log", owner-approved): the card becomes the Log tab's
+// single active panel — title (the collapse target), the identity line and a
+// Week A / Week B segmented control, the sticky day index, and the routine in
+// WorkoutContentRenderer's opt-in Log presentation. Plates and Routine actions
+// move to the Log root header (screens/log/LogRoutineHeaderActions.js); LogScreen
+// passes that one `routineActions` owner in, so the card renders no sheet of its
+// own. A caller that passes none (an isolated mount) gets the same controls
+// in the card header from its own instance, so the card stays self-contained.
+import React, { useMemo, useState } from 'react';
+import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from './UI';
 import { useTheme } from '../theme/ThemeContext';
+import { useKuaTypography } from '../theme/typography';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
 import { WorkoutKuaProvider } from './ui/workout';
-import {
-  shareRoutine,
-  copyRoutineToClipboard,
-  ROUTINE_COPY_SUCCESS_MESSAGE,
-  ROUTINE_COPY_FAILURE_MESSAGE,
-} from '../lib/interoperability/routineShare';
-import { RoutineShareModal } from './RoutineShareCard';
-import { MODAL_SUPPORTED_ORIENTATIONS } from './adaptiveLayout';
 import { ProgressionSuggestionCard, MutedProgressionRow } from './ProgressionSuggestionCard';
 import { TYPOGRAPHY } from '../theme/typography';
 import { GEOMETRY } from '../theme/spacing';
-import { useReducedMotion } from '../lib/useReducedMotion';
-import { PlateCalculatorModal } from './PlateCalculatorModal';
-import { useRoutinePlateCalculator } from './log/useRoutinePlateCalculator';
+import { useLogRoutineActions } from './log/LogRoutineActionSheet';
+import { LogRoutineHeaderActions } from '../screens/log/LogRoutineHeaderActions';
+import { LogDayIndex, deriveLogDays } from '../screens/log/LogDayIndex';
 
 export function LogActiveRoutineCard({
   workoutNoteTitle,
@@ -112,19 +112,20 @@ export function LogActiveRoutineCard({
   // reconstructs a suggestion, and it hands each card the exact `record` that
   // card rendered.
   onApplyProgression,
+  // #1606: the Log header's `useLogRoutineActions` owner, and the sticky day
+  // index store (screens/log/LogDayIndex.js). Both optional.
+  routineActions = null,
+  dayNav = null,
 }) {
-  const reduceMotion = useReducedMotion();
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(kua, colors), [kua, colors]);
-  // #1331: the menu sheet's last item clears the home indicator.
-  const { bottom: bottomInset = 0 } = useContext(SafeAreaInsetsContext) || {};
-  const [imageShare, setImageShare] = useState(null);
-  // #1021: the consolidated three-dot menu's open state. Closes itself after
-  // any item is chosen, and on header collapse (the menu has nothing to
-  // attach to once the body it lives in is hidden).
-  const [menuOpen, setMenuOpen] = useState(false);
-  // #1375: the plate calculator's only Log entry — weights in the note are plain text.
-  const plateCalculator = useRoutinePlateCalculator(menuOpen);
+  const typography = useKuaTypography();
+  const ownActions = useLogRoutineActions({
+    workoutNoteTitle, routineRawText, activeEditText, onShareRoutine, enterCurrentEditor,
+    handleSkipWeek, handleUnskipWeek, canUnskipWeek, isCollapsed, toggleCollapsed,
+  });
+  const actions = routineActions || ownActions;
+  const days = useMemo(() => deriveLogDays(dayGroups), [dayGroups]);
   // A single result line for the most recent explicit Apply attempt. Only an
   // `applied: true` result is allowed to read as success; every no-op, failure,
   // or thrown error explains that nothing was added. Every press reaches the
@@ -152,45 +153,6 @@ export function LogActiveRoutineCard({
     setApplyStatus(message);
     AccessibilityInfo.announceForAccessibility?.(message);
   };
-  const handleShareRoutine = () => {
-    const payload = { title: workoutNoteTitle, rawText: routineRawText ?? activeEditText };
-    if (onShareRoutine) onShareRoutine(payload);
-    else shareRoutine(payload);
-  };
-  // A single transient status line for the most recent copy attempt, matching
-  // the card's existing `skipWeekStatus` treatment. Stored as a fresh object per
-  // attempt (not a bare string) so a second copy while the same message is still
-  // showing is a real state change — the auto-expire effect below re-runs and
-  // restarts its 4s window rather than letting the first timer clear the line
-  // early. The payload is the FULL stored routine body (`routineRawText`), never
-  // the viewed-week slice — copy must carry both A/B halves and the `---`.
-  const [copyStatus, setCopyStatus] = useState(null);
-  // Auto-expire the confirmation like the card's other transient lines
-  // (`skipWeekStatus` clears itself after 4s in useLogCurrentRoutineEditor.js).
-  // The cleanup makes a fast unmount or a second copy cancel the pending clear.
-  useEffect(() => {
-    if (!copyStatus) return undefined;
-    const timer = setTimeout(() => setCopyStatus(null), 4000);
-    return () => clearTimeout(timer);
-  }, [copyStatus]);
-  const handleCopyRoutine = () => {
-    const payload = { title: workoutNoteTitle, rawText: routineRawText ?? activeEditText };
-    return copyRoutineToClipboard(payload).then(({ ok, showConfirmation }) => {
-      if (!ok) {
-        setCopyStatus({ message: ROUTINE_COPY_FAILURE_MESSAGE });
-        AccessibilityInfo.announceForAccessibility?.(ROUTINE_COPY_FAILURE_MESSAGE);
-        return;
-      }
-      // Android 13+ shows its own system clipboard popup; suppress the in-app
-      // line there so the confirmation is not doubled.
-      if (showConfirmation) {
-        setCopyStatus({ message: ROUTINE_COPY_SUCCESS_MESSAGE });
-        AccessibilityInfo.announceForAccessibility?.(ROUTINE_COPY_SUCCESS_MESSAGE);
-      } else {
-        setCopyStatus(null);
-      }
-    });
-  };
   const identityLabel = baselinePaused ? 'Baseline routine · paused' : 'Current routine';
   // An explicit accessibilityLabel on an accessible ancestor replaces the label VoiceOver
   // would otherwise derive from its Text descendants (#738 review) — so the routine title,
@@ -201,166 +163,77 @@ export function LogActiveRoutineCard({
     hasABWeeks ? `Week ${effectiveActiveWeek} · ${identityLabel}` : identityLabel,
     recoveryWeekNumber != null ? `Recovery Week ${recoveryWeekNumber}` : null,
   ].filter(Boolean).join(', ');
+  const weekOptions = hasABWeeks ? ['A', 'B'] : [];
   return (
-    <View style={styles.mirrorContainer}>
-      {imageShare && <RoutineShareModal {...imageShare} onClose={() => setImageShare(null)} />}
-      <PlateCalculatorModal visible={plateCalculator.visible} editableTarget onClose={plateCalculator.close} />
-      {/* #1244: a compact sheet over a dismissable scrim, so opening it never
-          shifts card content and the card's overflow clip cannot cut it off. */}
-      <Modal
-        visible={menuOpen}
-        transparent
-        supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS}
-        animationType={reduceMotion ? 'none' : 'fade'}
-        onRequestClose={() => setMenuOpen(false)}
-        onDismiss={plateCalculator.onMenuDismiss}
-      >
-        <View style={styles.menuScrim}>
-          {/* Sibling scrim behind the sheet, not its parent, so TalkBack keeps
-              each item focusable (RestTimerBanner pattern); back dismisses. */}
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => setMenuOpen(false)}
-            accessible={false}
-            importantForAccessibility="no"
-          />
-          <View style={[styles.actionMenu, { paddingBottom: 24 + bottomInset }]} accessibilityRole="menu" testID="log-current-routine-menu">
-            {[
-              { label: 'Edit', a11y: 'Edit routine', run: enterCurrentEditor },
-              // Workout actions first — Edit, then both skip actions together: Skip week always (skips
-              // stack), Remove skip only while a trailing skip exists.
-              handleSkipWeek ? { label: 'Skip week', a11y: 'Skip week', run: handleSkipWeek, showsStatus: true } : null,
-              // "Remove skip", not "Undo skip": that text collides with the editor's "Undo".
-              canUnskipWeek && handleUnskipWeek
-                ? { label: 'Remove skip', a11y: 'Remove skip', run: handleUnskipWeek, showsStatus: true }
-                : null,
-              {
-                label: 'Plate calculator',
-                a11y: 'Plate calculator',
-                hint: 'Enter a target weight to calculate plates',
-                run: plateCalculator.request,
-              },
-              // #956: Copy and Share stay distinct actions, not merged.
-              { label: 'Copy', a11y: `Copy routine ${workoutNoteTitle || 'Untitled Routine'}`, run: handleCopyRoutine, showsStatus: true },
-              { label: 'Share', a11y: 'Share routine', run: handleShareRoutine },
-              {
-                label: 'Share as Image',
-                a11y: 'Share routine as image',
-                run: () => setImageShare({ title: workoutNoteTitle, rawText: routineRawText ?? activeEditText }),
-              },
-            ].filter(Boolean).map(item => (
-              <Pressable
-                key={item.label}
-                onPress={(e) => {
-                  e?.stopPropagation?.();
-                  setMenuOpen(false);
-                  // Its result line renders in the body, so open a collapsed card
-                  // first — otherwise the press would look silent.
-                  if (item.showsStatus && isCollapsed) toggleCollapsed();
-                  return item.run();
-                }}
-                style={styles.actionMenuItem}
-                accessibilityRole="menuitem"
-                accessibilityLabel={item.a11y}
-                accessibilityHint={item.hint}
-              >
-                <Text style={styles.actionMenuItemText}>{item.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      </Modal>
+    <View style={styles.mirrorContainer} onLayout={dayNav?.onCardLayout}>
       <Card style={styles.currentRoutineCard}>
-        {/* #1244: the header row pairs the collapse target with the Routine
-            actions trigger as siblings, so the collapse press hosts no nested control. */}
-        <View style={styles.headerRow}>
-        <Pressable
-          onPress={() => { setMenuOpen(false); toggleCollapsed(); }} // Tapping the header collapses/expands the card body
-          style={styles.otherNoteHeader}
-          accessibilityRole="button"
-          accessibilityLabel={collapseLabel}
-          accessibilityState={{ expanded: !isCollapsed }}
-        >
-          <View style={styles.otherNoteInfo}>
-            <Text
-              style={styles.currentNoteTitle}
-              numberOfLines={2}
-              ellipsizeMode="tail"
+        <View style={styles.headerBlock}>
+          {/* #1244: the collapse target and the (isolated-mount) actions are
+              siblings, so the collapse press hosts no nested control. */}
+          <View style={styles.headerRow}>
+            <Pressable
+              onPress={() => { actions.setMenuOpen(false); toggleCollapsed && toggleCollapsed(); }} // Tapping the title collapses/expands the card body
+              style={styles.otherNoteHeader}
+              accessibilityRole="button"
+              accessibilityLabel={collapseLabel}
+              accessibilityState={{ expanded: !isCollapsed }}
             >
-              {workoutNoteTitle || 'Untitled Routine'}
+              <Text style={[typography['headline-md'], styles.currentNoteTitle]} numberOfLines={2} ellipsizeMode="tail">
+                {workoutNoteTitle || 'Untitled Routine'}
+              </Text>
+            </Pressable>
+            {routineActions ? null : <LogRoutineHeaderActions actions={actions} />}
+          </View>
+          <View style={styles.metaRow}>
+            <Text style={[typography['label-md'], styles.otherNoteSub]} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+              {identityLabel}
             </Text>
-            <Text style={styles.otherNoteSub}>
-              {hasABWeeks ? `Week ${effectiveActiveWeek} · ${identityLabel}` : identityLabel}
-            </Text>
-            {recoveryWeekNumber != null && (
-              <View
-                style={styles.recoveryBadge}
-                accessible
-                accessibilityLabel={`Recovery Week ${recoveryWeekNumber}`}
-              >
-                <Text style={styles.recoveryBadgeText}>Recovery Week {recoveryWeekNumber}</Text>
+            {hasABWeeks && (
+              <View style={styles.weekSeg} accessibilityRole="radiogroup" accessibilityLabel="Routine week">
+                {weekOptions.map((wk) => {
+                  const on = effectiveActiveWeek === wk;
+                  return (
+                    <Pressable
+                      key={wk}
+                      onPress={(e) => { e?.stopPropagation?.(); if (!on) handleToggleWeek(); }}
+                      style={styles.weekTarget}
+                      accessibilityRole="radio"
+                      accessibilityLabel={`Week ${wk}`}
+                      accessibilityState={{ checked: on, selected: on }}
+                    >
+                      <View style={[styles.weekOption, on ? styles.weekOptionOn : null]}>
+                        <Text style={[typography['label-md'], styles.weekText, on ? styles.weekTextOn : null]}>{`Week ${wk}`}</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
               </View>
             )}
           </View>
-        </Pressable>
-          <Pressable
-            onPress={() => { setMenuOpen(false); plateCalculator.open(); }}
-            style={styles.plateButton}
-            accessibilityRole="button"
-            accessibilityLabel="Plate calculator"
-            accessibilityHint="Enter a target weight to calculate plates" testID="log-plate-calculator-button"
-          >
-            <MaterialIcons name="fitness-center" size={16} color={kua ? kua.onSurfaceVariant : colors.chipAccentText} accessible={false} />
-            <Text style={styles.plateButtonText}>Plates</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setMenuOpen(o => !o)}
-            style={styles.menuButton}
-            accessibilityRole="button"
-            accessibilityLabel="Routine actions"
-            accessibilityHint="Opens Edit, Copy, Share, Share as Image, and Skip week"
-            accessibilityState={{ expanded: menuOpen }}
-          >
-            <MaterialIcons name="more-horiz" size={20} color={kua ? kua.onSurfaceVariant : colors.chipAccentText} accessible={false} />
-          </Pressable>
+          {recoveryWeekNumber != null && (
+            <View style={styles.recoveryBadge} accessible accessibilityLabel={`Recovery Week ${recoveryWeekNumber}`}>
+              <Text style={styles.recoveryBadgeText}>Recovery Week {recoveryWeekNumber}</Text>
+            </View>
+          )}
         </View>
+
+        {!isCollapsed && <LogDayIndex days={days} nav={dayNav} />}
 
         <Pressable
           onPress={handleNoteBodyPress}
+          onLayout={dayNav?.onBodyLayout}
           style={[styles.currentNoteContent, isCollapsed ? { display: 'none' } : null]}
         >
-          {/* The card's action strip: Week A/B only. Both skip actions are in
-              the Routine actions menu, so a single-week routine has no strip. */}
-          {hasABWeeks && (
-          <View style={styles.actionStrip}>
-            <View style={styles.actionStripPrimary}>
-              {hasABWeeks && (
-                <Pressable
-                  onPress={(e) => { e.stopPropagation(); handleToggleWeek(); }}
-                  style={styles.inlineSwitchButton}
-                  hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Switch to Week ${effectiveActiveWeek === 'B' ? 'A' : 'B'}`}
-                  accessibilityState={{ selected: effectiveActiveWeek === 'B' }}
-                >
-                  <Text style={styles.inlineSwitchButtonText}>
-                    Week {effectiveActiveWeek === 'B' ? 'A' : 'B'}
-                  </Text>
-                </Pressable>
-              )}
-            </View>
-          </View>
-          )}
           {skipWeekStatus ? (
             <Text style={styles.skipWeekStatusText}>{skipWeekStatus}</Text>
           ) : null}
-          {copyStatus ? (
+          {actions.copyStatus ? (
             <Text
               style={styles.skipWeekStatusText}
               accessibilityLiveRegion="polite"
               testID="log-copy-routine-status"
             >
-              {copyStatus.message}
+              {actions.copyStatus.message}
             </Text>
           ) : null}
           <WorkoutKuaProvider kua={kua}>
@@ -378,6 +251,8 @@ export function LogActiveRoutineCard({
               sourceWeekIndex={hasABWeeks && effectiveActiveWeek === 'B' ? 1 : 0}
               sourceSliceText={activeEditText}
               onExercisePress={onExerciseSourceJump}
+              presentation="log"
+              onDayLayout={dayNav?.onDayLayout}
             />
           </WorkoutKuaProvider>
 
@@ -449,42 +324,81 @@ const createStyles = (kua, colors) => StyleSheet.create({
     borderColor: kua ? kua.primary : colors.accent,
     backgroundColor: kua ? kua.surfaceCard : undefined,
   },
-  otherNoteHeader: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    gap: 12,
+  // #1606: header block = title row (collapse target) + identity/week row.
+  headerBlock: {
+    paddingTop: 12,
+    paddingBottom: 12,
+    paddingLeft: 16,
+    paddingRight: 8,
+    gap: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
     backgroundColor: kua ? kua.surfaceCardHeader : undefined,
   },
-  otherNoteInfo: {
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  otherNoteHeader: {
     flex: 1,
-    // A hard floor, not 0 (#710 review). The header no longer has an action
-    // row to lose width to (#711), but flex:1 still gives this column a zero
-    // flex-basis, so the floor is what keeps the title from being handed 0dp
-    // by anything placed beside it. 96 clears the widest word in a routine
-    // title like "Return (ease the back) rehab" at both title font sizes, so
-    // it never degrades to per-letter wrapping.
+    // A hard floor (#710 review): keeps the title from being handed 0dp by
+    // anything placed beside it.
     minWidth: 96,
+    minHeight: 44,
+    justifyContent: 'center',
   },
-  // #1109: headline-md type and primary color per KUA surfaces.md.
   currentNoteTitle: {
-    fontSize: TYPOGRAPHY['headline-md'].fontSize,
-    fontWeight: '600',
-    color: kua ? kua.primary : colors.accentText,
+    fontSize: 20,
+    lineHeight: 26,
+    color: kua ? kua.primaryOnContainer : colors.accentText,
   },
-  // #1109: body-sm, on-surface-variant per KUA surfaces.md.
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    columnGap: 10,
+    rowGap: 4,
+  },
   otherNoteSub: {
-    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }),
+    textTransform: 'uppercase',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginTop: 2,
+  },
+  // Week A / Week B segmented control: 44dp targets around 34dp segments.
+  weekSeg: {
+    flexDirection: 'row',
+    borderRadius: GEOMETRY['radius-lg'],
+    borderWidth: 1,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
+    paddingHorizontal: 3,
+  },
+  weekTarget: {
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  weekOption: {
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: GEOMETRY['radius-md'],
+    justifyContent: 'center',
+  },
+  weekOptionOn: {
+    backgroundColor: kua ? kua.primary : colors.accent,
+  },
+  weekText: {
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
+  weekTextOn: {
+    fontWeight: '600',
+    color: kua ? kua.onPrimary : colors.background,
   },
   // Purely presentational metadata layered on top of the ordinary note
   // header — the badge never affects title, text, selection, or rendering.
   recoveryBadge: {
     alignSelf: 'flex-start',
-    marginTop: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: GEOMETRY['radius-lg'],
@@ -498,97 +412,14 @@ const createStyles = (kua, colors) => StyleSheet.create({
     textTransform: 'uppercase',
     color: kua ? kua.primaryOnContainer : colors.chipText,
   },
-  inlineSwitchButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: GEOMETRY['radius-lg'],
-    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
-    borderWidth: 1,
-    borderColor: kua ? kua.primaryContainerBorder : colors.cardBorder,
-    minHeight: 44,
-    justifyContent: 'center',
-    // Lets the pill shrink (text wraps) instead of overflowing the card (#710).
-    flexShrink: 1,
-  },
-  inlineSwitchButtonText: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
-    fontWeight: kua ? '500' : '700',
-    color: kua ? kua.primaryOnContainer : colors.chipAccentText,
-  },
   currentNoteContent: {
-    paddingHorizontal: 24,
-    paddingBottom: 24,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
-  },
-  // The card's single action strip (#711); flexWrap + gap contain its controls.
-  actionStrip: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 8,
-    zIndex: 10,
-  },
-  actionStripPrimary: {
-    zIndex: 10,
-    flexDirection: 'row',
-    flexShrink: 1,
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  // #1021: icon-only 44dp trigger, no pill chrome.
-  menuButton: {
-    minHeight: 44,
-    minWidth: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // #1244: header row = collapse target + Routine actions trigger.
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingRight: 12,
-    backgroundColor: kua ? kua.surfaceCardHeader : undefined,
-  },
-  plateButton: {
-    minHeight: 44, minWidth: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 8, // #1445
-  },
-  plateButtonText: {
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
-    fontWeight: '600',
-    color: kua ? kua.onSurfaceVariant : colors.chipAccentText,
-  },
-  menuScrim: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: colors.overlay,
-  },
-  // #1244: compact bottom sheet — one 44dp row per action.
-  actionMenu: {
-    paddingTop: 8,
-    borderTopLeftRadius: GEOMETRY['radius-2xl'],
-    borderTopRightRadius: GEOMETRY['radius-2xl'],
-    backgroundColor: kua ? kua.surfaceCard : colors.card,
-  },
-  actionMenuItem: {
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
-  },
-  actionMenuItemText: {
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
-    fontWeight: '600',
-    color: kua ? kua.onSurface : colors.chipAccentText,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    paddingTop: 4,
   },
   skipWeekStatusText: {
     fontSize: TYPOGRAPHY['label-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.accentText,
-    marginBottom: 8,
-    marginTop: -4,
+    marginTop: 8,
   },
 });

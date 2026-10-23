@@ -8,6 +8,7 @@ import { useWeightUnit } from '../lib/unitPreference';
 import { formatLiftWeightValue } from '../lib/units';
 import { buildExerciseSourceAnchor } from '../lib/parser';
 import { TYPOGRAPHY } from '../theme/typography';
+import { LogDayHeading, LogBlockLabel, LogExerciseBlock, LogSetLine } from './log/LogExerciseRows';
 
 // #881 (F10a §5): the recognizer window for the exercise-name double-tap
 // gesture that jumps to raw source. Deliberately separate from the note-body
@@ -105,6 +106,12 @@ export function WorkoutContentRenderer({
   sourceWeekIndex = 0,
   sourceSliceText = null,
   onExercisePress = null,
+  // #1606: 'log' opts the current-routine card into the redesign v3 Log
+  // presentation (components/log/LogExerciseRows.js). Every other caller keeps
+  // the default rendering. `onDayLayout(dayIndex, y)` reports each parsed day
+  // group's offset for the sticky day index (log presentation only).
+  presentation = 'default',
+  onDayLayout = null,
 }) {
   const styles = useThemedStyles(createStyles);
   const unit = useWeightUnit();
@@ -147,35 +154,65 @@ export function WorkoutContentRenderer({
       lastTapRef.current[key] = now;
     }
   };
+  // #1606: the Log tab's opt-in presentation. Fold state is transient and
+  // scoped to the exact note + A/B slice + parsed text that produced this
+  // render, so a routine switch, week switch or saved edit drops every stale
+  // expansion instead of re-targeting a different exercise occurrence.
+  const logMode = presentation === 'log';
+  const foldScope = `${sourceNoteId ?? ''}|${sourceWeekIndex}|${sourceSliceText ?? ''}`;
+  const [fold, setFold] = useState({ scope: foldScope, keys: new Set() });
+  const expandedKeys = fold.scope === foldScope ? fold.keys : null;
+  const toggleFold = (key) => setFold((prev) => {
+    const keys = new Set(prev.scope === foldScope ? prev.keys : []);
+    if (keys.has(key)) keys.delete(key); else keys.add(key);
+    return { scope: foldScope, keys };
+  });
   // Running counter across every section in document order — matches
   // parseWorkoutNote's own `sections` index for the slice `dayGroups` was
   // built from, since buildDayGroups only ever groups adjacent same-heading
   // sections and never reorders or drops any (F10a §1's `sectionIndex`).
   let sectionCounter = 0;
+  // A set row in the current presentation. `tone` is only used by the Log
+  // presentation ('old' | 'last'); the default and compact paths ignore it.
+  const renderRow = (key, sets, mark, tone) => (logMode ? (
+    <LogSetLine key={key} sets={sets} unit={unit} mark={mark} tone={tone || 'old'} />
+  ) : compact ? (
+    <CompactSetLine key={key} sets={sets} unit={unit} styles={styles} mark={mark} />
+  ) : (
+    <SetLine key={key} sets={sets} selectable={true} mark={mark} />
+  ));
   return (
     <>
       {noteError ? <NoteParseError message={noteError} /> : null}
       {dayGroups.map((group, gi) => (
-        <View key={`day-${gi}`}>
+        <View key={`day-${gi}`} onLayout={logMode && onDayLayout ? (e) => onDayLayout(gi, e.nativeEvent.layout.y) : undefined}>
           {/* Compact mode (#843) never repeats the day heading: the surface
               that hosts it already renders an uppercase day/section kicker
               of its own (LogRecoverySection.js's `noteSurfaceKicker`), so
               rendering it again here would show the same heading twice. */}
-          {group.heading && !compact && (
+          {group.heading && !compact && (logMode ? (
+            <LogDayHeading
+              heading={group.heading}
+              first={gi === 0}
+              count={group.sections.reduce((n, sec) => n + sec.exercises.length, 0)}
+            />
+          ) : (
             <WorkoutHeading
               selectable={true}
               style={gi === 0 ? { marginTop: 0 } : null}
             >
               {group.heading}
             </WorkoutHeading>
-          )}
+          ))}
           {group.sections.map((section, si) => {
             const sectionIndex = sectionCounter++;
             return (
             <View key={`section-${gi}-${si}`}>
-              {section.subheading && (
+              {section.subheading && (logMode ? (
+                <LogBlockLabel>{section.subheading}</LogBlockLabel>
+              ) : (
                 <WorkoutSubheading selectable={true}>{section.subheading}</WorkoutSubheading>
-              )}
+              ))}
               {/* #854/G7c: nonblank lines with no open exercise are preserved
                   as section-level annotations rather than silently dropped. */}
               {(section.annotations || []).map((text, ai) => (
@@ -217,6 +254,90 @@ export function WorkoutContentRenderer({
                     selectable: true,
                     onNamePress,
                   };
+                // Every rendered item for this occurrence, in the exact order
+                // the default renderer has always used, grouped into units: a
+                // logged session (its set line plus that entry's annotation
+                // tail/comments), a skipped session, or a standalone unparsed
+                // row. The default/compact paths flatten the units unchanged.
+                const units = [];
+                const unparsedMuted = mutedUnparsed || section.kind !== 'lifting';
+                const unparsedUnit = (key, raw, error) => units.push({
+                  key, session: false,
+                  render: () => [<UnparsedRow selectable={true} key={key} raw={raw} error={error} muted={unparsedMuted} />],
+                });
+                const renderedUnparsed = new Set();
+                const positions = ex.unparsed_positions || [];
+                let posIdx = 0;
+                let loggedIdx = 0;
+                ex.session_entries.forEach((entry, eni) => {
+                  while (posIdx < positions.length && positions[posIdx].pos === eni) {
+                    unparsedUnit(`u-pos-${gi}-${si}-${ei}-${posIdx}`, positions[posIdx].raw, positions[posIdx].error);
+                    posIdx++;
+                  }
+                  if (entry.skipped) {
+                    const key = `skip-${gi}-${si}-${ei}-${eni}`;
+                    units.push({ key, session: true, render: () => [<Text selectable={true} key={key} style={styles.skipMarker}>—</Text>] });
+                  } else if (entry.unparsed) {
+                    unparsedUnit(`u-inline-${gi}-${si}-${ei}-${eni}`, entry.raw, entry.error);
+                    renderedUnparsed.add(entry.raw);
+                  } else {
+                    const row = ex.rows[loggedIdx++];
+                    const annotation = entry.annotation;
+                    const key = `row-${gi}-${si}-${ei}-${eni}`;
+                    units.push({
+                      key, session: true, row: !!row,
+                      render: (tone) => {
+                        const items = [];
+                        if (row) items.push(renderRow(key, row.sets, annotation ? annotation.mark : null, tone));
+                        if (annotation && annotation.tail) {
+                          items.push(<AnnotationNote key={`tail-${gi}-${si}-${ei}-${eni}`} text={annotation.tail} selectable={true} />);
+                        }
+                        if (annotation && annotation.comments) {
+                          annotation.comments.forEach((comment, ci) => {
+                            items.push(<AnnotationNote key={`note-${gi}-${si}-${ei}-${eni}-${ci}`} text={comment} selectable={true} />);
+                          });
+                        }
+                        return items;
+                      },
+                    });
+                  }
+                });
+                while (posIdx < positions.length) {
+                  unparsedUnit(`u-pos-${gi}-${si}-${ei}-${posIdx}`, positions[posIdx].raw, positions[posIdx].error);
+                  posIdx++;
+                }
+                const loggedCount = ex.session_entries.filter(e => !e.skipped && !e.unparsed).length;
+                ex.rows.slice(loggedCount).forEach((row, ri) => {
+                  const key = `plain-${gi}-${si}-${ei}-${ri}`;
+                  units.push({ key, session: true, row: true, render: (tone) => [renderRow(key, row.sets, null, tone)] });
+                });
+                const positionalRaws = new Set(positions.map(p => p.raw));
+                ex.unparsed_rows.forEach((u, ui) => {
+                  if (!positionalRaws.has(u) && !renderedUnparsed.has(u) && !renderedUnparsed.has(u.replace(/^-\s+/, ''))) {
+                    units.push({
+                      key: `u-${gi}-${si}-${ei}-${ui}`, session: false,
+                      render: () => [<UnparsedRow selectable={true} key={`u-${gi}-${si}-${ei}-${ui}`} raw={u} muted={unparsedMuted} />],
+                    });
+                  }
+                });
+                if (logMode) {
+                  const foldKey = `${gi}-${si}-${ei}`;
+                  return (
+                    <View key={`ex-${gi}-${si}-${ei}`} style={isFlagged ? styles.flaggedExercise : null}>
+                      <LogExerciseBlock
+                        name={ex.name}
+                        isTracked={isTracked}
+                        onToggleTrack={trackingEnabled ? () => onToggleTrack(ex.name) : undefined}
+                        onNamePress={onNamePress}
+                        units={units}
+                        expanded={!!expandedKeys && expandedKeys.has(foldKey)}
+                        onToggleExpanded={() => toggleFold(foldKey)}
+                        testID={`log-exercise-${foldKey}`}
+                        lastTone={isDeload ? 'lead' : 'last'}
+                      />
+                    </View>
+                  );
+                }
                 return (
                   <View key={`ex-${gi}-${si}-${ei}`} style={isFlagged ? styles.flaggedExercise : null}>
                     <ExerciseWrap {...exerciseWrapProps}>
@@ -229,120 +350,7 @@ export function WorkoutContentRenderer({
                           {ex.name}
                         </Text>
                       )}
-                      {(() => {
-                        const items = [];
-                        const renderedUnparsed = new Set();
-                        const positions = ex.unparsed_positions || [];
-                        let posIdx = 0;
-                        let loggedIdx = 0;
-                        ex.session_entries.forEach((entry, eni) => {
-                          while (posIdx < positions.length && positions[posIdx].pos === eni) {
-                            items.push(
-                              <UnparsedRow
-                                selectable={true}
-                                key={`u-pos-${gi}-${si}-${ei}-${posIdx}`}
-                                raw={positions[posIdx].raw}
-                                error={positions[posIdx].error}
-                                muted={mutedUnparsed || section.kind !== 'lifting'}
-                              />
-                            );
-                            posIdx++;
-                          }
-                          if (entry.skipped) {
-                            items.push(<Text selectable={true} key={`skip-${gi}-${si}-${ei}-${eni}`} style={styles.skipMarker}>—</Text>);
-                          } else if (entry.unparsed) {
-                            items.push(
-                              <UnparsedRow
-                                selectable={true}
-                                key={`u-inline-${gi}-${si}-${ei}-${eni}`}
-                                raw={entry.raw}
-                                error={entry.error}
-                                muted={mutedUnparsed || section.kind !== 'lifting'}
-                              />
-                            );
-                            renderedUnparsed.add(entry.raw);
-                          } else {
-                            const row = ex.rows[loggedIdx++];
-                            const annotation = entry.annotation;
-                            if (row) {
-                              items.push(
-                                compact ? (
-                                  <CompactSetLine
-                                    key={`row-${gi}-${si}-${ei}-${eni}`}
-                                    sets={row.sets}
-                                    unit={unit}
-                                    styles={styles}
-                                    mark={annotation ? annotation.mark : null}
-                                  />
-                                ) : (
-                                  <SetLine
-                                    key={`row-${gi}-${si}-${ei}-${eni}`}
-                                    sets={row.sets}
-                                    selectable={true}
-                                    mark={annotation ? annotation.mark : null}
-                                  />
-                                )
-                              );
-                            }
-                            if (annotation && annotation.tail) {
-                              items.push(
-                                <AnnotationNote
-                                  key={`tail-${gi}-${si}-${ei}-${eni}`}
-                                  text={annotation.tail}
-                                  selectable={true}
-                                />
-                              );
-                            }
-                            if (annotation && annotation.comments) {
-                              annotation.comments.forEach((comment, ci) => {
-                                items.push(
-                                  <AnnotationNote
-                                    key={`note-${gi}-${si}-${ei}-${eni}-${ci}`}
-                                    text={comment}
-                                    selectable={true}
-                                  />
-                                );
-                              });
-                            }
-                          }
-                        });
-                        while (posIdx < positions.length) {
-                          items.push(
-                            <UnparsedRow
-                              selectable={true}
-                              key={`u-pos-${gi}-${si}-${ei}-${posIdx}`}
-                              raw={positions[posIdx].raw}
-                              error={positions[posIdx].error}
-                              muted={mutedUnparsed || section.kind !== 'lifting'}
-                            />
-                          );
-                          posIdx++;
-                        }
-                        const loggedCount = ex.session_entries.filter(e => !e.skipped && !e.unparsed).length;
-                        ex.rows.slice(loggedCount).forEach((row, ri) => {
-                          items.push(
-                            compact ? (
-                              <CompactSetLine key={`plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} unit={unit} styles={styles} />
-                            ) : (
-                              <SetLine key={`plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />
-                            )
-                          );
-                        });
-                        const positionalRaws = new Set(positions.map(p => p.raw));
-                        ex.unparsed_rows.forEach((u, ui) => {
-                          if (!positionalRaws.has(u) && !renderedUnparsed.has(u) && !renderedUnparsed.has(u.replace(/^-\s+/, ''))) {
-                            items.push(
-                              <UnparsedRow
-                                selectable={true}
-                                key={`u-${gi}-${si}-${ei}-${ui}`}
-                                raw={u}
-                                muted={mutedUnparsed || section.kind !== 'lifting'}
-                              />
-                            );
-                          }
-                        });
-                        return items;
-                      })()}
+                      {units.flatMap(u => u.render(null))}
                     </ExerciseWrap>
                   </View>
                 );

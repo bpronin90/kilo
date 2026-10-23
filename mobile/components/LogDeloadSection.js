@@ -132,6 +132,8 @@ export function LogDeloadSection({
                 accessibilityState={{ expanded: !deloadCollapsed }}
               >
                 <View style={styles.otherNoteInfo}>
+                  {/* #1606: redesign v3 active-panel kicker (presentation only). */}
+                  <Text style={styles.activeKicker} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>Active deload</Text>
                   <Text style={styles.currentNoteTitle}>Deload Week</Text>
                   {deloadNote?.saved_at && (
                     <Text style={styles.otherNoteSub}>{localDate(deloadNote.saved_at).toLocaleDateString()}</Text>
@@ -152,6 +154,7 @@ export function LogDeloadSection({
                       isDeload={true}
                       mutedUnparsed={true}
                       emptyText="Deload note is empty."
+                      presentation="log"
                     />
                   </Pressable>
                   {/* #1329: Deload complete is the one filled action. Edit sits
@@ -412,17 +415,26 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   mirrorContainer: {
     paddingBottom: 2,
   },
+  // #1606: the active deload uses the active-panel border (2px primary).
   currentRoutineCard: {
     padding: 0,
     overflow: 'hidden',
-    borderWidth: 4,
-    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    borderWidth: 2,
+    borderColor: kua ? kua.primary : colors.accent,
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+  },
+  activeKicker: {
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }),
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    marginBottom: 4,
   },
   otherNoteHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     gap: 12,
     minHeight: 44,
   },
@@ -435,9 +447,8 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurface : colors.text,
   },
   currentNoteTitle: {
-    fontSize: TYPOGRAPHY['headline-md'].fontSize,
-    fontWeight: '800',
-    color: kua ? kua.primary : colors.accentText,
+    ...(kua ? TYPOGRAPHY['headline-md'] : { fontSize: TYPOGRAPHY['headline-md'].fontSize, fontWeight: '800' }),
+    color: kua ? kua.onSurface : colors.accentText,
   },
   otherNoteSub: {
     ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }),
@@ -445,9 +456,9 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     marginTop: 2,
   },
   currentNoteContent: {
-    paddingHorizontal: 24,
-    paddingBottom: 24,
-    paddingTop: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+    paddingTop: 4,
     borderTopWidth: 1,
     borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
