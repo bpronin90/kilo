@@ -35,8 +35,12 @@ export function emitMeasurement(name, properties = {}) {
 // the Exercise Progress signal continuous across the retarget. 'recovery' has
 // no variant of its own and is honestly reported as 'other' rather than
 // borrowed onto a section it is not.
+//
+// `bodyweight` (#1602) is the redesigned Analytics chapter's name for the same
+// weight section, so it reports as 'weight' rather than a new variant.
 export function analyticsSectionVariant(section) {
   if (section === 'strength' || section === 'weight') return section;
+  if (section === 'bodyweight') return 'weight';
   if (section === 'progressive-overload') return 'strength';
   if (section === 'overview' || section == null) return 'overview';
   return 'other';
@@ -48,6 +52,8 @@ export function analyticsSectionVariant(section) {
 const ANALYTICS_SECTION_IDS = new Set([
   'overview',
   'weight',
+  // Alias of 'weight' (#1602): the Bodyweight chapter's name for the same anchor.
+  'bodyweight',
   'strength',
   'progressive-overload',
   'recovery',

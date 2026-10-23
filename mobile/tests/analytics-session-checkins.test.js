@@ -81,3 +81,41 @@ describe('Session Check-ins collapsed card', () => {
     expect(handleCheckInEdit).toHaveBeenCalledWith(r);
   });
 });
+
+describe('Session Check-ins inside the Routine Health panel (#1602)', () => {
+  const okRow = (n) => ({ ...row(n, []), reasons: [] });
+
+  it('renders the same summary and disclosure without a card, led by the recent strip', () => {
+    const setFatigueExpanded = jest.fn();
+    const root = mount(history({ rough: [row(2)], ok: [okRow(1), okRow(3)], top_reason: 'Lower back' }), { contained: false, setFatigueExpanded });
+    const strip = root.findByProps({ testID: 'session-checkin-strip' });
+    expect(strip.props.accessibilityLabel).toBe('Last 3 check-ins: 1 flagged, 2 no issue');
+    expect(texts(strip)).toEqual(['!']);
+    expect(texts(root)).toEqual(expect.arrayContaining(['Session Check-ins', 'Most common issue', 'Lower back', '1 flagged session']));
+    const btn = root.findByProps({ accessibilityLabel: 'Expand session check-in details' });
+    render.act(() => { btn.props.onPress(); });
+    expect(setFatigueExpanded).toHaveBeenCalled();
+  });
+
+  it('keeps at most the ten most recent check-ins and names unanswered ones', () => {
+    const many = Array.from({ length: 9 }, (_, i) => ({ ...okRow(1), responded_at: `2026-05-${String(i + 10).padStart(2, '0')}T10:00:00Z` }));
+    const root = mount(history({ ok: many, pending: [okRow(1), okRow(2)] }), { contained: false });
+    const strip = root.findByProps({ testID: 'session-checkin-strip' });
+    expect(strip.props.accessibilityLabel).toBe('Last 10 check-ins: 0 flagged, 9 no issue, 1 unanswered');
+  });
+
+  it('the empty state stays the same copy without a card', () => {
+    const root = mount(history({}), { contained: false });
+    expect(texts(root)).toContain('No check-ins logged yet.');
+    expect(root.findAllByProps({ testID: 'session-checkin-strip' })).toHaveLength(0);
+  });
+
+  it('keeps row editing reachable when expanded', () => {
+    const handleCheckInEdit = jest.fn();
+    const r = row(1);
+    const root = mount(history({ rough: [r], top_reason: 'Lower back' }), { contained: false, fatigueExpanded: true, handleCheckInEdit });
+    const edit = root.findAll(n => n.props.accessibilityLabel && n.props.accessibilityLabel.startsWith('Edit check-in') && n.props.onPress)[0];
+    render.act(() => { edit.props.onPress(); });
+    expect(handleCheckInEdit).toHaveBeenCalledWith(r);
+  });
+});

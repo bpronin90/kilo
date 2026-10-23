@@ -4,11 +4,16 @@ For maintainers changing Recovery evidence, disclosure, accessible measures, and
 
 ### Recovery Section (`AnalyticsRecoverySection.js`)
 
-Placement (#1347; see [Analytics ordering](ui-analytics.md#analytics-screen)): during active Recovery this
-section leads the tab, above Weight Trends and the collapsed baseline-training
-disclosure; otherwise it closes the tab after Routine Health, and only while it
-has something to render (completed-block history, loading, stale or error).
-Completed history stays inside this section. Recovery keeps `HeroMetric` +
+Placement (#1347, chapters #1602; see [Analytics ordering](ui-analytics.md#analytics-screen)): during active Recovery this
+section opens chapter 01 Recovery (`ACTIVE`), above Bodyweight and the collapsed
+baseline-training toggle; otherwise it sits in the closing 04 Recovery chapter,
+and only while it has something to render (completed-block history, loading,
+stale or error). The chapter header titles it, so Analytics passes
+`title={null}` (the section's own `Recovery` title is the default for other
+hosts). Completed history stays inside this section. The chapter then always
+ends with its navigation entries: `Manage recovery in Log` (active block only,
+the `recovery-manage` intent) and the `Recovery history` row, which opens Log's
+Recovery view (`recovery-note` intent). Recovery keeps `HeroMetric` +
 per-exercise meters; Routine Health keeps `SessionGauge` + its Session
 Check-ins card, with no shared measure between them.
 

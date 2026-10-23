@@ -8,25 +8,52 @@ Source: `mobile/screens/AnalyticsScreen.js`
 
 Analytics is the evidence surface; Home owns the summary, so there is no
 Overview card. The legacy `overview` navigation id still means scroll offset 0.
+Redesign v3 (#1602) groups the one continuous scroll into numbered chapters.
 Ordering lives in `screens/analytics/AnalyticsLayout.js`
-(`orderAnalyticsSections`, pure):
+(`orderAnalyticsSections`, pure); `AnalyticsSectionContent.js` builds the
+section elements and `AnalyticsChapters.js` draws the index, chapter headers and
+Recovery chapter entries:
 
-- **Normal training:** Strength → Routine Health → Progressive Overload →
-  Weight Trends → Recovery history (only when the Recovery section has
-  something to render).
-- **Active Recovery:** Recovery → Weight Trends → `Baseline training · paused
-  during Recovery` disclosure (collapsed by default) holding Strength →
-  Progressive Overload → Routine Health. Ending Recovery restores the normal
-  order.
+- **Normal training:** 01 Progress (Strength → Progressive Overload) →
+  02 Training (Training breakdown → Routine Health) → 03 Bodyweight (Weight
+  Trends) → 04 Recovery (the Recovery section when it has something to render,
+  then the Recovery history entry).
+- **Active Recovery:** 01 Recovery `ACTIVE` (Recovery section → `Manage
+  recovery in Log` → Recovery history entry) → 02 Bodyweight → 03 Baseline
+  training `PAUSED`: a dashed `Progress and Training · paused during Recovery`
+  toggle (collapsed by default, #871) that opens Strength → Progressive
+  Overload → Training breakdown → Routine Health behind a dashed left rule.
+  Ending Recovery restores the normal order.
+
+The root header reads `Analytics` over the current routine title and
+`Week N` (omitted during Recovery, whose week note names its own week). Below it
+sits the fixed chapter index (`PROGRESS / TRAINING / BODYWEIGHT / RECOVERY`, or
+`RECOVERY / BODYWEIGHT / PAUSED`): equal-width items that always fit, the current
+one underlined with `selected`/`aria-current`. A tap scrolls to the chapter
+header (no animation under reduce motion); a scroll-spy keeps the index on the
+chapter whose header has reached the top, and on the last chapter at the end of
+the scroll. Chapter headers are a mono number, a 22px title, a hairline and an
+optional state tag; there is no intro copy.
+
+Deep-link section ids are unchanged (`overview`, `strength`,
+`progressive-overload`, `weight`, `recovery`) plus `bodyweight`, an alias that
+lands on the `weight` anchor. Targets inside the paused baseline open it first
+and resolve their offset through the paused body (useAnalyticsChapterNavigation).
+The `recovery` anchor always exists, because the history entry always renders.
+The Recovery history entry opens Log's Recovery view (`recovery-note` intent);
+its count is the verified snapshot's completed blocks only, otherwise it names
+the destination without a number.
 
 Strength owns the 1K/Big 3 evidence; Big 3 Mapping sits under the 1K panel,
 collapsed by default with a one-line summary of the mapped lifts. Progressive
 Overload (`AnalyticsProgressiveOverload.js`) is its own top-level section: the
 canonical Exercise Progress counts (`analytics.exerciseProgress`), progression
 suggestions, search/collapse controls and the table; tracked-span/inherited and
-column methodology sits behind its `ⓘ`. Routine Health wraps `SessionGauge`
-(`showTitle={false}`, the section titles it) over `deriveRoutineStatus()`, plus
-the Session Check-ins card when fatigue tracking is on.
+column methodology sits behind its `ⓘ`. Routine Health
+(`AnalyticsRoutineHealthPanel.js`) is one panel: `SessionGauge` uncontained
+(`contained={false}`) over `deriveRoutineStatus()`, a `Deload mode · On` row when
+deload mode is on outside Recovery, and the uncontained Session Check-ins block
+(with a strip of the last ten check-ins) when fatigue tracking is on.
 
 Under the production KUA gate, `SessionGauge` resolves labels/zone captions
 (`onSurfaceVariant`), counts (`onSurface`), marker fill (`surfaceCard`) and
