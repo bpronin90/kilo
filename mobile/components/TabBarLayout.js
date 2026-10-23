@@ -1,14 +1,16 @@
 import { createContext, useCallback, useEffect, useRef, useState } from 'react';
 
-// Shared visual gap between the floating TabBar and the screen bottom edge.
-// TabBar uses it for its own bottom offset (not its height); ScreenShell adds
-// it on top of the measured bar height for scroll clearance (#551).
+// Breathing gap between the end of scrollable content (or the rest-timer pill)
+// and the top of the TabBar. ScreenShell adds it on top of the measured bar
+// height and the bottom inset for scroll clearance (#551). Since the docked bar
+// (#1600) the bar itself sits flush on the bottom inset and no longer uses it.
 export const TAB_BAR_VISUAL_GAP = 4;
 
-// Approximate rendered (compact bar ~55dp, #1209) TabBar height, used only until TabBar's own onLayout
-// measurement lands so ScreenShell has sufficient clearance before that
-// first measurement without visibly jumping once it arrives.
-export const TAB_BAR_HEIGHT_FALLBACK = 56;
+// Approximate rendered height of the docked TabBar (60dp tabs + 1dp hairline,
+// #1600), used only until TabBar's own onLayout measurement lands so
+// ScreenShell has sufficient clearance before that first measurement without
+// visibly jumping once it arrives.
+export const TAB_BAR_HEIGHT_FALLBACK = 61;
 
 // Owned by App.js, which measures TabBar via onLayout and provides the real
 // height to every ScreenShell so scroll clearance tracks the rendered bar.

@@ -2,24 +2,24 @@ import React, { useContext, useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useKuaStyle, useTheme, useThemedStyles } from '../theme/ThemeContext';
-import { TAB_BAR_VISUAL_GAP, TAB_BAR_HEIGHT_FALLBACK } from './TabBarLayout';
+import { TAB_BAR_HEIGHT_FALLBACK } from './TabBarLayout';
 import { Icon } from './Icon';
 import { centeredColumnInsets } from './adaptiveLayout';
-import { TYPOGRAPHY } from '../theme/typography';
-import { GEOMETRY } from '../theme/spacing';
+import { useKuaTypography } from '../theme/typography';
 
-// The floating bottom navigation is always fully opaque (#1026). It previously
-// animated itself down to 25% opacity two seconds after mount and again after
-// scroll or touch, which left the muted 13px labels unreadable over arbitrary
-// content and made the bar feel like it was disappearing. That behavior — and
-// its scroll-activity plumbing in App.js — is removed; only the tabs, the
-// floating rounded shape, the position, and the safe-area offset remain.
-// #1209 reverses the always-visible rule: the bar is still fully opaque when
-// shown, but it slides off-screen with a translateY (never an opacity fade, and
-// never unmounted or re-laid-out) when `hidden` is set by scroll direction.
-// Compact bar (#1209): 20dp icon keeps the five tabs shorter than the prior
-// 24dp/10dp-padding layout while each tab stays a >=44dp touch target.
-const TAB_ICON_SIZE = 20;
+// The bottom navigation is always fully opaque (#1026): no idle opacity fade.
+// #1209 reverses the always-visible rule: the bar slides off-screen with a
+// translateY (never an opacity fade, and never unmounted or re-laid-out) when
+// `hidden` is set by scroll direction.
+// Redesign v3 (#1600) docks the bar: a full-width band on the card background
+// with a top hairline reaching the screen edge (and down through the bottom
+// safe area), a 24dp icon over an 11px uppercase mono label, and the active tab
+// marked by the primary tint plus a 2dp indicator on its top edge (replacing
+// the floating rounded pill). The tabs themselves keep the #1126 content-column
+// offsets, so they align with ScreenShell content on every window. Each tab
+// stays a >=44dp touch target.
+const TAB_ICON_SIZE = 24;
+export const TAB_INDICATOR_HEIGHT = 2;
 
 const HIDE_DURATION_MS = 180;
 
@@ -27,29 +27,33 @@ export function TabBar({ tabs, activeTab, onTabPress, onHeightChange, hidden = f
   const styles = useThemedStyles(createStyles);
   const { colors } = useTheme();
   const kua = useKuaStyle();
+  const typography = useKuaTypography();
   const { bottom: bottomInset = 0, left: leftInset = 0, right: rightInset = 0 } = useContext(SafeAreaInsetsContext) || {};
-  // Wide windows (#1126): the bar aligns with ScreenShell's centered content
-  // column and clears side insets instead of spanning a tablet or landscape
-  // display. On phone portrait this resolves to the original 16/16 offsets.
+  // Wide windows (#1126): the tabs align with ScreenShell's centered content
+  // column and clear side insets (16/16 on phone portrait); the docked band
+  // behind them bleeds out to both window edges.
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const column = centeredColumnInsets(windowWidth, { left: leftInset, right: rightInset });
 
   // Active/inactive tint from the selected court palette, falling back to the
-  // legacy palette outside the production KUA gate (#1139). The active tab keeps
-  // its `selection` (primary-container) pill, so the active icon/11px label take
-  // `primaryOnContainer` — the ink KUA guarantees AA on that container in every
-  // court/mode — rather than `primary`, which is only 4.25:1 on Hard Court dark's
-  // selection fill. Inactive items sit on `tabBarBg` and take onSurfaceVariant.
+  // legacy palette outside the production KUA gate (#1139). The active icon,
+  // label and indicator take `primaryOnContainer`, the primary ink KUA
+  // guarantees AA on both the canvas and the selection fill in every
+  // court/mode (dark `primary` is only 4.25:1 on Hard Court's selection).
+  // Inactive items sit on `tabBarBg` and take onSurfaceVariant.
   const activeColor = kua ? kua.primaryOnContainer : colors.chipText;
   const inactiveColor = kua ? kua.onSurfaceVariant : colors.textMuted;
+  const labelBase = typography['label-sm'];
+  // Non-colour active cue: the bold mono face at weight 700.
+  const labelActive = { fontFamily: typography['metric-display'].fontFamily, fontWeight: '700' };
 
-  // Slide distance covers the bar, its bottom offset and its shadow so nothing
+  // Slide distance covers the bar plus the safe-area band under it so nothing
   // peeks above the screen edge. Measured height is reported unchanged.
   const heightRef = useRef(TAB_BAR_HEIGHT_FALLBACK);
   const translateY = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(translateY, {
-      toValue: hidden ? heightRef.current + TAB_BAR_VISUAL_GAP + bottomInset + 24 : 0,
+      toValue: hidden ? heightRef.current + bottomInset + TAB_INDICATOR_HEIGHT : 0,
       duration: HIDE_DURATION_MS,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
@@ -72,6 +76,9 @@ export function TabBar({ tabs, activeTab, onTabPress, onHeightChange, hidden = f
     return () => { live = false; clearTimeout(timer); };
   }, [activeTab, anchorRequest, hidden, windowWidth, windowHeight, layoutVersion, onAnchorChange]);
 
+  // The surface's own height is the tab row only: the band's extension through
+  // the bottom inset is an overflow child, so the reported height (and
+  // ScreenShell's clearance of height + gap + inset) never counts it twice.
   const handleLayout = (e) => {
     heightRef.current = e.nativeEvent.layout.height;
     bumpLayout();
@@ -80,7 +87,7 @@ export function TabBar({ tabs, activeTab, onTabPress, onHeightChange, hidden = f
 
   return (
     <Animated.View
-      style={[styles.container, { bottom: TAB_BAR_VISUAL_GAP + bottomInset, left: column.left, right: column.right, transform: [{ translateY }] }]}
+      style={[styles.container, { bottom: bottomInset, left: column.left, right: column.right, transform: [{ translateY }] }]}
       onLayout={handleLayout}
       accessibilityRole="tablist"
       // Off-screen while hidden (#1209): block touches and hide the tabs from
@@ -89,27 +96,35 @@ export function TabBar({ tabs, activeTab, onTabPress, onHeightChange, hidden = f
       importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
       accessibilityElementsHidden={!!hidden}
     >
-      {tabs.map((tab) => (
-        <Pressable
-          key={tab}
-          ref={(node) => { tabRefs.current[tab] = node; }}
-          onPress={() => onTabPress(tab)}
-          style={[styles.tab, activeTab === tab ? styles.tabActive : null]}
-          accessibilityRole="tab"
-          accessibilityLabel={tab}
-          accessibilityState={{ selected: activeTab === tab }}
-          accessible={true}
-        >
-          <Icon
-            name={tab}
-            size={TAB_ICON_SIZE}
-            color={activeTab === tab ? activeColor : inactiveColor}
-          />
-          <Text style={[styles.tabText, { color: activeTab === tab ? activeColor : inactiveColor, fontWeight: activeTab === tab ? '700' : '500' }]}>
-            {tab}
-          </Text>
-        </Pressable>
-      ))}
+      {/* Docked band: card background + top hairline from window edge to edge,
+          continuing under the home indicator / gesture area. */}
+      <View
+        testID="tab-bar-band"
+        pointerEvents="none"
+        style={[styles.band, { left: -column.left, right: -column.right, bottom: -bottomInset }]}
+      />
+      {tabs.map((tab) => {
+        const active = activeTab === tab;
+        const color = active ? activeColor : inactiveColor;
+        return (
+          <Pressable
+            key={tab}
+            ref={(node) => { tabRefs.current[tab] = node; }}
+            onPress={() => onTabPress(tab)}
+            style={styles.tab}
+            accessibilityRole="tab"
+            accessibilityLabel={tab}
+            accessibilityState={{ selected: active }}
+            accessible={true}
+          >
+            {active ? <View testID="tab-bar-indicator" style={[styles.indicator, { backgroundColor: activeColor }]} /> : null}
+            <Icon name={tab} size={TAB_ICON_SIZE} color={color} />
+            <Text style={[styles.tabText, labelBase, active ? labelActive : null, { color }]} numberOfLines={1}>
+              {tab}
+            </Text>
+          </Pressable>
+        );
+      })}
     </Animated.View>
   );
 }
@@ -118,32 +133,33 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   container: {
     position: 'absolute',
     flexDirection: 'row',
-    gap: 4,
+    // Tabs start below the band's 1dp hairline.
+    paddingTop: 1,
+  },
+  band: {
+    position: 'absolute',
+    top: 0,
     backgroundColor: kua ? kua.tabBarBg : colors.card,
-    borderRadius: GEOMETRY['radius-2xl'],
-    padding: 4,
-    borderWidth: 1,
-    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    shadowColor: colors.shadowColor,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
+    borderTopWidth: 1,
+    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   tab: {
     flex: 1,
-    minHeight: 46,
-    paddingVertical: 5,
-    borderRadius: GEOMETRY['radius-2xl'],
+    minHeight: 60,
+    paddingVertical: 8,
+    gap: 3,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tabActive: {
-    backgroundColor: kua ? kua.selection : colors.chipBackground,
+  // Covers the band's top hairline (-1) over the middle half of the tab.
+  indicator: {
+    position: 'absolute',
+    top: -1,
+    left: '24%',
+    right: '24%',
+    height: TAB_INDICATOR_HEIGHT,
   },
   tabText: {
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
-    fontWeight: '500',
-    marginTop: 1,
+    textTransform: 'uppercase',
   },
 });

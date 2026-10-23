@@ -65,6 +65,19 @@ See [InfoExplainer (`components/InfoExplainer.js`, #1245)](design/ui-shared-comp
 
 See [ScreenShell](design/ui-shared-components.md#screenshell).
 
+### RootHeader and redesign primitives
+
+See [RootHeader](design/ui-shared-components.md#rootheader-componentsrootheaderjs-1600)
+and [Redesign primitives](design/ui-shared-components.md#redesign-primitives-componentsuiredesignprimitivesjs-1600).
+
+## App redesign v3
+
+The approved app-wide redesign (tracker #1609) is in
+[`design/app-redesign-v3/`](design/app-redesign-v3/reference-index.md): the
+spec, the prototype and the curated screenshots, with their precedence. Its
+real-app capture harness and per-issue evidence are in
+[`evidence/app-redesign-v3/`](evidence/app-redesign-v3/README.md).
+
 ## Modal System
 
 See [Modal System](design/ui-shared-components.md#modal-system).
