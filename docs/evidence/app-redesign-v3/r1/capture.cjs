@@ -79,6 +79,13 @@ const work = workArg || fs.mkdtempSync(path.join(os.tmpdir(), 'kilo-r1-'));
   const smokeDir = path.join(work, 'smoke');
   const res = await smoke({ dist, pw, out: smokeDir, scenarios: Object.keys(require('../fixtures.cjs').SCENARIOS), themes: ['hard-dark'], tabs: 'marker' });
   for (const r of res.results) if (r.file) fs.copyFileSync(path.join(smokeDir, r.file), path.join(out, `smoke-${r.file}`));
+  // Review repro (#1600 FEEDBACK): one reused session visiting Log then Home must
+  // really select Home before the Home shot and the Home-only marker check.
+  const reproDir = path.join(work, 'smoke-repro');
+  const repro = await smoke({ dist, pw, out: reproDir, scenarios: ['no-goal'], themes: ['hard-dark'], tabs: ['Log', 'Home'] });
+  for (const r of repro.results) if (r.file) fs.copyFileSync(path.join(reproDir, r.file), path.join(out, `smoke-repro-${r.file}`));
+  res.results.push(...repro.results);
+  res.failed.push(...repro.failed);
   const bad = manifest.filter((m) => !m.theme_check.ok);
   console.log(`manifests in ${work}`);
   console.log(`r1: ${manifest.length} captures (${bad.length} theme mismatches); smoke ${res.results.length} (${res.failed.length} failed)`);

@@ -62,10 +62,15 @@ node docs/evidence/app-redesign-v3/capture.cjs \
 - `--tabs marker | Home,Log`: `marker` shoots only each scenario's marker tab.
   Default is all five tabs.
 
-It writes one PNG per scenario × theme × tab and `smoke-manifest.json`. For each
-it records whether the theme was reached (the top safe area matches the court
-canvas colour) and whether the scenario's marker text is present (or absent).
-It exits 1 on any failure. Run it first in every redesign issue: it shows the
+It writes one PNG per scenario × theme × tab and `smoke-manifest.json`. One
+session per scenario and theme visits the tabs in order. Before each shot it
+selects the tab and records the tab bar's actual selection (`selected_tab`). If
+that is not the requested tab, it records an error and takes no shot. For each
+shot it records whether the theme was reached (the top safe area matches the
+court canvas colour). On the scenario's marker tab only, it also records
+whether the marker text is visible (or absent). It exits 1 on any failure,
+including a tab that cannot be selected. Under `first-use`, the walkthrough
+blocks every tab except Home. Run it first in every redesign issue: it shows the
 scenarios still load on your branch.
 
 ## Module API
@@ -105,7 +110,8 @@ Returns `{ open, capture, close, base }`. `base` is the served URL. Always call
 
 | Method | Does |
 |---|---|
-| `tab(name)` | Taps the tab (`role=tab`, exact name). Fails after 5 s if the bar is hidden or covered |
+| `tab(name)` | Selects the tab (`role=tab`, exact name) and verifies it is now the selected tab; throws otherwise. Does nothing if the tab is already selected. Fails after 5 s if the bar is hidden or covered |
+| `selectedTab()` | Name of the app tab bar's selected tab (the one with the active indicator), or `null` |
 | `click(target)`, `waitFor(target)`, `isVisible(target)` | Act on the first **visible** match. Inactive tabs stay mounted but hidden |
 | `wheel(by, { steps, settle })` | **User** scroll with real wheel input at the viewport centre. Positive is down. The tab bar's auto-hide reacts |
 | `scrollTo('top' \| 'end' \| y \| { by }, { selector })` | **Programmatic** scroll of the main scroller (or `selector`). No input events, so the app treats it as a programmatic jump |

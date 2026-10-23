@@ -77,9 +77,29 @@ class Session {
     return t.nth != null ? loc.nth(t.nth) : loc.locator('visible=true').first();
   }
 
+  // Selects a tab and verifies it is the selected tab of the app tab bar; throws
+  // if it is not. A no-op when the tab is already selected (so a blocked bar,
+  // e.g. under the first-use walkthrough, still allows the current tab).
   async tab(name) {
+    if ((await this.selectedTab()) === name) return;
     await this.page.getByRole('tab', { name, exact: true }).click({ timeout: 5000 });
     await sleep(900);
+    const selected = await this.selectedTab();
+    if (selected !== name) throw new Error(`Tab ${name} not selected (selected: ${selected})`);
+  }
+
+  // Accessible name of the selected tab in the app tab bar, or null. The web
+  // build does not emit aria-selected, so the selected tab is the one tab that
+  // renders the active indicator (testID tab-bar-indicator).
+  async selectedTab() {
+    return this.page.evaluate(() => {
+      const band = document.querySelector('[data-testid="tab-bar-band"]');
+      const bar = band ? band.closest('[role="tablist"]') : null;
+      const marks = bar ? bar.querySelectorAll('[data-testid="tab-bar-indicator"]') : [];
+      if (marks.length !== 1) return null;
+      const tab = marks[0].closest('[role="tab"]');
+      return tab ? (tab.getAttribute('aria-label') || tab.textContent.trim()) : null;
+    });
   }
   async click(target, { settle = 600 } = {}) { await this.locator(target).click(); await sleep(settle); }
   async waitFor(target, { timeout = 8000 } = {}) { await this.locator(target).waitFor({ state: 'visible', timeout }); }
@@ -265,17 +285,21 @@ async function smoke({ dist, pw, out, scenarios = ['populated'], themes = STATE_
         try {
           const wanted = tabs === 'marker' ? [marker ? marker.tab : 'Home'] : tabs;
           for (const tab of wanted) {
-            if (tab !== 'Home') {
-              const reached = await s.tab(tab).then(() => true, (e) => { results.push({ scenario, theme, tab, error: String(e.message || e).split('\n')[0] }); return false; });
-              if (!reached) continue;
-            }
+            // Select every requested tab (the session is reused across tabs) and
+            // record nothing unless the bar confirms that tab is selected.
+            const reached = await s.tab(tab).then(() => true, (e) => { results.push({ scenario, theme, tab, error: String(e.message || e).split('\n')[0] }); return false; });
+            if (!reached) continue;
+            const selected = await s.selectedTab();
+            if (selected !== tab) { results.push({ scenario, theme, tab, error: `selected tab is ${selected}` }); continue; }
             const file = await s.shot(`${scenario}--${tab.toLowerCase()}--${theme}.png`);
             const themeCheck = await s.verifyTheme();
+            // The marker belongs to one tab and is checked only on that tab, after
+            // the selection check above, against visible text (inactive tabs are hidden).
             const mine = marker && marker.tab === tab ? marker : null;
             let markerCheck = null;
             if (mine && mine.text) markerCheck = await s.isVisible({ text: mine.text, exact: false });
             if (mine && mine.absent) markerCheck = !(await s.isVisible({ text: mine.absent, exact: false }));
-            results.push({ scenario, theme, tab, file: path.basename(file), theme_ok: themeCheck.ok, theme_actual: themeCheck.actual, marker: mine, marker_ok: markerCheck });
+            results.push({ scenario, theme, tab, selected_tab: selected, file: path.basename(file), theme_ok: themeCheck.ok, theme_actual: themeCheck.actual, marker: mine, marker_ok: markerCheck });
           }
         } finally { await s.close(); }
       }

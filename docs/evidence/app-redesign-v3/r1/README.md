@@ -9,7 +9,7 @@ Real-app renders for the redesign v3 foundation (tracker #1609).
   and safe-area items noted below.
 - **Clock and data:** `FIXED_NOW` 2026-10-23T12:00Z, `populated` fixture unless
   noted. See the [harness README](../README.md).
-- **Size:** 52 PNGs (40 captures and 12 smoke shots), 5,180,687 bytes.
+- **Size:** 54 PNGs (40 captures, 12 smoke shots and 2 review-repro shots), 5,376,394 bytes.
 
 ## Reference and original problem
 
@@ -57,7 +57,8 @@ in `hard-dark` at their marker tab). `manifest.json` (with `verifyTheme()` and
 `tabBar()` per shot) and `smoke-manifest.json` go to the optional third
 argument, a work directory outside the repo. The tables below quote them. The
 result was 40 captures with
-0 theme mismatches, and 12 smoke captures with 0 failures.
+0 theme mismatches, and 14 smoke captures (12 marker shots plus the review
+repro) with 0 failures.
 
 **Fixture setup:** `populated`, `timer-running` and `empty` come from the shared
 fixtures. [`fixtures.cjs`](fixtures.cjs) adds one overlay, `timerOnEmpty`,
@@ -79,7 +80,8 @@ All PNGs below were opened and compared against the reference and the checklist.
 | Timer clearance | `timer-clearance-{home,weight,empty}-*.png` | **Pass.** The rest-timer pill floats above the hairline with a visible gap on Home, on Weight and on a non-scrolling empty account |
 | Wide window | `wide-1024-home-hard-dark.png` (1024×768) | **Pass.** The band and hairline span the window, and the five tabs sit in the centred column, aligned with the cards |
 | Safe area | `safe-area-34-weight-hard-dark.png` (insets top 47, bottom 34) | **Pass.** The bar sits on the 34dp inset (box 749–810) and the band fills the inset to the screen edge |
-| Smoke | `smoke-*--*--hard-dark.png` (12) | **Pass.** 12/12 scenarios reach their theme and marker |
+| Smoke | `smoke-<scenario>--<tab>--hard-dark.png` (12) | **Pass.** 12/12 scenarios reach their theme and marker, and the selected tab matches |
+| Review repro: reused session, Log then Home | `smoke-repro-no-goal--{log,home}--hard-dark.png` | **Pass.** `selected_tab` is Log then Home. The two PNGs differ (sha1 `a5573494…` vs `3fd83603…`) and show Workout Notes and the Home dashboard. The Home-only marker (no "Cutting") is checked only on Home |
 
 ## Deviations from the reference
 
@@ -104,3 +106,28 @@ Each one is forced by an existing contract this issue may not change.
 5. **Root back bar.** The web-only "← Home" back bar on root tabs is existing
    behaviour and outside R1. Root-tab headers come with each tab's redesign
    issue.
+
+## Review feedback: smoke tab selection
+
+The first review of `667f0a70` found that `smoke()` skipped selecting Home in
+a reused session. So `--scenarios no-goal --tabs Log,Home` saved the Log screen
+as "home" and passed the Home marker. The fix is in the shared harness:
+
+- `smoke()` now selects every requested tab, including Home.
+- `Session.tab()` checks the tab bar's selection afterwards and throws on a
+  mismatch.
+- `selectedTab()` reads the selection from the active indicator, because the
+  web build emits no `aria-selected`.
+- Each smoke result records `selected_tab`, and there is no shot or marker
+  check unless it matches.
+
+The repro now runs inside the r1 runner (rows above).
+
+The full matrix was also run outside the repo: `--scenarios all --themes
+hard-dark,clay-light` on all five tabs, 120 combinations.
+
+- 112 captured. Every `selected_tab` matched and every theme was reached.
+- 24 marker checks ran (one per scenario and theme), with none false.
+- No two tab shots in any scenario and theme were identical.
+- 8 combinations failed as expected: the `first-use` non-Home tabs, which the
+  walkthrough blocks. They fail with an error rather than a wrong shot.
