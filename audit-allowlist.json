@@ -1,12 +1,6 @@
 {
   "accepted": [
     {
-      "id": "GHSA-vfj7-8cjw-p6xm",
-      "package": "braces",
-      "reviewBy": "2026-11-01",
-      "reason": "Owner-approved, time-boxed acceptance of residual risk (not a remediation): braces <= 3.0.3 (stack-exhaustion denial of service through deeply nested patterns, high, CVSS v3.1 7.5 and CVSS v4.0 8.7 as of the 2026-10-02 advisory update, published 2026-09-18) has no patched release; the advisory lists no first patched version and npm latest is 3.0.3. Verified at 55a5a32a with npm --prefix mobile ls --package-lock-only --all: braces@3.0.3 is reached only through micromatch@4.0.8, by two kinds of path. Dev/test path: the declared devDependency jest@29.7.0 -> @jest/core@29.7.0 -> micromatch@4.0.8 -> braces@3.0.3; mobile/package.json invokes Jest only through its test script. Build-tool path, independently verified and present with --omit=dev, so not a Jest-only path: the production dependency expo@54.0.35 -> @expo/metro@54.2.0 -> metro-file-map@0.83.3 -> micromatch@4.0.8 -> braces@3.0.3, which is Expo Metro bundler tooling (the lockfile also reaches Metro and Jest packages through react-native -> @react-native/community-cli-plugin -> metro and react-native -> babel-jest). The only lockfile dependents of micromatch are Jest packages and metro-file-map, and the root package has an empty dependency graph. No mobile application source imports braces, micromatch, Jest, or Metro. Shipping uses EAS build profiles (mobile/eas.json) and Expo configuration (mobile/app.json, mobile/app.config.js); a shipped app artifact has not been exhaustively inspected, so these are dependency-graph, configuration, and source-import facts only. Re-review, or bump if a patched release exists, before 2026-11-01; the gate fails after that date."
-    },
-    {
       "id": "GHSA-86w9-cpqp-85rv",
       "package": "node-forge",
       "reviewBy": "2026-11-01",
