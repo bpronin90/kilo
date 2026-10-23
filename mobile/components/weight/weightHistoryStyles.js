@@ -10,157 +10,104 @@ const monoBold = (typo) => {
   return { fontFamily, fontWeight };
 };
 
-// ── Shared history-panel visual system (#411) ─────────────────────────────────
-// Goal History (screens/weight/GoalHistoryPanel.js) and Weight History (this
-// panel) render as ONE uniform system. Every value below is kept numerically
-// identical to the block of the same name in screens/weight/weightStyles.js so
-// the two panels' equivalent elements (header row, 3-column [value·value·date]
-// grid, trailing control cell, values, dates, labels, and collapsed summary)
-// match exactly. The only intended differences between panels are the literal
-// label text and semantic outcome colors (End Weight / Success-Missed). These
-// constants are duplicated (not imported) because both panels must stay inside
-// their Allowed Files.
-const HISTORY_VALUE_SIZE = 20; // display exception per #1283 foundation
-const HISTORY_COL1_FLEX = 1.35; // primary value, left aligned
-const HISTORY_COL2_FLEX = 1.25; // secondary value, center aligned
-const HISTORY_COL3_FLEX = 1.5; // date, right aligned
-const HISTORY_CONTROL_WIDTH = 56; // trailing control cell (chevron / filter / delete)
-const HISTORY_ROW_PAD_V = 12;
-const HISTORY_ROW_PAD_H = 16;
-const HISTORY_LABEL_SIZE = TYPOGRAPHY['label-sm'].fontSize;
-const HISTORY_LABEL_WEIGHT = '700';
+const muted = (colors, kua) => (kua ? kua.onSurfaceVariant : colors.textMuted);
+const hairline = (colors, kua) => (kua ? kua.surfaceBorder : colors.cardBorder);
+
+// Column geometry (Redesign v3, #1601; h.css .hcols/.hrow): a flexible Weight
+// column, then fixed Change and Date columns and a 44dp delete control. Kept
+// numerically identical to HISTORY_COLUMNS in screens/weight/weightStyles.js so
+// Goal History lines up; duplicated because both files stay in their own scope.
+const HISTORY_COLUMNS = { col2: 76, col3: 104, control: 44 };
 
 export const createHistoryPanel = (colors, kua = null, typo = null) => StyleSheet.create({
-  card: {
-    backgroundColor: kua ? kua.surfaceCard : colors.card,
-    borderRadius: GEOMETRY['radius-2xl'],
-    borderWidth: 1,
-    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    overflow: 'hidden',
-  },
   headerRow: {
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: HISTORY_ROW_PAD_H,
-    paddingRight: 0,
-    paddingVertical: 10,
-    minHeight: 44,
-    backgroundColor: kua ? kua.surfaceCardHeader : colors.subtleBg,
-  },
-  headerRowBordered: {
-    borderBottomWidth: 1,
-    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
-  },
-  headerContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  controlCell: {
-    width: HISTORY_CONTROL_WIDTH,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingRight: 12,
+    justifyContent: 'space-between',
     gap: 8,
+    paddingLeft: 16,
+    paddingRight: 4,
   },
-  controlIconBtn: {
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  iconButton: {
+    minWidth: 44,
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: GEOMETRY['radius-lg'],
   },
-  controlCellRow: {
-    width: HISTORY_CONTROL_WIDTH,
+  columnsRow: {
+    minHeight: 36,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 4,
+    paddingLeft: 16,
+    backgroundColor: kua ? kua.surfaceCardHeader : colors.subtleBg,
+    borderTopWidth: 1,
+    borderTopColor: hairline(colors, kua),
   },
   columnLabel: {
-    fontSize: HISTORY_LABEL_SIZE,
-    fontWeight: HISTORY_LABEL_WEIGHT,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    ...monoRole(typo, 'label-md'),
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    color: muted(colors, kua),
   },
   col1: {
-    flex: HISTORY_COL1_FLEX,
-    alignItems: 'flex-start',
+    flex: 1,
+    minWidth: 0,
   },
   col2: {
-    flex: HISTORY_COL2_FLEX,
-    alignItems: 'center',
+    width: HISTORY_COLUMNS.col2,
+    alignItems: 'flex-end',
+    textAlign: 'right',
   },
   col3: {
-    flex: HISTORY_COL3_FLEX,
+    width: HISTORY_COLUMNS.col3,
     alignItems: 'flex-end',
+    textAlign: 'right',
+  },
+  controlCell: {
+    width: HISTORY_COLUMNS.control,
   },
   rowContainer: {
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'stretch',
-    borderBottomWidth: 1,
-    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    borderTopWidth: 1,
+    borderTopColor: hairline(colors, kua),
   },
   activeRow: {
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
-  lastRow: {
-    borderBottomWidth: 0,
-  },
   rowMain: {
     flex: 1,
-    paddingLeft: HISTORY_ROW_PAD_H,
-    paddingRight: 0,
-    paddingVertical: HISTORY_ROW_PAD_V,
-  },
-  rowCells: {
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
+    paddingLeft: 16,
+    paddingVertical: 8,
+  },
+  controlCellRow: {
+    width: HISTORY_COLUMNS.control,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   value: {
-    ...monoRole(typo, 'label-md'),
+    ...monoRole(typo, 'label-lg'),
+    ...monoBold(typo),
+    fontSize: 15,
     color: kua ? kua.onSurface : colors.text,
   },
   dateValue: {
-    ...monoRole(typo, 'label-lg'),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textAlign: 'right',
-  },
-  summaryText: {
-    flex: 1,
-    ...monoRole(typo, 'label-lg'),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  summaryEmphasis: {
-    ...monoBold(typo),
-    color: kua ? kua.onSurface : colors.text,
-  },
-  summaryStack: {
-    flex: 1,
-    flexDirection: 'column',
-    justifyContent: 'center',
-    gap: 2,
-  },
-  summaryCount: {
     ...monoRole(typo, 'label-md'),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  summaryLatest: {
-    ...monoRole(typo, 'label-lg'),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  columnLabelCenter: {
-    textAlign: 'center',
-  },
-  columnLabelRight: {
+    fontSize: 15,
+    lineHeight: 20,
+    color: muted(colors, kua),
     textAlign: 'right',
-  },
-  dateHeaderGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 8,
-  },
-  dateHeaderFilterBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });
 
@@ -178,13 +125,9 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: kua ? kua.surfaceCardHeader : colors.subtleBg,
-    borderBottomWidth: 1,
-    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 12,
   },
   // Keep a selected boundary and its clear affordance together. The filter row
   // may wrap these compact groups at 320dp or with large text, rather than
@@ -196,14 +139,17 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     gap: 4,
   },
   dateChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
     borderRadius: GEOMETRY['radius-lg'],
-    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
+    borderWidth: 1,
+    borderColor: hairline(colors, kua),
   },
   dateChipText: {
-    ...monoRole(typo, 'label-md'),
-    color: kua ? kua.primaryOnContainer : colors.chipText,
+    ...monoRole(typo, 'label-lg'),
+    fontSize: 13,
+    color: kua ? kua.onSurface : colors.text,
   },
   dateChipPlaceholder: {
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
@@ -228,28 +174,32 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   },
   rowDelta: {
     ...monoRole(typo, 'label-md'),
+    fontSize: 15,
+    lineHeight: 20,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textAlign: 'center',
+    textAlign: 'right',
   },
   rowDeltaEmpty: {
     ...monoRole(typo, 'label-md'),
+    fontSize: 15,
+    lineHeight: 20,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     opacity: 0.4,
-    textAlign: 'center',
+    textAlign: 'right',
   },
   deltaNotable: {
-    color: colors.cautionText,
+    color: kua ? kua.warning : colors.cautionText,
   },
   deltaSpike: {
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
   },
   deltaOutlier: {
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
     // Kinetic uses the real bold face; the literal weight would synthesize on the Medium role.
     ...(kua ? monoBold(typo) : { fontWeight: '900' }),
   },
   rowNote: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
+    ...(typo || TYPOGRAPHY_FALLBACK)['body-sm'],
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
@@ -266,10 +216,12 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     fontWeight: '400',
   },
   loadMoreRow: {
-    minHeight: 44,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: hairline(colors, kua),
   },
   // Same as `historyRowPressed`: the fill alone carries the press, so the
   // label is not faded below AA (3.40:1 light / 2.86:1 dark at 0.8).
@@ -279,8 +231,10 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   // The press swaps the row to `primaryContainer`, so the label takes the chip's
   // accent ink (#923) — `primaryOnContainer` reads correctly on that fill.
   loadMoreText: {
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
-    fontWeight: '700',
+    ...monoRole(typo, 'label-lg'),
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.05 * 12,
     color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
 });

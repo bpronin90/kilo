@@ -92,6 +92,13 @@ describe('WeightScreen', () => {
     return component;
   };
 
+  // #1601: with no goal the Goal panel shows a compact "Set a goal" that
+  // opens the existing form.
+  const openGoalSetup = (root) => {
+    const btn = root.find(n => n.props && n.props.accessibilityLabel === 'Set a goal' && typeof n.props.onPress === 'function');
+    render.act(() => { btn.props.onPress(); });
+  };
+
   // Recursively flatten React children without JSON.stringify to avoid circular crashes.
   // Extracts text from nested fragments and React elements.
   const flattenChildren = (children) => {
@@ -139,11 +146,11 @@ describe('WeightScreen', () => {
     const component = setup(goal);
     const root = component.root;
 
-    // 200 -> 190 in 70 days (10 weeks) = 1.00 lb/week
-    expect(findText(root, '1.00 lb / week')).toBeTruthy();
-    expect(findText(root, 'Suggested')).toBeTruthy();
-    expect(findText(root, 'deficit')).toBeTruthy();
-    expect(findText(root, '500 cal / day')).toBeTruthy();
+    // 200 -> 190 in 70 days (10 weeks) = 1.00 lb/week. #1601: the Target pace
+    // and Suggested split cells read "1.00 lb/wk" and "500 cal/day".
+    expect(findText(root, '1.00 lb/wk')).toBeTruthy();
+    expect(findText(root, 'Suggested deficit')).toBeTruthy();
+    expect(findText(root, '500 cal/day')).toBeTruthy();
   });
 
   test('renders "gain" state', () => {
@@ -152,10 +159,9 @@ describe('WeightScreen', () => {
     const root = component.root;
 
     // 180 -> 190 in 70 days (10 weeks) = 1.00 lb/week
-    expect(findText(root, '1.00 lb / week')).toBeTruthy();
-    expect(findText(root, 'Suggested')).toBeTruthy();
-    expect(findText(root, 'surplus')).toBeTruthy();
-    expect(findText(root, '500 cal / day')).toBeTruthy();
+    expect(findText(root, '1.00 lb/wk')).toBeTruthy();
+    expect(findText(root, 'Suggested surplus')).toBeTruthy();
+    expect(findText(root, '500 cal/day')).toBeTruthy();
   });
 
   test('renders health warnings (unhealthy pace)', () => {
@@ -235,6 +241,8 @@ describe('WeightScreen', () => {
       expect(allTexts.some(txt => txt.includes('to go'))).toBe(false);
     });
 
+    // #1601: split-cell labels are the 12px mono label-md role (weight is in
+    // the JetBrains Mono family), uppercase, under 18px mono values.
     test('derived labels use compact 12px uppercase hierarchy so they do not compete with values', () => {
       const goal = { target_weight: 190, target_date: '2026-08-02', start_weight: 200 };
       const entries = [{ id: '1', date: '2026-05-24', weight_value: 195.0, note: '' }];
@@ -242,8 +250,11 @@ describe('WeightScreen', () => {
       const label = findByExactText(component.root, 'Target pace');
       expect(label).toBeTruthy();
       expect(getStyleProp(label, 'fontSize')).toBe(12);
-      expect(getStyleProp(label, 'fontWeight')).toBe('700');
+      expect(getStyleProp(label, 'fontFamily')).toBe('JetBrainsMono-Medium');
       expect(getStyleProp(label, 'textTransform')).toBe('uppercase');
+      const value = component.root.findAllByType('Text').find(t => /^\d+\.\d{2} lb\/wk$/.test(flattenChildren(t.props.children)));
+      expect(value).toBeTruthy();
+      expect(StyleSheet.flatten(value.props.style).fontSize).toBeGreaterThan(12);
     });
   });
 
@@ -259,20 +270,18 @@ describe('WeightScreen', () => {
     const component = setup(null, entries);
     const root = component.root;
 
-    expect(findText(root, 'Trends')).toBeTruthy();
-    expect(findText(root, 'Today')).toBeTruthy();
-    expect(findText(root, 'Current')).toBeTruthy();
-    expect(findText(root, '185.0 lb')).toBeTruthy();
-    expect(findText(root, '+1.0')).toBeTruthy();
-    expect(findText(root, '↑ Gaining')).toBeTruthy();
+    // #1601: the Latest panel carries the same date-bucketed values: the
+    // latest weigh-in with its change vs the previous day, and the 7-/30-day
+    // rolling averages with their vs-prior-window change.
+    const cellTexts = (testID) => root.findAll(n => n.props?.testID === testID && typeof n.type === 'string')[0]
+      .findAllByType('Text').map(t => flattenChildren(t.props.children));
+    expect(findText(root, 'Latest · 05-24-2026')).toBeTruthy();
+    expect(root.findAll(n => n.props?.accessibilityLabel === 'Latest weigh-in 185 lb').length).toBeGreaterThan(0);
+    expect(cellTexts('weight-latest-change')).toEqual(['+1.0']);
 
-    expect(findText(root, '7-day rolling')).toBeTruthy();
-    expect(findText(root, '184.0 lb')).toBeTruthy();
-    expect(findText(root, '+3.5')).toBeTruthy();
-
-    expect(findText(root, '30-day rolling')).toBeTruthy();
-    expect(findText(root, '181.8 lb')).toBeTruthy();
-    expect(findText(root, '-')).toBeTruthy();
+    expect(cellTexts('weight-avg-7')).toEqual(['7-day avg', '184.0', '+3.5']);
+    // 30-day window has no prior window -> no change is drawn.
+    expect(cellTexts('weight-avg-30')).toEqual(['30-day avg', '181.8']);
   });
 
   test('uses logged_at for history display while trends still use date buckets', () => {
@@ -287,7 +296,8 @@ describe('WeightScreen', () => {
     });
 
     expect(findText(root, '05-20-2026')).toBeTruthy();
-    expect(findText(root, '185.0 lb')).toBeTruthy();
+    // #1601: history rows show the logged value with its unit ("185 lb").
+    expect(findText(root, '185 lb')).toBeTruthy();
     expect(findText(root, 'after travel')).toBeTruthy();
   });
 
@@ -311,7 +321,8 @@ describe('WeightScreen', () => {
       const style = node.props.style;
       if (!style) return false;
       const flat = Array.isArray(style) ? style.flat() : [style];
-      return flat.some(s => s && s.fontSize === 12);
+      // #1601: history Change cells are 15px mono, right-aligned.
+      return flat.some(s => s && s.fontSize === 15 && s.textAlign === 'right');
     };
 
     test('suppresses warnings for weight loss when goal is weight loss, but warns on weight gain', () => {
@@ -499,20 +510,35 @@ describe('WeightScreen', () => {
       expect(hasTextSafe(frac.root, '175.5 lb')).toBe(true);
     });
 
-    test('no goal shows the goal form immediately with no Set goal step (#1459)', () => {
+    // #1601 supersedes #1459's form-first no-goal state: Weight shows a
+    // compact "Set a goal" (no progress, pace or deficit) that opens the
+    // existing goal form; Cancel returns to the compact state.
+    test('no goal shows a compact Set a goal that opens the existing form (#1601)', () => {
       const component = setup(null, []);
-      expect(hasTextSafe(component.root, 'Goal Met!')).toBe(false);
-      expect(hasTextSafe(component.root, 'Archive')).toBe(false);
-      expect(hasTextSafe(component.root, 'No goal set')).toBe(false);
-      expect(hasTextSafe(component.root, 'Set goal')).toBe(false);
-      expect(hasTextSafe(component.root, 'Save goal')).toBe(true);
-      expect(hasTextSafe(component.root, 'Cancel')).toBe(false);
-      expect(component.root.findAll(n => n.type === 'TextInput' && n.props.placeholder === '175.0')).toHaveLength(1);
-      expect(component.root.findAll(n => n.props && n.props.accessibilityLabel === 'Goal target date').length).toBeGreaterThan(0);
+      const root = component.root;
+      expect(hasTextSafe(root, 'Goal Met!')).toBe(false);
+      expect(hasTextSafe(root, 'Archive')).toBe(false);
+      expect(hasTextSafe(root, 'No goal set.')).toBe(true);
+      expect(hasTextSafe(root, 'Target pace')).toBe(false);
+      expect(hasTextSafe(root, 'Suggested')).toBe(false);
+      expect(root.findAll(n => n.props?.testID === 'weight-goal-progress')).toHaveLength(0);
+      expect(hasTextSafe(root, 'Save goal')).toBe(false);
+      expect(root.findAll(n => n.type === 'TextInput' && n.props.placeholder === '175.0')).toHaveLength(0);
+
+      openGoalSetup(root);
+      expect(hasTextSafe(root, 'Save goal')).toBe(true);
+      expect(root.findAll(n => n.type === 'TextInput' && n.props.placeholder === '175.0')).toHaveLength(1);
+      expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Goal target date').length).toBeGreaterThan(0);
+
+      const cancel = root.findAll(n => typeof n.props?.onPress === 'function' && n.props.label === 'Cancel')[0];
+      render.act(() => { cancel.props.onPress(); });
+      expect(hasTextSafe(root, 'Save goal')).toBe(false);
+      expect(hasTextSafe(root, 'No goal set.')).toBe(true);
     });
 
     test('a failed goal save keeps the draft open with an error and never shows success', async () => {
       const component = setup(null, [], [], jest.fn().mockRejectedValue(new Error('disk full')));
+      openGoalSetup(component.root);
       const press = (label) => render.act(async () => {
         const text = component.root.findAllByType('Text').find(t => String(t.props.children) === label);
         let node = text;
@@ -550,6 +576,7 @@ describe('WeightScreen', () => {
 
     test('no-goal Target field and date match the weigh-in field geometry and typography (#1459)', () => {
       const component = setup(null, []);
+      openGoalSetup(component.root);
       const target = component.root
         .findAll(n => n.type === 'TextInput')
         .find(i => i.props.placeholder === '175.0');
@@ -590,8 +617,9 @@ describe('WeightScreen', () => {
       const component = setup(null, [], archived);
       const root = component.root;
 
-      // Header is visible, count-first collapsed summary present, rows hidden.
-      expect(hasTextSafe(root, 'Goal History')).toBe(true);
+      // #1601: the disclosure reads "Goal history · N" with the latest outcome;
+      // rows are hidden until expanded.
+      expect(hasTextSafe(root, 'Goal history · 1')).toBe(true);
       expect(hasTextSafe(root, 'Latest:')).toBe(true);
       expect(hasTextSafe(root, '175 lb')).toBe(false);
 
@@ -602,7 +630,8 @@ describe('WeightScreen', () => {
 
     test('hides archived goals section when there are no archived goals', () => {
       const component = setup(null, [], []);
-      expect(hasTextSafe(component.root, 'Goal History')).toBe(false);
+      expect(hasTextSafe(component.root, 'Goal history')).toBe(false);
+      expect(component.root.findAll(n => n.props?.testID === 'weight-goal-history')).toHaveLength(0);
     });
 
     test('renders Goal History section and list with target weight, completed weight, and target date', () => {
@@ -618,7 +647,7 @@ describe('WeightScreen', () => {
       const component = setup(null, [], archived);
       const root = component.root;
 
-      expect(hasTextSafe(root, 'Goal History')).toBe(true);
+      expect(hasTextSafe(root, 'Goal history · 1')).toBe(true);
       expandGoalHistory(root);
 
       expect(hasTextSafe(root, '175 lb')).toBe(true);
@@ -694,36 +723,38 @@ describe('WeightScreen', () => {
         archived_at: '2026-09-02T08:00:00.000Z',
       }];
 
-      test('column labels use fontSize 11 matching Trends label hierarchy', () => {
+      // #1601 (h.css .hcols): column labels are the 12px mono label-md role,
+      // uppercase, on the panel's header band.
+      test('column labels use the 12px uppercase mono label role (#1601)', () => {
         const component = setup(null, [], archivedFixture);
         // Column headers only render when expanded (#410).
         expandGoalHistory(component.root);
         const colLabel = findByExactText(component.root, 'Target');
         expect(colLabel).toBeTruthy();
-        expect(getStyleProp(colLabel, 'fontSize')).toBe(11);
-        expect(getStyleProp(colLabel, 'fontWeight')).toBe('700');
+        expect(getStyleProp(colLabel, 'fontSize')).toBe(12);
+        expect(getStyleProp(colLabel, 'fontFamily')).toBe('JetBrainsMono-Medium');
+        expect(getStyleProp(colLabel, 'textTransform')).toBe('uppercase');
       });
 
-      // #408 bumped these to 18; #409 brought them to 20/900; #411 unifies the
-      // shared value typography to 20 + JetBrains Mono, identical across both history panels.
-      test('primary value cells use JBM typography (#411)', () => {
+      // #411 lineage, #1601 values (h.css .hrow): 15px bold mono values,
+      // identical across both history panels.
+      test('primary value cells use JBM typography (#411, #1601)', () => {
         const component = setup(null, [], archivedFixture);
         expandGoalHistory(component.root);
         const valueNode = findByExactText(component.root, '175 lb');
         expect(valueNode).toBeTruthy();
-        expect(getStyleProp(valueNode, 'fontSize')).toBe(12);
-        expect(getStyleProp(valueNode, 'fontFamily')).toBe('JetBrainsMono-Medium');
+        expect(getStyleProp(valueNode, 'fontSize')).toBe(15);
+        expect(getStyleProp(valueNode, 'fontFamily')).toBe('JetBrainsMono-Bold');
       });
 
-      // #411 unifies the date typography with Weight History (15/600 muted) so
-      // dates read as one system and no longer compete with the 20px values.
-      test('date cells use the shared date typography 14/600 (#411, #1285)', () => {
+      // Dates are 15px medium mono, muted, so they do not compete with values.
+      test('date cells use the shared date typography 15/medium (#411, #1601)', () => {
         const component = setup(null, [], archivedFixture);
         expandGoalHistory(component.root);
         const dateNode = findByExactText(component.root, '09-01-2026');
         expect(dateNode).toBeTruthy();
-        expect(getStyleProp(dateNode, 'fontSize')).toBe(14);
-        expect(getStyleProp(dateNode, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
+        expect(getStyleProp(dateNode, 'fontSize')).toBe(15);
+        expect(getStyleProp(dateNode, 'fontFamily')).toBe('JetBrainsMono-Medium');
       });
 
       // #410: the collapsed Goal History summary is count-first and surfaces the
@@ -737,11 +768,7 @@ describe('WeightScreen', () => {
         expect(outcomeNode).toBeTruthy();
         expect(getStyleProp(outcomeNode, 'fontFamily')).toBe('JetBrainsMono-Bold');
         // The surrounding summary line is larger than the prior 13px.
-        const summary = root.findAllByType('Text').find(t => {
-          const c = t.props.children;
-          const flat = Array.isArray(c) ? c.join('') : String(c ?? '');
-          return flat.includes('Latest:');
-        });
+        const summary = root.findAllByType('Text').find(t => flattenChildren(t.props.children).startsWith('Latest:'));
         expect(summary).toBeTruthy();
         expect(getStyleProp(summary, 'fontSize')).toBeGreaterThan(13);
       });
@@ -779,23 +806,23 @@ describe('WeightScreen', () => {
         archived_at: '2026-09-02T08:00:00.000Z',
       }];
 
-      test('Goal History section title is static; collapse chevron lives inside the panel', () => {
+      // #1601 replaces the static section title with a single disclosure row
+      // inside the panel: the whole row is the toggle and names its state.
+      test('Goal History is one in-panel disclosure row that exposes its expanded state', () => {
         const component = setup(null, [], metFixture);
         const root = component.root;
 
-        // "Goal History" title has no pressable ancestor (chevron is off the title row).
-        const title = findByExactText(root, 'Goal History');
+        const toggle = root.findAll(n => n.props?.accessibilityLabel === 'Expand goal history' && typeof n.props.onPress === 'function')[0];
+        expect(toggle).toBeTruthy();
+        expect(toggle.props.accessibilityRole).toBe('button');
+        expect(toggle.props.accessibilityState).toEqual({ expanded: false });
+        const title = toggle.findAllByType('Text').find(t => flattenChildren(t.props.children) === 'Goal history · 1');
         expect(title).toBeTruthy();
-        let node = title.parent;
-        let pressableAncestor = false;
-        while (node) {
-          if (node.props && typeof node.props.onPress === 'function') pressableAncestor = true;
-          node = node.parent;
-        }
-        expect(pressableAncestor).toBe(false);
-
-        // The collapse toggle exists (rendered inside the card header).
-        expect(root.findByProps({ accessibilityLabel: 'Expand goal history' })).toBeTruthy();
+        // The disclosure lives inside the Goal history panel.
+        const panel = root.findAll(n => n.props?.testID === 'weight-goal-history')[0];
+        expect(panel.findAll(n => n === toggle)).toHaveLength(1);
+        render.act(() => { toggle.props.onPress(); });
+        expect(root.findAll(n => n.props?.accessibilityLabel === 'Collapse goal history' && n.props.accessibilityState?.expanded === true).length).toBeGreaterThan(0);
       });
 
       test('Goal History hides column headers when collapsed, shows them when expanded', () => {
@@ -819,13 +846,13 @@ describe('WeightScreen', () => {
         const component = setup(null, [], metFixture);
         const root = component.root;
 
-        // Two-line collapsed summary: count on first line, Latest: on second line.
-        expect(hasTextSafe(root, '1 goal')).toBe(true);
+        // Two-line disclosure: count on the title line, Latest: on the second.
+        expect(hasTextSafe(root, 'Goal history · 1')).toBe(true);
         expect(hasTextSafe(root, 'Latest:')).toBe(true);
         const successNode = findByExactText(root, 'Success');
         expect(successNode).toBeTruthy();
         expect(getStyleProp(successNode, 'fontFamily')).toBe('JetBrainsMono-Bold');
-        expect(getStyleProp(successNode, 'color')).toBe(LightColors.success);
+        expect(getStyleProp(successNode, 'color')).toBe(KUA_PALETTES.hardCourt.light.success);
       });
 
       test('collapsed Goal History summary shows a bold Missed outcome (red) for an unmet goal', () => {
@@ -843,7 +870,7 @@ describe('WeightScreen', () => {
 
         const missedNode = findByExactText(root, 'Missed');
         expect(missedNode).toBeTruthy();
-        expect(getStyleProp(missedNode, 'color')).toBe(LightColors.error);
+        expect(getStyleProp(missedNode, 'color')).toBe(KUA_PALETTES.hardCourt.light.errorText);
       });
 
       // #411 option B: the From/To controls are hidden by default and revealed
@@ -858,11 +885,11 @@ describe('WeightScreen', () => {
         const root = component.root;
 
         // Collapsed by default (#898): the filter icon is present, From/To
-        // controls and the summary line are as expected.
+        // controls hidden, and the #1601 count header is shown.
         expect(root.findAllByProps({ accessibilityLabel: 'Filter by date range' }).length).toBeGreaterThan(0);
         expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBe(0);
         expect(root.findAllByProps({ accessibilityLabel: 'To date' }).length).toBe(0);
-        expect(hasTextSafe(root, 'Latest:')).toBe(true);
+        expect(hasTextSafe(root, 'History · 1')).toBe(true);
 
         // Tapping the collapsed-state filter icon expands the panel and shows From/To.
         const collapsedFilterBtn = root.findByProps({ accessibilityLabel: 'Filter by date range' });
@@ -886,12 +913,13 @@ describe('WeightScreen', () => {
         render.act(() => { toggle.props.onPress(); });
         expect(root.findAllByProps({ accessibilityLabel: 'Filter by date range' }).length).toBeGreaterThan(0);
         expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBe(0);
-        expect(hasTextSafe(root, 'Latest:')).toBe(true);
+        expect(hasTextSafe(root, 'History · 1')).toBe(true);
       });
     });
 
     // #408: archived End Weight is colored by goal outcome via isGoalMet so users
-    // can scan whether each archived goal succeeded or failed.
+    // can scan whether each archived goal succeeded or failed. #1601 draws the
+    // outcome with the active KUA palette's success / errorText tokens.
     describe('archived End Weight outcome coloring (#408)', () => {
       const getStyleProp = (node, propName) => {
         const style = node.props.style;
@@ -931,7 +959,7 @@ describe('WeightScreen', () => {
         expandGoalHistory(component.root);
         const endNode = findByExactText(component.root, '174 lb');
         expect(endNode).toBeTruthy();
-        expect(getStyleProp(endNode, 'color')).toBe(LightColors.success);
+        expect(getStyleProp(endNode, 'color')).toBe(KUA_PALETTES.hardCourt.light.success);
       });
 
       test('missed loss goal colors End Weight error (red)', () => {
@@ -948,7 +976,7 @@ describe('WeightScreen', () => {
         expandGoalHistory(component.root);
         const endNode = findByExactText(component.root, '185 lb');
         expect(endNode).toBeTruthy();
-        expect(getStyleProp(endNode, 'color')).toBe(LightColors.error);
+        expect(getStyleProp(endNode, 'color')).toBe(KUA_PALETTES.hardCourt.light.errorText);
       });
 
       test('missing completed weight stays neutral', () => {
@@ -966,8 +994,8 @@ describe('WeightScreen', () => {
         expect(endNode).toBeTruthy();
         const color = getStyleProp(endNode, 'color');
         expect(color).toBe(KUA_PALETTES.hardCourt.light.onSurface);
-        expect(color).not.toBe(LightColors.success);
-        expect(color).not.toBe(LightColors.error);
+        expect(color).not.toBe(KUA_PALETTES.hardCourt.light.success);
+        expect(color).not.toBe(KUA_PALETTES.hardCourt.light.errorText);
       });
     });
 
@@ -995,78 +1023,54 @@ describe('WeightScreen', () => {
         render.act(() => { toggle.props.onPress(); });
       };
 
-      test('column labels use fontSize 11 matching Trends label hierarchy', () => {
+      // Scope lookups to the History panel: the root header also reads "Weight".
+      const inHistory = (root) => root.findAll(n => n.props?.testID === 'weight-history-panel' && typeof n.type === 'string')[0];
+      const exact = (scope, text) => scope.findAllByType('Text').find(t => flattenChildren(t.props.children) === text);
+
+      test('column labels use the 12px uppercase mono label role (#1601)', () => {
         const component = setup(null, entries);
-        expandWeightHistory(component.root);
-        const colLabel = component.root.findAllByType('Text').find(t => {
-          const children = t.props.children;
-          return (Array.isArray(children) ? children.join('') : String(children ?? '')) === 'Weight';
-        });
+        const colLabel = exact(inHistory(component.root), 'Weight');
         expect(colLabel).toBeTruthy();
-        expect(getStyleProp(colLabel, 'fontSize')).toBe(11);
-        expect(getStyleProp(colLabel, 'fontWeight')).toBe('700');
+        expect(getStyleProp(colLabel, 'fontSize')).toBe(12);
+        expect(getStyleProp(colLabel, 'fontFamily')).toBe('JetBrainsMono-Medium');
+        expect(getStyleProp(colLabel, 'textTransform')).toBe('uppercase');
       });
 
-      test('row weight values use JBM typography matching goal history (#411)', () => {
+      test('row weight values use JBM typography matching goal history (#411, #1601)', () => {
         const component = setup(null, entries);
         expandWeightHistory(component.root);
-        const weightNode = component.root.findAllByType('Text').find(t => {
-          const children = t.props.children;
-          const text = Array.isArray(children) ? children.join('') : String(children ?? '');
-          return text === '190 lb';
-        });
+        const weightNode = exact(inHistory(component.root), '190 lb');
         expect(weightNode).toBeTruthy();
-        expect(getStyleProp(weightNode, 'fontSize')).toBe(12);
-        expect(getStyleProp(weightNode, 'fontFamily')).toBe('JetBrainsMono-Medium');
+        expect(getStyleProp(weightNode, 'fontSize')).toBe(15);
+        expect(getStyleProp(weightNode, 'fontFamily')).toBe('JetBrainsMono-Bold');
       });
 
-      // #409: collapsed Weight History summary renders the latest weight in bold
-      // at a larger-than-13px size, consistent with the Goal History summary.
-      test('collapsed summary renders the latest weight in bold above 13px (#409)', () => {
+      // #1601: the header carries the count in the mono label role; the newest
+      // rows are previewed rather than summarized.
+      test('collapsed header shows the History count over a preview of the newest row (#1601)', () => {
         const component = setup(null, entries);
-        // Collapsed by default (#898) — no toggle needed.
-        const root = component.root;
-
-        const weightNode = root.findAllByType('Text').find(t => {
-          const children = t.props.children;
-          const text = Array.isArray(children) ? children.join('') : String(children ?? '');
-          return text === '190 lb';
-        });
-        expect(weightNode).toBeTruthy();
-        expect(getStyleProp(weightNode, 'fontFamily')).toBe('JetBrainsMono-Bold');
-
-        const summary = root.findAllByType('Text').find(t => {
-          const c = t.props.children;
-          const flat = Array.isArray(c) ? c.join('') : String(c ?? '');
-          return flat.includes('Latest:');
-        });
-        expect(summary).toBeTruthy();
-        expect(getStyleProp(summary, 'fontSize')).toBeGreaterThan(13);
+        const panel = inHistory(component.root);
+        const header = exact(panel, 'History · 1');
+        expect(header).toBeTruthy();
+        expect(getStyleProp(header, 'textTransform')).toBe('uppercase');
+        expect(exact(panel, '190 lb')).toBeTruthy();
       });
     });
 
-    describe('Weight History collapsed summary (#407 M-7)', () => {
-      const hasTextSafe = (root, text) =>
-        root.findAllByType('Text').some(t => {
-          const children = t.props.children;
-          const flat = Array.isArray(children) ? children.join('') : String(children ?? '');
-          return flat.includes(text);
-        });
-
-      test('collapsed summary shows latest weight and date, not just a count', () => {
+    describe('Weight History collapsed preview (#407 M-7, #1601)', () => {
+      test('collapsed panel shows the latest weight and date, not just a count', () => {
         const entries = [
           { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 190, weight_unit: 'lb', note: '' },
           { id: '2', date: '2026-05-22', logged_at: '2026-05-22T08:00:00Z', weight_value: 191, weight_unit: 'lb', note: '' },
         ];
         const component = setup(null, entries);
-        const root = component.root;
-
-        // Collapsed by default (#898) — no toggle needed.
-
-        // Summary includes the most recent entry's weight and date.
-        expect(hasTextSafe(root, '190')).toBe(true);
-        expect(hasTextSafe(root, 'Latest:')).toBe(true);
-        expect(hasTextSafe(root, '05-24-2026')).toBe(true);
+        const panel = component.root.findAll(n => n.props?.testID === 'weight-history-panel' && typeof n.type === 'string')[0];
+        const texts = panel.findAllByType('Text').map(t => flattenChildren(t.props.children));
+        // Newest first: the latest entry's weight and date lead the preview.
+        expect(texts).toContain('History · 2');
+        expect(texts.indexOf('190 lb')).toBeGreaterThan(-1);
+        expect(texts.indexOf('190 lb')).toBeLessThan(texts.indexOf('191 lb'));
+        expect(texts).toContain('05-24-2026');
       });
     });
 
@@ -1183,134 +1187,99 @@ describe('WeightScreen', () => {
       return root;
     };
 
+    // Scope each lookup to its panel: the root header also reads "Weight" and
+    // the goal form can read "Target".
+    const panelOf = (root, testID) => root.findAll(n => n.props?.testID === testID && typeof n.type === 'string')[0];
+    const exactIn = (scope, text) => scope.findAllByType('Text').find(t => {
+      const c = t.props.children;
+      return (Array.isArray(c) ? c.join('') : String(c ?? '')) === text;
+    });
+
     test('primary value cells share identical typography across both panels (#411)', () => {
       const root = renderBoth();
-      const goalValue = findByExactText(root, '175 lb');
-      const weightValue = findByExactText(root, '190 lb');
+      const goalValue = exactIn(panelOf(root, 'weight-goal-history'), '175 lb');
+      const weightValue = exactIn(panelOf(root, 'weight-history-panel'), '190 lb');
       expect(goalValue).toBeTruthy();
       expect(weightValue).toBeTruthy();
       expect(getStyleProp(goalValue, 'fontSize')).toBe(getStyleProp(weightValue, 'fontSize'));
       expect(getStyleProp(goalValue, 'fontFamily')).toBe(getStyleProp(weightValue, 'fontFamily'));
-      expect(getStyleProp(goalValue, 'fontSize')).toBe(12);
-      expect(getStyleProp(goalValue, 'fontFamily')).toBe('JetBrainsMono-Medium');
+      expect(getStyleProp(goalValue, 'color')).toBe(getStyleProp(weightValue, 'color'));
+      expect(getStyleProp(goalValue, 'fontSize')).toBe(15);
+      expect(getStyleProp(goalValue, 'fontFamily')).toBe('JetBrainsMono-Bold');
     });
 
     test('date cells share identical typography across both panels', () => {
       const root = renderBoth();
-      const goalDate = findByExactText(root, '09-01-2026');
-      const weightDate = findByExactText(root, '05-24-2026');
+      const goalDate = exactIn(panelOf(root, 'weight-goal-history'), '09-01-2026');
+      const weightDate = exactIn(panelOf(root, 'weight-history-panel'), '05-24-2026');
       expect(goalDate).toBeTruthy();
       expect(weightDate).toBeTruthy();
-      expect(getStyleProp(goalDate, 'fontSize')).toBe(getStyleProp(weightDate, 'fontSize'));
-      expect(getStyleProp(goalDate, 'fontWeight')).toBe(getStyleProp(weightDate, 'fontWeight'));
-      expect(getStyleProp(goalDate, 'color')).toBe(getStyleProp(weightDate, 'color'));
+      for (const prop of ['fontSize', 'fontFamily', 'color']) {
+        expect(getStyleProp(goalDate, prop)).toBe(getStyleProp(weightDate, prop));
+      }
     });
 
     test('column header labels share identical typography and casing across both panels', () => {
       const root = renderBoth();
-      const goalLabel = findByExactText(root, 'Target');
-      const weightLabel = findByExactText(root, 'Weight');
+      const goalLabel = exactIn(panelOf(root, 'weight-goal-history'), 'Target');
+      const weightLabel = exactIn(panelOf(root, 'weight-history-panel'), 'Weight');
       expect(goalLabel).toBeTruthy();
       expect(weightLabel).toBeTruthy();
-      for (const prop of ['fontSize', 'fontWeight', 'color', 'textTransform', 'letterSpacing']) {
+      for (const prop of ['fontSize', 'fontFamily', 'color', 'textTransform', 'letterSpacing']) {
         expect(getStyleProp(goalLabel, prop)).toBe(getStyleProp(weightLabel, prop));
       }
     });
 
-    test('the 3-column grid uses identical column flex across both panels', () => {
+    // #1601 (h.css .hcols/.hrow): a flexible first column, then fixed 76 / 104
+    // columns and a 44dp control slot, identical in both tables.
+    test('the 3-column grid uses identical column geometry across both panels', () => {
       const root = renderBoth();
-      // Scope label lookup to each panel's header row (via its collapse toggle)
-      // so form labels like "Target Date" elsewhere in the tree cannot collide.
-      const inHeader = (label, texts) => {
-        const header = root.findByProps({ accessibilityLabel: label });
-        return texts.map(txt => header.findAllByType('Text').find(t => {
-          const c = t.props.children;
-          return (Array.isArray(c) ? c.join('') : String(c ?? '')) === txt;
-        }));
-      };
-      const goalCols = inHeader('Collapse goal history', ['Target', 'End Weight', 'Target Date']);
-      const weightCols = inHeader('Collapse history', ['Weight', 'Change', 'Date']);
+      const goalPanel = panelOf(root, 'weight-goal-history');
+      const weightPanel = panelOf(root, 'weight-history-panel');
+      const goalCols = ['Target', 'End Weight', 'Target Date'].map(t => exactIn(goalPanel, t));
+      const weightCols = ['Weight', 'Change', 'Date'].map(t => exactIn(weightPanel, t));
       for (let i = 0; i < 3; i++) {
         expect(goalCols[i]).toBeTruthy();
         expect(weightCols[i]).toBeTruthy();
-        expect(getStyleProp(goalCols[i], 'flex')).toBe(getStyleProp(ancestorWithStyleProp(weightCols[i], 'flex'), 'flex'));
+        for (const prop of ['flex', 'width', 'textAlign']) {
+          expect(getStyleProp(goalCols[i], prop)).toBe(getStyleProp(weightCols[i], prop));
+        }
       }
-      // And the ratios are the intended shared grid.
-      expect(goalCols.map(n => getStyleProp(n, 'flex'))).toEqual([1.35, 1.25, 1.5]);
+      expect(goalCols.map(n => getStyleProp(n, 'flex') ?? getStyleProp(n, 'width'))).toEqual([1, 76, 104]);
     });
 
-    test('expanded Weight History groups the filter icon with the Date header', () => {
+    // #1601 moves the date filter into the History header next to the
+    // expand/collapse control; the Date column header stays a plain label.
+    test('Weight History keeps the filter icon in the panel header beside the toggle', () => {
       const root = renderBoth();
-      const dateHeaderGroups = root.findAllByProps({ testID: 'weight-history-date-header' });
-      const headerFilterButtons = root.findAllByProps({ testID: 'weight-history-date-filter-header' });
-      expect(dateHeaderGroups.length).toBeGreaterThan(0);
-      expect(headerFilterButtons.length).toBeGreaterThan(0);
-
-      const dateHeaderGroup = dateHeaderGroups[0];
-      const dateLabel = dateHeaderGroup.findAllByType('Text').find(t => {
-        const c = t.props.children;
-        return (Array.isArray(c) ? c.join('') : String(c ?? '')) === 'Date';
-      });
-      expect(dateLabel).toBeTruthy();
-
-      expect(getStyleProp(dateHeaderGroup, 'flex')).toBe(1.5);
-      expect(getStyleProp(dateHeaderGroup, 'flexDirection')).toBe('row');
-      expect(getStyleProp(dateHeaderGroup, 'gap')).toBe(8);
+      const filter = root.findAll(n => n.props?.testID === 'weight-history-date-filter-header' && typeof n.props.onPress === 'function')[0];
+      const toggle = root.findAll(n => n.props?.testID === 'weight-history-toggle' && typeof n.props.onPress === 'function')[0];
+      expect(filter).toBeTruthy();
+      expect(toggle).toBeTruthy();
+      expect(filter.parent).toBe(toggle.parent);
+      const dateHeader = root.findAll(n => n.props?.testID === 'weight-history-date-header' && n.type === 'Text')[0];
+      expect(flattenChildren(dateHeader.props.children)).toBe('Date');
+      expect(getStyleProp(dateHeader, 'width')).toBe(104);
     });
 
-    test('collapsed summary lines share identical base typography across both panels', () => {
-      // Both panels are collapsed by default (#407 H-5, #898).
+    // Both panels lead with a count in their header line (#1601 replaces the
+    // two-line collapsed summaries).
+    test('both panels name their count in the header', () => {
       const component = setup(null, entries, archived);
       const root = component.root;
-
-      // Two-line collapsed summary: find the "Latest:" text node in each panel.
-      // Both panels render their "Latest:" line as a separate Text node (summaryLatest).
-      const latestNodes = root.findAllByType('Text').filter(t => {
-        const c = t.props.children;
-        const flat = Array.isArray(c) ? c.join('') : String(c ?? '');
-        return flat.startsWith('Latest:');
-      });
-      expect(latestNodes.length).toBe(2);
-      expect(getStyleProp(latestNodes[0], 'fontSize')).toBe(getStyleProp(latestNodes[1], 'fontSize'));
-      expect(getStyleProp(latestNodes[0], 'fontWeight')).toBe(getStyleProp(latestNodes[1], 'fontWeight'));
-      expect(getStyleProp(latestNodes[0], 'color')).toBe(getStyleProp(latestNodes[1], 'color'));
-
-      // Count lines share identical typography too.
-      // Match only the "N goal(s)" / "N entry|entries" summary-count nodes (not unrelated UI text).
-      const goalCount = root.findAllByType('Text').find(t => {
-        const c = t.props.children;
-        const flat = Array.isArray(c) ? c.join('') : String(c ?? '');
-        return /^\d+ goals?$/.test(flat.trim());
-      });
-      const weightCount = root.findAllByType('Text').find(t => {
-        const c = t.props.children;
-        const flat = Array.isArray(c) ? c.join('') : String(c ?? '');
-        return /^\d+ entr(y|ies)$/.test(flat.trim());
-      });
-      expect(goalCount).toBeTruthy();
-      expect(weightCount).toBeTruthy();
-      expect(getStyleProp(goalCount, 'fontSize')).toBe(getStyleProp(weightCount, 'fontSize'));
-      expect(getStyleProp(goalCount, 'fontWeight')).toBe(getStyleProp(weightCount, 'fontWeight'));
-      expect(getStyleProp(goalCount, 'color')).toBe(getStyleProp(weightCount, 'color'));
+      expect(exactIn(panelOf(root, 'weight-history-panel'), 'History · 1')).toBeTruthy();
+      expect(exactIn(panelOf(root, 'weight-goal-history'), 'Goal history · 1')).toBeTruthy();
     });
 
-    test('Weight History hides its column headers when collapsed, shows them when expanded', () => {
-      const component = setup(null, entries);
-      const root = component.root;
-      const findLabel = (text) => root.findAllByType('Text').some(t => {
-        const c = t.props.children;
-        return (Array.isArray(c) ? c.join('') : String(c ?? '')) === text;
-      });
-
-      // Collapsed by default (#898): column-header chrome is gone (only the
-      // summary line remains).
-      expect(findLabel('Change')).toBe(false);
-
-      const toggle = root.findByProps({ accessibilityLabel: 'Expand history' });
+    test('Weight History shows column headers whenever it has rows, and none when empty', () => {
+      const withRows = setup(null, entries).root;
+      expect(exactIn(panelOf(withRows, 'weight-history-panel'), 'Change')).toBeTruthy();
+      const toggle = withRows.findByProps({ accessibilityLabel: 'Expand history' });
       render.act(() => { toggle.props.onPress(); });
+      expect(exactIn(panelOf(withRows, 'weight-history-panel'), 'Change')).toBeTruthy();
 
-      // Expanded: the Change/Date column labels are present.
-      expect(findLabel('Change')).toBe(true);
+      const empty = setup(null, []).root;
+      expect(exactIn(panelOf(empty, 'weight-history-panel'), 'Change')).toBeUndefined();
     });
   });
 
@@ -1379,7 +1348,9 @@ describe('WeightScreen', () => {
       // must recursively flatten to discover them, not crash on circular refs or
       // convert nested React elements to [object Object] strings.
       expect(findText(root, 'Goal ended')).toBeTruthy();
-      expect(findText(root, '185.0 lb')).toBeTruthy();
+      // #1601: "185 lb" is a history row; "lb to go" style value+unit runs
+      // are nested Text in the Goal and Latest panels.
+      expect(findText(root, '185 lb')).toBeTruthy();
       expect(findText(root, 'Weight')).toBeTruthy();
     });
 

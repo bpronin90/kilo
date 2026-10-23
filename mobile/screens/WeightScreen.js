@@ -1,8 +1,8 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { View } from 'react-native';
 import { Alert } from '../lib/platformAlert';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, SectionTitle } from '../components/UI';
+import { RootHeader } from '../components/RootHeader';
 import { useTheme } from '../theme/ThemeContext';
 import { useWeightEntries, useWeightGoal, useUserProfile } from '../hooks/useEntries';
 import { getWeightDeltaSeverity } from '../lib/format';
@@ -15,14 +15,15 @@ import { useWeightUnit } from '../lib/unitPreference';
 import { formatBodyweightValue, inputWeightToLb } from '../lib/units';
 
 import { useLocalCalendarDay, localDayToDate } from '../hooks/useLocalCalendarDay';
-import { localDateToday, buildTrendSections } from '../lib/WeightScreenHelpers';
+import { localDateToday } from '../lib/WeightScreenHelpers';
 
-import { TrendSection } from '../components/WeightTrendSection';
 import { WeightGoalCard } from '../components/WeightGoalCard';
 import { WeightHistoryList } from '../components/WeightHistoryList';
 import { useWeightGoalForm } from '../hooks/useWeightGoalForm';
 import { WeightEntryForm } from './weight/WeightEntryForm';
 import { GoalHistoryPanel } from './weight/GoalHistoryPanel';
+import { WeightLatestPanel } from './weight/WeightLatestPanel';
+import { WeightErrorBanners, WeightSkeleton, weightHeaderContext } from './weight/WeightScreenPanels';
 import { createStyles } from './weight/weightStyles';
 import { useReducedMotion } from '../lib/useReducedMotion';
 
@@ -157,8 +158,12 @@ export function WeightScreen({
     ]
   );
 
-
-  const trendSections = useMemo(() => buildTrendSections(trends, paceInfo, unit), [trends, paceInfo, unit]);
+  // Newest weigh-in date for the Latest panel label (the entry behind
+  // trends.currentWeight); a selection only, no calculation.
+  const latestDate = useMemo(
+    () => entries.reduce((latest, e) => (e?.date && (!latest || e.date > latest) ? e.date : latest), null),
+    [entries]
+  );
 
   const isGoalMet = useMemo(() => {
     return computeIsGoalMet(goal, trends.currentWeight, referenceDate);
@@ -303,33 +308,26 @@ export function WeightScreen({
   const historyUnavailable = (!!entriesError && entries.length === 0)
     || (!!goalError && !goal);
 
+  const headerContext = isHistoryFirstLoad || historyUnavailable
+    ? null
+    : weightHeaderContext({ count: entries.length, verified: true, goal, goalInfo, unit });
+
+  // Redesign v3 order (#1601): Log weigh-in → Latest → Goal → History → Goal
+  // history. The weight trend chart lives only in Analytics (Full trend link).
   return (
     <ScreenShell
       ref={scrollRef}
-      title="Weight log"
-      subtitle="Track your body weight over time."
+      header={<RootHeader title="Weight" context={headerContext} uppercaseContext={false} testID="weight-root-header" />}
       keyboardShouldPersistTaps="handled"
       style={kua ? { backgroundColor: kua.background } : undefined}
     >
-      {/* One banner per failed source, each retrying only its own read (#737):
-          a weigh-in read and a goal read fail independently, and merging them
-          would offer a retry for something that never failed. */}
-      {entriesError ? (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorBannerText}>Could not load weight entries.</Text>
-          <Pressable onPress={refreshEntries} style={styles.errorBannerRetry} accessibilityRole="button" accessibilityLabel="Retry">
-            <Text style={styles.errorBannerRetryText} accessible={false}>Retry</Text>
-          </Pressable>
-        </View>
-      ) : null}
-      {goalError ? (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorBannerText}>Could not load your weight goal.</Text>
-          <Pressable onPress={refreshGoal} style={styles.errorBannerRetry} accessibilityRole="button" accessibilityLabel="Retry">
-            <Text style={styles.errorBannerRetryText} accessible={false}>Retry</Text>
-          </Pressable>
-        </View>
-      ) : null}
+      <View style={styles.stack}>
+      <WeightErrorBanners
+        entriesError={entriesError}
+        goalError={goalError}
+        refreshEntries={refreshEntries}
+        refreshGoal={refreshGoal}
+      />
       <WeightEntryForm
         editingId={editingId}
         cancelEdit={cancelEdit}
@@ -350,7 +348,15 @@ export function WeightScreen({
 
       {isHistoryFirstLoad ? <WeightSkeleton /> : historyUnavailable ? null : (
       <>
-      <SectionTitle>Goal</SectionTitle>
+      <WeightLatestPanel
+        trends={trends}
+        paceInfo={paceInfo}
+        latestDate={latestDate}
+        goalDirection={goalInfo?.direction ?? null}
+        unit={unit}
+        onNavigate={onNavigate}
+      />
+
       <WeightGoalCard
         goal={goal}
         goalInfo={goalInfo}
@@ -361,34 +367,14 @@ export function WeightScreen({
         {...goalForm}
       />
 
-      <SectionTitle>Trends</SectionTitle>
-      <Card style={styles.trendsCardMerged}>
-        {trendSections.map((section) => (
-          <TrendSection
-            key={section.title}
-            title={section.title}
-            col1={section.col1}
-            col2={section.col2}
-            col3={section.col3}
-            isLast={section.isLast}
-            direction={section.direction}
-            paceLevel={section.paceLevel}
-            goalDirection={goalInfo?.direction}
-          />
-        ))}
-      </Card>
-
-      <Pressable
-        testID="weight-see-full-trends"
-        onPress={() => onNavigate?.('Analytics', 'weight')}
-        style={styles.fullTrendsLink}
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityLabel="See full trends"
-        accessibilityHint="Opens the weight section of the Analytics tab"
-      >
-        <Text style={styles.fullTrendsLinkText}>See full trends</Text>
-      </Pressable>
+      <WeightHistoryList
+        entries={entries}
+        editingId={editingId}
+        handleEditEntry={handleEditEntry}
+        handleDelete={handleDelete}
+        getWeightDeltaSeverity={getWeightDeltaSeverity}
+        goalInfo={goalInfo}
+      />
 
       {sortedArchivedGoals.length > 0 && (
         <GoalHistoryPanel
@@ -399,44 +385,9 @@ export function WeightScreen({
           unit={unit}
         />
       )}
-
-      <SectionTitle>Weight History</SectionTitle>
-      <WeightHistoryList
-        entries={entries}
-        editingId={editingId}
-        handleEditEntry={handleEditEntry}
-        handleDelete={handleDelete}
-        getWeightDeltaSeverity={getWeightDeltaSeverity}
-        goalInfo={goalInfo}
-      />
       </>
       )}
+      </View>
     </ScreenShell>
-  );
-}
-
-// First-paint placeholder for the derived sections (#737). Static bars, no
-// motion; the shapes track Goal / Trends / History so nothing shifts when the
-// real cards land.
-function WeightSkeleton() {
-  const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
-  return (
-    <View
-      testID="weight-skeleton"
-      accessible
-      accessibilityRole="progressbar"
-      accessibilityLabel="Loading your weight history"
-    >
-      <View style={styles.skeletonCard}>
-        <View style={[styles.skeletonBar, styles.skeletonBarShort]} />
-        <View style={[styles.skeletonBar, styles.skeletonBarWide]} />
-      </View>
-      <View style={styles.skeletonCard}>
-        <View style={[styles.skeletonBar, styles.skeletonBarShort]} />
-        <View style={[styles.skeletonBar, styles.skeletonBarFull]} />
-        <View style={[styles.skeletonBar, styles.skeletonBarWide]} />
-      </View>
-    </View>
   );
 }

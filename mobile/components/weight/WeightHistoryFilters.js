@@ -44,16 +44,19 @@ function WebDateTextInput({ value, onChange, placeholder, label }) {
       const next = e?.target?.value;
       onChange(next || '');
     },
+    // Outlined 44dp box matching the Redesign v3 history filter (#1601).
     style: {
-      backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
-      border: 'none',
+      backgroundColor: 'transparent',
+      border: `1px solid ${kua ? kua.surfaceBorder : colors.cardBorder}`,
       borderRadius: GEOMETRY['radius-lg'],
-      padding: '4px 8px',
-      ...(kua ? domMonoRole('label-md') : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontFamily: 'inherit', fontWeight: '700' }),
-      color: kua ? kua.primaryOnContainer : colors.chipText,
+      height: 44,
+      boxSizing: 'border-box',
+      padding: '0 10px',
+      ...(kua ? domMonoRole('label-lg') : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontFamily: 'inherit', fontWeight: '700' }),
+      color: kua ? kua.onSurface : colors.text,
       cursor: 'text',
       outline: 'none',
-      width: 90,
+      width: 112,
     },
   });
 }

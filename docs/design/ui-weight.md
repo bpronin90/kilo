@@ -5,86 +5,106 @@ are owned by [Shared UI](ui-shared-components.md).
 
 ## Weight Screen
 
-Sources: `mobile/screens/WeightScreen.js`, `mobile/components/UI.js`,
-`mobile/components/WeightTrendSection.js`, and
-`mobile/components/WeightGoalCard.js`.
+Sources: `mobile/screens/WeightScreen.js`, `mobile/screens/weight/`
+(`WeightEntryForm`, `WeightLatestPanel`, `WeightScreenPanels`,
+`GoalHistoryPanel`, `weightStyles`), `mobile/components/WeightGoalCard.js`, and
+`mobile/components/WeightHistoryList.js`. Approved reference: Redesign v3
+([spec](app-redesign-v3/README.md), section "Weight";
+`app-redesign-v3/shots/hybrid-v3/weight-*.png`), implemented in #1601.
+
+### Layout (#1601)
+
+`RootHeader` "Weight" with a context line (`43 weigh-ins · Cutting → 183 lb`),
+shown only once the weigh-in read is verified. Below it, one 16px-gap stack of
+`Panel`s, top to bottom:
+
+1. **Log weigh-in** (the one `active` panel).
+2. **Latest**: date, hero, change, 7/30-day averages, Analytics link.
+3. **Goal**: active goal, compact no-goal, or the inline goal form.
+4. **History**: count header, filter, column table, Show more.
+5. **Goal history** disclosure (only when archived goals exist).
+
+Read failures show one banner per failed source above the stack, each with its
+own `Retry` (#737); the first read paints `weight-skeleton`. There is **no trend
+chart or trend table on Weight**: `WeightTrendSection` is not rendered here; the
+full trend lives in Analytics › Bodyweight.
 
 ### Input Card
 
-The weigh-in and Goal forms carry no Weight-specific control skin (#1440).
-Every field is the shared `TextField` / `DateField` and every inline action the
-shared `ActionChip` / `TextAction`, documented in
-[Shared Form Controls](ui-shared-components.md#shared-form-controls-1440).
-Weight styles only position these controls and mark the editing state
-(`weightStyles.js` `editingCard`: 2px `primary` / `accent` border).
+The Log weigh-in panel.
 
-| Field | Control | Notes |
-|---|---|---|
-| `Weight (lb|kg)`, Goal `Current weight`, `Target` | `TextField numeric` | decimal keypad, unit in the label |
-| `Date` (weigh-in / edit) | `DateField` (range `past`) | value shown as `YYYY-MM-DD`; name `Weigh-in date` / `Entry date` |
-| Goal `Target Date` | `DateField` (range `future`) | same `YYYY-MM-DD` value as the weigh-in date, `Select date` placeholder; name `Goal target date` |
-| `Note` | `TextField` | `Morning, fasted` example placeholder |
-| Save / Update / Save goal | `Button` | default tone |
-
-### Goal Card States (#1443)
-
-With no goal, the entry form shows immediately (#1459); there is no intermediate CTA.
-
-| State | Presentation |
+| Element | Value |
 |---|---|
-| No goal | form shown directly: target, date (pre-filled one month out), derived preview, `Save goal`; no `Cancel` (nothing to return to) |
-| Saved goal | summary: target, target date, to-go / On Track / Goal Met, derived guidance; `Edit` / `Clear` (`Archive` when met or ended) |
-| Create / edit | fields + derived preview + `Save goal`; header `Cancel` discards the draft and restores the saved goal |
-| Save failure | draft stays open with `Could not save your goal. Try again.`; no success state |
-| Read failure | page-level `Could not load your weight goal.` banner; never shown as no goal |
+| Header | `MonoLabel` "Log weigh-in"; editing: "Editing entry" (`primary`) + `TextAction` `Cancel` |
+| Weight input | 52dp outlined box, 22px mono, unit suffix; placeholder `185.0` / `84.0`; name `Weight (lb|kg)` |
+| Date button | 52dp, reads "Today" or `MM-DD-YYYY`; native opens the picker, web overlays `<input type="date">`; max today; name `Weigh-in date` / `Entry date` |
+| Save | 48dp `primary` fill, visible "Save" / "Update", name `Save weigh-in` / `Update entry`; disabled while saving |
+| Note | always-visible borderless "Add note" input (name `Note`, min 44dp) |
+
+### Latest
+
+| Element | Value |
+|---|---|
+| Label | `LATEST · MM-DD-YYYY` (newest entry date) |
+| Hero | `currentWeight`, 44px mono + unit |
+| Change | `recentDateWeight` vs `priorDateWeight` (#947), arrow + signed value + "vs previous"; one weigh-in day: "Weigh in on two different days to see this trend." |
+| Averages | right column behind a hairline: `7-DAY AVG` / `30-DAY AVG`, 17px mono + change vs the prior window |
+| Tone | production's goal-aware `weightTrendTone` (#1242): toward a loss/gain goal `success`, away `errorText`, pace anomalies keep severity, no goal keeps a directional cue, stable neutral |
+| Link | 48dp `HairlineRow` "Full trend in Analytics" → `onNavigate('Analytics', 'weight')` |
 
 ### Trends Card
 
-| Element | Property | Value | Line |
-|---|---|---|---|
-| Card padding | `0` (merged sections) | `WeightScreen.js:521-525` |
-| Section title | fontSize | `12` | `WeightTrendSection.js:72` |
-| | fontWeight | `700` | `WeightTrendSection.js:73` |
-| | textTransform | `uppercase` | `WeightTrendSection.js:75` |
-| | letterSpacing | `0.5` | `WeightTrendSection.js:76` |
-| Trend value | role | `metric-display-mobile` (bold mono) at `20` / line `24` | `WeightTrendSection.js` `trendValue` |
-| | color | `colors.text`; col 3 takes the goal-aware tone | |
-| Trend label | role | `label-sm` (medium mono, `11`), uppercase, `colors.textMuted` | `WeightTrendSection.js` `trendLabel` |
-| Status / caption | role | `label-md` (col 3 only), tone-colored | |
-| Truncation | | none; labels and values wrap at large text sizes | |
-| Section divider | borderBottomWidth `1` / `colors.cardBorder` | | `WeightTrendSection.js:67-69` |
+Removed from Weight in #1601: the Latest panel above carries the newest
+weigh-in and rolling averages, and the full trend lives in Analytics ›
+Bodyweight.
 
 ### Goal Display
 
-| Element | Property | Value | Line |
-|---|---|---|---|
-| Goal value (target weight) | fontSize | `28` | `WeightGoalCard.js:352` |
-| | fontWeight | `900` | `WeightGoalCard.js:353` |
-| | color | `colors.accentText` | `WeightGoalCard.js:354` |
-| Goal value (target date) | fontSize | `28` | `WeightGoalCard.js:357` |
-| | fontWeight | `900` | `WeightGoalCard.js:358` |
-| | color | `colors.text` | `WeightGoalCard.js:359` |
-| Goal label | fontSize | `12` | `WeightGoalCard.js:362` |
-| | fontWeight | `700` | `WeightGoalCard.js:364` |
-| | textTransform | `uppercase` | `WeightGoalCard.js:365` |
-| | letterSpacing | `0.5` | `WeightGoalCard.js:366` |
-| Derived row label | fontSize | `12` | `WeightGoalCard.js:405` |
-| | fontWeight | `700` | `WeightGoalCard.js:407` |
-| Derived row value | fontSize | `16` | `WeightGoalCard.js:412` |
-| | fontWeight | `700` | `WeightGoalCard.js:413` |
+Goal card states (#1443, #1601).
+
+| State | Presentation |
+|---|---|
+| No goal | compact panel: "No goal set." + `Set a goal`, which opens the existing form; no progress, pace or deficit |
+| Active goal | `GOAL · <mode>` (Cutting / Bulking / Maintaining); "N lb to go · N weeks left"; progress bar **only when `start_weight` is stored** (never inferred); Target / Target date and Target pace / Suggested split rows; `Edit` + `Clear` |
+| On Track | header status when the weight threshold is met before `target_date` (#549) |
+| Met | `Goal Met!`, `success` border; `Edit` + `Archive` |
+| Ended (overdue) | `Goal ended`; no pace/deficit; `Edit` + `Archive` + `Clear` |
+| Create / edit | header "Set a goal" / "Goal" + `Cancel`; shared `TextField` / `DateField` (`Goal target date`, range `future`), derived preview, `Save goal`; Cancel discards the draft |
+| Save failure | draft stays open with `Could not save your goal. Try again.`; no success state |
+| Read failure | page-level `Could not load your weight goal.` banner; never shown as no goal |
+
+Goal math and lifecycle are unchanged (`deriveWeightGoalAnalytics`,
+`useWeightGoalForm`).
+
+### History List / Goal History
+
+Both tables share one grid: a flexible first column, fixed `76` / `104` columns
+(right-aligned) and a `44` control slot (`HISTORY_COLUMNS`, duplicated in
+`weightStyles.js` and `weightHistoryStyles.js`; keep them identical). Column
+labels are uppercase `label-md` on the `surfaceCardHeader` band; values are 15px
+bold mono, dates 15px medium mono, muted.
+
+- **History**: `HISTORY · N` header with the filter (`Filter by date range`) and
+  expand (`Expand history` / `Collapse history`) icon buttons. Collapsed it
+  previews the newest 6 rows; expanded it windows 50 at a time. Rows show
+  `<value> <unit>`, the production severity-colored change, the full date, and a
+  44dp delete control; tapping a row edits it. "Show more weight entries" sits
+  under the rows.
+- **Goal history**: one disclosure row "Goal history · N" with "Latest:
+  Success / Missed" (bold, outcome colored); open, it shows Target / End Weight
+  / Target Date with End Weight in `success` / `errorText` by `isGoalMet`.
 
 ### Editor Actions (#919)
 
 The Weight tab's text-only editor actions each own a **44×44dp target from
 their own box**, never a `hitSlop` — `ui-design-rules.md` §15 (React Native
-clips a slop at a one-line row's bounds). Type, weight, color, and the input
-card's 16px rhythm are unchanged; only the tap box grew.
+clips a slop at a one-line row's bounds).
 
 | Control | Property | Value | Source |
 |---|---|---|---|
-| Editing-header `Cancel`, note/date `Done` (×4) | minHeight / minWidth | `44` / `44` (`justifyContent` + `alignItems` `center`) | header `Cancel` is the shared `TextAction`; the `Done`s keep `WeightScreen.js` targets |
-| | accessibilityRole / Label | `button` / `"Cancel"` (header), `"Done …"` (each disclosure) | header `Cancel` gained both in #919 |
-| Goal `Edit` / `Archive` / `Clear` chip (5 sites) | minHeight / minWidth | `44` / `44` (`center` / `center`) | shared `ActionChip` (`Archive` tone `positive`, `Clear` tone `danger`) |
+| Editing-header `Cancel` | minHeight / minWidth | `44` / `44` (`justifyContent` + `alignItems` `center`) | shared `TextAction` |
+| | accessibilityRole / Label | `button` / `"Cancel"` | added in #919 |
+| Goal `Edit` / `Archive` / `Clear` / `Set a goal` | minHeight / minWidth | `44` / `44` (`center` / `center`), static style, no `hitSlop` | `WeightGoalCard.js` `GoalAction` (outlined; `Clear` in `errorText`) since #1601 |
 | | accessibilityRole / Label | `button` / visible label | added in #919 |
 | Goal-editor `Cancel` | minHeight / minWidth | `44` / `44` (`center` / `center`) | shared `TextAction` |
 | | accessibilityRole / Label | `button` / `"Cancel"` | added in #919 |
@@ -93,18 +113,5 @@ card's 16px rhythm are unchanged; only the tap box grew.
 Guarded by the `Weight entry controls` and `Weight goal editor actions` blocks
 in `mobile/tests/interaction-target-a11y.test.js`, which assert the flattened
 target plus the parent role/name **and** `accessible === false` on the label.
-
-### History List / Goal History
-
-Both now use the [Shared History-Panel System](ui-shared-components.md#shared-history-panel-system) —
-`WeightHistoryList.js` for Weight History, `hp` StyleSheet in `WeightScreen.js`
-for Goal History. Values (radius 16, `subtleBg` header, 3-column grid, value 20,
-date 15, collapse chevron, summary count/latest) are documented there. The old
-stacked row layout (weight 17 / date 12 / stacked note) was replaced during
-#411/#412.
-
-Weight History extras: date-range filter, collapse, empty-range message ("No
-entries in this range."), and a delete `✕` affordance in the trailing control
-cell. Goal History extras: End Weight outcome coloring, Target Date column.
 
 ---
