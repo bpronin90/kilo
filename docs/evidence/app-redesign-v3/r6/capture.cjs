@@ -38,10 +38,10 @@ const STATES = {
   'timer-back-home': { scenario: 'timer-running', overlay: o.timerWithOneK, state: 'Rest timer still running back on Home after Weight', steps: async (s) => { await s.tab('Weight'); await s.tab('Home'); } },
   empty: { scenario: 'empty', state: 'Empty account: Welcome panel with Log Workout / Log Weight' },
   'first-use': { scenario: 'first-use', state: 'First use: walkthrough over the Welcome panel' },
-  'loading-cold-start': { scenario: 'populated', overlay: o.oneKSelected, state: 'Cold-start loading: reload and shoot before local-ready (startup overlay covers Home, #1372)', steps: async (s) => {
-    await s.page.reload({ waitUntil: 'commit' });
-    await s.page.waitForTimeout(250);
-  } },
+  // Cold-start loading (#1372): the shell's startup overlay covers Home until Home's local reads
+  // settle. That window is a few ms on the fixture, so it is held by CPU throttling (CDP) after a
+  // reload; the shot happens inside `hold` and the overlay's presence is asserted before AND after.
+  'loading-cold-start': { scenario: 'populated', overlay: o.oneKSelected, state: 'Cold-start loading: reload with the CPU throttled 200x and shoot while the startup overlay ("Loading your training") is verified present', hold: true },
   'link-ring-analytics': { scenario: 'populated', overlay: o.oneKSelected, state: 'Tapped the ring row: Analytics at Progressive Overload', steps: async (s) => { await s.click(id('home-exercise-progress-link')); await s.wait(1200); } },
   'link-onek-analytics': { scenario: 'populated', overlay: o.oneKSelected, state: 'Tapped 1K Progress title: Analytics at Strength', steps: async (s) => { await s.click(id('home-one-k-link')); await s.wait(1200); } },
   'link-sparkline-analytics': { scenario: 'populated', overlay: o.oneKSelected, state: 'Tapped the body-weight card body / sparkline: Analytics at the weight (Bodyweight) section', steps: async (s) => { await s.click(id('home-weight-trend')); await s.wait(1200); } },
@@ -61,6 +61,31 @@ const STATES = {
     await s.shot(file);
     manifest.push({ file, scenario: s.info.scenario, theme: s.info.theme, state, selected_tab: await s.selectedTab().catch(() => null), theme_check: await s.verifyTheme().catch(() => null), ...extra });
   };
+  const OVERLAY = '[data-testid="app-startup-overlay"]';
+  const holdLoading = async (s, file, state) => {
+    const cdp = await s.ctx.newCDPSession(s.page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 200 });
+    const count = () => s.page.locator(OVERLAY).count().catch(() => 0);
+    try {
+      // Throttling makes the window wide but not deterministic, so retry until the overlay is
+      // present both before and after the shot (a frame that never saw it is never kept).
+      for (let attempt = 1; attempt <= 8; attempt++) {
+        await s.page.reload({ waitUntil: 'commit' });
+        let before = 0;
+        for (let i = 0; i < 400 && !before; i++) { before = await count(); if (!before) await new Promise(r => setTimeout(r, 25)); }
+        if (!before) continue;
+        const f = path.join(out, file);
+        await cdp.send('Page.captureScreenshot', { format: 'png' }).then(r => fs.writeFileSync(f, Buffer.from(r.data, 'base64')));
+        const after = await count();
+        if (!after) continue;
+        manifest.push({ file, scenario: s.info.scenario, theme: s.info.theme, state, selected_tab: null, theme_check: await s.verifyTheme().catch(() => null), overlay_present_before: true, overlay_present_after: true, attempts: attempt });
+        return;
+      }
+      throw new Error('startup overlay could not be held for a shot after 8 attempts');
+    } finally {
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }).catch(() => {});
+    }
+  };
   try {
     if (!only || only.includes('first')) {
       for (const theme of FIRST_SCREEN_THEMES) {
@@ -74,8 +99,11 @@ const STATES = {
       for (const theme of STATE_THEMES) {
         const s = await h.open({ scenario: def.scenario, overlay: def.overlay || null, theme });
         try {
-          if (def.steps) await def.steps(s);
-          await record(s, `${name}-${theme}.png`, def.state);
+          if (def.hold) await holdLoading(s, `${name}-${theme}.png`, def.state);
+          else {
+            if (def.steps) await def.steps(s);
+            await record(s, `${name}-${theme}.png`, def.state);
+          }
         } catch (e) {
           manifest.push({ file: `${name}-${theme}.png`, state: def.state, error: String(e && e.message || e) });
         } finally { await s.close(); }

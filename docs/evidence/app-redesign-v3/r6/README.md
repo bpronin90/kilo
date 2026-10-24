@@ -74,7 +74,8 @@ Each row is shot as `after/<name>-hard-dark.png` and `after/<name>-clay-light.pn
 | `no-routine`, `empty-routine` | Choose routine; Add exercises, no ring | pass |
 | `recovery-open-week`, `recovery-between-weeks`, `recovery-note-missing`, `recovery-retry` | Recovery panel replaces hero, 1K hidden; unreadable record keeps Retry recovery | pass |
 | `error-retry`, `sync-notice` | Goal-read error banner + Retry; Cloud Sync notice | pass |
-| `empty`, `first-use`, `loading-cold-start` | Welcome panel; walkthrough; startup overlay | pass |
+| `empty`, `first-use` | Welcome panel; walkthrough | pass |
+| `loading-cold-start` | Real cold-start loading: the shell's "Loading your training" overlay covers Home (#1372). Held by reload under 200x CPU throttling; the runner retries until `app-startup-overlay` is present both before and after the shot (manifest records `overlay_present_before/after` and attempts). Shot via CDP at 390x844 CSS px (1x), unlike the other PNGs. Home itself is not drawn during loading, by design. | pass |
 | `timer-home`, `timer-log`, `timer-back-home` | Rest timer visible on Home, Log, and back on Home; clears docked bar | pass |
 | `link-ring-analytics` | Ring row opens Analytics (Progressive Overload) | pass |
 | `link-onek-analytics` | 1K title opens Analytics (Strength) | pass |
@@ -84,8 +85,8 @@ Each row is shot as `after/<name>-hard-dark.png` and `after/<name>-clay-light.pn
 | `link-recovery-evidence` | Recovery Evidence opens Analytics (Recovery) | pass |
 | `link-sync-icon`, `link-log-workout` | Sync icon opens More > Cloud Sync; + Log workout opens Log | pass |
 
-The manifest recorded 64 entries, 0 errors, the requested tab selected and
-the theme reached for every shot.
+The manifest recorded 64 entries, 0 errors and the theme reached for every shot (the
+requested tab selected for every non-loading shot).
 
 ## Comparison against the checklist
 
