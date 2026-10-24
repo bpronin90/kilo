@@ -68,7 +68,7 @@ import { useLogRecoveryManage } from './log/useLogRecoveryManage';
 import { useLogRoutineReadView } from './log/LogRoutineReadView';
 import { LogActiveRoutineCard } from '../components/LogActiveRoutineCard';
 
-// Scroll offset where the 44dp docked timer's countdown starts to clip (8dp header padding + 12dp).
+// Scroll past the docked toolbar timer's own top by this much and it hands off.
 const DOCKED_TIMER_HANDOFF_SCROLL_Y = 12;
 export function LogScreen({
   workoutNoteText,
@@ -89,6 +89,7 @@ export function LogScreen({
   restTimerRemainingMs = 0,
   restTimerJustElapsed = false,
   restTimerBackgroundAlertAvailable = true,
+  restTimerDurationSec = null,
   onStartRestTimer,
   onCancelRestTimer,
   onDismissRestTimerDone,
@@ -444,6 +445,25 @@ export function LogScreen({
   const restTimerDocked = !importRoutineOpen && !otherEditor.editingNoteId && currentEditor.mode === 'edit';
   const [editorHeaderScrolledAway, setEditorHeaderScrolledAway] = useState(false);
   const restTimerDockVisible = restTimerDocked && !editorHeaderScrolledAway;
+  // #1607: the control sits in the editor card's tool row; its content offset
+  // is measured (window y + scroll y) so handoff tracks it, not the header.
+  const dockRef = useRef(null); const dockY = useRef(0); const editorScrollY = useRef(0);
+  const measureDock = () => dockRef.current?.measureInWindow?.((x, y) => { dockY.current = y + editorScrollY.current; });
+  // #1006/#1321: one docked control (stopwatch, countdown, Rest over); App.js
+  // hides its pill while this is on screen.
+  const banner = (
+    <RestTimerBanner
+      isRunning={restTimerIsRunning}
+      remainingMs={restTimerRemainingMs}
+      justElapsed={restTimerJustElapsed}
+      backgroundAlertAvailable={restTimerBackgroundAlertAvailable}
+      onCancel={onCancelRestTimer}
+      onDismissDone={onDismissRestTimerDone}
+      onStart={onStartRestTimer}
+      showStart={restTimerDocked} handedOff={!restTimerDockVisible} durationSec={restTimerDurationSec}
+      compact
+    />
+  );
   useEffect(() => { onRestTimerDockedChange?.(restTimerDockVisible); }, [restTimerDockVisible, onRestTimerDockedChange]);
   useEffect(() => () => onRestTimerDockedChange?.(false), [onRestTimerDockedChange]);
 
@@ -498,7 +518,7 @@ export function LogScreen({
 
       <ScreenShell
         ref={editorScrollRef}
-        onScroll={(e) => setEditorHeaderScrolledAway((e?.nativeEvent?.contentOffset?.y ?? 0) > DOCKED_TIMER_HANDOFF_SCROLL_Y)}
+        onScroll={(e) => setEditorHeaderScrolledAway((editorScrollY.current = e?.nativeEvent?.contentOffset?.y ?? 0) > dockY.current + DOCKED_TIMER_HANDOFF_SCROLL_Y)}
         style={isEditing ? { flex: 1 } : { display: 'none' }}
         title={
           deloadEditor.deloadMode === 'edit' ? 'Deload Week' :
@@ -513,22 +533,6 @@ export function LogScreen({
         }
         headerRight={
           <View style={styles.editorHeaderActions}>
-            {/* #1006/#1321: the rest timer docks in the editor's header
-                corner in current-routine edit only — stopwatch, live
-                countdown, or Rest over in one place, with its panel opening
-                out of flow. It reserves no editor or bottom-navigation space;
-                App.js hides its app-shell pill while this one is docked. */}
-            <RestTimerBanner
-              isRunning={restTimerIsRunning}
-              remainingMs={restTimerRemainingMs}
-              justElapsed={restTimerJustElapsed}
-              backgroundAlertAvailable={restTimerBackgroundAlertAvailable}
-              onCancel={onCancelRestTimer}
-              onDismissDone={onDismissRestTimerDone}
-              onStart={onStartRestTimer}
-              showStart={restTimerDocked} handedOff={!restTimerDockVisible}
-              compact
-            />
             <EditorHeaderActions otherEditor={otherEditor} deloadEditor={deloadEditor} currentEditor={currentEditor} />
           </View>
         }
@@ -536,6 +540,7 @@ export function LogScreen({
       >
         <LogScreenEditorCard
           {...editorCardProps}
+          toolbarTimer={restTimerDocked ? <View ref={dockRef} onLayout={measureDock}>{banner}</View> : null}
           handleRevertEdit={
             otherEditor.editingNoteId ? otherEditor.handleUndoOther :
             currentEditor.handleUndoCurrent

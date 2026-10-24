@@ -131,6 +131,7 @@ export function LogScreenEditorCard({
   // this prop, since Recovery applies its own equivalent locally.
   pendingSourceJump = null,
   onSourceJumpApplied,
+  toolbarTimer = null, // #1607: docked rest-timer control, first in the tool row
 }) {
   const { colors } = useTheme();
   const kua = useKuaStyle();
@@ -368,6 +369,7 @@ export function LogScreenEditorCard({
                   setToolRowHeight(prev => (prev === height ? prev : height));
                 }}
               >
+                {toolbarTimer}
                 <Pressable
                   onPress={() => setSyntaxHelpVisible(true)}
                   style={styles.syntaxHelpButton}
