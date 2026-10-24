@@ -360,10 +360,20 @@ Codes: `invalid_arguments`, `invalid_cursor`, `consent_required`, `rate_limited`
 database errors, arguments or row content. Token, grant and session failures are
 **protocol** errors (HTTP 401 with challenge), never tool errors.
 
+**Cursor bound.** Both tools' cursors are base64url of compact JSON that holds one
+row id plus at most two RFC 3339 timestamps and short fixed keys.
+- A stored id is ≤ 512 characters (`20260823200340`), and each character
+  JSON-encodes to ≤ 6 bytes, so ≤ 3072 bytes. Timestamps and keys add < 200
+  bytes, for ≤ 3272 bytes of JSON.
+- Base64url adds 4/3, giving ≤ 4363 characters. The 6144-character input limit
+  therefore accepts every cursor the server can issue, with margin.
+- Test fixture: a 512-character id of multibyte and control characters, round-
+  tripped through a page boundary.
+
 ### 7.2 `workout_notes_list` (#1627)
 
 Input: `limit` int 1–100 (default 20; max 25 when `include_raw_text`),
-`cursor` string ≤ 512, `include_raw_text` bool (default false).
+`cursor` string ≤ 6144 chars (§7.1 cursor bound), `include_raw_text` bool (default false).
 
 Item: `id`, `title` (nullable), `saved_at` (nullable, client-reported save time),
 `updated_at` (server last-modified time), `is_current`, and only when opted in:
@@ -382,7 +392,7 @@ only move position within the caller's own RLS-visible rows.
 
 ### 7.3 `weight_entries_list` (#1628)
 
-Input: `limit` 1–100 (default 50), `cursor`, optional `logged_from`/`logged_to`
+Input: `limit` 1–100 (default 50), `cursor` (≤ 6144 chars, §7.1), optional `logged_from`/`logged_to`
 (RFC 3339 instants with offset, `from < to`, span ≤ 366 days).
 
 Item: `id`, `value`, `unit: "lb"`, `original_unit: null`,
