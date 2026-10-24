@@ -38,6 +38,8 @@ import {
   progressionSuggestionInstanceId,
 } from '../components/ProgressionSuggestionCard';
 import { createStyles } from './analytics/analyticsStyles';
+import { overloadChipsVisible } from './analytics/OverloadFilterChips';
+import { filterGroupsByStatus } from './analytics/OverloadRows';
 import { buildAnalyticsContent } from './analytics/AnalyticsSectionContent';
 import { ChapterIndex, NORMAL_CHAPTERS, ACTIVE_RECOVERY_CHAPTERS } from './analytics/AnalyticsChapters';
 import { useAnalyticsChapterNavigation } from './analytics/useAnalyticsChapterNavigation';
@@ -133,6 +135,9 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState(new Set());
+  // Progressive Overload status chip (#1604): in memory, tied to the routine it
+  // was chosen on, so another routine starts at All.
+  const [statusChoice, setStatusChoice] = useState({ noteId: null, value: 'all' });
 
   const weightEntries = useMemo(() => {
     return (hookWeightEntries || []).filter(e => e && e.date && e.weight_value != null);
@@ -272,9 +277,15 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     });
   };
 
+  // A chip that is not on screen (loading, no summary, baseline state) never
+  // filters; search and the chip compose on the same derived day groups.
+  const statusFilter = statusChoice.noteId === (currentNote?.id ?? null)
+    && overloadChipsVisible(analytics, isNotesLoading || isTrackedLoading)
+    ? statusChoice.value
+    : 'all';
   const groupedSignals = useMemo(
-    () => deriveGroupedSignals(parsedSections, analytics, searchQuery),
-    [parsedSections, analytics, searchQuery]
+    () => filterGroupsByStatus(deriveGroupedSignals(parsedSections, analytics, searchQuery), statusFilter, analytics, unit),
+    [parsedSections, analytics, searchQuery, statusFilter, unit]
   );
 
   function handleSlotTap(slot) {
@@ -415,6 +426,12 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       onDismissProgression: handleDismissProgression,
       groupedSignals, toggleAllGroups, allGroupsCollapsed, collapsedGroups, toggleGroup,
       searchQuery, setSearchQuery, unit,
+      statusFilter,
+      onStatusFilterChange: value => setStatusChoice({ noteId: currentNote?.id ?? null, value }),
+      // View in Log targets the routine the rows were derived from; while
+      // Recovery is active the current note is a recovery week, so none.
+      currentNoteId: isActiveRecovery ? null : (currentNote?.id ?? null),
+      currentSections: parsedSections.currentSections,
     },
     routineHealthProps: {
       sinceDeload, sessionCount, deloadModeEnabled, fatigueTrackingEnabled,

@@ -1,109 +1,10 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { ArtisanalPanel } from '../../components/UI';
-import { normalizeLiftName } from '../../lib/data';
-import { formatDuration } from '../../lib/format';
-import { formatLiftWeightValue } from '../../lib/units';
-import { CrossDayComparison, formatOverload } from '../../components/AnalyticsCrossDayComparison';
+import { OverloadRow, OverloadColumnHeader, describePoRowState } from './OverloadRows';
 
-// #894: a row whose tracked span holds no comparison yet — a just-opened
-// span (activation record, `first_session`/non-weighted 'dash') or a single
-// logged session — says so in plain words. How tracked spans and inherited
-// (pre-activation) history behave is methodology: it lives behind the
-// Progressive Overload section's info disclosure, not inline on every row.
-export function describePoRowState({ isFirstSpanSession, hasCapabilityData }) {
-  if (!hasCapabilityData) return null;
-  return isFirstSpanSession ? 'First session' : null;
-}
-
-// One exercise's Progressive Overload row: its captioned tracking state, its
-// weighted or non-weighted metric grid, and (for a multi-day exercise) either
-// the full cross-day comparison or the plain "Also on ..." fallback line.
-// Moved verbatim out of AnalyticsScreen.js (card #1051) — no presentation
-// change, only the module boundary.
-function renderExerciseRow(sig, { analytics, unit, styles, colors, kua = null }) {
-  const normName = normalizeLiftName(sig.name);
-  const dayRow = sig.isMultiDay && sig.daySignals ? sig.daySignals[sig.currentDayHeading] : null;
-  const rowPr = dayRow ? dayRow.latest_pr : sig.latest_pr;
-  const rowTopWeight = dayRow ? dayRow.latest_top_weight : sig.latest_top_weight;
-  const rowTrend = dayRow?.overload_trend ?? sig.overload_trend;
-  const rowIsBodyweight = dayRow ? dayRow.is_bodyweight : sig.is_bodyweight;
-  const nw = analytics.nonWeightedMetrics?.[normName];
-
-  const nwArrow = nw ? (nw.exercise_class === 'reps_only' ? nw.reps_arrow : nw.hold_arrow) : null;
-  const hasCapabilityData = nw
-    ? (nw.exercise_class === 'reps_only' ? nw.avg_reps != null : nw.avg_hold != null)
-    : (rowPr != null || sig.kilo_max != null || rowTopWeight != null);
-  const isFirstSpanSession = nw ? nwArrow === 'dash' : rowTrend === 'first_session';
-  const poCaption = describePoRowState({ isFirstSpanSession, hasCapabilityData });
-
-  return (
-    <View key={normName + sig.currentDayHeading} style={[styles.signalRow, styles.signalRowBorder]}>
-      <View style={styles.signalNameRow}>
-        <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normName) || sig.name}</Text>
-      </View>
-      {poCaption && (
-        <Text style={styles.trackingCaption}>{poCaption}</Text>
-      )}
-
-      {nw ? (
-        <View style={styles.signalMetricsGrid}>
-          <View style={styles.metricCol}>
-            <Text style={styles.signalValue}>
-              {nw.exercise_class === 'reps_only'
-                ? (nw.avg_reps ?? 'N/A')
-                : formatDuration(nw.avg_hold)}
-            </Text>
-            <Text style={styles.nwMetricLabel}>AVG</Text>
-          </View>
-          <View style={styles.metricCol}>
-            <Text style={styles.signalValue}>
-              {nw.exercise_class === 'reps_only'
-                ? (nw.best_set_reps ?? 'N/A')
-                : formatDuration(nw.best_hold)}
-            </Text>
-            <Text style={styles.nwMetricLabel}>BEST</Text>
-          </View>
-          <View style={styles.metricCol} />
-          <View style={styles.metricCol}>
-            {formatOverload(nw.exercise_class === 'reps_only' ? nw.reps_arrow : nw.hold_arrow, colors, kua)}
-          </View>
-        </View>
-      ) : (
-        <View style={styles.signalMetricsGrid}>
-          <View style={styles.metricCol}>
-            <Text style={styles.signalValue}>
-              {rowPr ? formatLiftWeightValue(Math.round(rowPr), unit) : 'N/A'}
-              {rowPr ? <Text style={styles.unitSuffix}>{unit}</Text> : null}
-            </Text>
-          </View>
-          <View style={styles.metricCol}>
-            <Text style={styles.signalValue}>
-              {sig.kilo_max != null ? formatLiftWeightValue(sig.kilo_max, unit) : 'N/A'}
-              {sig.kilo_max != null ? <Text style={styles.unitSuffix}>{unit}</Text> : null}
-            </Text>
-          </View>
-          <View style={styles.metricCol}>
-            <Text style={styles.signalValue}>
-              {rowTopWeight ? (rowIsBodyweight ? rowTopWeight : formatLiftWeightValue(rowTopWeight, unit)) : 'N/A'}
-              {rowTopWeight ? <Text style={styles.unitSuffix}>{rowIsBodyweight ? 'reps' : unit}</Text> : null}
-            </Text>
-          </View>
-          <View style={styles.metricCol}>
-            {formatOverload(rowTrend, colors, kua)}
-          </View>
-        </View>
-      )}
-
-      {sig.isMultiDay && (
-        sig.daySignals
-          ? <CrossDayComparison daySignals={sig.daySignals} currentDay={sig.currentDayHeading} otherDays={sig.otherDays} />
-          : sig.otherDays.length > 0 && <Text style={styles.multiDaySummary}>Also on {sig.otherDays.join(', ')}</Text>
-      )}
-    </View>
-  );
-}
+// Re-exported: the row caption lives with the row presentation (#1604).
+export { describePoRowState };
 
 // The Progressive Overload list's own loading / populated / empty-search /
 // empty-tracked states (#821, #737), rendered inside the Progressive Overload
@@ -120,7 +21,10 @@ export function renderOverloadListContent({
   kua = null,
   styles,
   searchQuery,
+  statusFilterActive = false,
   onNavigate,
+  onOpenExercise,
+  registerRow,
 }) {
   if (isNotesLoading || isTrackedLoading) {
     return (
@@ -132,40 +36,59 @@ export function renderOverloadListContent({
 
   if (groupedSignals.length > 0) {
     return (
-      <ArtisanalPanel key="po-container" style={styles.poContainer}>
-        {groupedSignals.map((group, groupIdx) => {
+      <View key="po-container" testID="po-container">
+        <OverloadColumnHeader styles={styles} />
+        {groupedSignals.map((group) => {
           const isCollapsed = collapsedGroups.has(group.name);
+          const rows = group.exercises || [];
           return (
-            <View key={group.name} style={[styles.groupSection, groupIdx > 0 && styles.groupSectionBorder]}>
+            <View key={group.name} style={styles.groupSection}>
               <Pressable
                 testID={`po-group-header-${group.name}`}
                 onPress={() => toggleGroup(group.name)}
                 style={styles.groupHeader}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: !isCollapsed }}
+                accessibilityLabel={`${group.name}, ${rows.length} ${rows.length === 1 ? 'exercise' : 'exercises'}`}
               >
-                <Text style={styles.groupName}>{group.name}</Text>
+                <Text style={styles.groupName} accessible={false}>
+                  {group.name}
+                  <Text style={styles.groupCount}>{` · ${rows.length}`}</Text>
+                </Text>
                 <MaterialIcons
                   name={isCollapsed ? "expand-more" : "expand-less"}
                   size={20}
                   color={kua ? kua.onSurfaceVariant : colors.textMuted}
+                  accessible={false}
                 />
               </Pressable>
 
-              {!isCollapsed && (
-                <View style={styles.exerciseList}>
-                  {group.exercises.map((sig) => renderExerciseRow(sig, { analytics, unit, styles, colors, kua }))}
-                </View>
-              )}
+              {!isCollapsed && rows.map(sig => (
+                <OverloadRow
+                  key={sig.name + sig.currentDayHeading}
+                  sig={sig}
+                  analytics={analytics}
+                  unit={unit}
+                  styles={styles}
+                  colors={colors}
+                  kua={kua}
+                  onOpen={onOpenExercise}
+                  rowRef={registerRow ? registerRow(sig) : undefined}
+                />
+              ))}
             </View>
           );
         })}
-      </ArtisanalPanel>
+      </View>
     );
   }
 
-  if (searchQuery) {
+  if (searchQuery || statusFilterActive) {
     return (
       <View key="empty-search" style={styles.emptySearch}>
-        <Text style={styles.emptyText}>No matches for "{searchQuery}"</Text>
+        <Text style={styles.emptyText}>
+          {searchQuery ? `No matches for "${searchQuery}"` : 'No exercises match this filter'}
+        </Text>
       </View>
     );
   }

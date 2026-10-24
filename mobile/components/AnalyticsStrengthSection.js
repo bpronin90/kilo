@@ -1,7 +1,8 @@
 import { GEOMETRY } from '../theme/spacing';
 import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Card, SectionTitle, LineChart, ArtisanalPanel } from './UI';
+import { Card, SectionTitle, LineChart } from './UI';
+import { Panel, Disclosure } from './ui/RedesignPrimitives';
 import { OneKProgressSummary, createOneKSummaryStyles } from './OneKProgressSummary';
 import { PlateCalculatorModal } from './PlateCalculatorModal';
 import { useTheme } from '../theme/ThemeContext';
@@ -57,12 +58,15 @@ export function AnalyticsStrengthSection({
     <View onLayout={handleStrengthLayout} style={styles.strengthSection}>
       <SectionTitle>Strength</SectionTitle>
       {(isNotesLoading || oneK?.total) ? (
-        <ArtisanalPanel style={[styles.oneKCard, isNotesLoading && { opacity: 0.5, minHeight: 160, justifyContent: 'center' }]}>
+        // One flat panel (#1604): the 1K summary, then the chart and the Big 3
+        // mapping as hairline disclosure rows — no panel inside the panel.
+        <Panel testID="onek-panel" style={isNotesLoading ? styles.oneKLoading : null}>
           {isNotesLoading ? (
             <ActivityIndicator size="large" color={kua ? kua.primary : colors.accent} />
           ) : (
             <>
               <OneKProgressSummary
+                variant="panel"
                 total={displayOneK.total}
                 target={oneKTarget}
                 unit={unit}
@@ -101,33 +105,42 @@ export function AnalyticsStrengthSection({
                   accessibilityLabel: item.value ? `Show plate loading for ${item.label} at ${item.value.toFixed(0)} ${unit === 'kg' ? 'kilograms' : 'pounds'}` : undefined,
                 }))}
               >
-              {oneKChartData.length > 1 && (
-                <View style={styles.oneKChartBlock}>
-                  <Text style={styles.oneKChartLabel}>1K total over sessions</Text>
-                  <LineChart
-                    data={oneKChartData}
-                    height={120}
-                    hideHeader
-                    showScale
-                    color={kua ? kua.primary : undefined}
-                    seriesLabel="1K total by session"
-                    onSelect={p => setSelectedSeriesPoint(p)}
-                  />
-                </View>
-              )}
+                {oneKChartData.length > 1 && (
+                  <Disclosure
+                    testID="onek-chart-disclosure"
+                    title="1K total over sessions"
+                    divider
+                    // A selected session replaces the headline total; closing the
+                    // chart that selected it restores the latest.
+                    onToggle={open => { if (!open) setSelectedSeriesPoint(null); }}
+                    bodyStyle={styles.oneKChartBlock}
+                  >
+                    <LineChart
+                      data={oneKChartData}
+                      height={120}
+                      hideHeader
+                      showScale
+                      color={kua ? kua.primary : undefined}
+                      seriesLabel="1K total by session"
+                      onSelect={p => setSelectedSeriesPoint(p)}
+                    />
+                  </Disclosure>
+                )}
               </OneKProgressSummary>
+              {big3Mapping}
             </>
           )}
-        </ArtisanalPanel>
+        </Panel>
       ) : (
-        <Card style={styles.infoCard}>
-          <Text style={styles.infoText}>
-            Choose your squat, bench, and deadlift exercises below to track 1k progress.
-          </Text>
-        </Card>
+        <>
+          <Card style={styles.infoCard}>
+            <Text style={styles.infoText}>
+              Choose your squat, bench, and deadlift exercises below to track 1k progress.
+            </Text>
+          </Card>
+          {big3Mapping ? <Panel>{React.cloneElement(big3Mapping, { divider: false })}</Panel> : null}
+        </>
       )}
-
-      {big3Mapping}
 
       <PlateCalculatorModal
         visible={plateWeightLb != null}
@@ -147,6 +160,8 @@ export function AnalyticsBig3MappingCard({
   oneKSelections,
   noteExerciseNames,
   handleSelectExercise,
+  // Ruled from the 1K summary above it when embedded in that panel (#1604).
+  divider = true,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
@@ -155,7 +170,7 @@ export function AnalyticsBig3MappingCard({
   const [big3Collapsed, setBig3Collapsed] = useState(true);
 
   return (
-      <Card style={styles.slotCard}>
+      <View testID="big3-mapping" style={[styles.slotCard, divider ? styles.slotCardRuled : null]}>
         <Pressable
           style={styles.slotCardHeader}
           onPress={() => setBig3Collapsed(c => !c)}
@@ -225,7 +240,7 @@ export function AnalyticsBig3MappingCard({
             )}
           </View>
         ))}
-      </Card>
+      </View>
   );
 }
 
@@ -235,11 +250,14 @@ export const createStyles = (colors, kua = null) => {
   strengthSection: {
     gap: 12,
   },
+  // Historical key, read by the theme fixtures; the Panel now owns the surface.
   oneKCard: {
-    padding: 24,
-    alignItems: 'center',
-    gap: 8,
     backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
+  },
+  oneKLoading: {
+    opacity: 0.5,
+    minHeight: 160,
+    justifyContent: 'center',
   },
   // The 1K heading/total/bar/breakdown styles live with the shared
   // OneKProgressSummary (#1458); these are the same style objects, kept under
@@ -247,16 +265,8 @@ export const createStyles = (colors, kua = null) => {
   oneKValue: summaryStyles.oneKValue,
   oneKProgressBar: summaryStyles.oneKProgressBar,
   oneKChartBlock: {
-    width: '100%',
-    marginTop: 16,
-  },
-  oneKChartLabel: {
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
-    fontWeight: '800',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    textAlign: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
   oneKInfoBody: {
     width: '100%',
@@ -284,13 +294,17 @@ export const createStyles = (colors, kua = null) => {
   },
   slotCard: {
     gap: 4,
-    padding: 16,
+  },
+  slotCardRuled: {
+    borderTopWidth: 1,
+    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   slotCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    minHeight: 44,
+    minHeight: 48,
+    paddingHorizontal: 16,
   },
   slotCardTitleBlock: {
     flex: 1,
@@ -301,10 +315,9 @@ export const createStyles = (colors, kua = null) => {
     color: kua ? kua.onSurface : colors.text,
   },
   slotCardTitle: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
-    fontWeight: '700',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textTransform: 'uppercase',
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
+    fontWeight: '600',
+    color: kua ? kua.onSurface : colors.text,
     marginBottom: 0,
   },
   // The slot row and each picker option carry the 44dp minimum in the box: they
@@ -315,6 +328,7 @@ export const createStyles = (colors, kua = null) => {
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 10,
+    paddingHorizontal: 16,
     borderTopWidth: 1,
     borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
     minHeight: 44,
@@ -340,7 +354,8 @@ export const createStyles = (colors, kua = null) => {
   slotPicker: {
     backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
     borderRadius: GEOMETRY['radius-lg'],
-    marginBottom: 4,
+    marginHorizontal: 16,
+    marginBottom: 8,
     overflow: 'hidden',
   },
   slotOption: {
@@ -367,7 +382,7 @@ export const createStyles = (colors, kua = null) => {
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontStyle: 'italic',
     paddingVertical: 8,
-    paddingHorizontal: 4,
+    paddingHorizontal: 16,
   },
   });
 };
