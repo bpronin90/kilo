@@ -29,7 +29,7 @@ const degradedRows = withMainNote([
   '-Pull Up', 'BW 8,8,7', 'BW 9,8,8', '-',
   '-Bench Press', '185 5,5,5', 'not a set line ???', '-', '190 5,5,4 -- grindy last rep',
   '+Conditioning',
-  '-Plank 3×45s', '45,45,45', '60,60,45',
+  '-Plank 3x45 sec', '45', '60', '50',
 ].join('\n'));
 
 module.exports = { repeatedNames, degradedRows };

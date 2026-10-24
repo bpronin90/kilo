@@ -1,6 +1,6 @@
 # R8 (#1607) visual evidence — Log history sheet and rest-timer surfaces
 
-- **Rendered commits:** panel states (`editor-presets-*`, `editor-safe-area-*`, `editor-short-safe-area-*`, `editor-timer-done-*`, `editor-timer-cancelled-*`) at `e66b911dcb40dd242f2ac5671587313f420baeeb` (vertical fit); other timer/pill states (`editor-toolbar-idle`, `editor-docked-visible`, `editor-scrolled-pill`, `pill-*`, `home-timer-pill-*`) at `42b23561d7d7cd7a1646a6836a82bd8d690b3480` — e66b911 changes only the panel's vertical placement, which those states never open; `history-*` and `log-first-*` at `34c45b58f412ee2aad28ad4ce72ee4e97e38669e` (positional unparsed rows kept). Real app Expo web export, not prototype HTML.
+- **Rendered commits:** panel states (`editor-presets-*`, `editor-safe-area-*`, `editor-short-safe-area-*`, `editor-timer-done-*`, `editor-timer-cancelled-*`) at `e66b911dcb40dd242f2ac5671587313f420baeeb` (vertical fit); other timer/pill states (`editor-toolbar-idle`, `editor-docked-visible`, `editor-scrolled-pill`, `pill-*`, `home-timer-pill-*`) at `42b23561d7d7cd7a1646a6836a82bd8d690b3480` — e66b911 changes only the panel's vertical placement, which those states never open; `history-*` and `log-first-*` at `651d8cdce591bce0068905abe2cfd6e039376415` (timed fixture uses the parser's duration-header syntax). Real app Expo web export, not prototype HTML.
 - **Viewport:** 390×844 @2x via the shared harness (`../capture.cjs`, read-only); issue-local overlays in `fixtures.cjs`.
 - **Themes:** every state in hard-dark and clay-light; Log first screen and Home pill (first affected screens) also in grass-light and clay-dark.
 - **References:** `docs/design/app-redesign-v3/shots/hybrid/` state-log-history-sheet, state-log-editor, state-log-editor-timer, state-home-timer-running (hard-dark).
@@ -24,7 +24,7 @@ cd mobile && EXPO_PUBLIC_SUPABASE_URL=https://mockproj.supabase.co EXPO_PUBLIC_S
 cd .. && KILO_RENDERED_COMMIT=795f739a6d5e20da854a19965ace2a84bd60535f   node docs/evidence/app-redesign-v3/r8/capture.cjs /tmp/kilo-1607-dist-795f /tmp/kilo-review-tools/node_modules
 ```
 
-The runs (full matrix first; `history,log-first` rerun at 34c45b5 and `editor,home,pill` rerun at 42b2356, panel states rerun at e66b911, each with the same command plus that `only` filter) captured all 52 states without a step failure (manifest written to the work dir). Later commits on this branch change only docs/evidence/changelog, so the renders still apply.
+The runs (full matrix first; `history,log-first` rerun at 651d8cd and `editor,home,pill` rerun at 42b2356, panel states rerun at e66b911, each with the same command plus that `only` filter) captured all 52 states without a step failure (manifest written to the work dir). Later commits on this branch change only docs/evidence/changelog, so the renders still apply.
 
 ## Degradation and preserved capabilities
 
