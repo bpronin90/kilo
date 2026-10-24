@@ -70,7 +70,17 @@ it supersedes the locks above for the files it lists. The editor is unchanged.
 - **Active panels:** the current routine, the active deload (`Active deload`
   kicker) and the active Recovery block share the 2px primary border. All their
   actions are unchanged.
-- **Deferred to R8 (#1607):** the history icon/sheet and the timer presentation.
+- **History sheet (#1607):** each Log exercise has a labelled 44dp history
+  icon beside `Track`. It opens a dismissible bottom sheet
+  (`components/log/ExerciseHistorySheet.js`) for that one parsed occurrence —
+  never merged by name across days, blocks or routines. The subtitle names the
+  day, block and (A/B routines) week; the sheet shows a top-set load by
+  session line (x = session index, no dates) over existing parsed
+  `weight_value`s only, with a text equivalent, then every session newest-first
+  in the same set ink with marks/annotations. BW, timed, skipped and unparsed
+  sessions stay listed but are omitted from the line, never charted as zero.
+  Selection is in memory and scoped like the fold state, so a routine, week or
+  saved-edit change drops it; closing returns focus to the history icon.
 
 ### Action hierarchy (#711)
 
@@ -214,17 +224,21 @@ Consequences to preserve:
   `Save routine`, captioned `Saves and keeps editing. Done saves and closes.`
 - **Rest timer is one docked control.** In current-routine edit the header
   control stays mounted through idle (stopwatch), running (live countdown) and
-  done (`Rest over`); one anchored 288dp panel (#1327, clamped to both
-  viewport edges on narrow screens) holds a header with
-  the state in large type (`Rest timer`, the live countdown, or `Rest over`)
-  and a caption, five equal-width presets in one row labelled in the
-  countdown's m:ss format (`0:30 1:00 1:30 2:00 3:00`; Start, or Restart while
-  running/done), and a full-width outlined Cancel or Dismiss button; a failed background alert shows
+  done (`Rest over`); one anchored 320dp panel (#1327/#1607,
+  `components/restTimer/RestTimerPresetPanel.js`, clamped to both viewport
+  edges on narrow screens) holds a header with the state in large type
+  (`Rest timer`, the live countdown with `of m:ss rest` and a progress track
+  when the running length is known, or `Rest over`), five equal-width presets
+  in one row labelled in the countdown's m:ss format (`0:30 1:00 1:30 2:00
+  3:00`; Start, or Restart while running/done; the running length is marked
+  selected), and outlined `Cancel timer` + `Dismiss` (closes the panel) while
+  running or `Dismiss` when done; a failed background alert shows
   on the closed control as a `notifications-off` glyph. App.js hides the
   app-shell pill only while that control is on screen — once the editor scrolls
   it away (past 12dp) the fixed pill returns and the docked control turns
   invisible and inert in place (no header reflow) — so the countdown never shows twice and is
-  never unreachable; the pill shows Cancel (running) or Dismiss (done) directly.
+  never unreachable; the pill (`components/restTimer/RestTimerPill.js`, primary
+  outline) shows Cancel (running) or Dismiss (done) directly.
 - **Recovery is its own tab, present only while `LogRecoverySection` has
   something to show (#823).** `recoveryTabVisible` (`LogScreen.js`) mirrors
   that component's own early-return contract exactly — not just an active
