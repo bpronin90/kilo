@@ -1,12 +1,12 @@
 import React, { useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { Card } from '../../components/UI';
+import { MonoLabel, Panel } from '../../components/ui/RedesignPrimitives';
+import { Icon } from '../../components/Icon';
 import { useTheme } from '../../theme/ThemeContext';
 import { HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './homeDashboardData';
 import { recoveryBig3Rows, recoveryBig3Value } from '../../lib/data/recoveryBig3';
 import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
-import { Chevron } from './HomeActionStrip';
 import { Big3Bars } from '../../components/Big3Bars';
 
 // Active-recovery status on Home (#757).
@@ -105,79 +105,82 @@ export function HomeRecoverySummary({ summary, onNavigate, actions = null }) {
 
   if (!active) {
     return (
-      // Wrapped rather than testID'd directly: Card takes only children/style/
-      // tone/onPress and would swallow the prop.
       <View testID="home-recovery-summary">
-        <Card style={styles.recoveryCard}>
-          <View
-            accessible
-            accessibilityRole={isLoadingStatus ? 'progressbar' : 'alert'}
-            accessibilityLabel={`1K recovery. ${message}`}
-          >
-            <Text style={styles.recoveryLabel}>1K recovery</Text>
-            <Text style={styles.recoveryStatusLine}>{message}</Text>
+        <Panel>
+          <View style={styles.heroPad}>
+            <View
+              accessible
+              accessibilityRole={isLoadingStatus ? 'progressbar' : 'alert'}
+              accessibilityLabel={`1K recovery. ${message}`}
+              style={styles.recoveryStatusBlock}
+            >
+              <MonoLabel style={styles.recoveryLabel}>1K recovery</MonoLabel>
+              <Text style={styles.recoveryStatusLine}>{message}</Text>
+            </View>
+            {canRetry ? <RetryRecovery summary={summary} styles={styles} /> : null}
+            {actions}
           </View>
-          {canRetry ? <RetryRecovery summary={summary} styles={styles} /> : null}
-          {actions}
-        </Card>
+        </Panel>
       </View>
     );
   }
 
+  // Redesign v3 (#1605): the active Recovery panel replaces the hero — label
+  // and Evidence handoff, the total as the hero number, the Big 3 bars, then
+  // the actions.
   return (
     <View testID="home-recovery-summary">
-      <Card style={styles.weeklyHero}>
-        {/* The header is the handoff (#820) to the Recovery section itself (#770). */}
-        <Pressable
-          testID="home-recovery-link"
-          onPress={() => onNavigate('Analytics', 'recovery')}
-          style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart, styles.recoveryHeaderLink]}
-          hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
-          accessibilityRole="button"
-          accessibilityLabel="Recovery"
-          accessibilityHint="Opens the Recovery section of the Analytics tab"
-        >
-          <View style={styles.heroAccentBar} />
-          <Text style={[styles.heroSectionLabel, styles.sectionHeaderLabel]} numberOfLines={1}>
-            {weekName ? 'Recovery · ' : 'Recovery'}
-            {/* Hidden from screen readers: the announcement below names the week. */}
-            {weekName ? <Text testID="home-recovery-week" accessibilityElementsHidden importantForAccessibility="no">{weekName}</Text> : null}
-          </Text>
-          <View style={styles.sectionHeaderChevron}>
-            <Chevron color={kua ? kua.onSurfaceVariant : colors.textMuted} />
+      <Panel active>
+        <View style={styles.heroPad}>
+          {/* The header is the handoff (#820) to the Recovery section itself (#770). */}
+          <Pressable
+            testID="home-recovery-link"
+            onPress={() => onNavigate('Analytics', 'recovery')}
+            style={styles.recoveryHeaderLink}
+            accessibilityRole="button"
+            accessibilityLabel="Recovery"
+            accessibilityHint="Opens the Recovery section of the Analytics tab"
+          >
+            <MonoLabel style={styles.recoveryHeaderLabel} numberOfLines={1}>
+              {weekName ? 'Recovery · ' : 'Recovery'}
+              {/* Hidden from screen readers: the announcement below names the week. */}
+              {weekName ? <Text testID="home-recovery-week" accessibilityElementsHidden importantForAccessibility="no">{weekName}</Text> : null}
+            </MonoLabel>
+            <Text style={styles.recoveryEvidence}>Evidence</Text>
+            <Icon name="chevron-right" size={18} color={kua ? kua.primaryOnContainer : colors.chipText} />
+          </Pressable>
+          <View
+            testID="home-recovery-analytics"
+            accessible
+            accessibilityLabel={accessibleContent}
+            style={styles.recoveryBody}
+          >
+            {/* #1341: the snapshot's total is the card's one hero number. */}
+            {headlineScored ? (
+              <View testID="home-recovery-headline" style={styles.recoveryTotalRow}>
+                <Text testID="home-recovery-headline-value" style={[styles.recoveryTotalValue, totalDone && styles.liftValueDone]}>{`${headline.percent}%`}</Text>
+                <Text style={styles.recoveryTotalLabel}>total recovery</Text>
+              </View>
+            ) : null}
+            {fallbackStatus ? (
+              <Text style={styles.recoveryFallbackLine}>{fallbackStatus}</Text>
+            ) : null}
+            {liftRows.length > 0 ? (
+              <Big3Bars rows={liftRows} idPrefix="home-recovery-lift" testID="home-recovery-big3" />
+            ) : null}
+            {headlineReason ? (
+              <Text testID="home-recovery-headline-reason" style={styles.recoveryFallbackLine}>{headlineReason}</Text>
+            ) : null}
           </View>
-        </Pressable>
-        <View
-          testID="home-recovery-analytics"
-          accessible
-          accessibilityLabel={accessibleContent}
-          style={styles.recoveryBody}
-        >
-          {/* #1341: the snapshot's total is the card's one hero number. */}
-          {headlineScored ? (
-            <View testID="home-recovery-headline" style={styles.recoveryTotalRow}>
-              <Text testID="home-recovery-headline-value" style={[styles.recoveryTotalValue, totalDone && styles.liftValueDone]}>{`${headline.percent}%`}</Text>
-              <Text style={styles.recoveryTotalLabel}>total recovery</Text>
-            </View>
+          {/* The stale case keeps the last-known-good summary above and adds the
+              reason it may be behind, rather than replacing it. */}
+          {message ? (
+            <Text style={styles.recoveryStatusLine} accessibilityLiveRegion="polite">{message}</Text>
           ) : null}
-          {fallbackStatus ? (
-            <Text style={styles.recoveryFallbackLine}>{fallbackStatus}</Text>
-          ) : null}
-          {liftRows.length > 0 ? (
-            <Big3Bars rows={liftRows} idPrefix="home-recovery-lift" testID="home-recovery-big3" />
-          ) : null}
-          {headlineReason ? (
-            <Text testID="home-recovery-headline-reason" style={styles.recoveryFallbackLine}>{headlineReason}</Text>
-          ) : null}
+          {canRetry ? <RetryRecovery summary={summary} styles={styles} /> : null}
+          {actions}
         </View>
-        {/* The stale case keeps the last-known-good summary above and adds the
-            reason it may be behind, rather than replacing it. */}
-        {message ? (
-          <Text style={styles.recoveryStatusLine} accessibilityLiveRegion="polite">{message}</Text>
-        ) : null}
-        {canRetry ? <RetryRecovery summary={summary} styles={styles} /> : null}
-        {actions}
-      </Card>
+      </Panel>
     </View>
   );
 }
@@ -189,7 +192,6 @@ function RetryRecovery({ summary, styles }) {
       testID="home-recovery-retry"
       onPress={() => summary.retry()}
       style={styles.recoveryAction}
-      hitSlop={8}
       accessibilityRole="button"
       accessibilityLabel="Retry recovery"
     >

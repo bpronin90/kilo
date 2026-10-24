@@ -56,9 +56,11 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     color: colors.chipAccentText,
   },
   // Static first-paint placeholder bars.
+  skeletonStack: {
+    gap: 16,
+  },
   skeletonCard: {
-    padding: 18,
-    marginBottom: 16,
+    padding: 16,
     gap: 12,
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,
@@ -84,206 +86,224 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     height: 12,
     width: '75%',
   },
-  // The hero is Home's one "active" card.
-  weeklyHero: {
-    padding: 18,
-    gap: 0,
-    backgroundColor: kua ? kua.surfaceCard : undefined,
-    borderColor: kua ? kua.primary : undefined,
-    borderWidth: kua ? 2 : undefined,
-  },
-  // #1533: Home card convention shared by Exercise Progress, 1K Progress and
-  // Body Weight: 20dp sides, a 44dp tappable header carrying the top slack
-  // (4dp card top), and 16dp below the content. Overrides weeklyHero's padding
-  // for the Progress card only so Recovery keeps its own layout.
-  progressCard: {
-    paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 16,
-  },
-  heroHeaderRow: {
+  // Redesign v3 (#1605) Home header: wordmark + Cloud Sync icon over a hairline.
+  topBar: {
+    minHeight: 64,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 14,
-    marginBottom: 12,
-  },
-  heroAccentBar: {
-    width: 3,
-    height: 18,
-    borderRadius: GEOMETRY['radius-xs'],
-    backgroundColor: kua ? kua.primary : colors.accent,
-  },
-  heroSectionLabel: {
-    ...(kua ? { ...typography['headline-sm'], fontSize: TYPOGRAPHY['body-sm'].fontSize, lineHeight: 17 } : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '700' }),
-    color: kua ? kua.onSurface : colors.text,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    flexShrink: 1,
-  },
-  // #1456: routine title with its calendar week opposite; the title wraps
-  // before the week gives way, so large text never hides either.
-  heroTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
     justifyContent: 'space-between',
+    gap: 4,
+    backgroundColor: kua ? kua.background : colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
+  },
+  topBarMark: {
+    paddingLeft: 8,
+    justifyContent: 'center',
+  },
+  topBarAction: {
+    minWidth: 44,
+    minHeight: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // The active panel's padded column (prototype `.pad`: 16dp, 12dp rhythm).
+  heroPad: {
+    padding: 16,
     gap: 12,
-    marginBottom: 4,
   },
   heroTitleText: {
-    flex: 1,
-    ...(kua ? typography['body-sm'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600' }),
+    fontFamily: typography['headline-xl-mobile'].fontFamily,
+    fontWeight: typography['headline-xl-mobile'].fontWeight,
+    fontSize: 22,
+    lineHeight: 28,
     color: kua ? kua.onSurface : colors.text,
-  },
-  heroWeekText: {
-    flexShrink: 0,
-    ...(kua ? typography['body-sm'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600' }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    marginTop: -4,
   },
   // No current routine / empty routine (#1333): one plain line, no fake week.
   heroRoutineMessage: {
-    ...(kua ? typography['body-md'] : { fontSize: TYPOGRAPHY['body-md'].fontSize }),
+    ...(kua ? typography['body-lg'] : { fontSize: TYPOGRAPHY['body-md'].fontSize }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginTop: 4,
-    marginBottom: 12,
   },
-  // The two highest-frequency actions share one stable strip at every width.
-  heroPrimaryActions: {
+  heroProgressRow: {
     flexDirection: 'row',
-    alignItems: 'stretch',
-    backgroundColor: kua ? kua.primaryContainer : colors.subtleBg,
-    borderRadius: GEOMETRY['radius-xl'],
-    overflow: 'hidden',
-    borderWidth: kua ? 1 : 0,
-    borderColor: kua ? kua.primaryContainerBorder : 'transparent',
-    marginTop: 4,
-    marginBottom: 8,
+    alignItems: 'center',
+    gap: 16,
+    minHeight: 48,
   },
-  heroPrimaryAction: {
+  heroProgressText: {
     flex: 1,
     minWidth: 0,
-    minHeight: 44,
-    paddingHorizontal: 8,
+    gap: 6,
+  },
+  heroProgressLabel: {
+    color: kua ? kua.onSurface : colors.text,
+  },
+  heroBaselineText: {
+    ...(kua ? typography['body-md'] : { fontSize: TYPOGRAPHY['body-md'].fontSize }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
+  // The two daily-loop actions: filled primary + outlined secondary, one row.
+  heroPrimaryActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  heroButton: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 48,
+    paddingHorizontal: 12,
+    borderRadius: GEOMETRY['radius-lg'],
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 6,
   },
-  heroPrimaryActionText: {
+  heroButtonPrimary: {
+    backgroundColor: kua ? kua.primary : colors.text,
+  },
+  heroButtonGhost: {
+    borderWidth: 1,
+    borderColor: kua ? kua.primary : colors.cardBorder,
+  },
+  heroButtonText: {
+    ...typography['label-lg'],
+    fontSize: 13,
+    lineHeight: 16,
+    letterSpacing: 0.78,
+    textTransform: 'uppercase',
     flexShrink: 1,
-    ...(kua ? { ...typography['body-md'], fontSize: TYPOGRAPHY['body-sm'].fontSize } : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600' }),
-    color: kua ? kua.primaryOnContainer : colors.textMuted,
     textAlign: 'center',
   },
-  heroPrimaryActionDivider: {
-    width: 1,
-    marginVertical: 8,
-    backgroundColor: kua ? kua.primaryContainerBorder : colors.cardBorder,
+  heroButtonPrimaryText: {
+    color: kua ? kua.onPrimary : colors.buttonLabel,
   },
-  // Quiet legacy-mode Analytics handoff on the Weight card.
-  heroInlineAction: {
+  heroButtonGhostText: {
+    color: kua ? kua.primaryOnContainer : colors.chipText,
+  },
+  // Supporting panels (1K, Body weight): a 48dp header row — title link left,
+  // muted caption right — then the body.
+  panelHeader: {
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    minHeight: 44,
-    paddingHorizontal: 4,
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingHorizontal: 16,
   },
-  heroInlineActionText: {
-    ...(kua ? typography['body-sm'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600' }),
+  panelTitleLink: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    flexShrink: 1,
+  },
+  panelTitle: {
+    ...typography['label-lg'],
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: kua ? kua.onSurface : colors.text,
+  },
+  panelCaption: {
+    ...typography['body-sm'],
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    flexShrink: 1,
+  },
+  weightBody: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 12,
+  },
+  weightValueBlock: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  weightSparkline: {
+    width: 120,
+    flexShrink: 0,
   },
   heroWeightValueRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 4,
     minWidth: 0,
   },
   heroWeightValue: {
-    ...(kua ? { ...typography['metric-display-mobile'], fontSize: 24, lineHeight: 28 } : { fontSize: TYPOGRAPHY['headline-lg'].fontSize, fontWeight: '800' }), // display exception per #1283 foundation
-    color: kua ? kua.onSurface : colors.accentText,
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  heroWeightPlaceholder: {
-    ...(kua ? typography['body-md'] : { fontSize: TYPOGRAPHY['headline-sm'].fontSize, fontWeight: '600' }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  heroWeightUnit: {
-    fontFamily: kua ? typography['body-md'].fontFamily : undefined,
-    fontSize: TYPOGRAPHY['body-lg'].fontSize,
-    fontWeight: kua ? undefined : '600',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  // The classification trio is the hero's lead content (#1112: training leads).
-  classifSection: {
-    marginBottom: 8,
-  },
-  classifHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  sectionHeaderAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    minHeight: 44,
-    maxWidth: '100%',
-  },
-  sectionHeaderActionStart: {
-    alignSelf: 'flex-start',
-  },
-  sectionHeaderLabel: {
-    flexShrink: 1,
-  },
-  sectionHeaderChevron: {
-    flexShrink: 0,
-  },
-  classifSectionLabel: {
-    ...(kua ? typography['label-sm'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '700' }),
-    color: kua ? kua.onSurfaceVariant : colors.text,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  classifRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: 12,
-    columnGap: 16,
-  },
-  classifCol: {
-    // Content-sized rather than fixed thirds.
-    flexGrow: 1,
-    flexShrink: 0,
-    flexBasis: 'auto',
-    alignItems: 'center',
-    gap: 5,
-  },
-  classifCount: {
-    ...(kua ? { ...typography['metric-display-mobile'], fontSize: 24, lineHeight: 28 } : { fontSize: TYPOGRAPHY['body-lg'].fontSize, fontWeight: '800' }), // display exception per #1283 foundation
+    ...(kua ? typography['metric-display-mobile'] : { fontSize: TYPOGRAPHY['headline-lg'].fontSize, fontWeight: '800' }),
     color: kua ? kua.onSurface : colors.text,
   },
-  classifLabel: {
-    ...(kua ? { fontFamily: typography['body-sm'].fontFamily, fontSize: TYPOGRAPHY['label-md'].fontSize } : { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '600' }),
+  heroWeightUnit: {
+    ...(kua ? typography['label-lg'] : { fontSize: TYPOGRAPHY['body-md'].fontSize }),
+    letterSpacing: 0,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textAlign: 'center',
   },
-  // Recovery status card (#757).
-  recoveryCard: {
-    padding: 20,
+  heroWeightPlaceholder: {
+    ...(kua ? typography['body-lg'] : { fontSize: TYPOGRAPHY['body-lg'].fontSize, fontWeight: '600' }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
+  goalDirectionText: {
+    ...(kua ? typography['body-sm'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
+  // An ended goal is a caution to act on (#1112).
+  goalEndedText: {
+    color: kua ? kua.warning : colors.cautionText,
+  },
+  goalAttention: {
+    borderTopWidth: 1,
+    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    paddingHorizontal: 16,
     paddingTop: 12,
-    gap: 4,
-    backgroundColor: kua ? kua.surfaceCard : undefined,
-    borderColor: kua ? kua.surfaceBorder : undefined,
+    paddingBottom: 4,
   },
-  // #1341: active Recovery is Home's lead card (weeklyHero), not a second card.
-  // The 44dp header supplies its own top slack, so the card padding is trimmed.
+  goalAttentionText: {
+    ...(kua ? typography['body-md'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600' }),
+    color: kua ? kua.warning : colors.cautionText,
+  },
+  recoveryAction: {
+    minHeight: 44,
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+  },
+  recoveryActionText: {
+    ...(kua ? typography['label-lg'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '700' }),
+    fontSize: 12,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: kua ? kua.primaryOnContainer : colors.accentText,
+  },
+  // Recovery (#757, #1341): status panel, or the active panel replacing the hero.
+  recoveryStatusBlock: {
+    gap: 6,
+  },
+  recoveryLabel: {
+    color: kua ? kua.onSurface : colors.text,
+  },
   recoveryHeaderLink: {
-    gap: 8, marginTop: -10,
+    minHeight: 44,
+    marginVertical: -6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  recoveryHeaderLabel: {
+    flex: 1,
+    minWidth: 0,
+  },
+  recoveryEvidence: {
+    ...typography['label-lg'],
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: kua ? kua.primaryOnContainer : colors.chipText,
   },
   recoveryBody: {
     gap: 14,
-    marginBottom: 12,
   },
   recoveryTotalRow: {
     flexDirection: 'row',
@@ -292,99 +312,27 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     columnGap: 8,
   },
   recoveryTotalValue: {
-    ...(kua ? { ...typography['metric-display'], fontSize: 48, lineHeight: 52 } : HeroMetric.hero), // display exception per #1283 foundation
+    ...(kua ? { ...typography['metric-display'], fontSize: 44, lineHeight: 46 } : HeroMetric.hero), // one 44px hero number per screen (#1605)
     color: kua ? kua.onSurface : colors.text,
   },
   recoveryTotalLabel: {
-    ...(kua ? typography['label-md'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600' }),
+    ...(kua ? typography['body-sm'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
-  recoveryLabel: {
-    ...(kua ? { ...typography['headline-sm'], fontSize: TYPOGRAPHY['body-sm'].fontSize, lineHeight: 17 } : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '700', letterSpacing: 0.5 }),
-    color: kua ? kua.onSurface : colors.text,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  // Recovery headline's at/over-baseline colour (the Big 3 rows' own styles
-  // live in components/Big3Bars, #1353).
+  // Recovery headline's at/over-baseline colour (Big 3 rows: components/Big3Bars, #1353).
   liftValueDone: {
     color: kua ? kua.completion : colors.success,
   },
   recoveryFallbackLine: {
     ...(kua ? typography['body-md'] : { fontSize: TYPOGRAPHY['body-lg'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
-    marginTop: 2,
   },
   recoveryStatusLine: {
-    ...(kua ? { ...typography['body-sm'], fontSize: TYPOGRAPHY['label-md'].fontSize } : { fontSize: TYPOGRAPHY['body-sm'].fontSize }),
+    ...(kua ? typography['body-md'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginTop: 2,
-  },
-  recoveryAction: {
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  recoveryActionText: {
-    ...(kua ? typography['body-sm'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '700' }),
-    color: kua ? kua.primary : colors.accentText,
-  },
-  // #1339: supporting card — header row, then one value/goal row.
-  goalCard: {
-    paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 16,
-    backgroundColor: kua ? kua.surfaceCard : undefined,
-    borderColor: kua ? kua.surfaceBorder : undefined,
-  },
-  weightSummaryRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    columnGap: 16,
-    rowGap: 8,
-  },
-  weightTrendChart: {
-    marginTop: 14,
-  },
-  goalSummary: {
-    flexShrink: 1,
-    alignItems: 'flex-end',
-    gap: 2,
-  },
-  goalAttention: {
-    marginTop: 12,
-  },
-  goalAttentionText: {
-    ...(kua ? typography['body-sm'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600' }),
-    color: kua ? kua.warning : colors.cautionText,
-  },
-  goalDirectionText: {
-    ...(kua ? typography['body-md'] : { fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '700' }),
-    color: kua ? kua.onSurface : colors.text,
-  },
-  goalModeAccent: {
-    color: kua ? kua.primary : colors.accentText,
-  },
-  goalWeeksText: {
-    ...(kua ? { ...typography['body-sm'], fontSize: TYPOGRAPHY['label-md'].fontSize } : { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600' }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  // #1341: left-aligned like every other Home card; the 44dp header supplies
-  // the top slack.
-  oneKCard: {
-    paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 16,
-    backgroundColor: kua ? kua.surfaceCard : undefined,
-    borderColor: kua ? kua.surfaceBorder : undefined,
   },
   welcomeCard: {
-    padding: 18,
-    backgroundColor: kua ? kua.surfaceCard : undefined,
-    borderColor: kua ? kua.surfaceBorder : undefined,
+    padding: 16,
   },
   welcomeTitle: {
     ...(kua ? typography['headline-md'] : { fontSize: TYPOGRAPHY['headline-md'].fontSize, fontWeight: '800' }),

@@ -3393,10 +3393,14 @@ describe('style conformance (#1278)', () => {
     const log = require('../screens/log/logScreenStyles').createStyles(LightColors);
     const weight = require('../screens/weight/weightStyles').createStyles(LightColors);
     const editor = require('../components/log/logEditorStyles').createStyles(LightColors);
-    for (const s of [home.weeklyHero, home.welcomeCard, home.skeletonCard, log.skeletonCard, weight.skeletonCard, editor.dangerZone]) {
+    for (const s of [log.skeletonCard, weight.skeletonCard, editor.dangerZone]) {
       expect(s.padding).toBe(18);
     }
-    for (const s of [home.weeklyHero, home.welcomeCard, home.syncNoticeCard, home.syncNoticeCardFailed, home.skeletonCard]) {
+    // Redesign v3 (#1605): Home panels use the 16px panel inset.
+    for (const s of [home.heroPad, home.welcomeCard, home.skeletonCard]) {
+      expect(s.padding).toBe(16);
+    }
+    for (const s of [home.heroPad, home.welcomeCard, home.syncNoticeCard, home.syncNoticeCardFailed, home.skeletonCard]) {
       expect(s.marginTop).toBeUndefined();
     }
   });
