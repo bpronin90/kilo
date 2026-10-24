@@ -1,9 +1,20 @@
 # R3 (#1602) evidence: Analytics chapters and navigation
 
-Rendered commit: `7622a318f8702ab55615a62f8657d4727072a5e2` (web export; all 90 PNGs re-captured from it in this round). The only later product change moves
-construction of the identical `<AnalyticsRecoverySection … title={null} />` element (same props)
-from `AnalyticsSectionContent.js` into `AnalyticsScreen.js` so the screen visibly wires
-`oneKSelections` (#1351 source contract); the rendered tree is unchanged, so these captures still apply.
+Rendered provenance:
+
+- The original 90 PNGs below were rendered from web export commit
+  `7622a318f8702ab55615a62f8657d4727072a5e2`. Their listed scenarios and screenshots
+  retain that provenance; they do not exercise the stale paused-baseline remount sequence.
+- The two `stale-baseline-remount-*` PNGs were rendered from a clean web export of
+  product commit `7c14d3a6d9fb82092c7f14647f7dc0ee1f44c105`. They cover the feedback
+  scenario added after the original captures. Later evidence-only commits do not
+  change the exported app.
+
+An earlier product-only change moved construction of the identical
+`<AnalyticsRecoverySection … title={null} />` element (same props) from
+`AnalyticsSectionContent.js` into `AnalyticsScreen.js` so the screen visibly wires
+`oneKSelections` (#1351 source contract). The original captures remain evidence only
+for their documented states; the remount-specific captures use the fixed navigation code.
 Viewport: 390x844 CSS px, DPR 2 (PHONE), UTC, fixed clock `2026-10-23T12:00:00Z`.
 Themes: every state in `hard-dark` + `clay-light`; first screen also `grass-light` + `clay-dark`.
 
@@ -33,6 +44,26 @@ current routine, two flagged), `completedRecovery` (one completed block in histo
 `aria-current`; the run reported 90 captures, 0 theme mismatches, and the shared
 smoke (12 scenarios, hard-dark) 0 failed. `newBlockStorage` (completes the open block
 and adds a fresh `Travel` block) drives the new-block reset.
+
+To reproduce only the two stale-remount captures, export from the recorded product
+commit, then run the issue-local runner's bounded scenario mode (the environment
+variable is also written into its temporary manifest):
+
+```sh
+test "$(git rev-parse HEAD)" = "7c14d3a6d9fb82092c7f14647f7dc0ee1f44c105"
+cd mobile && npx expo export --platform web --output-dir /tmp/kilo-1602-clean-7c14
+cd .. && KILO_R3_STALE_BASELINE_ONLY=1 \
+  KILO_RENDERED_COMMIT=7c14d3a6d9fb82092c7f14647f7dc0ee1f44c105 \
+  node docs/evidence/app-redesign-v3/r3/capture.cjs /tmp/kilo-1602-clean-7c14 \
+  /tmp/kilo-review-tools/node_modules /tmp/kilo-r3-stale-7c14
+```
+
+The bounded runner opens Active Recovery, measures the paused body, collapses it,
+adds 1000 CSS px of bottom margin to the Recovery anchor while that body is unmounted,
+and calls the mounted Analytics `onNavigate('Analytics', 'strength')`. It verifies the
+Strength anchor lands within 40 CSS px of the sticky index bottom. This layout
+perturbation models changed content above the disclosure without changing fixture
+data or production styles.
 
 Techniques for states with no tappable entry point (runner-only, no product change):
 
@@ -77,15 +108,16 @@ Techniques for states with no tappable entry point (runner-only, no product chan
 | 22 | Error: unknown-status banner + retry; retry in flight keeps the error message until a read succeeds; success shows real state | Pass | [error](after/state-error-hard-dark.png), [retrying](after/state-error-retrying-clay-light.png), [retried](after/state-error-retried-clay-light.png) (+ other theme) |
 | 23 | Initial loading: `Loading recovery data…`, history row without a count; settles to the real state | Pass | [overlay](after/state-loading-overlay-hard-dark.png), [loading](after/state-loading-clay-light.png), [done](after/state-loading-done-clay-light.png) (+ other theme) |
 | 24 | Missing data: empty account (no Strength/PO data, no header context), no weigh-ins | Pass | [empty](after/missing-empty-clay-light.png), [no weigh-ins](after/missing-weighins-clay-light.png) (+ hard-dark) |
-| 25 | Reopen a measured paused baseline after content above it grows while collapsed; the `strength` deep link waits for fresh layouts and lands at the remounted Strength anchor | Pass | [stale baseline remount](after/stale-baseline-remount-hard-dark.png) |
+| 25 | Reopen a measured paused baseline after content above it grows while collapsed; the `strength` deep link waits for fresh layouts and lands at the remounted Strength anchor | Pass in both themes; `indexBottom=178`, `bodyTop=178`, `strengthTop=184` CSS px | [hard-dark](after/stale-baseline-remount-hard-dark.png), [clay-light](after/stale-baseline-remount-clay-light.png) |
 
 ### Stale paused-baseline remount comparison
 
 - Reference: [issue #1602 feedback](https://github.com/bpronin90/kilo/issues/1602#issuecomment-6377750554).
+- Rendered product commit: `7c14d3a6d9fb82092c7f14647f7dc0ee1f44c105` (both themes; 390×844 CSS px, DPR 2).
 - Checklist: at 390×844 CSS px, keep the Analytics header and sticky chapter index unchanged; show the `Strength` anchor immediately below the sticky index after navigation; preserve the dashed paused-body rail and existing section presentation.
 - Rendered the real Expo web export at 390×844 CSS px (2× screenshot). In Active Recovery, opened and collapsed the baseline once to populate its measurements, increased the Recovery anchor's bottom margin by 1000 CSS px while the paused body was unmounted, then issued `section=strength` through the mounted Analytics navigation callback. The injected spacing models content above the disclosure changing height; it does not change application data or production styles.
-- Captured `after/stale-baseline-remount-hard-dark.png`. The newly mounted paused body begins at y=178 CSS px, below the 92 px sticky chapter index, and the Strength anchor is visible at y=184 px. This confirms the request lands using the new layout; the header/index, paused rail and Strength contents remain intact. Screenshot dimensions: 780×1688 px.
-- Capture steps used the shared real-app harness in `capture.cjs` with the Active Recovery fixture, `analytics-chapter-index-baseline`, `baseline-disclosure-toggle`, a 1000 px margin-bottom layout perturbation on `recovery-section-anchor`, and the app's `onNavigate('Analytics', 'strength')` callback. No prototype HTML or shared fixture was modified.
+- Captured [hard-dark](after/stale-baseline-remount-hard-dark.png) and [clay-light](after/stale-baseline-remount-clay-light.png). In both, the newly mounted paused body begins at y=178 CSS px and Strength is visible at y=184 px, just below the sticky index. This confirms the request lands using the new layout; the header/index, paused rail and Strength contents remain intact. Screenshot dimensions: 780×1688 px.
+- The bounded scenario is implemented in the issue-local `capture.cjs`; its run manifest recorded the full rendered SHA and both theme checks passed. No prototype HTML or shared fixture was modified.
 
 ## Deviations (with reasons)
 

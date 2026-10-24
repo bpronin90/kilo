@@ -103,9 +103,56 @@ const hideStartupOverlay = (s) => s.page.addStyleTag({ content: '[data-testid="a
   const manifest = [];
   const record = async (s, file, state, extra = {}) => {
     await s.shot(file);
-    manifest.push({ file, scenario: s.info.scenario, theme: s.info.theme, viewport: s.info.viewport, state, active_chapter: await indexState(s), theme_check: await s.verifyTheme(), ...extra });
+    manifest.push({ file, scenario: s.info.scenario, theme: s.info.theme, viewport: s.info.viewport, state, active_chapter: await indexState(s), theme_check: await s.verifyTheme(), rendered_commit: process.env.KILO_RENDERED_COMMIT || null, ...extra });
   };
   try {
+    if (process.env.KILO_R3_STALE_BASELINE_ONLY === '1') {
+      if (!/^[0-9a-f]{40}$/.test(process.env.KILO_RENDERED_COMMIT || '')) {
+        throw new Error('KILO_R3_STALE_BASELINE_ONLY requires KILO_RENDERED_COMMIT with the full rendered commit SHA');
+      }
+      for (const theme of STATE_THEMES) {
+        const s = await h.open({ scenario: 'recovery-active', theme, tab: 'Analytics' });
+        await s.click({ testID: 'analytics-chapter-index-baseline' }, { settle: 1000 });
+        await s.click({ testID: 'baseline-disclosure-toggle' }, { settle: 700 });
+        await s.click({ testID: 'analytics-chapter-index-baseline' }, { settle: 800 });
+        await s.click({ testID: 'baseline-disclosure-toggle' }, { settle: 700 });
+        const collapsed = await s.page.locator('[data-testid="baseline-paused-body"]').count() === 0;
+        if (!collapsed) throw new Error('Paused body remained mounted after collapse');
+
+        // Model content above the unmounted disclosure changing height without
+        // changing fixtures or product data, then use the real deep-link path.
+        await s.page.evaluate(() => {
+          const recovery = document.querySelector('[data-testid="recovery-section-anchor"]');
+          if (!recovery) throw new Error('Recovery anchor unavailable');
+          recovery.style.marginBottom = '1000px';
+        });
+        await s.wait(400);
+        await navigateTo(s, 'strength', 2200);
+        const layout = await s.page.evaluate(() => {
+          const index = [...document.querySelectorAll('[data-testid="analytics-chapter-index"]')].find((e) => e.offsetParent);
+          const body = document.querySelector('[data-testid="baseline-paused-body"]');
+          const strength = [...document.querySelectorAll('*')].find((e) => e.children.length === 0 && e.textContent?.trim() === 'Strength');
+          const indexRect = index?.getBoundingClientRect();
+          const bodyRect = body?.getBoundingClientRect();
+          const strengthRect = strength?.getBoundingClientRect();
+          return {
+            indexBottom: indexRect ? Math.round(indexRect.bottom) : null,
+            bodyTop: bodyRect ? Math.round(bodyRect.top) : null,
+            strengthTop: strengthRect ? Math.round(strengthRect.top) : null,
+          };
+        });
+        if (layout.indexBottom == null || layout.bodyTop == null || layout.strengthTop == null
+          || Math.abs(layout.strengthTop - layout.indexBottom) > 40) {
+          throw new Error(`Fresh Strength layout did not land below the sticky index: ${JSON.stringify(layout)}`);
+        }
+        await record(s, `stale-baseline-remount-${theme}.png`, 'Previously measured paused body collapsed; Recovery content above it grows while unmounted; strength deep link reopens and lands on the fresh Strength layout', { layout });
+        await s.close();
+      }
+      fs.writeFileSync(path.join(work, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+      console.log(`stale-baseline-remount: ${manifest.length} captures from ${process.env.KILO_RENDERED_COMMIT}; manifest in ${work}`);
+      return;
+    }
+
     // 1. Normal-training first screen in the four first-screen themes.
     for (const theme of FIRST_SCREEN_THEMES) {
       const s = await h.open({ scenario: 'populated', overlay: routineHealthOn, theme, tab: 'Analytics' });
