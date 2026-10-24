@@ -59,6 +59,7 @@ const dots = (c) => c.root.findAllByType(Circle).filter((n) => n.props.testID ==
 const control = (c) => c.root.findByProps({ accessibilityRole: 'adjustable' });
 const keyDown = (c, key) => act(() => { control(c).props.onKeyDown({ nativeEvent: { key }, preventDefault() {} }); });
 const press = (c, locationX) => act(() => { control(c).props.onPress({ nativeEvent: { locationX } }); });
+const press2 = (c, locationX, locationY) => act(() => { control(c).props.onPress({ nativeEvent: { locationX, locationY } }); });
 const callout = (c) => c.root.findAllByProps({ testID: 'weight-point-callout' }).filter((n) => typeof n.type === 'string');
 
 describe('weightChartPresentation', () => {
@@ -185,6 +186,24 @@ describe('LineChart weightPlot — selection by recorded entry', () => {
     press(c, 6 + 1 / 6 * (WIDTH - 46 - 12));
     expect(callout(c)).toHaveLength(0);
     expect(onSelect).toHaveBeenLastCalledWith(null);
+  });
+
+  test('two weigh-ins on one date are each reachable by touch height', () => {
+    const entries = [
+      { id: 'c', date: '2026-05-24', weight_value: 185 },
+      { id: 'b', date: '2026-05-23', weight_value: 180 },
+      { id: 'a', date: '2026-05-23', weight_value: 190 },
+    ];
+    const series = [{ value: 185, label: '05/23', unit: 'lb' }, { value: 185, label: '05/24', unit: 'lb' }];
+    const plot = { ...buildWeighInPoints({ entries, series, windowDays: 7, unit: 'lb' }), goal: null, windowLabel: 'x' };
+    const onSelect = jest.fn();
+    const c = mount({ data: series, weightPlot: plot, onSelect });
+    const [first, second] = dots(c).filter((d) => d.props.cx === dots(c)[0].props.cx);
+    expect(first.props.cy).not.toBe(second.props.cy);
+    press2(c, first.props.cx, first.props.cy);
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'a' }));
+    press2(c, second.props.cx, second.props.cy);
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'b' }));
   });
 
   test('keyboard and rotor traversal walk the weigh-ins; Escape clears', () => {

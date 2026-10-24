@@ -175,9 +175,9 @@ export function LineChart({
 
   const handlePress = (evt) => {
     if (!plotWidth) return;
-    const { locationX } = evt.nativeEvent;
+    const { locationX, locationY } = evt.nativeEvent;
     const index = weighted
-      ? nearestPointIndex(weightPlot, wb, locationX, effPaddingHorizontal, innerWidth)
+      ? nearestPointIndex(weightPlot, wb, locationX, effPaddingHorizontal, innerWidth, locationY, getY)
       : Math.round((locationX - effPaddingHorizontal) / innerWidth * (data.length - 1));
     if (index >= 0 && index < data.length) {
       select(index === selectedIndex ? null : index);

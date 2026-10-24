@@ -3,7 +3,9 @@
 Rendered from the **real app** (Expo web export), not prototype HTML.
 
 - **Rendered commit:** `229a48fbc20bebd3a01d1acb49f23eac99160e0c` (all 66 PNGs; the manifest records it per capture). Later commits
-  on this branch are evidence/docs only, so the export is unchanged.
+  on this branch are evidence/docs only, except the review-round touch hit-test change (distance now
+  uses touch height too so same-date weigh-ins are each selectable). That change runs only on a tap,
+  draws nothing and alters no layout, so every PNG here still applies.
 - **Viewport:** 390x844 CSS px, DPR 2 (780x1688 px), UTC, fixed clock `2026-10-23T12:00:00Z`.
 - **Themes:** every state in `HD` hard-dark and `CL` clay-light; the Analytics first screen
   and the Bodyweight chapter also in `GL` grass-light and `CD` clay-dark.

@@ -73,12 +73,17 @@ export function timeFraction(bounds, t) {
   return span > 0 ? (t - bounds.t0) / span : 0;
 }
 
-// The weigh-in nearest a touch x, or -1 when there is none.
-export function nearestPointIndex(plot, bounds, locationX, padX, innerWidth) {
+// The weigh-in nearest a touch, or -1 when there is none. Weigh-ins on one date
+// share an x, so when the touch height (and a y mapper) is known the distance is
+// two-dimensional and each of them stays reachable; otherwise x alone decides.
+export function nearestPointIndex(plot, bounds, locationX, padX, innerWidth, locationY = null, yOf = null) {
+  const useY = Number.isFinite(locationY) && typeof yOf === 'function';
   let best = -1;
   let bestDist = Infinity;
   plot.points.forEach((p, i) => {
-    const dist = Math.abs(padX + timeFraction(bounds, p.t) * innerWidth - locationX);
+    const dx = padX + timeFraction(bounds, p.t) * innerWidth - locationX;
+    const dy = useY ? yOf(p.value) - locationY : 0;
+    const dist = dx * dx + dy * dy;
     if (dist < bestDist) { best = i; bestDist = dist; }
   });
   return best;
