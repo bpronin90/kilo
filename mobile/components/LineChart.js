@@ -3,6 +3,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View, Text, Pressable, PixelRatio } from 'react-native';
 import Svg, { Polyline, Circle, Rect, G, Line } from 'react-native-svg';
 import { useTheme } from '../theme/ThemeContext';
+import { LatestWeighInMarker, GoalTargetLine } from './lineChart/LatestWeighInMarker';
+import {
+  weightBounds, timeFraction, nearestPointIndex, describeWeightPlot, WeightPointCallout, GoalLabel, WeightDateAxis,
+} from './lineChart/weightChartPresentation';
 
 // Base width for the showScale gutter at the OS default text size (#828). A
 // fixed pixel width doesn't track React Native's accessibility font scaling
@@ -12,9 +16,10 @@ import { useTheme } from '../theme/ThemeContext';
 // that grows the label text; numberOfLines/adjustsFontSizeToFit on the label
 // itself is the backstop for any residual mismatch.
 const SCALE_GUTTER_WIDTH = 34;
+const WEIGHT_SCALE_GUTTER_WIDTH = 46;
 
 export function LineChart({
-  data = [],
+  data: dataProp = [],
   height = 80,
   paddingVertical = 10,
   paddingHorizontal = 10,
@@ -38,6 +43,11 @@ export function LineChart({
   showGrid = false,
   emptyMessage = 'Not enough data',
   seriesLabel,
+  // Opt-in Bodyweight plot (#1603): { points, line, goal, windowLabel }. Every
+  // weigh-in is a selectable point at its recorded date (identified by `id`),
+  // `line` is the existing rolling average, and the latest weigh-in carries a
+  // ring. Absent, the chart is exactly what it was (Home sparkline, 1K chart).
+  weightPlot = null,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
@@ -47,26 +57,33 @@ export function LineChart({
   // caller that omits `color` (#689).
   const strokeColor = color || (kua ? kua.primary : colors.accent);
   const mutedColor = kua ? kua.onSurfaceVariant : colors.textMuted;
+  const weighted = !!weightPlot && Array.isArray(weightPlot.points) && weightPlot.points.length >= 2;
+  const data = weighted ? weightPlot.points : dataProp;
   const [rawSelectedIndex, setSelectedIndex] = useState(null);
+  // A weigh-in selection is held by recorded-entry identity, so it follows the
+  // entry (not a position) and disappears with it.
+  const [selectedId, setSelectedId] = useState(null);
+  const heldIndex = weighted ? (selectedId !== null ? data.findIndex((p) => p.id === selectedId) : null) : rawSelectedIndex;
   // Selection is only meaningful inside the current series (#1479). Derived on
   // every render — not in an effect — so replacement data that shrinks the
   // series never reads an out-of-range point, even on the render before the
   // cleanup effect below runs. An invalid index falls back to "latest".
   // Fewer than two points is not a chart at all, so nothing is selectable.
   const selectableLength = data && data.length >= 2 ? data.length : 0;
-  const selectionValid =
-    rawSelectedIndex !== null && rawSelectedIndex >= 0 && rawSelectedIndex < selectableLength;
-  const selectedIndex = selectionValid ? rawSelectedIndex : null;
+  const hasHeld = weighted ? selectedId !== null : rawSelectedIndex !== null;
+  const selectionValid = heldIndex !== null && heldIndex >= 0 && heldIndex < selectableLength;
+  const selectedIndex = selectionValid ? heldIndex : null;
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
   // Drop the stale state (so a later expansion does not resurrect the old
   // index) and tell the caller its selected point is gone.
   useEffect(() => {
-    if (rawSelectedIndex !== null && !selectionValid) {
+    if (hasHeld && !selectionValid) {
       setSelectedIndex(null);
+      setSelectedId(null);
       onSelectRef.current?.(null);
     }
-  }, [rawSelectedIndex, selectionValid]);
+  }, [hasHeld, selectionValid]);
   const [chartWidth, setChartWidth] = useState(0);
 
   if (!data || data.length < 2) {
@@ -88,7 +105,8 @@ export function LineChart({
   // They are drawn off the trend line, clamped to the plot edge. A series with
   // nothing but deloads falls back to its own range.
   const trendValues = data.filter(d => !d.isDeload).map(d => d.value);
-  const domainValues = trendValues.length > 0 ? trendValues : values;
+  const wb = weighted ? weightBounds(weightPlot) : null;
+  const domainValues = wb ? wb.values : (trendValues.length > 0 ? trendValues : values);
   const dataMin = Math.min(...domainValues);
   const dataMax = Math.max(...domainValues);
   const minVal = dataMin;
@@ -105,7 +123,7 @@ export function LineChart({
   // sparkline gains a description without its rendering changing.
   const deloadCount = data.filter(d => d.isDeload).length;
   const unitSuffix = data[data.length - 1]?.unit ? ` ${data[data.length - 1].unit}` : '';
-  const chartDescription =
+  const chartDescription = weighted ? describeWeightPlot(weightPlot, seriesLabel) :
     `${seriesLabel ? `${seriesLabel}. ` : ''}Line chart, ${data.length} points` +
     `${deloadCount > 0 ? `, ${deloadCount} marked as deload` : ''}. ` +
     `Ranges from ${formatScale(dataMin)}${unitSuffix} to ${formatScale(dataMax)}${unitSuffix}. ` +
@@ -123,10 +141,14 @@ export function LineChart({
   // instead of painted over it. The Svg is narrowed by this amount; when
   // showScale is off the gutter is 0 and layout is byte-identical to before.
   // Scaled by the OS text-size setting so large-text labels still fit.
-  const scaleGutter = showScale ? Math.ceil(SCALE_GUTTER_WIDTH * PixelRatio.getFontScale()) : 0;
+  // The Bodyweight plot carries one-decimal labels in a mono face, so it reserves a wider gutter.
+  const scaleGutter = showScale ? Math.ceil((weighted ? WEIGHT_SCALE_GUTTER_WIDTH : SCALE_GUTTER_WIDTH) * PixelRatio.getFontScale()) : 0;
   const plotWidth = Math.max(chartWidth - scaleGutter, 0);
 
-  const getX = (index) => effPaddingHorizontal + (index * (plotWidth - 2 * effPaddingHorizontal) / (data.length - 1));
+  const innerWidth = plotWidth - 2 * effPaddingHorizontal;
+  // Weigh-ins sit at their recorded dates; every other chart spaces by index.
+  const getXAt = (t) => effPaddingHorizontal + timeFraction(wb, t) * innerWidth;
+  const getX = (index) => (weighted ? getXAt(data[index].t) : effPaddingHorizontal + (index * innerWidth / (data.length - 1)));
   // A perfectly flat series (range === 0) has no scale to plot against — every
   // point is both the min and the max. Center it in the plot instead of
   // falling back to a divisor that would pin the whole line to the bottom
@@ -138,20 +160,25 @@ export function LineChart({
       ? (value < minVal ? height - effPaddingVertical : value > maxVal ? effPaddingVertical : height / 2)
       : height - effPaddingVertical - (Math.min(Math.max(value - minVal, 0), range) / range * (height - 2 * effPaddingVertical));
 
-  const points = data
-    .map((d, i) => (d.isDeload ? null : `${getX(i)},${getY(d.value)}`))
-    .filter(Boolean)
-    .join(' ');
+  const points = weighted
+    ? weightPlot.line.map((p) => `${getXAt(p.t)},${getY(p.value)}`).join(' ')
+    : data
+      .map((d, i) => (d.isDeload ? null : `${getX(i)},${getY(d.value)}`))
+      .filter(Boolean)
+      .join(' ');
 
   const select = (next) => {
     setSelectedIndex(next);
+    setSelectedId(next !== null && data[next]?.id != null ? data[next].id : null);
     onSelect?.(next !== null ? data[next] : null);
   };
 
   const handlePress = (evt) => {
     if (!plotWidth) return;
     const { locationX } = evt.nativeEvent;
-    const index = Math.round((locationX - effPaddingHorizontal) / (plotWidth - 2 * effPaddingHorizontal) * (data.length - 1));
+    const index = weighted
+      ? nearestPointIndex(weightPlot, wb, locationX, effPaddingHorizontal, innerWidth)
+      : Math.round((locationX - effPaddingHorizontal) / innerWidth * (data.length - 1));
     if (index >= 0 && index < data.length) {
       select(index === selectedIndex ? null : index);
     }
@@ -171,7 +198,7 @@ export function LineChart({
   // while the chart stays a single focus stop — no accessibility element per
   // point.
   const pointUnit = displayPoint.unit ? ` ${displayPoint.unit}` : '';
-  const selectionAnnouncement =
+  const selectionAnnouncement = weighted && selectedIndex !== null && displayPoint.announce ? displayPoint.announce :
     `${selectedIndex !== null ? 'Selected' : 'Latest'}` +
     `${displayPoint.label ? `, ${displayPoint.label}` : ''}` +
     `${displayPoint.isDeload ? ', deload' : ''}` +
@@ -298,6 +325,14 @@ export function LineChart({
                   opacity={i === 1 && range !== 0 ? 0.5 : 1}
                 />
               ))}
+              {weighted && weightPlot.goal && (
+                <GoalTargetLine
+                  y={getY(weightPlot.goal.value)}
+                  x1={effPaddingHorizontal}
+                  x2={plotWidth - effPaddingHorizontal}
+                  color={kua ? kua.success : colors.success}
+                />
+              )}
               <Polyline
                 points={points}
                 fill="none"
@@ -306,7 +341,18 @@ export function LineChart({
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
-              {data.map((d, i) => d.isDeload ? (
+              {weighted ? data.map((d, i) => (
+                // One small dot per recorded weigh-in; the selected one is filled.
+                <Circle
+                  key={d.id}
+                  testID="weigh-in-point"
+                  cx={getX(i)}
+                  cy={getY(d.value)}
+                  r={i === selectedIndex ? 4.5 : 2.5}
+                  fill={i === selectedIndex ? (kua ? kua.onSurface : colors.text) : mutedColor}
+                  opacity={i === selectedIndex ? 1 : 0.75}
+                />
+              )) : data.map((d, i) => d.isDeload ? (
                 // Deload: a square marker, outlined in the muted tone, so it
                 // reads as "not a normal session" at any value (#1248).
                 <Rect
@@ -346,6 +392,13 @@ export function LineChart({
                   />
                 ) : null
               )}
+              {weighted && (
+                <LatestWeighInMarker
+                  cx={getX(data.length - 1)}
+                  cy={getY(data[data.length - 1].value)}
+                  color={kua ? kua.onSurface : colors.text}
+                />
+              )}
               {selectedIndex !== null && (
                 <G>
                    <Rect
@@ -361,6 +414,12 @@ export function LineChart({
             </>
           )}
         </Svg>
+        {weighted && selectedIndex !== null && plotWidth > 0 && (
+          <WeightPointCallout point={displayPoint} x={getX(selectedIndex)} plotWidth={plotWidth} />
+        )}
+        {weighted && plotWidth > 0 && weightPlot.goal && (
+          <GoalLabel y={getY(weightPlot.goal.value)} text={weightPlot.goal.text} />
+        )}
         {showScale && (
           // Sits beside the plot in the reserved gutter, aligned with the
           // top/bottom of the *plot area* (inset by effPaddingVertical) so it
@@ -396,7 +455,9 @@ export function LineChart({
         )}
       </Pressable>
 
-      {(selectedIndex !== null && hideHeader) ? (
+      {weighted ? (
+        plotWidth > 0 ? <WeightDateAxis bounds={wb} plotWidth={plotWidth} padX={effPaddingHorizontal} /> : null
+      ) : (selectedIndex !== null && hideHeader) ? (
         <Text style={styles.selectionLabel}>
           {displayPoint.label ? `${displayPoint.label} · ` : ''}
           {displayPoint.isDeload ? 'Deload · ' : ''}

@@ -73,7 +73,7 @@ function setup({ entries = [], hookOverrides = {}, featureToggles = {} } = {}) {
     ...featureToggles,
   });
   useEntries.useWeightEntries.mockReturnValue({ entries, loading: false, error: null });
-  useEntries.useWeightGoal.mockReturnValue({ goal: hookOverrides.weightGoal || null });
+  useEntries.useWeightGoal.mockReturnValue({ goal: hookOverrides.weightGoal || null, ...(hookOverrides.weightGoalState || {}) });
   useEntries.useTrackedLifts.mockReturnValue({
     trackedLifts: hookOverrides.trackedLifts || {},
     activations: hookOverrides.trackedLiftActivations || {},
@@ -459,7 +459,7 @@ describe('AnalyticsScreen has no Overview card — Home owns the summary', () =>
     const root = component.root;
     expect(root.findAllByProps({ testID: 'analytics-overview' }).length).toBe(0);
     expect(findAllText(root).some(t => t === 'Overview')).toBe(false);
-    expect(findAllText(root).find(t => ['Strength', 'Progressive Overload', 'Weight Trends', 'Routine Health'].includes(t))).toBe('Strength');
+    expect(findAllText(root).find(t => ['Strength', 'Progressive Overload', 'Latest weigh-in', 'Routine Health'].includes(t))).toBe('Strength');
   });
 
   test('a failed notes read still shows its banner without an overview row', () => {
@@ -1445,7 +1445,7 @@ describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
 // Top-level section titles in render order (exact-match, so a substring like
 // the "Recovery" inside "Baseline training · paused during Recovery" or a row
 // label never counts as a section).
-const SECTION_TITLES = ['Strength', 'Progressive Overload', 'Weight Trends', 'Routine Health', 'Recovery'];
+const SECTION_TITLES = ['Strength', 'Progressive Overload', 'Latest weigh-in', 'Routine Health', 'Recovery'];
 function sectionOrder(root) {
   return findAllText(root).filter(t => SECTION_TITLES.includes(t))
     .filter((t, i, all) => all.indexOf(t) === i);
@@ -1470,10 +1470,10 @@ describe('AnalyticsScreen normal-training section order', () => {
     expect(root.findAllByProps({ testID: 'recovery-section-anchor' }).length).toBeGreaterThan(0);
     expect(root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).length).toBe(0);
     const order = sectionOrder(root);
-    expect(order.slice(0, 4)).toEqual(['Strength', 'Progressive Overload', 'Routine Health', 'Weight Trends']);
+    expect(order.slice(0, 4)).toEqual(['Strength', 'Progressive Overload', 'Routine Health', 'Latest weigh-in']);
     // The Recovery section's own content follows Weight Trends.
     const texts = findAllText(root);
-    const routineIdx = texts.indexOf('Weight Trends');
+    const routineIdx = texts.indexOf('Latest weigh-in');
     const anchorText = component.root.findByProps({ testID: 'recovery-section-anchor' }).findAllByType('Text')[0];
     const anchorChildren = anchorText.props.children;
     const anchorLabel = Array.isArray(anchorChildren) ? anchorChildren.join('') : String(anchorChildren ?? '');
@@ -1495,7 +1495,7 @@ describe('AnalyticsScreen normal-training section order', () => {
     const anchor = root.findByProps({ testID: 'recovery-section-anchor' });
     const entry = anchor.findAllByProps({ testID: 'analytics-recovery-history-entry' }).find(n => n.props.accessibilityRole === 'button');
     expect(entry.props.accessibilityLabel).toBe('No completed recovery blocks yet, Opens Recovery management');
-    expect(sectionOrder(root)).toEqual(['Strength', 'Progressive Overload', 'Routine Health', 'Weight Trends', 'Recovery']);
+    expect(sectionOrder(root)).toEqual(['Strength', 'Progressive Overload', 'Routine Health', 'Latest weigh-in', 'Recovery']);
   });
 });
 
@@ -1507,10 +1507,14 @@ describe('AnalyticsScreen Weight Trends — one windowed rolling chart', () => {
   test('renders one chart label with both window options', () => {
     const component = setup({ entries: [] });
     const root = component.root;
-    expect(hasText(root, '7-day rolling average')).toBe(true);
-    expect(hasText(root, '30-day rolling average')).toBe(false);
-    expect(root.findAllByProps({ testID: 'weight-trends-window-7' }).length).toBeGreaterThan(0);
-    expect(root.findAllByProps({ testID: 'weight-trends-window-30' }).length).toBeGreaterThan(0);
+    expect(hasText(root, 'Latest weigh-in')).toBe(true);
+    // Both windows are one radio group; the 7-day line is the default.
+    const seven = root.findAllByProps({ testID: 'weight-trends-window-7' }).find(n => n.props.accessibilityRole === 'radio');
+    const thirty = root.findAllByProps({ testID: 'weight-trends-window-30' }).find(n => n.props.accessibilityRole === 'radio');
+    expect(seven.props.accessibilityLabel).toBe('7-day rolling average');
+    expect(seven.props.accessibilityState.selected).toBe(true);
+    expect(thirty.props.accessibilityLabel).toBe('30-day rolling average');
+    expect(thirty.props.accessibilityState.selected).toBe(false);
   });
 });
 
@@ -1980,7 +1984,7 @@ describe('AnalyticsScreen feature toggle gating', () => {
     expect(hasText(root, 'Since deload')).toBe(true);
     expect(hasText(root, 'Session Check-ins')).toBe(false);
     expect(hasText(root, 'No check-ins logged yet.')).toBe(false);
-    expect(hasText(root, 'Weight Trends')).toBe(true);
+    expect(hasText(root, 'Latest weigh-in')).toBe(true);
   });
 
   // These two previously pinned the opposite behavior — deload mode off hid the
@@ -2002,7 +2006,7 @@ describe('AnalyticsScreen feature toggle gating', () => {
     expect(hasText(root, 'Building')).toBe(false);
     expect(hasText(root, 'Approaching')).toBe(false);
     expect(hasText(root, 'Deload')).toBe(false);
-    expect(hasText(root, 'Weight Trends')).toBe(true);
+    expect(hasText(root, 'Latest weigh-in')).toBe(true);
   });
 
   test('both toggles off still shows Routine Health with Total and no deload advisory', () => {
@@ -2014,7 +2018,7 @@ describe('AnalyticsScreen feature toggle gating', () => {
     expect(hasText(root, 'Since deload')).toBe(false);
     expect(hasText(root, 'Building')).toBe(false);
     expect(hasText(root, 'Session Check-ins')).toBe(false);
-    expect(hasText(root, 'Weight Trends')).toBe(true);
+    expect(hasText(root, 'Latest weigh-in')).toBe(true);
   });
 
   // #1602: gauge/zones, Deload mode and the check-ins share one flat panel with
@@ -2739,7 +2743,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
     expect(root.findAllByProps({ testID: 'progressive-overload-section' }).length).toBe(0);
     expect(root.findAllByProps({ testID: 'routine-health-section' }).length).toBe(0);
     // Recovery-live content stays visible.
-    expect(hasText(root, 'Weight Trends')).toBe(true);
+    expect(hasText(root, 'Latest weigh-in')).toBe(true);
   });
 
   test('tapping the disclosure expands baseline sections; tapping again re-collapses', () => {
@@ -2793,7 +2797,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
     const baseline = order.filter(t => ['Strength', 'Progressive Overload', 'Routine Health'].includes(t));
     expect(baseline).toEqual(['Strength', 'Progressive Overload', 'Routine Health']);
     // Weight Trends stays above the disclosure's contents.
-    expect(order.indexOf('Weight Trends')).toBeLessThan(order.indexOf('Strength'));
+    expect(order.indexOf('Latest weigh-in')).toBeLessThan(order.indexOf('Strength'));
   });
 
   test('active Recovery renders no Overview card or paused overview rows', () => {
@@ -3227,5 +3231,86 @@ describe('AnalyticsScreen — calendar-day projection refresh (#1484)', () => {
     jest.setSystemTime(new Date(2025, 5, 17, 8, 0, 0));
     render.act(() => { app.listeners.forEach(fn => fn('active')); });
     expect(hasText(c.root, 'N/A')).toBe(true);
+  });
+});
+
+
+// ── Bodyweight (#1603): every weigh-in, full-range windows, verified goal ─────
+
+describe('AnalyticsScreen Bodyweight — assembly seam for the Latest panel (#1603)', () => {
+  afterEach(() => jest.restoreAllMocks());
+  const { LineChart: MockLineChart } = require('../components/LineChart');
+  const lastPlot = () => {
+    const calls = MockLineChart.mock.calls.filter(c => c[0].weightPlot !== undefined && c[0].seriesLabel);
+    return calls[calls.length - 1][0];
+  };
+  // Twelve weigh-in dates, newest first (05-26 down to 05-15), 190 -> 184 lb.
+  const TWELVE = Array.from({ length: 12 }, (_, i) => {
+    const day = String(26 - i).padStart(2, '0');
+    return { id: `w${i}`, date: `2026-05-${day}`, logged_at: `2026-05-${day}T08:00:00Z`, weight_value: 184 + i * 0.5, weight_unit: 'lb', note: i === 3 ? 'After travel' : '' };
+  });
+  const goalOf = (patch = {}) => ({ target_weight: 180, target_date: '2026-08-01', start_weight: 190, ...patch });
+  const pick = (root, key) => render.act(() => { root.findByProps({ testID: `weight-trends-window-${key}` }).props.onPress(); });
+
+  beforeEach(() => MockLineChart.mockClear());
+
+  test('plots every weigh-in; the 7D and 30D windows both span every date (never last 7 / last 30 only)', () => {
+    const root = setup({ entries: TWELVE }).root;
+    const seven = lastPlot();
+    expect(seven.weightPlot.points).toHaveLength(12);
+    expect(seven.weightPlot.line).toHaveLength(12);
+    expect(seven.weightPlot.points.map(p => p.date)).toEqual(TWELVE.map(e => e.date).reverse());
+    expect(seven.weightPlot.points.find(p => p.id === 'w3').note).toBe('After travel');
+    pick(root, '30');
+    const thirty = lastPlot();
+    expect(thirty.weightPlot.points).toHaveLength(12);
+    expect(thirty.weightPlot.line).toHaveLength(12);
+    expect(thirty.weightPlot.line.map(p => p.t)).toEqual(seven.weightPlot.line.map(p => p.t));
+  });
+
+  test('the rolling line comes from the existing derivation, one value per weigh-in date', () => {
+    setup({ entries: TWELVE });
+    const { weightPlot } = lastPlot();
+    const expected = data.computeWeightRollingAverageSeries(TWELVE, 12, 7).map(p => p.value);
+    expect(weightPlot.line.map(p => p.value)).toEqual(expected);
+  });
+
+  test('a verified active goal reaches the chart as the target line', () => {
+    setup({ entries: TWELVE, hookOverrides: { weightGoal: goalOf() } });
+    expect(lastPlot().weightPlot.goal).toEqual({ value: 180, text: '180' });
+  });
+
+  test.each([
+    ['no goal', {}],
+    ['an ended goal (target date passed)', { weightGoal: goalOf({ target_date: '2026-05-01' }) }],
+    ['a goal that could not be read', { weightGoal: goalOf(), weightGoalState: { error: new Error('read failed') } }],
+    ['a goal still loading', { weightGoal: goalOf(), weightGoalState: { loading: true } }],
+  ])('%s draws no goal line, mode, target, to-go or pace', (_name, hookOverrides) => {
+    const root = setup({ entries: TWELVE, hookOverrides }).root;
+    expect(lastPlot().weightPlot.goal).toBeNull();
+    expect(root.findAllByProps({ testID: 'bodyweight-goal' })).toHaveLength(0);
+    expect(root.findAllByProps({ testID: 'bodyweight-target-pace' })).toHaveLength(0);
+    expect(hasText(root, 'to go')).toBe(false);
+  });
+
+  test('a goal without a stored start weight still decorates once a current weight exists', () => {
+    const root = setup({ entries: TWELVE, hookOverrides: { weightGoal: goalOf({ start_weight: undefined }) } }).root;
+    expect(lastPlot().weightPlot.goal).not.toBeNull();
+    expect(hasText(root, 'Goal · Cutting')).toBe(true);
+  });
+
+  test('the Latest header keeps the newest weigh-in and its date', () => {
+    const root = setup({ entries: TWELVE }).root;
+    expect(hasText(root, 'Latest weigh-in')).toBe(true);
+    expect(hasText(root, '05-26-2026')).toBe(true);
+  });
+
+  test('one weigh-in has no chart, only the Latest header and the Log handoff', () => {
+    const onNavigate = jest.fn();
+    const root = setup({ entries: TWELVE.slice(0, 1), hookOverrides: { onNavigate } }).root;
+    expect(MockLineChart.mock.calls.filter(c => c[0].seriesLabel)).toHaveLength(0);
+    expect(hasText(root, 'Weigh in on two different days')).toBe(true);
+    render.act(() => { root.findByProps({ testID: 'bodyweight-log-weight' }).props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Weight');
   });
 });

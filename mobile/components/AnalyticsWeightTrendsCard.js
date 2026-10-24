@@ -1,12 +1,17 @@
 import { GEOMETRY } from '../theme/spacing';
 import React, { useState, useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Card, SectionTitle, LineChart } from './UI';
+import { LineChart } from './UI';
 import { useTheme } from '../theme/ThemeContext';
-import { TYPOGRAPHY } from '../theme/typography';
+import { TYPOGRAPHY, TYPOGRAPHY_FALLBACK, useKuaTypography } from '../theme/typography';
 import { useWeightUnit } from '../lib/unitPreference';
-import { formatPaceElapsed } from '../lib/format';
-import { paceDirection, WEIGHT_TONE, weightPaceBadgeText, weightTrendTone } from '../lib/data/derivedAnalytics';
+import { formatDate } from '../lib/format';
+import { displayChartSeries, formatGoalWeightValue } from '../lib/units';
+import { formatTrendDeltaValue } from '../lib/WeightScreenHelpers';
+import { weightDirection, weightTrendTone } from '../lib/data/derivedAnalytics';
+import { BodyweightPanel } from './analyticsWeight/BodyweightPanel';
+import { BodyweightStats } from './analyticsWeight/BodyweightStats';
+import { buildWeighInPoints } from './lineChart/weightChartPresentation';
 
 // One insufficient-data treatment for either window (#821). It replaces the bare
 // "Not enough data", which named no threshold and offered nothing to do about
@@ -47,12 +52,20 @@ function ChartEmptyState({ loading, onNavigate }) {
 }
 
 // One chart, two canonical series (#1349). The toggle only picks which
-// already-derived prop to draw; it never merges or recomputes either series.
+// already-derived rolling-average line to draw; it never merges or recomputes
+// either series, and (#1603) never changes the weigh-ins or the date range.
 const WINDOWS = [
-  { key: '7', short: '7D', label: '7-day rolling average' },
-  { key: '30', short: '30D', label: '30-day rolling average' },
+  { key: '7', short: '7D AVG', label: '7-day rolling average', days: 7 },
+  { key: '30', short: '30D AVG', label: '30-day rolling average', days: 30 },
 ];
 
+const noop = () => {};
+
+// Analytics > Bodyweight (Redesign v3, #1603). `entries` are the usable
+// weigh-ins (canonical lb), `trends` the canonical trend summary and
+// `goalContext` the verified active goal (null for no goal, an ended goal or a
+// goal that could not be read), all from AnalyticsScreen's existing derivations.
+// rolling7/rolling30 arrive in display space, one point per weigh-in date.
 export function AnalyticsWeightTrendsCard({
   handleWeightLayout,
   weightSummary,
@@ -60,316 +73,306 @@ export function AnalyticsWeightTrendsCard({
   rolling30,
   isWeightLoading,
   onNavigate,
+  entries = null,
+  trends = null,
+  goalContext = null,
 }) {
-  const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
-  // rolling7/rolling30 and weightSummary arrive already converted into display
-  // space by AnalyticsScreen, so only the unit label is needed here.
+  const { kuaPalette: kua, colors } = useTheme();
+  const typo = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typo), [colors, kua, typo]);
   const unit = useWeightUnit();
-  const [selectedPoint, setSelectedPoint] = useState(null);
   const [windowKey, setWindowKey] = useState('7');
   const activeWindow = WINDOWS.find(w => w.key === windowKey);
   const activeSeries = windowKey === '30' ? rolling30 : rolling7;
 
-  const byLabel7 = useMemo(() => {
-    const m = {};
-    rolling7.forEach(p => { m[p.label] = p; });
-    return m;
-  }, [rolling7]);
-
-  const byLabel30 = useMemo(() => {
-    const m = {};
-    rolling30.forEach(p => { m[p.label] = p; });
-    return m;
-  }, [rolling30]);
-
-  function handleSelect(point) {
-    setSelectedPoint(point);
-  }
-
-  // The remounted chart starts unselected, so the header must too — otherwise
-  // it would keep naming a point the visible series no longer highlights.
+  // Changing the window remounts the chart (key below), which drops its
+  // selection: an average line the point was read against no longer exists.
   function handleWindow(key) {
-    if (key === windowKey) return;
-    setWindowKey(key);
-    setSelectedPoint(null);
+    if (key !== windowKey) setWindowKey(key);
   }
 
-  const display = useMemo(() => {
-    if (!selectedPoint) return weightSummary;
-    const label = selectedPoint.label;
-    const p7 = byLabel7[label] ?? null;
-    const p30 = byLabel30[label] ?? null;
-    return {
-      latestWeightValue: unit === 'kg' ? selectedPoint.value.toFixed(1) : `${selectedPoint.value}`,
-      showUnit: true,
-      weightCount: weightSummary.weightCount,
-      avg7: p7 ? `${p7.value.toFixed(1)} ${unit}` : 'N/A',
-      avg30: p30 ? `${p30.value.toFixed(1)} ${unit}` : 'N/A',
-      paceFlag: null,
-      paceLevel: null,
-      paceElapsedDays: null,
-      selectedDate: label,
-    };
-  }, [selectedPoint, weightSummary, byLabel7, byLabel30, unit]);
+  const plot = useMemo(() => {
+    if (!entries || entries.length === 0 || activeSeries.length < 2) return null;
+    const { points, line } = buildWeighInPoints({ entries, series: activeSeries, windowDays: activeWindow.days, unit });
+    if (points.length < 2) return null;
+    const goal = goalContext && Number.isFinite(goalContext.target)
+      ? { value: displayChartSeries([{ value: goalContext.target, unit: 'lb' }], unit)[0].value, text: formatGoalWeightValue(goalContext.target, unit) }
+      : null;
+    return { points, line, goal, windowLabel: activeWindow.label };
+  }, [entries, activeSeries, activeWindow, unit, goalContext]);
+
+  const latestDate = useMemo(() => {
+    const newest = (entries || []).reduce((acc, e) => (e && e.date && (!acc || e.date > acc) ? e.date : acc), null);
+    return newest ? formatDate(newest) : null;
+  }, [entries]);
+
+  // Change vs the previous weigh-in day: the same pair of local-date values as
+  // the Weight tab's Latest panel (#947), toned by production's goal-aware rule.
+  const change = useMemo(() => {
+    if (!trends) return null;
+    const direction = weightDirection(trends.recentDateWeight ?? null, trends.priorDateWeight ?? null);
+    const text = formatTrendDeltaValue(trends.recentDateWeight ?? null, trends.priorDateWeight ?? null, unit);
+    if (text === '-') return null;
+    const tone = weightTrendTone({
+      direction,
+      goalDirection: goalContext ? goalContext.direction : null,
+      paceLevel: weightSummary.paceLevel ?? null,
+    });
+    return { text, direction, tone };
+  }, [trends, unit, goalContext, weightSummary.paceLevel]);
+
+  const count = plot ? plot.points.length : 0;
+  const stroke = kua ? (kua.chartSeries1 || kua.primary) : colors.accent;
 
   return (
-    <View onLayout={handleWeightLayout} style={styles.sectionWrapper}>
-      <SectionTitle>Weight Trends</SectionTitle>
-      <Card style={styles.weightCard}>
-        <View style={styles.weightHeader}>
-          <View>
-            <Text style={styles.weightLabel}>
-              {display.selectedDate ? `Selected · ${display.selectedDate}` : 'Latest weigh-in'}
-            </Text>
-            <Text style={styles.weightValueLarge}>
-              {display.latestWeightValue}
-              {display.showUnit && <Text style={styles.weightUnit}> {unit}</Text>}
-            </Text>
-          </View>
-          {display.paceFlag && (() => {
-            // Direction and severity tone from the shared layer (#1242).
-            const isSpike = weightTrendTone({ direction: paceDirection(display.paceFlag), paceLevel: display.paceLevel }) === WEIGHT_TONE.SPIKE;
-            return (
-              <View style={[styles.paceBadge, isSpike ? styles.paceSpike : styles.paceNotable]}>
-                <Text style={[styles.paceText, !isSpike && styles.paceTextNotable]}>
-                  {weightPaceBadgeText(paceDirection(display.paceFlag))}
-                </Text>
-                <Text style={[styles.pacePeriodText, !isSpike && styles.paceTextNotable]}>
-                  {formatPaceElapsed(display.paceElapsedDays)}
-                </Text>
-              </View>
-            );
-          })()}
-        </View>
-
-        <View style={styles.chartBlock}>
-          <View style={styles.chartHeader}>
-            <Text style={[styles.chartLabel, styles.chartLabelFlex]}>{activeWindow.label}</Text>
-            <View style={styles.windowToggle} accessibilityRole="radiogroup" accessibilityLabel="Rolling average window">
-              {WINDOWS.map(w => {
-                const selected = w.key === windowKey;
-                return (
-                  <Pressable
-                    key={w.key}
-                    testID={`weight-trends-window-${w.key}`}
-                    onPress={() => handleWindow(w.key)}
-                    style={[styles.windowOption, selected && styles.windowOptionSelected]}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={w.label}
-                  >
-                    <Text style={[styles.windowOptionText, selected && styles.windowOptionTextSelected]} accessible={false}>
-                      {w.short}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-          <View style={styles.chartArea}>
-            {activeSeries.length > 1 ? (
-              <LineChart
-                key={windowKey}
-                data={activeSeries}
-                height={100}
-                hideHeader
-                showScale
-                showGrid
-                color={kua ? kua.primary : undefined}
-                seriesLabel={`${activeWindow.label} bodyweight`}
-                onSelect={handleSelect}
-              />
-            ) : (
-              <ChartEmptyState loading={isWeightLoading} onNavigate={onNavigate} />
-            )}
-          </View>
-        </View>
-
-        <View style={styles.weightFooter}>
-          <View style={styles.weightStat}>
-            <Text style={styles.weightStatValue}>{display.avg7}</Text>
-            <Text style={styles.weightStatLabel}>7-day avg</Text>
-          </View>
-          <View style={styles.weightStat}>
-            <Text style={styles.weightStatValue}>{display.avg30}</Text>
-            <Text style={styles.weightStatLabel}>30-day avg</Text>
-          </View>
-        </View>
-      </Card>
+    <View onLayout={handleWeightLayout}>
+      <BodyweightPanel
+        summary={weightSummary}
+        unit={unit}
+        latestDate={latestDate}
+        change={change}
+        windows={WINDOWS}
+        windowKey={windowKey}
+        onWindow={handleWindow}
+        onNavigate={onNavigate}
+        styles={styles}
+        stats={(
+          <BodyweightStats
+            trends={trends}
+            goalContext={goalContext}
+            currentWeight={trends ? trends.currentWeight : null}
+            unit={unit}
+            styles={styles}
+          />
+        )}
+      >
+        {activeSeries.length > 1 ? (
+          <>
+            <LineChart
+              key={windowKey}
+              data={activeSeries}
+              weightPlot={plot}
+              height={plot ? 150 : 100}
+              hideHeader
+              showScale
+              showGrid
+              color={stroke}
+              seriesLabel={`${activeWindow.label} bodyweight`}
+              onSelect={noop}
+            />
+            {plot ? (
+              <Text style={styles.caption} testID="bodyweight-caption">
+                {`${count} ${count === 1 ? 'weigh-in' : 'weigh-ins'} at recorded dates \u00b7 Line: ${activeWindow.label} \u00b7 Ring: latest weigh-in`}
+              </Text>
+            ) : null}
+          </>
+        ) : (
+          <ChartEmptyState loading={isWeightLoading} onNavigate={onNavigate} />
+        )}
+      </BodyweightPanel>
     </View>
   );
 }
 
-export const createStyles = (colors, kua = null) => StyleSheet.create({
-  sectionWrapper: {
-    gap: 16,
-  },
-  weightCard: {
-    padding: 20,
-    gap: 16,
-    backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
-  },
-  chartBlock: {
-    gap: 4,
-  },
-  // Wraps so a large font scale on a narrow card drops the selector below
-  // the label instead of overlapping it or bleeding past the card.
-  chartHeader: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    columnGap: 8,
-  },
-  chartLabelFlex: {
-    flexShrink: 1,
-  },
-  windowToggle: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  // Rule 15: grow the box to the 44dp floor rather than lean on hitSlop.
-  windowOption: {
-    minHeight: 44,
-    minWidth: 44,
-    paddingHorizontal: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: GEOMETRY['radius-lg'],
-  },
-  windowOptionSelected: {
-    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
-  },
-  windowOptionText: {
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
-    fontWeight: '700',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  windowOptionTextSelected: {
-    color: kua ? kua.primary : colors.accentText,
-  },
-  chartLabel: {
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
-    fontWeight: '800',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  // minHeight, not a fixed height: the insufficient-data state now carries copy
-  // and a 44px action, and at a large font scale that is taller than the chart
-  // it stands in for. A fixed 100 clipped it.
-  chartArea: {
-    minHeight: 100,
-    justifyContent: 'center',
-  },
-  chartPlaceholder: {
-    minHeight: 100,
-    paddingVertical: 12,
-    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
-    borderRadius: GEOMETRY['radius-lg'],
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  chartEmpty: {
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textAlign: 'center',
-    paddingHorizontal: 16,
-  },
-  chartEmptyAction: {
-    marginTop: 8,
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  chartEmptyActionText: {
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
-    fontWeight: '600',
-    color: kua ? kua.primary : colors.accentText,
-  },
-  weightHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  weightLabel: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
-    fontWeight: '700',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textTransform: 'uppercase',
-    marginBottom: 2,
-  },
-  weightValueLarge: {
-    // display exception per #1283 foundation
-    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 32, lineHeight: 36 } : { fontSize: TYPOGRAPHY['metric-display'].fontSize, fontWeight: '800' }),
-    color: kua ? kua.onSurface : colors.accentText,
-  },
-  weightUnit: {
-    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '600' }),
-    color: kua ? kua.onSurfaceVariant : colors.text,
-    marginLeft: 4,
-  },
-  paceBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: GEOMETRY['radius-xl'],
-  },
-  // Pace badges. The spike badge stays a loud saturated fill (KUA `error` in all
-  // six palettes, `cardErrorBg` legacy) with light text. The notable badge is a
-  // step quieter: the mode-adaptive soft caution *container* (`cautionSurface`
-  // with its paired `cautionSurfaceText` ink, both AA-tuned and asserted in
-  // theme-rendering) — pale amber + dark ink in light mode, dark warm brown +
-  // bright amber ink in dark mode. This replaces two earlier misfires: the raw
-  // `caution` mark as a fill (a harsh 1.57:1 glyph-yellow in dark mode) and the
-  // `cardCautionBg` filled tone (a dark amber that barely differed between light
-  // and dark). No KUA-mode caution container token exists, so the notable badge
-  // is court-neutral but mode-aware.
-  paceSpike: {
-    backgroundColor: kua ? kua.error : colors.cardErrorBg,
-  },
-  paceNotable: {
-    backgroundColor: colors.cautionSurface,
-  },
-  paceText: {
-    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '800' }),
-    color: colors.textLight,
-  },
-  // Notable badge ink: the on-surface pair for `cautionSurface`, so the label
-  // reads in both modes (dark amber on the pale light surface, bright amber on
-  // the dark surface) instead of the near-white `textLight` the filled spike
-  // badge uses.
-  paceTextNotable: {
-    color: colors.cautionSurfaceText,
-  },
-  // States the elapsed span in words so the badge does not lean on color alone.
-  pacePeriodText: {
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
-    fontWeight: '700',
-    color: colors.textLight,
-    textAlign: 'right',
-    marginTop: 1,
-  },
-  weightFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    paddingTop: 16,
-  },
-  weightStat: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 2,
-  },
-  weightStatValue: {
-    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '700' }),
-    color: kua ? kua.onSurface : colors.text,
-  },
-  weightStatLabel: {
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-});
+export const createStyles = (colors, kua = null, typo = null) => {
+  const role = (name) => (typo || TYPOGRAPHY_FALLBACK)[name];
+  const muted = kua ? kua.onSurfaceVariant : colors.textMuted;
+  const ink = kua ? kua.onSurface : colors.text;
+  const hairline = kua ? kua.surfaceBorder : colors.cardBorder;
+  return StyleSheet.create({
+    header: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: 8,
+      paddingHorizontal: 16,
+      paddingTop: 16,
+    },
+    headerMain: {
+      flexShrink: 1,
+      minWidth: 0,
+      paddingTop: 4,
+    },
+    valueRow: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+    },
+    weightValueLarge: {
+      ...role('metric-display'),
+      fontSize: 36,
+      lineHeight: 40,
+      letterSpacing: -0.03 * 36,
+      color: ink,
+    },
+    unit: {
+      ...role('label-lg'),
+      color: muted,
+      marginLeft: 3,
+    },
+    // Radio group: two >=44dp options inside one hairline frame.
+    toggle: {
+      flexDirection: 'row',
+      padding: 2,
+      gap: 2,
+      borderWidth: 1,
+      borderColor: hairline,
+      borderRadius: GEOMETRY['radius-lg'],
+    },
+    toggleOption: {
+      minHeight: 44,
+      minWidth: 56,
+      paddingHorizontal: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: GEOMETRY['radius-md'],
+    },
+    toggleOptionSelected: {
+      backgroundColor: kua ? kua.surfaceCardHeader : colors.subtleBg,
+      borderWidth: 1,
+      borderColor: hairline,
+    },
+    toggleText: {
+      ...role('label-md'),
+      textTransform: 'uppercase',
+      color: muted,
+    },
+    toggleTextSelected: {
+      color: ink,
+    },
+    metaRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      columnGap: 6,
+      rowGap: 6,
+      paddingHorizontal: 16,
+      paddingTop: 2,
+    },
+    changeLine: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    metaText: {
+      ...role('label-md'),
+      fontSize: 13,
+      lineHeight: 18,
+      color: muted,
+    },
+    chartSection: {
+      paddingHorizontal: 16,
+      paddingTop: 8,
+      paddingBottom: 14,
+    },
+    paceBadge: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: GEOMETRY['radius-xl'],
+    },
+    // Spike stays the loud saturated fill; notable is the mode-aware caution
+    // container (same pairing as before the redesign, #941/#1242).
+    paceSpike: {
+      backgroundColor: kua ? kua.error : colors.cardErrorBg,
+    },
+    paceNotable: {
+      backgroundColor: colors.cautionSurface,
+    },
+    paceText: {
+      ...role('label-md'),
+      color: colors.textLight,
+    },
+    paceTextNotable: {
+      color: colors.cautionSurfaceText,
+    },
+    // States the elapsed span in words so the badge does not lean on color alone.
+    pacePeriodText: {
+      ...role('label-sm'),
+      color: colors.textLight,
+      marginTop: 1,
+    },
+    // Averages / goal split under the chart (BodyweightStats).
+    weightCard: {
+      backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
+    },
+    weightFooter: {
+      borderTopWidth: 1,
+      borderTopColor: hairline,
+    },
+    row: {
+      flexDirection: 'row',
+    },
+    rowDivider: {
+      borderTopWidth: 1,
+      borderTopColor: hairline,
+    },
+    cell: {
+      flex: 1,
+      minWidth: 0,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      gap: 4,
+    },
+    cellDivider: {
+      borderLeftWidth: 1,
+      borderLeftColor: hairline,
+    },
+    weightStatLabel: {
+      ...role('label-md'),
+      textTransform: 'uppercase',
+      color: muted,
+    },
+    cellValueRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'baseline',
+      columnGap: 8,
+    },
+    weightStatValue: {
+      ...role('label-lg'),
+      fontSize: 17,
+      lineHeight: 22,
+      color: ink,
+    },
+    cellUnit: {
+      ...role('label-md'),
+      color: muted,
+    },
+    cellNote: {
+      ...role('body-sm'),
+      color: muted,
+    },
+    caption: {
+      ...role('body-sm'),
+      color: muted,
+      marginTop: 2,
+    },
+    // minHeight, not a fixed height: the insufficient-data state carries copy
+    // and a 44px action, and at a large font scale that is taller than the
+    // chart it stands in for. A fixed 100 clipped it.
+    chartPlaceholder: {
+      minHeight: 100,
+      paddingVertical: 12,
+      backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
+      borderRadius: GEOMETRY['radius-lg'],
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    chartEmpty: {
+      fontSize: TYPOGRAPHY['body-sm'].fontSize,
+      color: muted,
+      textAlign: 'center',
+      paddingHorizontal: 16,
+    },
+    chartEmptyAction: {
+      marginTop: 8,
+      minHeight: 44,
+      justifyContent: 'center',
+      paddingHorizontal: 12,
+    },
+    chartEmptyActionText: {
+      fontSize: TYPOGRAPHY['body-sm'].fontSize,
+      fontWeight: '600',
+      color: kua ? kua.primary : colors.accentText,
+    },
+  });
+};
