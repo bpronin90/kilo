@@ -143,7 +143,8 @@ export function MoreMenuPanels({ auth, onOpen }) {
         label="Tools & help"
         rows={[
           { icon: 'auto-awesome', title: 'Routine prompt tools', subtitle: 'Copy local templates for an external LLM', onPress: () => onOpen('routine-prompts'), a11yLabel: 'Routine prompt tools' },
-          { icon: 'help-outline', title: 'App guide', subtitle: 'Syntax and walkthrough', onPress: () => onOpen('help'), a11yLabel: 'App Guide' },
+          // Visible "App Guide" kept: existing Log-tab tests open it by that text.
+          { icon: 'help-outline', title: 'App Guide', subtitle: 'Syntax and walkthrough', onPress: () => onOpen('help'), a11yLabel: 'App Guide' },
           { icon: 'info-outline', title: 'About Kilo', subtitle: `Version ${pkg.version}`, onPress: () => onOpen('about'), a11yLabel: 'About Kilo' },
         ]}
       />

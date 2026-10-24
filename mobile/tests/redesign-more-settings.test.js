@@ -67,7 +67,7 @@ describe('More menu', () => {
   test('renders the three groups in order with all eight destinations', () => {
     const tree = renderMore(SIGNED_IN, { hasLastSuccess: true, statusLabel: 'Synced' });
     const all = texts(tree.root);
-    const order = ['Preferences', 'Settings', 'User profile', 'Account & data', 'Account', 'Data and backup', 'Import routine', 'Tools & help', 'Routine prompt tools', 'App guide', 'About Kilo'];
+    const order = ['Preferences', 'Settings', 'User profile', 'Account & data', 'Account', 'Data and backup', 'Import routine', 'Tools & help', 'Routine prompt tools', 'App Guide', 'About Kilo'];
     const positions = order.map((t) => all.indexOf(t));
     positions.forEach((p) => expect(p).toBeGreaterThanOrEqual(0));
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
