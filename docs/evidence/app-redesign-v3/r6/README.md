@@ -3,8 +3,10 @@
 Real-app renders of the redesigned Home (tracker #1609).
 
 - **Rendered commit:** `247aea0dc1259736d56f2dec9d2b89896182d906`, rebased onto
-  main `eeeeabc1`. It is the last commit that changes `mobile/`. Later commits touch only
-  `docs/evidence/`, so they cannot change these renders.
+  main `eeeeabc1`. Later commits touch only
+  `docs/evidence/`, tests, and the legacy-palette (no KUA palette) 1K series colour
+  fallback in `HomeOneKPanel.js`. Every capture uses a KUA court palette, so that
+  fallback cannot change these renders.
 - **Viewport:** 390x844 CSS px at DPR 2 (PNGs are 780x1688).
 - **Clock and data:** `FIXED_NOW` 2026-10-23T12:00Z; shared fixtures plus the
   issue-local overlays in [`fixtures.cjs`](fixtures.cjs). See the
