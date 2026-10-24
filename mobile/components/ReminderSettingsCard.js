@@ -83,7 +83,10 @@ function runNative(ch, fn) {
   return run;
 }
 
-export function ReminderSettingsCard() {
+// `flat` (#1608) drops the Card so Settings can host the two reminders inside
+// its own flat panel, each a padded block split by a hairline. Default callers
+// keep the Card.
+export function ReminderSettingsCard({ flat = false } = {}) {
   const styles = useThemedStyles(createStyles);
   const typography = useKuaTypography();
   const { colors } = useTheme();
@@ -362,18 +365,22 @@ export function ReminderSettingsCard() {
     return d;
   };
 
+  const Container = flat ? View : Card;
+  // Flat rows take Settings' row type (headline-sm title, body-sm help).
+  const labelStyle = flat ? [styles.settingLabel, { fontFamily: typography['headline-sm'].fontFamily, fontWeight: undefined }] : styles.settingLabel;
+  const helpStyle = flat ? [typography['body-sm'], styles.settingHelp, styles.flatHelp] : styles.settingHelp;
   return (
-    <Card>
+    <Container>
       {/* Each reminder is one group: the label/switch row and its sub-elements
           (inline error, weekday grid, time row) sit a uniform 8dp apart via the
           group's own gap, and the two groups are separated by Card's 10dp child
           gap. No row carries a bottom margin, so an enabled reminder's time row
           is spaced identically to the workout weekday grid (#1018). */}
-      <View style={styles.reminderGroup}>
+      <View style={[styles.reminderGroup, flat && styles.flatGroup]}>
         <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Daily weigh-in reminder</Text>
-            <Text style={styles.settingHelp}>A daily notification at your chosen time to log your weight</Text>
+            <Text style={labelStyle}>Daily weigh-in reminder</Text>
+            <Text style={helpStyle}>A daily notification at your chosen time to log your weight</Text>
           </View>
           <Switch
             {...switchColors(colors)}
@@ -408,11 +415,11 @@ export function ReminderSettingsCard() {
         ) : null}
       </View>
 
-      <View style={styles.reminderGroup}>
+      <View style={[styles.reminderGroup, flat && styles.flatGroup, flat && styles.flatDivider]}>
         <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Workout day nudge</Text>
-            <Text style={styles.settingHelp}>{workoutHelp}</Text>
+            <Text style={labelStyle}>Workout day nudge</Text>
+            <Text style={helpStyle}>{workoutHelp}</Text>
           </View>
           <Switch
             {...switchColors(colors)}
@@ -469,7 +476,7 @@ export function ReminderSettingsCard() {
           </View>
         ) : null}
       </View>
-    </Card>
+    </Container>
   );
 }
 
@@ -485,6 +492,17 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // are held apart by Card's own 10dp child gap.
   reminderGroup: {
     gap: 8,
+  },
+  flatGroup: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  flatHelp: {
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
+  },
+  flatDivider: {
+    borderTopWidth: 1,
+    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   settingRow: {
     flexDirection: 'row',

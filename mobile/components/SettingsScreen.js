@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { ScreenShell } from './ScreenShell';
-import { Card, SectionTitle, Button, ErrorBanner } from './UI';
+import { Button, ErrorBanner } from './UI';
+import { SettingsSection, SettingRow, SegmentedOptions } from './settings/SettingsPanels';
 import { switchColors, useTheme } from '../theme/ThemeContext';
-import { useKuaTypography } from '../theme/typography';
+import { TYPOGRAPHY, useKuaTypography } from '../theme/typography';
 import { useFeatureToggles, useUserProfile } from '../hooks/useEntries';
 import {
   hydrateProgressionSuggestionSettings,
@@ -15,7 +16,6 @@ import { ReminderSettingsCard } from './ReminderSettingsCard';
 import { ThemeSelectionControl } from './ThemeSelectionControl';
 import { useWeightUnit, setWeightUnitPreference } from '../lib/unitPreference';
 import { unitFromUnitSystem, unitSystemFromUnit } from '../lib/units';
-import { TYPOGRAPHY } from '../theme/typography';
 import { GEOMETRY } from '../theme/spacing';
 
 // Appearance choices, in the order the segmented control renders them (#689).
@@ -23,6 +23,11 @@ const APPEARANCE_OPTIONS = [
   { value: 'light', label: 'Light', a11yLabel: 'Use the light appearance' },
   { value: 'dark', label: 'Dark', a11yLabel: 'Use the dark appearance' },
   { value: 'system', label: 'System', a11yLabel: 'Follow the device appearance' },
+];
+
+const UNIT_OPTIONS = [
+  { value: 'lb', label: 'lb', a11yLabel: 'Show weights in pounds' },
+  { value: 'kg', label: 'kg', a11yLabel: 'Show weights in kilograms' },
 ];
 
 // The unit whose write failed, held at module scope rather than in screen state
@@ -45,7 +50,7 @@ export function __resetUnitSaveStateForTests() {
 export function SettingsScreen({ onBack, multiplier, onUpdate }) {
   const { colors, kuaPalette: kua, preference: appearance, setPreference: setAppearance } = useTheme();
   const typography = useKuaTypography();
-  const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const { fatigueTrackingEnabled, deloadModeEnabled, setFatigueTrackingEnabled, setDeloadModeEnabled, saveFailures, retryToggleSave } = useFeatureToggles();
   const toggleFailures = saveFailures || {};
 
@@ -142,210 +147,136 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
   const handleDecrement = () => onUpdate(Math.max(1, Math.round((multiplier - 0.01) * 100) / 100));
   const handleReset = () => onUpdate(1.07);
 
-  const cardStyle = kua ? { backgroundColor: kua.surfaceCard, borderColor: kua.surfaceBorder } : undefined;
+  const switchRow = (label, help, value, onValueChange, divider) => (
+    <SettingRow
+      label={label}
+      help={help}
+      divider={divider}
+      control={(
+        <Switch
+          {...switchColors(colors)}
+          value={!!value}
+          onValueChange={onValueChange}
+          accessibilityLabel={label}
+          accessibilityRole="switch"
+        />
+      )}
+    />
+  );
 
+  // Redesign v3 (#1608): one flat panel per section, rows split by hairlines.
+  // Order, labels, controls and every failure banner are production's.
   return (
     <ScreenShell title="Settings" subtitle="App features and preferences." onBack={onBack} style={kua ? { backgroundColor: kua.background } : undefined}>
-
-      {kua ? <Text style={styles.sectionHeader}>FEATURES</Text> : <SectionTitle>Features</SectionTitle>}
-      <Card style={cardStyle}>
-        <View style={styles.settingRow}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Fatigue tracking</Text>
-            <Text style={styles.settingHelp}>Check-in prompt after each session and fatigue charts in Analytics</Text>
-          </View>
-          <Switch
-            {...switchColors(colors)}
-            value={!!fatigueTrackingEnabled}
-            onValueChange={setFatigueTrackingEnabled}
-            accessibilityLabel="Fatigue tracking"
-            accessibilityRole="switch"
-          />
-        </View>
+      <SettingsSection label="FEATURES">
+        {switchRow('Fatigue tracking', 'Check-in prompt after each session and fatigue charts in Analytics', fatigueTrackingEnabled, setFatigueTrackingEnabled, false)}
         {toggleFailures.fatigueTrackingEnabled && (
-          <ErrorBanner
-            message={`Couldn't save Fatigue tracking. It is still ${fatigueTrackingEnabled ? 'on' : 'off'} and will stay that way until this saves.`}
-            onRetry={() => retryToggleSave('fatigueTrackingEnabled')}
-          />
-        )}
-        <View style={styles.settingRow}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Deload mode</Text>
-            <Text style={styles.settingHelp}>Adds deload generation and history to the Log tab. That surface is hidden while a Recovery block is active, because Recovery controls that workflow instead.</Text>
+          <View style={styles.bannerBlock}>
+            <ErrorBanner
+              message={`Couldn't save Fatigue tracking. It is still ${fatigueTrackingEnabled ? 'on' : 'off'} and will stay that way until this saves.`}
+              onRetry={() => retryToggleSave('fatigueTrackingEnabled')}
+            />
           </View>
-          <Switch
-            {...switchColors(colors)}
-            value={!!deloadModeEnabled}
-            onValueChange={setDeloadModeEnabled}
-            accessibilityLabel="Deload mode"
-            accessibilityRole="switch"
-          />
-        </View>
+        )}
+        {switchRow('Deload mode', 'Adds deload generation and history to the Log tab. That surface is hidden while a Recovery block is active, because Recovery controls that workflow instead.', deloadModeEnabled, setDeloadModeEnabled, true)}
         {toggleFailures.deloadModeEnabled && (
-          <ErrorBanner
-            message={`Couldn't save Deload mode. It is still ${deloadModeEnabled ? 'on' : 'off'} and will stay that way until this saves.`}
-            onRetry={() => retryToggleSave('deloadModeEnabled')}
-          />
+          <View style={styles.bannerBlock}>
+            <ErrorBanner
+              message={`Couldn't save Deload mode. It is still ${deloadModeEnabled ? 'on' : 'off'} and will stay that way until this saves.`}
+              onRetry={() => retryToggleSave('deloadModeEnabled')}
+            />
+          </View>
         )}
-        <View style={[styles.settingRow, { marginBottom: 0 }]}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Progression suggestions</Text>
-            <Text style={styles.settingHelp}>Shows a prompt on the Log and Analytics tabs when your recent sets suggest adding weight or reps. You apply each one yourself; your workout notes are never changed.</Text>
-          </View>
-          <Switch
-            {...switchColors(colors)}
-            value={!!progressionSuggestionsEnabled}
-            onValueChange={handleToggleProgressionSuggestions}
-            accessibilityLabel="Progression suggestions"
-            accessibilityRole="switch"
-          />
-        </View>
-      </Card>
+        {switchRow('Progression suggestions', 'Shows a prompt on the Log and Analytics tabs when your recent sets suggest adding weight or reps. You apply each one yourself; your workout notes are never changed.', progressionSuggestionsEnabled, handleToggleProgressionSuggestions, true)}
+      </SettingsSection>
 
-      {kua ? <Text style={styles.sectionHeader}>REMINDERS</Text> : <SectionTitle>Reminders</SectionTitle>}
-      <ReminderSettingsCard />
+      <SettingsSection label="REMINDERS">
+        <ReminderSettingsCard flat />
+      </SettingsSection>
 
-      {kua ? <Text style={styles.sectionHeader}>APPEARANCE</Text> : <SectionTitle>Appearance</SectionTitle>}
-      <Card style={cardStyle}>
-        <ThemeSelectionControl />
-        {/* Stacked (label above, control below) rather than the side-by-side
-            row the lb/kg and ft/cm selectors use: Mode's three full words
-            (Light/Dark/System) need the card's full inner width to stay
-            orderly at narrow phone widths and large accessibility font
-            scales, which a row shared with the label column cannot guarantee
-            (#1173 review). */}
-        <View style={[styles.settingRow, styles.settingRowStacked, { marginBottom: 0 }]}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Mode</Text>
-            <Text style={styles.settingHelp}>Light, dark, or match your device</Text>
-          </View>
-          <View style={[styles.unitToggle, styles.unitToggleFullWidth]}>
-            {APPEARANCE_OPTIONS.map(({ value, label, a11yLabel }) => {
-              const selected = appearance === value;
-              return (
-                <Pressable
-                  key={value}
-                  onPress={() => setAppearance(value)}
-                  style={styles.unitTab}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected, disabled: false }}
-                  accessibilityLabel={a11yLabel}
-                >
-                  <View style={[styles.unitPill, selected && styles.unitPillActive]}>
-                    <Text style={[styles.unitTabText, selected && styles.unitTabTextActive]}>{label}</Text>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
+      <SettingsSection label="APPEARANCE">
+        <View style={styles.themeBlock}>
+          <ThemeSelectionControl flat />
         </View>
-      </Card>
-
-      {kua ? <Text style={styles.sectionHeader}>UNITS</Text> : <SectionTitle>Units</SectionTitle>}
-      <Card style={cardStyle}>
-        <View style={[styles.settingRow, { marginBottom: 0 }]}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Weight unit</Text>
-            <Text style={styles.settingHelp}>Shows body weight and lifts in pounds or kilograms. Your notes and saved data stay in lb.</Text>
-          </View>
-          <View style={styles.unitToggle}>
-            <Pressable
-              onPress={() => handleSelectUnit('lb')}
-              disabled={unitControlsDisabled}
-              style={styles.unitTab}
-              accessibilityRole="button"
-              accessibilityState={{ selected: weightUnit === 'lb', disabled: unitControlsDisabled }}
-              accessibilityLabel="Show weights in pounds"
-            >
-              <View style={[styles.unitPill, weightUnit === 'lb' && styles.unitPillActive, unitControlsDisabled && styles.unitPillDisabled]}>
-                <Text style={[styles.unitTabText, weightUnit === 'lb' && styles.unitTabTextActive]}>lb</Text>
-              </View>
-            </Pressable>
-            <Pressable
-              onPress={() => handleSelectUnit('kg')}
-              disabled={unitControlsDisabled}
-              style={styles.unitTab}
-              accessibilityRole="button"
-              accessibilityState={{ selected: weightUnit === 'kg', disabled: unitControlsDisabled }}
-              accessibilityLabel="Show weights in kilograms"
-            >
-              <View style={[styles.unitPill, weightUnit === 'kg' && styles.unitPillActive, unitControlsDisabled && styles.unitPillDisabled]}>
-                <Text style={[styles.unitTabText, weightUnit === 'kg' && styles.unitTabTextActive]}>kg</Text>
-              </View>
-            </Pressable>
-          </View>
-        </View>
-        {/* Sits inside the Units card, directly under the control it is about,
-            so the failure is read next to the tab that is now lying about
-            being persisted (#909). Card's own gap supplies the spacing. */}
-        {unitSaveFailed && (
-          <ErrorBanner
-            message={`Couldn't save the weight unit. ${weightUnit} applies for this session, but the app will open in ${persistedUnit} until this saves.`}
-            onRetry={handleRetryUnitSave}
-          />
-        )}
-      </Card>
-
-      {kua ? <Text style={styles.sectionHeader}>ADVANCED</Text> : <SectionTitle>Advanced</SectionTitle>}
-      <Card style={cardStyle}>
-        <View style={styles.settingRow}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Fatigue multiplier</Text>
-            <Text style={styles.settingHelp}>Scales your logged-set strength estimates to produce the Kilo Max shown in Analytics. A lower number makes the Kilo Max more conservative. Default 1.07.</Text>
-          </View>
-          <View style={styles.stepper}>
-            <Pressable style={styles.stepperButton} onPress={handleDecrement} accessibilityRole="button" accessibilityLabel="Decrease fatigue multiplier">
-              <Text style={styles.stepperText} accessible={false}>−</Text>
-            </Pressable>
-            <View style={styles.stepperValueContainer}>
-              <Text style={[styles.stepperValue, typography['label-lg']]}>{multiplier.toFixed(2)}</Text>
-            </View>
-            <Pressable style={styles.stepperButton} onPress={handleIncrement} accessibilityRole="button" accessibilityLabel="Increase fatigue multiplier">
-              <Text style={styles.stepperText} accessible={false}>+</Text>
-            </Pressable>
-          </View>
-        </View>
-        <Button
-          title="Reset to default (1.07)"
-          onPress={handleReset}
-          style={styles.resetButton}
-          textStyle={styles.resetButtonText}
+        {/* Stacked (label above, control below): Mode's three full words need
+            the panel's full inner width at narrow phone widths and large
+            accessibility font scales (#1173 review). */}
+        <SettingRow
+          label="Mode"
+          help="Light, dark, or match your device"
+          divider
+          stacked
+          control={<SegmentedOptions options={APPEARANCE_OPTIONS} value={appearance} onSelect={setAppearance} />}
         />
-      </Card>
+      </SettingsSection>
+
+      <SettingsSection label="UNITS">
+        {/* The save-failure banner sits under the control it is about, so the
+            failure is read next to the tab that is not yet persisted (#909). */}
+        <SettingRow
+          label="Weight unit"
+          help="Shows body weight and lifts in pounds or kilograms. Your notes and saved data stay in lb."
+          control={(
+            <SegmentedOptions
+              options={UNIT_OPTIONS}
+              value={weightUnit}
+              onSelect={handleSelectUnit}
+              disabled={unitControlsDisabled}
+            />
+          )}
+        >
+          {unitSaveFailed && (
+            <ErrorBanner
+              message={`Couldn't save the weight unit. ${weightUnit} applies for this session, but the app will open in ${persistedUnit} until this saves.`}
+              onRetry={handleRetryUnitSave}
+            />
+          )}
+        </SettingRow>
+      </SettingsSection>
+
+      <SettingsSection label="ADVANCED">
+        <SettingRow
+          label="Fatigue multiplier"
+          help="Scales your logged-set strength estimates to produce the Kilo Max shown in Analytics. A lower number makes the Kilo Max more conservative. Default 1.07."
+          control={(
+            <View style={styles.stepper}>
+              <Pressable style={styles.stepperButton} onPress={handleDecrement} accessibilityRole="button" accessibilityLabel="Decrease fatigue multiplier">
+                <Text style={styles.stepperText} accessible={false}>−</Text>
+              </Pressable>
+              <View style={styles.stepperValueContainer}>
+                <Text style={[styles.stepperValue, typography['label-lg']]}>{multiplier.toFixed(2)}</Text>
+              </View>
+              <Pressable style={styles.stepperButton} onPress={handleIncrement} accessibilityRole="button" accessibilityLabel="Increase fatigue multiplier">
+                <Text style={styles.stepperText} accessible={false}>+</Text>
+              </Pressable>
+            </View>
+          )}
+        />
+        <View style={styles.resetBlock}>
+          <Button
+            title="Reset to default (1.07)"
+            onPress={handleReset}
+            style={styles.resetButton}
+            textStyle={styles.resetButtonText}
+          />
+        </View>
+      </SettingsSection>
     </ScreenShell>
   );
 }
 
-const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create({
-  sectionHeader: {
-    ...(typography['label-sm'] ?? { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '500' }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textTransform: 'uppercase',
-    marginTop: 6,
+const createStyles = (colors, kua = null) => StyleSheet.create({
+  bannerBlock: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
   },
-  settingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
+  themeBlock: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
-  settingInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  settingRowStacked: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    gap: 10,
-  },
-  settingLabel: {
-    fontSize: TYPOGRAPHY['body-lg'].fontSize,
-    fontWeight: '700',
-    color: kua ? kua.onSurface : colors.text,
-  },
-  settingHelp: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  resetBlock: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
   stepper: {
     flexDirection: 'row',
@@ -378,63 +309,9 @@ const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create(
   stepperValue: {
     color: kua ? kua.onSurface : colors.text,
   },
-  // Compact segmented control — the Appearance and Weight unit selectors here
-  // and Profile's height-unit selector share this exact treatment (#1018). The
-  // pressable is a transparent ≥44dp target box (§15); the visible pill inside
-  // it stays compact and never stretches to the target height.
-  //
-  // flexWrap lets Mode's three labels (Light/Dark/System — the longest of the
-  // segmented rows here) drop to a second line instead of overflowing the
-  // card at narrow widths under large accessibility font scales (#1173
-  // review); the two-option lb/kg and ft/cm rows never need the second line.
-  unitToggle: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
-    gap: 4,
-  },
-  // Mode's toggle sits on its own full-width row (see settingRowStacked
-  // above), so it wraps within the card's actual inner width rather than
-  // whatever the label column leaves it, and reads left-to-right like the
-  // options it presents.
-  unitToggleFullWidth: {
-    justifyContent: 'flex-start',
-  },
-  unitTab: {
-    minHeight: 44,
-    minWidth: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  unitPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: GEOMETRY['radius-lg'],
-    borderWidth: 1,
-    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
-  },
-  unitPillActive: {
-    backgroundColor: kua ? kua.primary : colors.accent,
-    borderColor: kua ? kua.primary : colors.accent,
-  },
-  unitPillDisabled: {
-    opacity: 0.5,
-  },
-  unitTabText: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
-    fontWeight: '700',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  // Selected pills are accent-filled, so the label takes the on-accent ink,
-  // which is white in light mode and dark ink in dark mode (#689).
-  unitTabTextActive: {
-    color: kua ? kua.onPrimary : colors.onAccent,
-  },
   resetButton: {
     backgroundColor: 'transparent',
     paddingVertical: 4,
-    marginTop: 4,
     minHeight: 44,
     justifyContent: 'center',
   },
