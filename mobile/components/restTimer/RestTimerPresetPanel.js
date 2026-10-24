@@ -4,7 +4,8 @@
 // Modal so the editor header never clips it; positioned against the toggle's
 // measured rect (`anchor`).
 import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme } from '../../theme/ThemeContext';
 import { GEOMETRY } from '../../theme/spacing';
@@ -34,6 +35,23 @@ export function RestTimerPresetPanel({
   // Elapsed share of the running rest; only drawn when the duration is known.
   const progress = phase === 'running' && durationSec
     ? Math.min(1, Math.max(0, 1 - remainingMs / (durationSec * 1000))) : null;
+  // Vertical fit: below the control when the measured panel fits above the
+  // bottom safe area, else flipped above it, else pinned inside the window.
+  // Hidden until measured so it never flashes at an overflowing offset.
+  const insets = React.useContext(SafeAreaInsetsContext) || { top: 0, bottom: 0 };
+  const { height: winH } = useWindowDimensions();
+  const [panelH, setPanelH] = React.useState(null);
+  let placed = null;
+  if (anchor) {
+    const { controlTop, ...rest } = anchor;
+    placed = rest;
+    const maxBottom = winH - insets.bottom - 8;
+    if (panelH == null) placed = { ...rest, opacity: 0 };
+    else if (rest.top + panelH > maxBottom) {
+      const above = (controlTop ?? rest.top) - 6 - panelH;
+      placed = { ...rest, top: above >= insets.top + 8 ? above : Math.max(insets.top + 8, maxBottom - panelH) };
+    }
+  }
   return (
     <Modal
       visible={visible}
@@ -48,7 +66,12 @@ export function RestTimerPresetPanel({
             TalkBack element. TalkBack users dismiss with the back gesture
             (onRequestClose) or by choosing an item. */}
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessible={false} importantForAccessibility="no" />
-        <View style={[styles.chooser, anchor]} accessibilityRole="menu" testID="rest-timer-preset-panel">
+        <View
+          style={[styles.chooser, placed]}
+          onLayout={(e) => { const h = e.nativeEvent.layout.height; setPanelH(prev => (prev === h ? prev : h)); }}
+          accessibilityRole="menu"
+          testID="rest-timer-preset-panel"
+        >
           <View style={styles.panelHeader}>
             {phase === 'running' ? (
               <Text style={styles.panelCountdown} accessibilityLiveRegion="polite">{countdown}</Text>

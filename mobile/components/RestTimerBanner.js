@@ -98,6 +98,7 @@ export function RestTimerBanner({
           setAnchor({
             position: 'absolute',
             top: y + h + 6,
+            controlTop: y,
             width,
             right: Math.min(Math.max(8, winW - (x + w)), winW - width - 8),
           });

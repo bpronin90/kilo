@@ -62,3 +62,32 @@ test('docked control lives first in the editor tool row, not the page header', (
   const header = screen.slice(screen.indexOf('headerRight={'), screen.indexOf('keyboardShouldPersistTaps'));
   expect(header).not.toMatch(/RestTimerBanner|\{banner\}/);
 });
+
+test('panel flips above the control when it would cross the bottom safe area', () => {
+  const { SafeAreaInsetsContext } = require('react-native-safe-area-context');
+  const RN = require('react-native');
+  const dims = jest.spyOn(RN, 'useWindowDimensions').mockReturnValue({ width: 390, height: 560, scale: 2, fontScale: 1 });
+  try {
+    const anchor = { position: 'absolute', top: 349, right: 8, width: 320, controlTop: 299 };
+    let tree;
+    act(() => {
+      tree = TestRenderer.create(
+        <ThemeProvider>
+          <SafeAreaInsetsContext.Provider value={{ top: 47, bottom: 34, left: 0, right: 0 }}>
+            <RestTimerPresetPanel {...panelProps} anchor={anchor} phase="running" durationSec={90} />
+          </SafeAreaInsetsContext.Provider>
+        </ThemeProvider>,
+      );
+    });
+    const panel = () => tree.root.findAll(n => n.props && n.props.testID === 'rest-timer-preset-panel' && typeof n.props.onLayout === 'function')[0];
+    const flat = () => Object.assign({}, ...[].concat(panel().props.style).filter(Boolean));
+    expect(flat().opacity).toBe(0); // unmeasured: hidden, never drawn overflowing
+    act(() => { panel().props.onLayout({ nativeEvent: { layout: { height: 228 } } }); });
+    const style = flat();
+    expect(style.opacity).toBeUndefined();
+    expect(style.controlTop).toBeUndefined();
+    expect(style.top + 228).toBeLessThanOrEqual(560 - 34 - 8);
+    expect(style.top).toBeGreaterThanOrEqual(47 + 8);
+    expect(style.top + 228).toBeLessThanOrEqual(299); // above the control
+  } finally { dims.mockRestore(); }
+});
