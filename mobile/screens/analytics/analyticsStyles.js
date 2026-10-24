@@ -55,7 +55,17 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   poSection: {
-    gap: 6,
+    gap: 12,
+  },
+  // A padded section inside the one flat Progressive Overload panel (#1604).
+  poPanelSection: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  poPanelSectionRuled: {
+    borderTopWidth: 1,
+    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   poTitleRow: {
     flexDirection: 'row',
@@ -105,9 +115,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  poPanelSummary: {
+    gap: 12,
+  },
   poSuggestions: {
     gap: 12,
-    marginVertical: 4,
   },
   signalHeaderRow: {
     flexDirection: 'row',
@@ -129,16 +141,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  searchContainer: {
-    marginTop: 4,
-    marginBottom: 4,
-  },
+  searchContainer: {},
   searchInput: {
     backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
-    borderRadius: GEOMETRY['radius-2xl'],
+    borderRadius: GEOMETRY['radius-xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
     paddingHorizontal: 14,
+    minHeight: 48,
     paddingVertical: 10,
     fontSize: TYPOGRAPHY['body-lg'].fontSize,
     color: kua ? kua.onSurface : colors.text,
@@ -166,9 +176,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingHorizontal: 0,
     paddingVertical: 0,
   },
-  groupSection: {
-    paddingBottom: 4,
-  },
+  groupSection: {},
   groupSectionBorder: {
     borderTopWidth: 1,
     borderTopColor: kua ? kua.surfaceBorder : colors.divider,
@@ -177,16 +185,90 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    minHeight: 48,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: kua ? kua.surfaceBorder : colors.divider,
     backgroundColor: kua ? (kua.surfaceSection ?? kua.surfaceCard) : colors.subtleBg,
   },
   groupName: {
-    fontSize: TYPOGRAPHY['body-md'].fontSize,
-    fontWeight: '800',
-    color: kua ? kua.onSurface : colors.text,
+    ...TYPOGRAPHY['label-lg'],
+    color: kua ? kua.onSurfaceVariant : colors.text,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
+  },
+  groupCount: {
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
+  // Rows (#1604): >=60dp pressable, name + trend pill over the caption and the
+  // three metric columns, which share fixed widths with the column header so
+  // values sit right-aligned under 1RM / Kilo / Best.
+  poRow: {
+    minHeight: 60,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 6,
+    borderTopWidth: 1,
+    borderTopColor: kua ? kua.surfaceBorder : colors.divider,
+  },
+  poRowPressed: {
+    backgroundColor: kua ? kua.surfaceCardHeader : colors.chipBackground,
+  },
+  poRowTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    columnGap: 8,
+  },
+  poRowBottom: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    columnGap: 8,
+  },
+  poRowCaption: {
+    flex: 1,
+    minWidth: 0,
+  },
+  poMetrics: {
+    flexDirection: 'row',
+  },
+  poMetricCol: {
+    width: 76,
+    alignItems: 'flex-end',
+  },
+  poColumnHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    minHeight: 40,
+    backgroundColor: kua ? kua.surfaceCardHeader : colors.subtleBg,
+    borderTopWidth: 1,
+    borderTopColor: kua ? kua.surfaceBorder : colors.divider,
+  },
+  poColumnName: {
+    flex: 1,
+    textAlign: 'left',
+  },
+  poColLabel: {
+    ...TYPOGRAPHY['label-md'],
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  trendPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: GEOMETRY['radius-md'],
+  },
+  trendPillText: {
+    ...TYPOGRAPHY['label-md'],
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   exerciseList: {
     paddingHorizontal: 16,
@@ -209,6 +291,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
     flex: 1,
+    minWidth: 0,
   },
   signalMetricsGrid: {
     flexDirection: 'row',
@@ -244,7 +327,6 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   trackingCaption: {
     fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginBottom: 8,
     fontStyle: 'italic',
   },
   emptySearch: {
@@ -259,6 +341,8 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   emptyTracked: {
     alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
   emptyTrackedLink: {
     marginTop: 12,

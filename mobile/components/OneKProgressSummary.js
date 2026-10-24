@@ -5,6 +5,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { TYPOGRAPHY } from '../theme/typography';
 import { GEOMETRY } from '../theme/spacing';
 import { Chevron } from '../screens/home/HomeActionStrip';
+import { OneKPanelBody } from '../screens/analytics/AnalyticsProgressPanels';
 
 // #1458: the one presentation unit for 1K Progress on Home and Analytics. Analytics'
 // look is the authority (heading → 36px total → 1,000-lb bar → Big 3 values); Analytics
@@ -23,10 +24,22 @@ export function OneKProgressSummary({
   belowTitle = null,
   children = null,
   testIDPrefix,
+  // Opt-in presentation (#1604): 'panel' is the redesign-v3 Analytics layout —
+  // left-aligned label, `total / 1,000 lb`, a per-lift stacked bar and ruled
+  // lift cells. The default stays what Home renders until/after R6.
+  variant = 'default',
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createOneKSummaryStyles(colors, kua), [colors, kua]);
   const id = suffix => (testIDPrefix ? `${testIDPrefix}-${suffix}` : undefined);
+  if (variant === 'panel') {
+    return (
+      <OneKPanelBody
+        {...{ total, target, unit, lifts, totalColor, emptyText, titleAccessory, belowTitle, children }}
+        id={id}
+      />
+    );
+  }
 
   const title = <Text style={styles.oneKLabel} numberOfLines={1}>1K Progress</Text>;
 

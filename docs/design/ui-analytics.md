@@ -44,12 +44,12 @@ The Recovery history entry opens Log's Recovery view (`recovery-note` intent);
 its count is the verified snapshot's completed blocks only, otherwise it names
 the destination without a number.
 
-Strength owns the 1K/Big 3 evidence; Big 3 Mapping sits under the 1K panel,
+Strength owns the 1K/Big 3 evidence; Big 3 Mapping sits in the 1K panel,
 collapsed by default with a one-line summary of the mapped lifts. Progressive
 Overload (`AnalyticsProgressiveOverload.js`) is its own top-level section: the
-canonical Exercise Progress counts (`analytics.exerciseProgress`), progression
-suggestions, search/collapse controls and the table; tracked-span/inherited and
-column methodology sits behind its `ⓘ`. Routine Health
+canonical Exercise Progress counts (`analytics.exerciseProgress`) as status
+chips, progression suggestions, search/collapse controls and the table;
+tracked-span/inherited and column methodology sits behind its `ⓘ`. Routine Health
 (`AnalyticsRoutineHealthPanel.js`) is one panel: `SessionGauge` uncontained
 (`contained={false}`) over `deriveRoutineStatus()`, a `Deload mode · On` row when
 deload mode is on outside Recovery, and the uncontained Session Check-ins block
@@ -107,28 +107,42 @@ existing `computeWeightRollingAverageSeries` over every weigh-in date.
 | Breakdown label | fontSize | `12` | `447` |
 | | color | `colors.textMuted` | `448` |
 
-### Strength Section (`AnalyticsStrengthSection.js`)
+### Strength Section (Redesign v3, #1604)
 
-| Element | Property | Value | Line |
-|---|---|---|---|
-| Section wrapper | gap | `16` (`strengthSection`) | `171-173` |
-| 1K card | padding / bg | `24` / `panelBackground` (ArtisanalPanel) | `174-179` |
-| 1K heading / total / bar / Big 3 values (#1458) | shared `OneKProgressSummary` | `headline-sm` heading, 36px total, 8px bar toward 1000 lb, value-over-name Big 3 columns; also rendered by Home | `components/OneKProgressSummary.js` |
-| 1K graph, explainer, plate taps | Analytics-only layers | passed to the shared unit as `belowTitle`/`titleAccessory`/`lifts[].onPress`/children | `AnalyticsStrengthSection.js` |
-| Big 3 Mapping card | header | collapsible `Pressable`, default collapsed with mapped-lift summary | `111-125` |
-| Big 3 title | fontSize / weight | `12` / `700`, uppercase, `textMuted` | `297-303` |
-| Big 3 / info collapse | icon | `MaterialIcons` `expand-more`/`expand-less`, `14-16`, `textMuted` | `119-124`, `79-84` |
-| 1K explainer (#1245) | shared `InfoButton` | icon beside the `1K Progress` label (`What is 1K Progress?`); copy in an `InfoNote`, default hidden | `AnalyticsStrengthSection.js` |
+Sources: `components/AnalyticsStrengthSection.js`, `components/OneKProgressSummary.js`
+(opt-in `variant="panel"`; the default variant is unchanged) and
+`screens/analytics/AnalyticsProgressPanels.js`. One flat `Panel` holds the 1K
+summary, then the chart and the Big 3 mapping as hairline disclosure rows; no
+panel inside the panel. Presentation only: every number is the existing 1K
+derivation in display units.
 
-### Progressive Overload Table (`AnalyticsProgressiveOverload.js`)
+| Element | Value |
+|---|---|
+| Heading | `1K PROGRESS` mono label (12px, tracked) with the shared `InfoButton` (`What is 1K Progress?`); copy in an `InfoNote`, hidden by default |
+| Total | `36`/`40` mono total in the existing lerp colour, then `/ 1,000 lb` (the displayed, unit-aware target) and a right-aligned `N to go` (displayed target minus displayed total; `Reached` at or above it) |
+| Bar | One 8dp track toward the target. The fill (`width = total / target`) is split into Squat / Bench / Deadlift segments (flex = each lift's value) in `chartSeries1-3`; no per-lift targets |
+| Lift cells | Three ruled cells (`>=44dp`, `minWidth 88`, wrap rather than truncate): swatch + uppercase name over `value unit`; a lift with a value opens the plate-loading sheet |
+| 1K total over sessions | `Disclosure` row, collapsed by default (exposes `expanded`); the unchanged `LineChart` (selection, routine/deload markers) opens below. Closing it clears a selected session, restoring the latest total |
+| Big 3 Mapping | Disclosure row in the same panel with the mapped-lift summary; slots, picker and save behaviour unchanged. With no total yet, the setup card shows and the mapping sits in its own panel |
 
-| Element | Property | Value | Line |
-|---|---|---|---|
-| Section | gap | `8` (`poSection`); not sticky — it no longer ends the tab | |
-| Exercise Progress counts | three columns | `poSummaryCount` metric display over uppercase `label-sm` | |
-| Column header row | paddingHorizontal / paddingBottom | `16` / `4` | `403-407` |
-| Column label | fontSize / weight | `11` / `800`, uppercase, `letterSpacing: 0.5`, center | `408-416` |
-| Group section | paddingBottom / border | `4` / 1px `divider` top (between groups) | `426+` |
+### Progressive Overload (Redesign v3, #1604; `AnalyticsProgressiveOverload.js`)
+
+Sources: `OverloadFilterChips.js`, `OverloadRows.js`, `OverloadExerciseSheet.js`,
+`AnalyticsStates.js` (list states) and `analyticsStyles.js`. One flat `Panel`
+under the section title and `Collapse all`; sections inside it are ruled by
+hairlines.
+
+| Element | Value |
+|---|---|
+| Exercise Progress | `EXERCISE PROGRESS` mono label with its own `ⓘ`; a stacked status bar (text equivalent: the three counts) and `All` / `Progressing` / `Steady` / `Regressing` chips (`radiogroup`/`radio`, `>=44dp`, wrap). Counts are `analytics.exerciseProgress` verbatim (`All` = classified + newly tracked). In the establishing-baseline state the existing message replaces bar and chips |
+| Filtering | A chip keeps rows whose displayed trend maps to its status (up / flat / down); first-session and baseline rows show only under `All`. It composes with search on the same day groups, so `Collapse all`, group counts and `Expand all` act on what is shown, and a filtered-away group keeps its collapse state. The chip is in memory, tied to the routine it was chosen on, and ignored while the chips are not on screen |
+| Suggestions | The existing cards and muted rows, unchanged, as a section of the panel |
+| Search, Metrics | Existing search box; `Metrics` label with its own `ⓘ` and explainer |
+| Column header | `EXERCISE  1RM  KILO  BEST` (mono, uppercase); the three value columns are fixed `76` wide and right-aligned, shared with every row |
+| Day group | Header `>=48dp`, `DAY · count`, exposes `expanded`; unchanged grouping and collapse state |
+| Row | Pressable `>=60dp`: name (wraps) and trend pill (`PROGRESSING` / `STEADY` / `REGRESSING`, icon + word) over the first-session caption and the metric columns, then the cross-day comparison. Non-weighted rows keep `AVG` under the first column and `BEST` under the last |
+| Detail sheet | Bottom sheet (`Modal`, `accessibilityViewIsModal`, close `44dp`, back/backdrop dismiss, focus returns to the row on web): name, day and logged-session count, the same 1RM / Kilo / Best values, trend pill, and the parsed sets of that exercise under that day (`session_entries`, newest first, `formatWorkoutSets`). `View in Log` opens `{ kind: 'note', noteId }` for the current routine, and is absent while Recovery is active or without a routine. No chart, no new metric, no broadened note scope |
+| Selection | `{ noteId, row key }` in memory; re-resolved against the rows on screen, so a routine or dataset change that drops the row closes the sheet |
 
 Grouping (`analyticsDerivations.js` `deriveGroupedSignals`): sections are merged
 by a **normalized leading-day key** (`MONDAY — Push` and `MONDAY — Push / Chest`

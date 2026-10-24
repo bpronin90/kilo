@@ -131,6 +131,12 @@ function hasText(root, needle) {
   return findAllText(root).some(s => s.includes(needle));
 }
 
+// The 1K total over sessions chart sits behind a disclosure (#1604).
+function openOneKChart(root) {
+  const toggle = root.findAll(n => n.props.testID === 'onek-chart-disclosure-toggle' && typeof n.props.onPress === 'function')[0];
+  render.act(() => { toggle.props.onPress(); });
+}
+
 // ── AnalyticsScreen weight summary — consumer drift regression ────────────────────
 
 describe('AnalyticsScreen weight summary — sourced from deriveWeightGoalAnalytics', () => {
@@ -757,7 +763,8 @@ describe('AnalyticsScreen 1K Progress Card', () => {
     const unitNodes = root.findAllByType('Text').filter(n => text(n).includes('lb'));
     expect(unitNodes.length).toBeGreaterThan(0);
     for (const node of unitNodes) {
-      expect(text(node)).toBe(' lb');
+      // " lb" or the redesigned " / 1,000 lb": always a literal leading space.
+      expect(text(node)).toMatch(/^ (\/ [\d,]+ )?lb$/);
       const flat = [].concat(node.props.style ?? []).reduce((acc, s) => ({ ...acc, ...s }), {});
       expect(flat.marginLeft).toBeFalsy();
     }
@@ -816,10 +823,11 @@ describe('AnalyticsScreen 1K Progress Card', () => {
     expect(fills).toHaveLength(1);
     expect(parseFloat(flat(fills[0]).width)).toBeCloseTo(55.8, 5);
     const up = (n, pred) => { let c = n.parent; while (c && !pred(flat(c))) c = c.parent; return c; };
-    const track = up(fills[0], st => st.height === 8 && st.width === '100%');
-    expect(flat(track).marginTop).toBe(4);
+    // The one 8dp track holds the fill, which is split per lift (#1604).
+    const track = up(fills[0], st => st.height === 8);
+    expect(flat(track).overflow).toBe('hidden');
     expect(flat(track).marginVertical).toBeUndefined();
-    expect(flat(up(track, st => st.alignSelf === 'stretch')).gap).toBe(4);
+    expect(up(track, st => st.alignSelf === 'stretch')).toBeTruthy();
     expect(hasText(root, '558')).toBe(true);
     for (const v of ['200', '158']) expect(hasText(root, v)).toBe(true);
     expect(hasText(root, '%')).toBe(false);
@@ -854,6 +862,7 @@ describe('AnalyticsScreen 1K Progress Card', () => {
         );
       });
       const root = c.root;
+      openOneKChart(root);
       const flat = n => [].concat(n.props.style ?? []).reduce((acc, st) => (st ? Object.assign(acc, st) : acc), {});
       const fills = () => root.findAll(n => n.type === 'View' && flat(n).height === '100%' && /%$/.test(String(flat(n).width)));
       const texts = () => root.findAllByType(RNText).map(t => [].concat(t.props.children).join(''));
@@ -1610,7 +1619,7 @@ describe('AnalyticsScreen 1K total over sessions chart', () => {
       { id: 'dl', title: 'Deload · week', raw_text: raw(95, 135, 185), one_k_exercises: null },
       { id: 'n2', title: 'R-2', raw_text: raw(155, 255, 365), one_k_exercises: null },
     ];
-    setup({ hookOverrides: { notes, currentNote: notes[2] } });
+    openOneKChart(setup({ hookOverrides: { notes, currentNote: notes[2] } }).root);
     const chartCall = LineChart.mock.calls.map(c => c[0]).find(p => p.seriesLabel === '1K total by session');
     expect(chartCall.data.map(p => p.isDeload)).toEqual([false, true, false]);
   });
