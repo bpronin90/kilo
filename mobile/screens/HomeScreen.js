@@ -13,17 +13,11 @@ import { markStartupPhase, markStartupStorageReads, claimAppLocalReady } from '.
 import { DEVICE_KEY_RECOVERY_MESSAGE, isDeviceKeyUnavailable, secureStorage } from '../storage/secureStorage';
 import { createStyles } from './home/homeStyles';
 import { useKuaTypography } from '../theme/typography';
-import { HomeHeader } from './home/HomeHeader';
+import { HomeHeader, HomeTopBar } from './home/HomeHeader';
 import { HomeDashboard } from './home/HomeDashboard';
 import { HomeWeightCard } from './home/HomeWeightCard';
-import { KiloWordmark } from '../components/KiloWordmark';
+import { Panel } from '../components/ui/RedesignPrimitives';
 import { AppLocalReadyContext } from '../components/AppStartupOverlay';
-function lerpColor(a, b, t) {
-  const p = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
-  const [ar,ag,ab] = p(a), [br,bg,bb] = p(b);
-  return `rgb(${Math.round(ar+(br-ar)*t)},${Math.round(ag+(bg-ag)*t)},${Math.round(ab+(bb-ab)*t)})`;
-}
-
 // Names the same `Retry recovery` control as every other Recovery message.
 export const RECOVERY_PENDING_HOLD_MESSAGE =
   'A recovery change is still finishing, so recovery status is not confirmed yet. Tap Retry recovery.';
@@ -145,6 +139,7 @@ function HomeSkeleton() {
   return (
     <View
       testID="home-skeleton"
+      style={styles.skeletonStack}
       accessible
       accessibilityRole="progressbar"
       accessibilityLabel="Loading your dashboard"
@@ -292,12 +287,6 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
     [weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, normalNotes, notes, trackedLifts, trackedLiftActivations, deloadHistory, currentId, recoveryBlocks, calendarDay]
   );
 
-  // 1K hero color, precomputed here (was inline in the 1K card JSX before the
-  // #1049 split) so lerpColor stays in the screen that owns startup composition.
-  const oneKHeroColor = kua
-    ? lerpColor(kua.primary, kua.completion, Math.min(1, (dashboardData.oneK?.total || 0) / 1000))
-    : lerpColor(colors.accentText, colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000));
-
   // First usable paint waits only on bounded LOCAL reads (#1366): the shell's
   // weight/note reads, the goal and tracked lifts, and either the persisted
   // Recovery read (LOADING until it lands) or a reconciled one. Journal replay
@@ -378,15 +367,10 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
       : isEmptyState && !currentId && recoveryBlocks.length === 0 && !deloadHistory?.length ? 'empty' : 'populated';
   useEffect(() => { onFirstUseStatus?.(firstUseStatus); }, [firstUseStatus, onFirstUseStatus]);
 
-  // #1341: one neutral subtitle in every state. The lead card already names the
-  // routine week or `Recovery · Week N`; a state-specific subtitle repeated it.
-  const homeSubtitle = 'Training and body weight at a glance.';
-
+  // Redesign v3 (#1605): the fixed wordmark + Cloud Sync header replaces the
+  // in-scroll title and subtitle (#1341's neutral subtitle is retired with it).
   return (
-    <ScreenShell
-      title={<KiloWordmark />}
-      subtitle={homeSubtitle}
-    >
+    <ScreenShell header={<HomeTopBar />}>
       {hasLoadError ? (
         <ErrorBanner
           message={keyLost ? DEVICE_KEY_RECOVERY_MESSAGE : 'Could not load your training data.'}
@@ -409,14 +393,14 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
       ) : isEmptyState ? (
         // First use (#1333): two ways in, nothing to study. Syntax and tracking
         // are taught inside Log and Weight, where they are used.
-        <Card style={styles.welcomeCard}>
+        <Panel testID="home-welcome" style={styles.welcomeCard}>
           <Text style={styles.welcomeTitle}>Welcome to Kilo</Text>
           <Text style={styles.welcomeSubtitle}>Log a workout or a weigh-in to start your dashboard.</Text>
           <View style={styles.welcomeActions}>
             <Button title="Log Workout" onPress={() => onNavigate('Log')} style={styles.welcomeButton} />
             <Button title="Log Weight" onPress={() => onNavigate('Weight')} style={styles.welcomeButton} />
           </View>
-        </Card>
+        </Panel>
       ) : (
         <>
           {/* #1341: in Recovery the Recovery card is the training surface and
@@ -439,7 +423,6 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
             dashboardData={dashboardData}
             weightGoal={weightGoal}
             baselinePaused={baselinePaused}
-            oneKHeroColor={oneKHeroColor}
             unit={unit}
           />
         </>

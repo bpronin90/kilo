@@ -52,8 +52,9 @@ jest.mock('../components/ScreenShell', () => {
   const React = require('react');
   const { View } = require('react-native');
   return {
-    // The subtitle rides along as a prop so tests can read it without adding text.
-    ScreenShell: ({ children, subtitle }) => React.createElement(View, { testID: 'screen-shell', subtitle }, children),
+    // The subtitle rides along as a prop so tests can read it without adding text;
+    // hasHeader records whether a custom header (Redesign v3 top bar) was passed.
+    ScreenShell: ({ children, subtitle, header }) => React.createElement(View, { testID: 'screen-shell', subtitle, hasHeader: !!header }, children),
     ScrollContext: React.createContext({ onScroll: () => {} }),
   };
 });
@@ -738,10 +739,11 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     expect(flatStyle(routineAction).flex).toBe(1);
     expect(flatStyle(weightAction).flex).toBe(1);
 
+    // Redesign v3 (#1605): the two actions are 48dp buttons (min, never fixed).
     for (const testID of ['home-current-routine-link', 'home-weight-action']) {
       const style = flatStyle(component.root.findByProps({ testID }));
       expect(style.height).toBeUndefined();
-      expect(style.minHeight).toBe(44);
+      expect(style.minHeight).toBe(48);
     }
   });
 
@@ -841,12 +843,18 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
 
   test('every press target carries a visible affordance', () => {
     // Dropping the strength band's chevron in an earlier round recreated the
-    // "silently pressable" defect, so every handoff must show a chevron.
-    const Svg = require('react-native-svg').default;
-    for (const testID of [...INLINE_ACTION_IDS, 'home-one-k-link']) {
+    // "silently pressable" defect. Redesign v3 (#1605): the two actions are
+    // filled/outlined buttons (the button shape is the affordance); every
+    // navigating header keeps its chevron icon.
+    const { Icon } = require('../components/Icon');
+    for (const testID of INLINE_ACTION_IDS) {
+      const style = flatStyle(component.root.findByProps({ testID }));
+      expect(style.backgroundColor !== undefined || style.borderWidth > 0).toBe(true);
+    }
+    for (const testID of ['home-one-k-link', 'home-weight-link', 'home-exercise-progress-link']) {
       const node = component.root.findByProps({ testID });
       expect(node.props.accessibilityRole).toBe('button');
-      expect(node.findAllByType(Svg).length).toBeGreaterThan(0);
+      expect(node.findAllByType(Icon).some(i => i.props.name === 'chevron-right')).toBe(true);
     }
   });
 
@@ -881,12 +889,15 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     expect(component.root.findAllByProps({ testID: 'home-one-k-total' })).toHaveLength(0);
   });
 
-  test('the classification columns keep horizontal separation', () => {
-    // Content-sized columns with no gap could exactly fill the row, so the three
-    // labels ran together as one string at 375px with enlarged text.
-    const rows = component.root.findAll(n => flatStyle(n).flexWrap === 'wrap' && flatStyle(n).columnGap);
-    const classifRow = rows.find(n => flatStyle(n).columnGap >= 12);
-    expect(classifRow).toBeTruthy();
+  test('the classification legend keeps each count apart from its label', () => {
+    // The three labels once ran together as one string at 375px with enlarged
+    // text. Redesign v3 (#1605): one legend row per status, count and label as
+    // separate runs with a column gap.
+    for (const key of ['progressing', 'steady', 'regressing']) {
+      const row = component.root.findAll(n => typeof n.type === 'string' && n.props.testID === `home-progress-${key}`)[0];
+      expect(flatStyle(row).flexDirection).toBe('row');
+      expect(flatStyle(row).columnGap).toBeGreaterThanOrEqual(4);
+    }
   });
 
   test('only the 1K header row is tappable, not the metrics beneath', () => {
@@ -922,9 +933,10 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     await render.act(async () => {
       local = render.create(<HomeScreen {...populatedProps(jest.fn())} workoutNote={NOTE_1K} notes={[NOTE_1K]} currentId="n1" />);
     });
-    // #1458: Analytics' restrained 36px total is the authority; Home keeps no 48/56px hero.
+    // #1458: no 48/56px hero. Redesign v3 (#1605): Home's 1K total is a 28px card
+    // metric; the screen's one hero number (44px) is never the 1K card's.
     const total = local.root.findAll(n => n.type === 'Text' && n.props.testID === 'home-one-k-total')[0];
-    expect(flatStyle(total).fontSize).toBe(36);
+    expect(flatStyle(total).fontSize).toBe(28);
     const card = total.parent.parent;
     expect(card.findAll(n => n.type === 'Text' && [48, 56].includes(flatStyle(n).fontSize))).toHaveLength(0);
     await render.act(async () => { local.unmount(); });
@@ -967,7 +979,9 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
 
     expect(actionRow).toBe(weightAction.parent);
     expect(flatStyle(actionRow).flexDirection).toBe('row');
-    expect(flatStyle(actionRow).backgroundColor).toBeDefined();
+    // Redesign v3 (#1605): filled primary, outlined secondary.
+    expect(flatStyle(routineAction).backgroundColor).toBeDefined();
+    expect(flatStyle(weightAction).borderWidth).toBe(1);
     expect(flatStyle(routineAction).flex).toBe(1);
     expect(flatStyle(weightAction).flex).toBe(1);
   });
@@ -1000,19 +1014,22 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     const root = local.root;
     expect(root.findAll(n => n.type === 'View' && n.props.testID === 'home-one-k-progress-track')).toHaveLength(1);
     expect(root.findAll(n => n.type === 'View' && n.props.testID === 'home-one-k-progress-fill')).toHaveLength(1);
-    const track0 = root.findAll(n => n.type === 'View' && n.props.testID === 'home-one-k-progress-track')[0];
-    let summary = track0.parent;
-    while (summary && flatStyle(summary).alignSelf !== 'stretch') summary = summary.parent;
-    expect(flatStyle(summary).gap).toBe(4);
+    // Redesign v3 (#1605): the one collective bar is stacked — the fill holds the
+    // three logged lifts as segments, the remainder to 1,000 follows it.
     const track = root.findAll(n => n.type === 'View' && n.props.testID === 'home-one-k-progress-track')[0];
-    expect(flatStyle(track).marginTop).toBe(4);
-    expect(flatStyle(track).marginVertical).toBeUndefined();
-    expect(flatStyle(root.findByProps({ testID: 'home-one-k-big3' })).marginTop).toBe(4);
+    expect(flatStyle(track).flexDirection).toBe('row');
+    expect(track.props.accessibilityLabel).toMatch(/Squat \d+, Bench \d+, Deadlift \d+\./);
+    const fill = root.findAll(n => n.type === 'View' && n.props.testID === 'home-one-k-progress-fill')[0];
+    for (const slot of ['squat', 'bench', 'deadlift']) {
+      expect(fill.findAll(n => n.type === 'View' && n.props.testID === `home-one-k-bar-${slot}`)).toHaveLength(1);
+    }
     for (const slot of ['squat', 'bench', 'deadlift']) {
       expect(root.findAllByProps({ testID: `home-one-k-lift-${slot}-value` }).length).toBeGreaterThan(0);
       expect(root.findAllByProps({ testID: `home-one-k-lift-${slot}-track` })).toHaveLength(0);
     }
     expect(flatStyle(root.findByProps({ testID: 'home-one-k-link' })).minHeight).toBe(44);
+    const remaining = root.findAll(n => n.type === 'Text' && n.props.testID === 'home-one-k-remaining')[0];
+    expect(String(remaining.props.children)).toMatch(/^[\d,]+ (lb|lbs|kg) (to [\d,]+|reached)$/);
     render.act(() => { root.findByProps({ testID: 'home-one-k-link' }).props.onPress(); });
     expect(onNavigate).toHaveBeenCalledWith('Analytics', 'strength');
     await render.act(async () => { local.unmount(); });
@@ -2578,8 +2595,10 @@ describe('HomeScreen follows the shared active-training context (#869)', () => {
       .findAll(n => typeof n.type === 'string' && ['home-hero-label', 'home-recovery-summary', 'home-one-k-link', 'home-weight-card'].includes(n.props?.testID))
       .map(n => n.props.testID);
     expect(order).toEqual(['home-recovery-summary', 'home-weight-card']);
+    // Redesign v3 (#1605): the wordmark/sync top bar replaces the subtitle.
     const shell = component.root.findAll(n => typeof n.type === 'string' && n.props?.testID === 'screen-shell')[0];
-    expect(shell.props.subtitle).toBe('Training and body weight at a glance.');
+    expect(shell.props.subtitle).toBeUndefined();
+    expect(shell.props.hasHeader).toBe(true);
   });
 
   test('Log workout targets the exact active Recovery note, even though it is not currentId', async () => {
@@ -2870,11 +2889,12 @@ describe('Home daily-dashboard states (#1333)', () => {
     expect(has(c, 'home-hero-label')).toBe(false);
     expect(host(c, 'home-routine-week').props.children).toMatch(/^Week \d+$/);
     expect(host(c, 'home-routine-title').props.children).toBe('Routine A');
-    // #1456: Exercise Progress leads, then title with its week opposite, then the trio.
+    // Redesign v3 (#1605, supersedes #1456's order): the label names the week,
+    // then the routine title, then the progress ring, then the actions.
     const order = c.root
       .findAll(n => typeof n.type === 'string' && ['home-exercise-progress-link', 'home-routine-title', 'home-routine-week', 'home-current-routine-link'].includes(n.props?.testID))
       .map(n => n.props.testID);
-    expect(order.slice(0, 3)).toEqual(['home-exercise-progress-link', 'home-routine-title', 'home-routine-week']);
+    expect(order).toEqual(['home-routine-week', 'home-routine-title', 'home-exercise-progress-link', 'home-current-routine-link']);
     expect(has(c, 'home-classif-info')).toBe(false);
     // Large text / narrow width: the title wraps instead of truncating.
     expect(host(c, 'home-routine-title').props.numberOfLines).toBeUndefined();
@@ -2962,24 +2982,29 @@ describe('Home daily-dashboard states (#1333)', () => {
     expect(order).toEqual(['home-exercise-progress-link', 'home-one-k-link', 'home-weight-card']);
   });
 
+  // Redesign v3 (#1605): the subtitle is retired; every state carries the top
+  // bar (wordmark + sync) instead, and nothing state-specific leaks into it.
   describe('subtitle (#1339, #1341)', () => {
-    const subtitle = (c) => host(c, 'screen-shell').props.subtitle;
+    const expectTopBar = (c) => {
+      expect(host(c, 'screen-shell').props.subtitle).toBeUndefined();
+      expect(host(c, 'screen-shell').props.hasHeader).toBe(true);
+    };
 
     // #1341: the lead card names the routine week, so the subtitle does not.
     test('a routine with content keeps the neutral subtitle', async () => {
       const { component: c } = await mount();
-      expect(subtitle(c)).toBe('Training and body weight at a glance.');
+      expectTopBar(c);
     });
 
     test('a load still in flight stays generic', async () => {
       const { component: c } = await mount({ loading: true });
-      expect(subtitle(c)).toBe('Training and body weight at a glance.');
+      expectTopBar(c);
     });
 
     test('no routine, an empty routine, and first use stay generic', async () => {
       for (const over of [{ workoutNote: null, notes: [NOTE] }, { workoutNote: { ...NOTE, raw_text: '' } }, { workoutNote: null, notes: [] }]) {
         const { component: c } = await mount(over);
-        expect(subtitle(c)).toBe('Training and body weight at a glance.');
+        expectTopBar(c);
         await render.act(async () => { c.unmount(); });
         component = null;
       }
@@ -3008,7 +3033,8 @@ describe('Home daily-dashboard states (#1333)', () => {
 
     test('an ended goal hands off to Weight and shows no pace', () => {
       const { c, onNavigate } = mountCard(goalInfo({ isOverdue: true, weeks_remaining: 0, required_weekly_pace: null }));
-      expect(hasText(c, 'Goal ended')).toBe(true);
+      // #1605: one non-breaking space so the phrase never splits across lines.
+      expect(hasText(c, 'Goal\u00A0ended')).toBe(true);
       expect(hasText(c, 'Pace')).toBe(false);
       expect(hasText(c, 'N/A')).toBe(false);
       const action = host(c, 'home-goal-attention-action');
@@ -3168,12 +3194,13 @@ describe('Home Exercise Progress card — convention and no first-session blurb 
 
   test('Progress, 1K and Body Weight cards share one padding convention', () => {
     const s = createStyles(LightColors);
-    const flat = (o) => ({ h: o.paddingHorizontal, t: o.paddingTop, b: o.paddingBottom });
-    expect(flat(s.progressCard)).toEqual({ h: 20, t: 4, b: 16 });
-    expect(flat(s.goalCard)).toEqual(flat(s.progressCard));
-    expect(flat(s.oneKCard)).toEqual(flat(s.progressCard));
-    // Recovery's own hero layout is untouched.
-    expect(s.weeklyHero.padding).toBe(18);
-    expect(s.classifCaption).toBeUndefined();
+    // Redesign v3 (#1605): every panel uses the 16px panel inset; card bodies
+    // own their padding, the Panel primitive owns border and radius.
+    expect(s.heroPad.padding).toBe(16);
+    expect(s.panelHeader.paddingHorizontal).toBe(16);
+    expect(s.weightBody.paddingHorizontal).toBe(16);
+    for (const retired of ['progressCard', 'goalCard', 'oneKCard', 'weeklyHero', 'classifCaption']) {
+      expect(s[retired]).toBeUndefined();
+    }
   });
 });

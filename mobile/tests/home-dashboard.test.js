@@ -146,6 +146,11 @@ jest.mock('react-native-svg', () => {
     default: ({ children }) => React.createElement(View, null, children),
     Path: () => null,
     Rect: () => null,
+    // Redesign v3 (#1605): progress ring, 1K hatch and sparkline primitives.
+    Circle: () => null,
+    Line: () => null,
+    Defs: ({ children }) => React.createElement(View, null, children),
+    Pattern: ({ children }) => React.createElement(View, null, children),
   };
 });
 

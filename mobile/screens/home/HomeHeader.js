@@ -1,31 +1,62 @@
-import React, { useMemo } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import { Card } from '../../components/UI';
+import React, { useContext, useMemo } from 'react';
+import { Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
+import { centeredColumnInsets } from '../../components/adaptiveLayout';
+import { KiloWordmark } from '../../components/KiloWordmark';
+import { useCloudSyncSummary } from '../../hooks/useEntries';
 import { useTheme } from '../../theme/ThemeContext';
 import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
 import { DELOAD_NOTE_PREFIX } from '../../lib/LogScreenHelpers';
-import { Chevron, HomeActionStrip } from './HomeActionStrip';
+import { HomeActionStrip } from './HomeActionStrip';
+import { HomeProgressLegend, HomeProgressRing, progressSummaryText } from './HomeProgressRing';
+import { MonoLabel, Panel } from '../../components/ui/RedesignPrimitives';
+import { Icon } from '../../components/Icon';
 import { establishingBaselineMessage } from '../../lib/data/exerciseProgress';
 
-// `Exercise Progress` is the same Analytics handoff in every hero state (#1333):
-// the trio below it is the summary, Progressive Overload is the detail.
-function ExerciseProgressLink({ linkId, onNavigate, styles, color }) {
+// The Cloud Sync glyph for the shell's existing summary (hooks/useEntries
+// summarizeCloudSync): same precedence as its `statusLabel`.
+export function syncIconName(summary) {
+  if (!summary) return 'cloud-queue';
+  if (summary.isRunning) return 'cloud-sync';
+  if (summary.hasFailed) return 'cloud-off';
+  if (summary.hasDirty) return 'cloud-upload';
+  return summary.hasLastSuccess ? 'cloud-done' : 'cloud-queue';
+}
+
+// Redesign v3 root header for Home (#1605): the wordmark and the Cloud Sync
+// status icon over a full-width hairline, fixed above the scroll via
+// ScreenShell's `header`. The icon reads the ONE shell-owned summary (#737)
+// and opens Cloud Sync; outside the shell (no summary) it is not drawn.
+export function HomeTopBar() {
+  const { colors, kuaPalette: kua } = useTheme();
+  const typography = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
+  const cloudSync = useCloudSyncSummary();
+  const { left: leftInset = 0, right: rightInset = 0 } = useContext(SafeAreaInsetsContext) || {};
+  const { width } = useWindowDimensions();
+  const column = centeredColumnInsets(width, { left: leftInset, right: rightInset });
+  const summary = cloudSync?.summary || null;
+  const failed = !!summary?.hasFailed && !summary?.isRunning;
+  const iconColor = failed ? (kua ? kua.errorText : colors.error) : (kua ? kua.onSurfaceVariant : colors.textMuted);
   return (
-    <Pressable
-      testID={linkId}
-      onPress={() => onNavigate('Analytics', 'progressive-overload')}
-      style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
-      hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
-      accessibilityRole="button"
-      accessibilityLabel="Exercise Progress"
-      accessibilityHint="Opens the Progressive Overload section of the Analytics tab"
-    >
-      <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]}>Exercise Progress</Text>
-      <View style={styles.sectionHeaderChevron}>
-        <Chevron color={color} />
+    <View testID="home-top-bar" style={[styles.topBar, { paddingLeft: column.left, paddingRight: column.right - 8 }]}>
+      <View style={styles.topBarMark} accessible accessibilityRole="header" accessibilityLabel="Kilo">
+        <KiloWordmark width={72} height={26} />
       </View>
-    </Pressable>
+      {cloudSync ? (
+        <Pressable
+          testID="home-sync-status"
+          onPress={() => cloudSync.openCloudSync?.()}
+          style={styles.topBarAction}
+          accessibilityRole="button"
+          accessibilityLabel={`Cloud Sync: ${summary?.statusLabel || 'status unknown'}`}
+          accessibilityHint="Opens the Cloud Sync panel in More"
+        >
+          <Icon name={syncIconName(summary)} size={24} color={iconColor} />
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
 
@@ -37,6 +68,9 @@ function ExerciseProgressLink({ linkId, onNavigate, styles, color }) {
 // next (the two daily-loop actions). Body weight lives in its own card below.
 // #1341: normal training only. In Recovery the Recovery card replaces this hero
 // (HomeScreen), so there is never an empty `Recovery` hero above it.
+// Redesign v3 (#1605): the screen's one active panel — label, routine title,
+// the Exercise Progress ring + legend (the Analytics Progress handoff), then
+// the two actions.
 export function HomeHeader({
   dashboardData,
   onNavigate,
@@ -59,8 +93,7 @@ export function HomeHeader({
   const routineState = !workoutNote ? 'none'
     : !hasRoutineContent ? 'empty'
     : 'active';
-  // Muted-state label only: an active routine leads with Exercise Progress and
-  // carries its week beside the title instead (#1456).
+  // Muted-state label only; an active routine reads `Current routine · Week N`.
   const headerLabel = routineState === 'none' ? 'No current routine' : 'Current routine';
   // Calendar week of THIS routine (routineStatus.elapsedWeeks, from the note's
   // own start), not session depth: other routines' history and Recovery blocks
@@ -85,66 +118,63 @@ export function HomeHeader({
 
   const newlyTrackedCount = dashboardData.weeklySummary.newlyTrackedCount;
   const counts = dashboardData.weeklySummary.classifications;
+  const progress = {
+    progressing: counts?.progressing ?? 0,
+    steady: counts?.stalled ?? 0,
+    regressing: counts?.regressing ?? 0,
+  };
+  // The canonical summary's own classified count; never re-derived here.
+  const classified = dashboardData.exerciseProgress?.classified
+    ?? progress.progressing + progress.steady + progress.regressing;
   // #1391: every tracked exercise on its first tracked session replaces the
   // 0 · 0 · 0 trio with what is actually happening.
-  const baselineMessage = establishingBaselineMessage({
-    newlyTracked: newlyTrackedCount,
-    classified: (counts?.progressing ?? 0) + (counts?.stalled ?? 0) + (counts?.regressing ?? 0),
-  });
-  const classifBody = baselineMessage ? (
-    <Text testID="home-progress-baseline" style={styles.heroRoutineMessage}>{baselineMessage}</Text>
-  ) : (
-    <View style={styles.classifRow}>
-      {[
-        { label: 'Progressing', count: counts?.progressing ?? 0, color: kua ? kua.success : colors.success },
-        { label: 'Steady', count: counts?.stalled ?? 0, color: kua ? kua.warning : colors.caution },
-        { label: 'Regressing', count: counts?.regressing ?? 0, color: kua ? kua.errorText : colors.error },
-      ].map((item, idx) => (
-        <View key={idx} style={styles.classifCol}>
-          <Text style={[styles.classifCount, kua ? { color: item.color } : null]}>{item.count}</Text>
-          <Text style={styles.classifLabel}>{item.label}</Text>
-        </View>
-      ))}
-    </View>
-  );
+  const baselineMessage = establishingBaselineMessage({ newlyTracked: newlyTrackedCount, classified });
 
   return (
-    <Card style={[styles.weeklyHero, styles.progressCard]}>
-      {routineState === 'active' ? (
-        /* #1456: Exercise Progress leads, like the sibling card headers. */
-        <View style={styles.classifHeaderRow}>
-          <ExerciseProgressLink linkId="home-exercise-progress-link" onNavigate={onNavigate} styles={styles} color={mutedStroke} />
-        </View>
-      ) : (
-        <View style={styles.heroHeaderRow}>
-          <View style={styles.heroAccentBar} />
-          <Text testID="home-hero-label" style={styles.heroSectionLabel} numberOfLines={1}>{headerLabel}</Text>
-        </View>
-      )}
+    <Panel active testID="home-hero">
+      <View style={styles.heroPad}>
+        {routineState === 'active' ? (
+          // `Current routine · Week N`: the week is omitted when the routine has no usable start (#1456).
+          <MonoLabel testID="home-routine-label" numberOfLines={1}>
+            {routineWeek !== null ? 'Current routine · ' : 'Current routine'}
+            {routineWeek !== null ? <Text testID="home-routine-week">{`Week ${routineWeek}`}</Text> : null}
+          </MonoLabel>
+        ) : (
+          <MonoLabel testID="home-hero-label" numberOfLines={1}>{headerLabel}</MonoLabel>
+        )}
 
-      {/* What is being trained: the routine, with its week opposite. */}
-      {routineTitle || (routineState === 'active' && routineWeek !== null) ? (
-        <View style={styles.heroTitleRow}>
-          {routineTitle ? (
-            <Text testID="home-routine-title" style={styles.heroTitleText}>{routineTitle}</Text>
-          ) : <View style={styles.heroTitleText} />}
-          {routineState === 'active' && routineWeek !== null ? (
-            <Text testID="home-routine-week" style={styles.heroWeekText}>{`Week ${routineWeek}`}</Text>
-          ) : null}
-        </View>
-      ) : null}
+        {routineTitle ? (
+          <Text testID="home-routine-title" style={styles.heroTitleText} accessibilityRole="header">{routineTitle}</Text>
+        ) : null}
 
-      {/* How it is going. */}
-      {routineMessage ? (
-        <Text testID="home-no-routine" style={styles.heroRoutineMessage}>{routineMessage}</Text>
-      ) : (
-        <View style={styles.classifSection}>
-          {classifBody}
-        </View>
-      )}
+        {routineMessage ? (
+          <Text testID="home-no-routine" style={styles.heroRoutineMessage}>{routineMessage}</Text>
+        ) : (
+          // How it is going: the ring and legend are the Analytics Progress handoff (#1333).
+          <Pressable
+            testID="home-exercise-progress-link"
+            onPress={() => onNavigate('Analytics', 'progressive-overload')}
+            style={styles.heroProgressRow}
+            accessibilityRole="button"
+            accessibilityLabel={baselineMessage ? `Exercise Progress. ${baselineMessage}` : `Exercise Progress: ${progressSummaryText(progress)}`}
+            accessibilityHint="Opens the Progressive Overload section of the Analytics tab"
+          >
+            {baselineMessage ? null : <HomeProgressRing {...progress} classified={classified} />}
+            <View style={styles.heroProgressText}>
+              <MonoLabel style={styles.heroProgressLabel}>Exercise Progress</MonoLabel>
+              {baselineMessage ? (
+                <Text testID="home-progress-baseline" style={styles.heroBaselineText}>{baselineMessage}</Text>
+              ) : (
+                <HomeProgressLegend {...progress} />
+              )}
+            </View>
+            <Icon name="chevron-right" size={22} color={mutedStroke} />
+          </Pressable>
+        )}
 
-      {/* What to do next: the two daily-loop actions, in one stable row. */}
-      <HomeActionStrip primaryLabel={primaryLabel} primaryHint={primaryHint} onPrimary={handleLogWorkoutPress} onNavigate={onNavigate} />
-    </Card>
+        {/* What to do next: the two daily-loop actions, in one stable row. */}
+        <HomeActionStrip primaryLabel={primaryLabel} primaryHint={primaryHint} onPrimary={handleLogWorkoutPress} onNavigate={onNavigate} primaryIcon={routineState === 'none' ? null : 'add'} />
+      </View>
+    </Panel>
   );
 }
