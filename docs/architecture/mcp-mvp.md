@@ -221,9 +221,10 @@ or Edge Functions with its token, including reads that skip the consent rules,
 writes, and `consent_withdraw`.
 
 **Principle: an OAuth token has no direct table access in `kilo`.** Its only data
-path is the page RPCs, which enforce the full §5.1 gate themselves. Calling them
-through PostgREST instead of MCP therefore gains nothing: same gate, same columns,
-same bounds.
+path is the page RPCs. Each RPC enforces the full §5.1 gate, the per-user data
+quota and the byte budget itself (§6.3). Calling one through PostgREST instead of
+MCP therefore gains nothing: the gate, columns, row and byte bounds, and quota are
+the same, and a quota spent directly is spent for MCP too.
 
 - `kilo.is_oauth_client_token()`: `auth.jwt() ->> 'client_id' is not null`.
 - On **every** RLS-enabled table in `kilo`, one `AS RESTRICTIVE` policy `FOR ALL`
@@ -265,9 +266,28 @@ Both functions:
   owner filter is in the body.
 - Validate arguments: `p_limit` 1–100, or 1–25 when raw text is requested; the
   §7.3 range rules. Invalid arguments raise `invalid_arguments`.
+- **Durable data quota, in the RPC.** After the gate passes and before reading,
+  call `kilo.rate_limit_check` (callable by the definer owner) on two buckets:
+  `mcp:data:<uid>:m` (30 / 60 s) and `mcp:data:<uid>:h` (500 / 3600 s).
+  - Exhausted bucket: raise `rate_limited`.
+  - Limiter error: propagates and aborts the statement, so a limiter outage fails
+    closed with no rows.
+
+  The quota is the same whether the RPC is called through MCP or directly. Windows
+  stay ≤ 1 hour so the existing `kilo.rate_limit_global_prune` retention covers
+  them; #1625 confirms that prune window when writing the migration.
 - Return only the §7 item columns. Workout raw text is `left(raw_text, 4000)` with
   `char_length(raw_text)`, so it is bounded **in SQL** and never fetched whole.
   Derived jsonb columns, `source_snapshot`, and weight `note` are never selected.
+- **Byte budget, in SQL.** Each candidate row's cost is
+  `octet_length` of its returned text fields (`id`, `title`, truncated `raw_text`)
+  plus 256 bytes of fixed overhead. Rows are emitted in order while the running sum
+  is ≤ 200 KiB (a window sum over the ordered candidates); the first row is always
+  emitted. A single row is at most about 33 KiB: `title` is bounded to 4096 chars
+  by `20260823200340` and raw text to 4000 chars, at ≤ 4 bytes each. Each RPC also
+  returns `has_more`, so the tool builds `next_cursor` from the last emitted row.
+  The 56 KiB margin under the 256 KiB response cap covers the envelope and JSON
+  escaping. The MCP-side trim (§8) stays as a second guard, not the only one.
 
 Because the gate runs inside the reading statement, revocation, withdrawal and
 regrant take effect on the next statement even with an unexpired token, whether
@@ -281,9 +301,9 @@ the RPC is called through MCP or directly.
 | #1625 | `supabase/tests/mcp-request-gate.test.sql` | each gate status, outage-safe missing tables, legacy mode, regrant staleness |
 | #1625 | `supabase/tests/mcp-oauth-token-isolation.test.sql` | OAuth token reads 0 rows / cannot write on every `kilo` table, guarded RPCs, catalog completeness |
 | #1627 | `supabase/migrations/<ts>_mcp_workout_notes_page.sql` | §6.3 workout RPC |
-| #1627 | `supabase/tests/mcp-workout-notes-page.test.sql` | gate inside the RPC (revoked session, withdrawn/legacy, stale regrant, first-party token), owner filter, tombstones, keyset order, truncation |
+| #1627 | `supabase/tests/mcp-workout-notes-page.test.sql` | gate inside the RPC (revoked session, withdrawn/legacy, stale regrant, first-party token), owner filter, tombstones, keyset order, truncation, in-RPC quota exhaustion and limiter failure, 200 KiB byte budget (4096-char titles) |
 | #1628 | `supabase/migrations/<ts>_mcp_weight_entries_page.sql` | §6.3 weight RPC |
-| #1628 | `supabase/tests/mcp-weight-entries-page.test.sql` | the same gate matrix, owner filter, entry type, tombstones, null `logged_at` phase, range bounds |
+| #1628 | `supabase/tests/mcp-weight-entries-page.test.sql` | the same gate matrix, owner filter, entry type, tombstones, null `logged_at` phase, range bounds, in-RPC quota and limiter failure, byte budget |
 
 Catalog tests (#1625) run in the same suite: every RLS table in `kilo` must carry
 the restrictive policy, and every `kilo` function with
@@ -323,7 +343,7 @@ that is already the `consent_required` error.
 
 Tool error (`isError: true`):
 `{ "schema": "kilo.mcp.error/v1", "code": "<code>", "message": "<fixed text>", "retryable": bool }`.
-Codes: `invalid_arguments`, `invalid_cursor`, `consent_required`,
+Codes: `invalid_arguments`, `invalid_cursor`, `consent_required`, `rate_limited`,
 `response_too_large`, `timeout`, `internal`. Messages are fixed strings; never echo
 database errors, arguments or row content. Token, grant and session failures are
 **protocol** errors (HTTP 401 with challenge), never tool errors.
@@ -383,13 +403,14 @@ name or profile fields.
 | --- | --- |
 | Rows per page | ≤ 100 (≤ 25 with raw text) |
 | Raw text per note | 4000 chars, truncated in SQL |
-| Response body | ≤ 256 KiB serialized. Trailing items are dropped and `next_cursor` points after the last included one; one item always fits. |
+| Response body | ≤ 256 KiB serialized. Enforced first in SQL (200 KiB row budget, §6.3), then by an MCP-side trim of trailing items; one item always fits. |
 | Request body | ≤ 64 KiB; JSON-RPC batches rejected |
 | DB call | 3 s abort; function `statement_timeout` |
 | Whole request | 10 s → `timeout` |
 | Pre-auth | 120 / 60 s per IP |
-| Per user | 60 / 60 s and 1000 / 3600 s |
-| Limiter outage | **deny** (`failurePolicy: 'deny'`) |
+| Per user, any MCP method (HTTP) | 60 / 60 s and 1000 / 3600 s |
+| Per user, data reads (inside page RPCs, also for direct calls) | 30 / 60 s and 500 / 3600 s |
+| Limiter outage | **deny**: `failurePolicy: 'deny'` at HTTP; statement abort inside RPCs |
 
 **Privileged limiter decision: approved, narrowly.** `_shared/rate-limit.ts`
 requires a service-role client. #1625 creates it inside `mcp/limiter.ts`, which
@@ -429,6 +450,7 @@ exact version.
 | Consent withdrawn mid-session (any gate mode, incl. `legacy` during purge) | 5, and inside the page RPC | `consent_required`; direct table/RPC paths also denied |
 | Withdraw → regrant, old live session | 5, and inside the page RPC | 401 `consent_stale` → re-authorize; direct paths denied |
 | OAuth token reads `kilo.workout_notes` via PostgREST | §6.2 restrictive policy | 0 rows; no raw columns or unbounded text |
+| OAuth token calls a page RPC directly past its quota, or during a limiter outage | §6.3 in-RPC quota | `rate_limited` / statement aborted; no rows |
 | Cross-user arguments/cursor | schema / RLS | `invalid_arguments`, or only own rows |
 | Account deleted | 5 | 401 |
 | Consent/grant lookup outage | 5 | 503, no query |
