@@ -222,8 +222,8 @@ Consequences to preserve:
 - **An unsaved routine has no `Delete routine` (#1329).** Before the first save,
   `Clear draft` is the Danger Zone's only action. The New Routine button reads
   `Save routine`, captioned `Saves and keeps editing. Done saves and closes.`
-- **Rest timer is one docked control.** In current-routine edit the header
-  control stays mounted through idle (stopwatch), running (live countdown) and
+- **Rest timer is one docked control.** In current-routine edit the control,
+  first in the editor card's tool row (#1607; before `Workout syntax help`), stays mounted through idle (stopwatch), running (live countdown) and
   done (`Rest over`); one anchored 320dp panel (#1327/#1607,
   `components/restTimer/RestTimerPresetPanel.js`, clamped to both viewport
   edges on narrow screens) holds a header with the state in large type
@@ -235,7 +235,7 @@ Consequences to preserve:
   running or `Dismiss` when done; a failed background alert shows
   on the closed control as a `notifications-off` glyph. App.js hides the
   app-shell pill only while that control is on screen — once the editor scrolls
-  it away (past 12dp) the fixed pill returns and the docked control turns
+  12dp past its measured position the fixed pill returns and the docked control turns
   invisible and inert in place (no header reflow) — so the countdown never shows twice and is
   never unreachable; the pill (`components/restTimer/RestTimerPill.js`, primary
   outline) shows Cancel (running) or Dismiss (done) directly.

@@ -51,3 +51,14 @@ test('app-shell pill renders running and done with their actions', () => {
   const done = render(<RestTimerBanner isRunning={false} remainingMs={0} justElapsed backgroundAlertAvailable onDismissDone={jest.fn()} />);
   expect(byLabel(done, 'Dismiss rest timer done banner')).toHaveLength(1);
 });
+
+test('docked control lives first in the editor tool row, not the page header', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const card = fs.readFileSync(path.join(__dirname, '../components/LogScreenEditorCard.js'), 'utf8');
+  const screen = fs.readFileSync(path.join(__dirname, '../screens/LogScreen.js'), 'utf8');
+  expect(card).toMatch(/testID="editor-tool-row"[\s\S]*?\{toolbarTimer\}[\s\S]*?Workout syntax help/);
+  expect(screen).toMatch(/toolbarTimer=\{restTimerDocked \? <View ref=\{dockRef\}/);
+  const header = screen.slice(screen.indexOf('headerRight={'), screen.indexOf('keyboardShouldPersistTaps'));
+  expect(header).not.toMatch(/RestTimerBanner|\{banner\}/);
+});
