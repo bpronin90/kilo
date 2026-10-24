@@ -54,6 +54,10 @@ const startTimer = async (s, sec = 90) => {
       await state({ theme }, `history-sheet-${theme}.png`, 'Bench Press history sheet: top-set line (session 1 → latest) and sessions newest-first', async (s) => {
         await s.click({ testID: 'log-exercise-0-0-0-history' }, { settle: 900 });
       });
+      await state({ theme }, `history-point-earlier-${theme}.png`, 'Earlier point (session 1) selected: callout and marker move off the latest point', async (s) => {
+        await s.click({ testID: 'log-exercise-0-0-0-history' }, { settle: 900 });
+        await s.click({ testID: 'exercise-history-point-1' });
+      });
       await state({ overlay: repeatedNames, theme }, `history-repeated-thursday-${theme}.png`, 'Repeated name: Thursday Strength Bench Press opens only its own sessions', async (s) => {
         await s.click({ testID: 'log-exercise-1-0-0-history' }, { settle: 900 });
       });
