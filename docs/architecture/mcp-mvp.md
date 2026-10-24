@@ -279,15 +279,25 @@ Both functions:
 - Return only the §7 item columns. Workout raw text is `left(raw_text, 4000)` with
   `char_length(raw_text)`, so it is bounded **in SQL** and never fetched whole.
   Derived jsonb columns, `source_snapshot`, and weight `note` are never selected.
-- **Byte budget, in SQL.** Each candidate row's cost is
-  `octet_length` of its returned text fields (`id`, `title`, truncated `raw_text`)
-  plus 256 bytes of fixed overhead. Rows are emitted in order while the running sum
-  is ≤ 200 KiB (a window sum over the ordered candidates); the first row is always
-  emitted. A single row is at most about 33 KiB: `title` is bounded to 4096 chars
-  by `20260823200340` and raw text to 4000 chars, at ≤ 4 bytes each. Each RPC also
-  returns `has_more`, so the tool builds `next_cursor` from the last emitted row.
-  The 56 KiB margin under the 256 KiB response cap covers the envelope and JSON
-  escaping. The MCP-side trim (§8) stays as a second guard, not the only one.
+- **Byte budget, in SQL, on the encoded size.** Each candidate row's cost is
+  `octet_length(json_build_object(<every returned column>)::text) + 2`, which is
+  its exact JSON encoding with comma and whitespace allowance. Postgres's JSON text
+  output applies the same escaping JSON requires: control characters become
+  `\uXXXX` (6 bytes), quotes and backslashes are escaped, and non-ASCII stays raw
+  UTF-8. It also emits extra spaces, so this cost is never below the size PostgREST
+  serializes. Rows are emitted in order while the running sum (a window sum over
+  the ordered candidates) is ≤ 200 KiB; the first row is always emitted.
+  - Worst single row: `title` ≤ 4096 chars (`20260823200340`), raw text ≤ 4000
+    chars, `id` ≤ 512 chars, so at most 8608 chars × 6 bytes plus fixed keys,
+    under 64 KiB. One row therefore always fits.
+  - Each RPC also returns `has_more`, so the tool builds `next_cursor` from the
+    last emitted row. A direct PostgREST response is bounded at about 200 KiB plus
+    array framing.
+  - The MCP response repeats the payload (structured content plus a text block) and
+    re-escapes it, so the MCP-side trim (§8) of the final serialized body enforces
+    the 256 KiB cap there.
+  - Fixture: rows whose titles are 4096 × U+0001, plus 4-byte-UTF-8 and
+    quote/backslash-heavy rows, asserting the encoded response size.
 
 Because the gate runs inside the reading statement, revocation, withdrawal and
 regrant take effect on the next statement even with an unexpired token, whether
@@ -301,9 +311,9 @@ the RPC is called through MCP or directly.
 | #1625 | `supabase/tests/mcp-request-gate.test.sql` | each gate status, outage-safe missing tables, legacy mode, regrant staleness |
 | #1625 | `supabase/tests/mcp-oauth-token-isolation.test.sql` | OAuth token reads 0 rows / cannot write on every `kilo` table, guarded RPCs, catalog completeness |
 | #1627 | `supabase/migrations/<ts>_mcp_workout_notes_page.sql` | §6.3 workout RPC |
-| #1627 | `supabase/tests/mcp-workout-notes-page.test.sql` | gate inside the RPC (revoked session, withdrawn/legacy, stale regrant, first-party token), owner filter, tombstones, keyset order, truncation, in-RPC quota exhaustion and limiter failure, 200 KiB byte budget (4096-char titles) |
+| #1627 | `supabase/tests/mcp-workout-notes-page.test.sql` | gate inside the RPC (revoked session, withdrawn/legacy, stale regrant, first-party token), owner filter, tombstones, keyset order, truncation, in-RPC quota exhaustion and limiter failure, 200 KiB encoded-byte budget (4096 × U+0001 titles, multibyte, quote/backslash rows) |
 | #1628 | `supabase/migrations/<ts>_mcp_weight_entries_page.sql` | §6.3 weight RPC |
-| #1628 | `supabase/tests/mcp-weight-entries-page.test.sql` | the same gate matrix, owner filter, entry type, tombstones, null `logged_at` phase, range bounds, in-RPC quota and limiter failure, byte budget |
+| #1628 | `supabase/tests/mcp-weight-entries-page.test.sql` | the same gate matrix, owner filter, entry type, tombstones, null `logged_at` phase, range bounds, in-RPC quota and limiter failure, encoded-byte budget |
 
 Catalog tests (#1625) run in the same suite: every RLS table in `kilo` must carry
 the restrictive policy, and every `kilo` function with
@@ -403,7 +413,7 @@ name or profile fields.
 | --- | --- |
 | Rows per page | ≤ 100 (≤ 25 with raw text) |
 | Raw text per note | 4000 chars, truncated in SQL |
-| Response body | ≤ 256 KiB serialized. Enforced first in SQL (200 KiB row budget, §6.3), then by an MCP-side trim of trailing items; one item always fits. |
+| Response body | ≤ 256 KiB serialized. Enforced first in SQL (200 KiB JSON-encoded row budget, §6.3), then by an MCP-side trim of trailing items; one item always fits. |
 | Request body | ≤ 64 KiB; JSON-RPC batches rejected |
 | DB call | 3 s abort; function `statement_timeout` |
 | Whole request | 10 s → `timeout` |
