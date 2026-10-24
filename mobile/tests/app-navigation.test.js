@@ -588,6 +588,11 @@ describe('normalizeNavTarget: the typed navigation-intent contract (#718)', () =
       expect(normalizeNavTarget('Analytics', { kind: 'section', id }))
         .toEqual({ kind: 'section', id });
     }
+    // #1602: the Bodyweight chapter's alias of 'weight' is a known id too.
+    expect(normalizeNavTarget('Analytics', { kind: 'section', id: 'bodyweight' }))
+      .toEqual({ kind: 'section', id: 'bodyweight' });
+    expect(normalizeNavTarget('Analytics', 'bodyweight')).toEqual({ kind: 'section', id: 'bodyweight' });
+    expect(normalizeNavTarget('Log', { kind: 'section', id: 'bodyweight' })).toBe(null);
     expect(normalizeNavTarget('Analytics', { kind: 'section', id: 'mystery' })).toBe(null);
     expect(normalizeNavTarget('Analytics', { kind: 'section' })).toBe(null);
     expect(normalizeNavTarget('Log', { kind: 'section', id: 'weight' })).toBe(null);

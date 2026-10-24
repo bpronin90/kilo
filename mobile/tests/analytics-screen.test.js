@@ -1367,11 +1367,11 @@ describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
     expect(scrollTo).not.toHaveBeenCalled();
   });
 
-  // The Recovery anchor is a wrapper, so it must appear and disappear with the
-  // section it measures: an empty wrapper would still take a slot in the
-  // shell's 16px column gap. AnalyticsRecoverySection owns that decision; this
-  // pins the screen's copy of it against the section itself.
-  test('the Recovery anchor exists exactly when the Recovery section renders', () => {
+  // The Recovery anchor wraps the Recovery chapter body (#1602). The chapter
+  // always carries its history/management entry, so the anchor is never an empty
+  // slot; AnalyticsRecoverySection still owns whether its own content renders,
+  // and that content appears inside the anchor exactly when the section does.
+  test('the Recovery anchor always holds the history entry, and the section exactly when it renders', () => {
     const { AnalyticsRecoverySection } = require('../components/AnalyticsRecoverySection');
     const states = [
       { blocks: [], weeks: [], loading: false },
@@ -1385,7 +1385,9 @@ describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
 
     for (const state of states) {
       const { component } = setupTargeting({ recoveryState: state });
-      const anchored = component.root.findAllByProps({ testID: 'recovery-section-anchor' }).length > 0;
+      const anchor = component.root.findByProps({ testID: 'recovery-section-anchor' });
+      expect(anchor.findAllByProps({ testID: 'analytics-recovery-history-entry' }).length).toBeGreaterThan(0);
+      const inner = anchor.findByType(AnalyticsRecoverySection);
 
       let section;
       render.act(() => {
@@ -1401,7 +1403,7 @@ describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
           />
         );
       });
-      expect(anchored).toBe(section.toJSON() !== null);
+      expect(inner.children.length > 0).toBe(section.toJSON() !== null);
       render.act(() => { section.unmount(); });
     }
   });
@@ -1438,7 +1440,7 @@ describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
   });
 });
 
-// ── Normal hierarchy: Strength → Routine Health → PO → Weight → Recovery ───
+// ── Normal hierarchy (#1602 chapters): Strength → PO → Training → Routine Health → Weight → Recovery ───
 
 // Top-level section titles in render order (exact-match, so a substring like
 // the "Recovery" inside "Baseline training · paused during Recovery" or a row
@@ -1462,13 +1464,13 @@ describe('AnalyticsScreen normal-training section order', () => {
     deleted_at: null,
   };
 
-  test('Strength → Routine Health → Progressive Overload → Weight Trends, then Recovery history last', () => {
+  test('Strength → Progressive Overload → Routine Health → Weight Trends, then Recovery history last', () => {
     const component = setup({ hookOverrides: { recoveryBlocks: [COMPLETED_BLOCK], recoveryWeeks: [] } });
     const root = component.root;
     expect(root.findAllByProps({ testID: 'recovery-section-anchor' }).length).toBeGreaterThan(0);
     expect(root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).length).toBe(0);
     const order = sectionOrder(root);
-    expect(order.slice(0, 4)).toEqual(['Strength', 'Routine Health', 'Progressive Overload', 'Weight Trends']);
+    expect(order.slice(0, 4)).toEqual(['Strength', 'Progressive Overload', 'Routine Health', 'Weight Trends']);
     // The Recovery section's own content follows Weight Trends.
     const texts = findAllText(root);
     const routineIdx = texts.indexOf('Weight Trends');
@@ -1487,11 +1489,13 @@ describe('AnalyticsScreen normal-training section order', () => {
     expect(strength.some(sec => sec.findAll(n => n === po).length > 0)).toBe(false);
   });
 
-  test('with no Recovery history the order ends at Weight Trends — no hole, no anchor', () => {
+  test('with no Recovery history the chapter keeps only its entry — no fabricated history', () => {
     const component = setup({ hookOverrides: { recoveryBlocks: [], recoveryWeeks: [] } });
     const root = component.root;
-    expect(root.findAllByProps({ testID: 'recovery-section-anchor' }).length).toBe(0);
-    expect(sectionOrder(root)).toEqual(['Strength', 'Routine Health', 'Progressive Overload', 'Weight Trends']);
+    const anchor = root.findByProps({ testID: 'recovery-section-anchor' });
+    const entry = anchor.findAllByProps({ testID: 'analytics-recovery-history-entry' }).find(n => n.props.accessibilityRole === 'button');
+    expect(entry.props.accessibilityLabel).toBe('No completed recovery blocks yet, Opens Recovery management');
+    expect(sectionOrder(root)).toEqual(['Strength', 'Progressive Overload', 'Routine Health', 'Weight Trends', 'Recovery']);
   });
 });
 
@@ -2011,6 +2015,20 @@ describe('AnalyticsScreen feature toggle gating', () => {
     expect(hasText(root, 'Building')).toBe(false);
     expect(hasText(root, 'Session Check-ins')).toBe(false);
     expect(hasText(root, 'Weight Trends')).toBe(true);
+  });
+
+  // #1602: gauge/zones, Deload mode and the check-ins share one flat panel with
+  // no card inside it; the gauge and check-ins use their uncontained variants.
+  test('Routine Health is one panel holding the uncontained gauge, Deload mode and check-ins', () => {
+    const component = setup();
+    const root = component.root;
+    const panel = root.findAll(n => n.props?.testID === 'routine-health-panel' && typeof n.type !== 'string')[0];
+    const { SessionGauge, Card } = require('../components/UI');
+    expect(panel.findByType(SessionGauge).props.contained).toBe(false);
+    const { AnalyticsFatigueCard } = require('../components/AnalyticsFatigueCard');
+    expect(panel.findByType(AnalyticsFatigueCard).props.contained).toBe(false);
+    expect(panel.findAllByType(Card)).toHaveLength(0);
+    expect(findAllText(panel)).toEqual(expect.arrayContaining(['Deload mode', 'On', 'Session Check-ins']));
   });
 
   test('deload mode on still renders the full advisory', () => {

@@ -77,6 +77,9 @@ export function AnalyticsRecoverySection({
   onRetry,
   // Effective 1K selection for the active block's Big 3 (#1351).
   oneKSelections = null,
+  // Section heading (#1602): the Analytics Recovery chapter header already
+  // names the section, so the chapter passes null; other callers keep it.
+  title = 'Recovery',
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
@@ -149,7 +152,7 @@ export function AnalyticsRecoverySection({
     const message = isInitialLoad ? RECOVERY_LOADING_MESSAGE : RECOVERY_UNVERIFIED_MESSAGE;
     return (
       <View style={styles.container}>
-        <SectionTitle>Recovery</SectionTitle>
+        {title ? <SectionTitle>{title}</SectionTitle> : null}
         <View
           style={styles.stateBanner}
           accessible
@@ -202,7 +205,7 @@ export function AnalyticsRecoverySection({
     if (!stateStale) return null;
     return (
       <View style={styles.container}>
-        <SectionTitle>Recovery</SectionTitle>
+        {title ? <SectionTitle>{title}</SectionTitle> : null}
         {staleBanner}
       </View>
     );
@@ -230,7 +233,7 @@ export function AnalyticsRecoverySection({
 
   return (
     <View style={styles.container}>
-      <SectionTitle>Recovery</SectionTitle>
+      {title ? <SectionTitle>{title}</SectionTitle> : null}
 
       {staleBanner}
 

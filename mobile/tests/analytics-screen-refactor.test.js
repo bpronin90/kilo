@@ -177,14 +177,16 @@ describe('orderAnalyticsSections — the two hierarchies', () => {
   });
   const keys = (items) => items.filter(Boolean).map(i => i.key);
 
-  test('normal training: Strength → Training breakdown → Routine Health → Progressive Overload → Weight → Recovery history', () => {
+  // Redesign v3 chapters (#1602): 01 Progress (Strength → Overload), 02 Training
+  // (Training breakdown → Routine Health), 03 Bodyweight, 04 Recovery.
+  test('normal training: Strength → Progressive Overload → Training breakdown → Routine Health → Weight → Recovery', () => {
     expect(keys(orderAnalyticsSections({ isActiveRecovery: false, baselineExpanded: false, ...parts() })))
-      .toEqual(['weight-error-banner', 'strength', 'tb', 'routine', 'po', 'weight', 'recovery']);
+      .toEqual(['weight-error-banner', 'strength', 'po', 'tb', 'routine', 'weight', 'recovery']);
   });
 
-  test('normal training with no Recovery history leaves no slot behind', () => {
+  test('normal training with no Recovery element leaves no slot behind', () => {
     expect(keys(orderAnalyticsSections({ isActiveRecovery: false, ...parts(), recovery: null })))
-      .toEqual(['weight-error-banner', 'strength', 'tb', 'routine', 'po', 'weight']);
+      .toEqual(['weight-error-banner', 'strength', 'po', 'tb', 'routine', 'weight']);
   });
 
   test('active Recovery, collapsed: Recovery → Weight → disclosure, baseline hidden', () => {
@@ -192,15 +194,29 @@ describe('orderAnalyticsSections — the two hierarchies', () => {
       .toEqual(['weight-error-banner', 'recovery', 'weight', 'disclosure']);
   });
 
-  test('active Recovery, expanded: disclosure holds Strength → Training breakdown → Progressive Overload → Routine Health', () => {
+  test('active Recovery, expanded: the paused body holds Strength → Progressive Overload → Training breakdown → Routine Health', () => {
     expect(keys(orderAnalyticsSections({ isActiveRecovery: true, baselineExpanded: true, ...parts() })))
-      .toEqual(['weight-error-banner', 'recovery', 'weight', 'disclosure', 'strength', 'tb', 'po', 'routine']);
+      .toEqual(['weight-error-banner', 'recovery', 'weight', 'disclosure', 'strength', 'po', 'tb', 'routine']);
+    const wrapped = orderAnalyticsSections({
+      isActiveRecovery: true, baselineExpanded: true, ...parts(),
+      pausedBody: (children) => React.createElement(View, { key: 'paused' }, children),
+    }).filter(Boolean);
+    expect(keys(wrapped)).toEqual(['weight-error-banner', 'recovery', 'weight', 'disclosure', 'paused']);
+    expect(keys(wrapped[4].props.children)).toEqual(['strength', 'po', 'tb', 'routine']);
+  });
+
+  test('chapter headers lead each chapter in both hierarchies', () => {
+    const chapterHeader = (id) => el(`ch-${id}`);
+    expect(keys(orderAnalyticsSections({ isActiveRecovery: false, ...parts(), chapterHeader })))
+      .toEqual(['weight-error-banner', 'ch-progress', 'strength', 'po', 'ch-training', 'tb', 'routine', 'ch-bodyweight', 'weight', 'ch-recovery', 'recovery']);
+    expect(keys(orderAnalyticsSections({ isActiveRecovery: true, baselineExpanded: false, ...parts(), chapterHeader })))
+      .toEqual(['weight-error-banner', 'ch-recovery', 'recovery', 'ch-bodyweight', 'weight', 'ch-baseline', 'disclosure']);
   });
 
   test('a caller that supplies no Training breakdown leaves no slot behind', () => {
     const { trainingBreakdown, ...rest } = parts();
     expect(keys(orderAnalyticsSections({ isActiveRecovery: false, ...rest })))
-      .toEqual(['weight-error-banner', 'strength', 'routine', 'po', 'weight', 'recovery']);
+      .toEqual(['weight-error-banner', 'strength', 'po', 'routine', 'weight', 'recovery']);
   });
 
   test('the disclosure never renders outside active Recovery', () => {

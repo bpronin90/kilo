@@ -3,27 +3,56 @@ import { Platform, StyleSheet } from 'react-native';
 import { TYPOGRAPHY } from '../../theme/typography';
 
 export const createStyles = (colors, kua = null) => StyleSheet.create({
-  // Baseline-training disclosure header (#871). Reads as the same quiet
-  // section-header family used elsewhere in Analytics/Home (label + chevron),
-  // not a filled control — the emphasis on this tab right now belongs to the
-  // Recovery-live content above it.
+  // Baseline-training disclosure (#871), redesigned as the Paused chapter's
+  // dashed toggle row (#1602): a quiet dashed panel, never a filled control —
+  // the emphasis while Recovery is active belongs to the Recovery chapter.
   baselineDisclosureToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    minHeight: 44,
+    gap: 12,
+    minHeight: 48,
     paddingVertical: 10,
-    paddingHorizontal: 4,
+    paddingLeft: 16,
+    paddingRight: 12,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    borderRadius: GEOMETRY['radius-2xl'],
+    backgroundColor: kua ? kua.surfaceCard : colors.card,
   },
   baselineDisclosureLabel: {
     flex: 1,
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
-    fontWeight: '700',
+    ...TYPOGRAPHY['body-md'],
+    fontSize: 15,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
+  // Expanded paused content (#1602): below the toggle, behind a dashed left
+  // rule — not inside a card.
+  pausedBody: {
+    gap: 16,
+    paddingLeft: 12,
+    borderLeftWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   routineHealthSection: {
     gap: 12,
+  },
+  recoveryChapterBody: {
+    gap: 16,
+  },
+  routineHealthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  routineHealthValue: {
+    fontWeight: '600',
+    color: kua ? kua.onSurface : colors.text,
+  },
+  routineHealthDivider: {
+    borderTopWidth: 1,
+    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   poSection: {
     gap: 6,
