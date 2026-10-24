@@ -76,17 +76,20 @@ export function timeFraction(bounds, t) {
 // The weigh-in nearest a touch, or -1 when there is none. Weigh-ins on one date
 // share an x, so when the touch height (and a y mapper) is known the distance is
 // two-dimensional and each of them stays reachable; otherwise x alone decides.
-export function nearestPointIndex(plot, bounds, locationX, padX, innerWidth, locationY = null, yOf = null) {
+// Points that coincide exactly (same date, same value) cannot be told apart by
+// position, so repeated taps cycle through them, starting after `currentIndex`.
+export function nearestPointIndex(plot, bounds, locationX, padX, innerWidth, locationY = null, yOf = null, currentIndex = null) {
   const useY = Number.isFinite(locationY) && typeof yOf === 'function';
-  let best = -1;
-  let bestDist = Infinity;
-  plot.points.forEach((p, i) => {
+  const dists = plot.points.map((p) => {
     const dx = padX + timeFraction(bounds, p.t) * innerWidth - locationX;
     const dy = useY ? yOf(p.value) - locationY : 0;
-    const dist = dx * dx + dy * dy;
-    if (dist < bestDist) { best = i; bestDist = dist; }
+    return dx * dx + dy * dy;
   });
-  return best;
+  if (dists.length === 0) return -1;
+  const best = Math.min(...dists);
+  const tied = dists.map((d, i) => (d - best < 1e-6 ? i : -1)).filter((i) => i >= 0);
+  if (tied.length > 1 && tied.includes(currentIndex)) return tied[(tied.indexOf(currentIndex) + 1) % tied.length];
+  return tied[0];
 }
 
 // Text equivalent of the plot for assistive technology: count, the recorded

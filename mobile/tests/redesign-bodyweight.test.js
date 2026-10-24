@@ -206,6 +206,25 @@ describe('LineChart weightPlot — selection by recorded entry', () => {
     expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'b' }));
   });
 
+  test('coincident weigh-ins (same date, same value) are reached by repeated taps', () => {
+    const entries = [
+      { id: 'c', date: '2026-05-24', weight_value: 184 },
+      { id: 'b', date: '2026-05-23', weight_value: 185, note: 'After dinner' },
+      { id: 'a', date: '2026-05-23', weight_value: 185, note: 'Fasted' },
+    ];
+    const series = [{ value: 185, label: '05/23', unit: 'lb' }, { value: 184, label: '05/24', unit: 'lb' }];
+    const plot = { ...buildWeighInPoints({ entries, series, windowDays: 7, unit: 'lb' }), goal: null, windowLabel: 'x' };
+    const onSelect = jest.fn();
+    const c = mount({ data: series, weightPlot: plot, onSelect });
+    const { cx, cy } = dots(c)[0].props;
+    press2(c, cx, cy);
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'a' }));
+    press2(c, cx, cy);
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'b' }));
+    press2(c, cx, cy);
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'a' }));
+  });
+
   test('keyboard and rotor traversal walk the weigh-ins; Escape clears', () => {
     const onSelect = jest.fn();
     const c = mount({ onSelect });

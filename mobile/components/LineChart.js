@@ -177,7 +177,7 @@ export function LineChart({
     if (!plotWidth) return;
     const { locationX, locationY } = evt.nativeEvent;
     const index = weighted
-      ? nearestPointIndex(weightPlot, wb, locationX, effPaddingHorizontal, innerWidth, locationY, getY)
+      ? nearestPointIndex(weightPlot, wb, locationX, effPaddingHorizontal, innerWidth, locationY, getY, selectedIndex)
       : Math.round((locationX - effPaddingHorizontal) / innerWidth * (data.length - 1));
     if (index >= 0 && index < data.length) {
       select(index === selectedIndex ? null : index);
