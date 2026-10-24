@@ -147,7 +147,7 @@ request, and no data query runs.
 | 3 | Kilo claim checks: `iss` equals `MCP_AUTH_ISSUER` exactly; `role = authenticated`; `sub`, `session_id` are UUIDs; `client_id` is a non-empty string. A first-party Kilo session (no `client_id`) is rejected. | 401 `invalid_token` |
 | 4 | Per-user limiter, buckets `mcp:user:<sub>:m` and `:h`. | 429 |
 | 5 | `rpc('mcp_request_gate')` on the request-scoped user client (§6.1). | see §5.1 |
-| 6 | MCP handler, fresh `McpServer` per request. Tool queries use the same user client with header `X-Kilo-Consent-Protocol: 1`, so existing owner + `health_gate_ok()` RLS applies, plus the restrictive policy in §6.2. | tool error |
+| 6 | MCP handler, fresh `McpServer` per request. Data tools call only the page RPCs (§6.3) on the same user client. Each RPC re-runs the full gate inside the statement that reads data, so step 5 is an early, cheap rejection, not the enforcement point. | tool error |
 
 Identity source: the verified `sub` only. No tool accepts a user id, and cursors
 carry no identity.
@@ -182,7 +182,7 @@ added**, so Kilo cannot drift from Auth.
 | Refresh token revoked/reused | Auth revokes the token family | refresh fails; the gate sees no live refresh token for the session |
 | Kilo mobile sign-out | ends **only the app's own session** | does not touch the client's session; **not revocation** (stated in the UI) |
 | Sign out everywhere / password change | Auth deletes all user sessions | `session_inactive` |
-| Health-consent withdrawal | `consent_state.status` leaves `granted` | `consent_required` now, and RLS `health_gate_ok()` denies in `consent_required` mode |
+| Health-consent withdrawal | `consent_state.status` leaves `granted` | `consent_required` at the HTTP gate and inside every page RPC, in every gate mode |
 | Regrant after withdrawal | new `granted_at` | sessions created before it are `consent_stale`; the client must run the authorization flow again |
 | Account deletion | `auth.users` row and its sessions/consent_state cascade | `account_missing` / `session_inactive` |
 
@@ -210,40 +210,68 @@ OAuth client (P2), the gate also requires it to equal the `client_id` claim.
 
 Returns `jsonb`: `{ status, consent_granted_at }`; never returns user data.
 
+The status logic lives in one internal function, `kilo.mcp_gate_status()`, which
+is not executable by API roles. `mcp_request_gate()` and both page RPCs (§6.3)
+call it, so the HTTP gate and the data boundary cannot diverge.
+
 ### 6.2 OAuth-token isolation — #1625
 
 Because of F4, without this an approved MCP client could call PostgREST, Kilo RPCs
-or Edge Functions with its token, including writes and `consent_withdraw`.
+or Edge Functions with its token, including reads that skip the consent rules,
+writes, and `consent_withdraw`.
+
+**Principle: an OAuth token has no direct table access in `kilo`.** Its only data
+path is the page RPCs, which enforce the full §5.1 gate themselves. Calling them
+through PostgREST instead of MCP therefore gains nothing: same gate, same columns,
+same bounds.
 
 - `kilo.is_oauth_client_token()`: `auth.jwt() ->> 'client_id' is not null`.
-- `kilo.mcp_session_active()`: the session test from §6.1 for the caller.
-- On **every** RLS-enabled table in `kilo`, one `AS RESTRICTIVE` policy for
-  `authenticated`: `not kilo.is_oauth_client_token()`, except `SELECT` on
-  `workout_notes` and `weight_entries`, where it is
-  `not kilo.is_oauth_client_token() or kilo.mcp_session_active()`. First-party
-  sessions are unaffected. Revocation is then enforced inside the same SQL
-  statement that reads data, closing the gap between gate and query.
-- Every `kilo` function executable by `authenticated` either raises
-  `insufficient_privilege` when `kilo.is_oauth_client_token()` (writers: currently
-  `consent_grant`, `consent_withdraw`, `health_sync_preflight`,
-  `record_product_measurement_event`, `delete_product_measurement_install`) or is on
-  an explicit pure-read allowlist (`health_gate_ok`, `is_valid_exercise_movement_groups`,
-  `client_consent_protocol_version`, `mcp_request_gate`, the two helpers above).
+- On **every** RLS-enabled table in `kilo`, one `AS RESTRICTIVE` policy `FOR ALL`
+  to `authenticated`: `not kilo.is_oauth_client_token()`. There are no exceptions,
+  including `workout_notes` and `weight_entries`. First-party sessions are
+  unaffected.
+- Every `kilo` function executable by `authenticated` falls in one of three groups:
+  - **Writers** raise `insufficient_privilege` when `kilo.is_oauth_client_token()`.
+    Currently: `consent_grant`, `consent_withdraw`, `health_sync_preflight`,
+    `record_product_measurement_event`, `delete_product_measurement_install`.
+  - **Pure reads** with no user data are allowlisted: `health_gate_ok`,
+    `is_valid_exercise_movement_groups`, `client_consent_protocol_version`,
+    `is_oauth_client_token`.
+  - **MCP functions** are allowlisted: `mcp_request_gate` and the page RPCs.
 - `account-export`, `account-delete`, `health-data-delete` and
   `android-restore-credentials` reject a bearer token carrying `client_id` with 403
   before any other work.
 
-Catalog tests make this hold for future objects: every RLS table in `kilo` must
-carry the restrictive policy, and every `kilo` function with
-`has_function_privilege('authenticated', …, 'EXECUTE')` must be guarded or
-allowlisted.
+### 6.3 Page RPCs — #1627, #1628
 
-### 6.3 `kilo.mcp_workout_notes_page(…)` — #1627
+`kilo.mcp_workout_notes_page(p_limit int, p_as_of timestamptz, p_after_updated_at timestamptz, p_after_id text, p_include_raw_text bool)`
+(#1627) and
+`kilo.mcp_weight_entries_page(p_limit int, p_phase text, p_after_logged_at timestamptz, p_after_id text, p_logged_from timestamptz, p_logged_to timestamptz)`
+(#1628).
 
-`SECURITY INVOKER` (RLS applies), `statement_timeout` ≤ 3 s. Exists so raw text is
-truncated **in SQL** rather than fetched whole and cut afterwards. Arguments:
-`p_limit int, p_as_of timestamptz, p_after_updated_at timestamptz, p_after_id text, p_include_raw_text bool`.
-Returns the §7.2 columns with `left(raw_text, 4000)`, `char_length(raw_text)`.
+Both functions:
+
+- Are `SECURITY DEFINER`, `set search_path = ''`, `statement_timeout` ≤ 3 s, and
+  executable by `authenticated` only.
+- Run three checks first and return no rows unless all pass:
+  - `kilo.is_oauth_client_token()` is true;
+  - `kilo.mcp_gate_status()` is `ok` (active session, explicit current consent even
+    in `legacy` mode, not `consent_stale`);
+  - gate mode is not `paused`.
+
+  On a failure they raise a fixed SQLSTATE carrying only the status. The tool maps
+  it to the §5.1 response.
+- Filter `user_id = auth.uid()` explicitly; definer rights bypass RLS, so the
+  owner filter is in the body.
+- Validate arguments: `p_limit` 1–100, or 1–25 when raw text is requested; the
+  §7.3 range rules. Invalid arguments raise `invalid_arguments`.
+- Return only the §7 item columns. Workout raw text is `left(raw_text, 4000)` with
+  `char_length(raw_text)`, so it is bounded **in SQL** and never fetched whole.
+  Derived jsonb columns, `source_snapshot`, and weight `note` are never selected.
+
+Because the gate runs inside the reading statement, revocation, withdrawal and
+regrant take effect on the next statement even with an unexpired token, whether
+the RPC is called through MCP or directly.
 
 ### 6.4 Migration and test inventory
 
@@ -251,11 +279,17 @@ Returns the §7.2 columns with `left(raw_text, 4000)`, `char_length(raw_text)`.
 | --- | --- | --- |
 | #1625 | `supabase/migrations/<ts>_mcp_request_gate.sql` | §6.1 and §6.2 |
 | #1625 | `supabase/tests/mcp-request-gate.test.sql` | each gate status, outage-safe missing tables, legacy mode, regrant staleness |
-| #1625 | `supabase/tests/mcp-oauth-token-isolation.test.sql` | restrictive policies, guarded RPCs, catalog completeness |
-| #1627 | `supabase/migrations/<ts>_mcp_workout_notes_page.sql` | §6.3 |
-| #1627 | `supabase/tests/mcp-workout-notes-page.test.sql` | RLS, tombstones, keyset order, truncation |
+| #1625 | `supabase/tests/mcp-oauth-token-isolation.test.sql` | OAuth token reads 0 rows / cannot write on every `kilo` table, guarded RPCs, catalog completeness |
+| #1627 | `supabase/migrations/<ts>_mcp_workout_notes_page.sql` | §6.3 workout RPC |
+| #1627 | `supabase/tests/mcp-workout-notes-page.test.sql` | gate inside the RPC (revoked session, withdrawn/legacy, stale regrant, first-party token), owner filter, tombstones, keyset order, truncation |
+| #1628 | `supabase/migrations/<ts>_mcp_weight_entries_page.sql` | §6.3 weight RPC |
+| #1628 | `supabase/tests/mcp-weight-entries-page.test.sql` | the same gate matrix, owner filter, entry type, tombstones, null `logged_at` phase, range bounds |
 
-`weight_entries_list` needs no SQL; it uses a column-allowlisted PostgREST select.
+Catalog tests (#1625) run in the same suite: every RLS table in `kilo` must carry
+the restrictive policy, and every `kilo` function with
+`has_function_privilege('authenticated', …, 'EXECUTE')` must be guarded or
+allowlisted. New tables and functions therefore cannot silently reopen direct
+access.
 
 ## 7. Tool interface
 
@@ -374,7 +408,7 @@ Logging: method name, tool name, status/error code, duration. Never tokens,
 | #1625 | `supabase/functions/mcp/{index.ts,deno.json,deno.lock,auth.ts,gate.ts,limiter.ts,limits.ts,envelope.ts}`, `mcp/tools/{index.ts,whoami.ts}` and tests; `[functions.mcp]` in `supabase/config.toml`; §6.4 #1625 rows; the OAuth-token guard in the four existing functions' `index.ts`; `docs/architecture/backend-schema.md` (new objects) |
 | #1626 | `mobile/screens/mcp/**`, `mobile/lib/mcpAuthorization.js`, `mobile/hooks/useMcpAuthorization.js`, route entry in `AppShell`/`navigation`, Account entry; **no `_redirects`** |
 | #1627 | `mcp/tools/workout-history.ts` (+test), registration line, §6.4 #1627 rows |
-| #1628 | `mcp/tools/weight-history.ts` (+test), registration line |
+| #1628 | `mcp/tools/weight-history.ts` (+test), registration line, §6.4 #1628 rows |
 | #1629 | `mcp/integration/**` (incl. staging `config.toml`), `scripts/verify-mcp-mvp.mjs`, `docs/verification/mcp-mvp/**` |
 
 Pinned dependencies (#1625 commits `deno.lock`): `@modelcontextprotocol/server`
@@ -391,9 +425,10 @@ exact version.
 | Wrong audience | 2 | 401 |
 | No `client_id` (first-party app token) | 3 | 401 |
 | Expired token | 2 | 401; client refreshes |
-| Disconnected client, unexpired token | 5 (and §6.2 RLS) | 401 `session_inactive`; PostgREST direct also returns 0 rows |
-| Consent withdrawn mid-session | 5 | `consent_required` tool error; RLS also denies |
-| Withdraw → regrant, old session | 5 | 401 `consent_stale` → re-authorize |
+| Disconnected client, unexpired token | 5, and inside the page RPC | 401 `session_inactive`; direct table read returns 0 rows (§6.2); direct RPC call raises |
+| Consent withdrawn mid-session (any gate mode, incl. `legacy` during purge) | 5, and inside the page RPC | `consent_required`; direct table/RPC paths also denied |
+| Withdraw → regrant, old live session | 5, and inside the page RPC | 401 `consent_stale` → re-authorize; direct paths denied |
+| OAuth token reads `kilo.workout_notes` via PostgREST | §6.2 restrictive policy | 0 rows; no raw columns or unbounded text |
 | Cross-user arguments/cursor | schema / RLS | `invalid_arguments`, or only own rows |
 | Account deleted | 5 | 401 |
 | Consent/grant lookup outage | 5 | 503, no query |
