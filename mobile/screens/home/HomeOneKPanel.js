@@ -13,7 +13,6 @@ import { Icon } from '../../components/Icon';
 // No graph (#1458): the total, a stacked bar of the logged lifts toward the
 // target, and the Squat / Bench / Deadlift split.
 const SERIES = ['chartSeries1', 'chartSeries2', 'chartSeries3'];
-const LEGACY_SERIES = ['#0C7489', '#C2410C', '#7C3AED'];
 
 function formatTarget(target) {
   return Math.round(target).toLocaleString('en-US');
@@ -45,7 +44,7 @@ export function HomeOneKPanel({ total, target, unit, lifts, emptyText, onTitlePr
   const muted = kua ? kua.onSurfaceVariant : colors.textMuted;
   const seriesColor = (key) => {
     const i = ['squat', 'bench', 'deadlift'].indexOf(key);
-    return kua ? kua[SERIES[i]] : LEGACY_SERIES[i];
+    return kua ? kua[SERIES[i]] : [colors.accent, colors.caution, colors.success][i];
   };
   const hasTotal = total != null;
   const remainingText = oneKRemainingText(total, target, unit);
