@@ -1,5 +1,6 @@
 // R2 (#1601) visual evidence: the redesigned Weight screen on the real app.
-// Usage: node docs/evidence/app-redesign-v3/r2/capture.cjs <distDir> <playwrightModuleDir> [workDir]
+// Usage: node docs/evidence/app-redesign-v3/r2/capture.cjs <distDir> <playwrightModuleDir> [workDir] [only]
+// `only` = "storage" runs just the storage-fault and date-path states (section 10-12).
 // Writes PNGs only to docs/evidence/app-redesign-v3/r2/after/; manifest.json goes
 // to workDir (default: a new temp dir), because the evidence folder tracks PNGs only.
 const fs = require('fs');
@@ -8,7 +9,7 @@ const path = require('path');
 const { launch, FIRST_SCREEN_THEMES, STATE_THEMES, PHONE } = require('../capture.cjs');
 const { withGoalHistory } = require('./fixtures.cjs');
 
-const [dist, pw, workArg] = process.argv.slice(2);
+const [dist, pw, workArg, only] = process.argv.slice(2);
 const out = path.join(__dirname, 'after');
 const work = workArg || fs.mkdtempSync(path.join(os.tmpdir(), 'kilo-r2-'));
 const TALL = { width: PHONE.width, height: 2600 };
@@ -28,6 +29,32 @@ async function reveal(s, testID, offset = 0) {
   await s.wait(700);
 }
 
+// The web AsyncStorage shim reads synchronously: getItem(key) is
+// `new Promise((resolve) => resolve(window.localStorage.getItem(key)))`. So a
+// patched Storage.prototype.getItem for the entries key controls the read with
+// no product change: throwing rejects it, and returning a never-settling
+// thenable keeps it pending (resolve() adopts the thenable). The seeded
+// localStorage is untouched; only reads of that one key are faulted.
+const ENTRIES_KEY = 'kilo_weight_entries';
+async function faultEntriesRead(s, mode) {
+  await s.ctx.addInitScript(([key, m]) => {
+    const real = Storage.prototype.getItem;
+    Storage.prototype.getItem = function getItem(k) {
+      if (k !== key) return real.call(this, k);
+      if (m === 'reject') throw new Error('capture: weight entries read failed');
+      return { then() {} };
+    };
+  }, [ENTRIES_KEY, mode]);
+  // The harness seeds once per tab (sessionStorage flag), so the reload keeps
+  // the fixture and only adds the fault.
+  await s.page.reload({ waitUntil: 'load' });
+  await s.wait(1800);
+  if (mode === 'pending') return;
+  const own = s.page.getByTestId('ownership-prompt');
+  if (await own.isVisible().catch(() => false)) { await own.getByText('Not Now').click(); await s.wait(600); }
+  await s.tab('Weight');
+}
+
 (async () => {
   fs.mkdirSync(out, { recursive: true });
   fs.mkdirSync(work, { recursive: true });
@@ -40,13 +67,13 @@ async function reveal(s, testID, offset = 0) {
   const open = (opts) => h.open({ tab: 'Weight', ...opts });
   try {
     // 1. Weight first screen in the four first-screen themes.
-    for (const theme of FIRST_SCREEN_THEMES) {
+    for (const theme of (only === 'storage' ? [] : FIRST_SCREEN_THEMES)) {
       const s = await open({ scenario: 'populated', theme });
       await record(s, `first-weight-${theme}.png`, 'Weight first screen: header, Log weigh-in, Latest, Goal top');
       await s.close();
     }
 
-    for (const theme of STATE_THEMES) {
+    for (const theme of (only === 'storage' ? [] : STATE_THEMES)) {
       // 2. Full vertical order on a tall viewport (no scrolling), with goal history.
       let s = await open({ scenario: 'populated', overlay: withGoalHistory, theme, viewport: TALL });
       await record(s, `full-weight-${theme}.png`, 'Full vertical order: Log weigh-in > Latest > Goal > History > Goal history');
@@ -136,6 +163,43 @@ async function reveal(s, testID, offset = 0) {
       s = await open({ scenario: 'populated', theme });
       await s.click({ role: 'button', name: 'Full trend in Analytics' }, { settle: 1500 });
       await record(s, `analytics-deeplink-${theme}.png`, 'After Full trend in Analytics: Analytics tab at the weight section');
+      await s.close();
+    }
+
+    for (const theme of STATE_THEMES) {
+      // 10. Initial entries read still pending. Every tab mounts at launch and
+      // shares that one coalesced read, and the app startup overlay (#1372)
+      // covers the app until Home's reads settle, so what a user sees is the
+      // overlay. The second capture hides only that overlay with injected CSS
+      // (no product change) to show the Weight tree rendered in that state.
+      let s = await open({ scenario: 'populated', theme });
+      await faultEntriesRead(s, 'pending');
+      if (!(await s.isVisible({ testID: 'app-startup-overlay' }))) throw new Error('loading: no startup overlay');
+      await record(s, `entries-loading-overlay-${theme}.png`, 'Initial entries read pending, user-visible: app startup overlay covers every tab');
+      await s.page.addStyleTag({ content: '[data-testid="app-startup-overlay"]{display:none!important}' });
+      await s.tab('Weight');
+      if (!(await s.isVisible({ testID: 'weight-skeleton' }))) throw new Error('loading: no weight-skeleton');
+      await record(s, `entries-loading-${theme}.png`, 'Initial entries read pending, startup overlay hidden by capture CSS: Log weigh-in + loading skeleton, derived panels withheld');
+      await s.close();
+
+      // 11. Entries read rejects, nothing cached; the goal read succeeds.
+      s = await open({ scenario: 'populated', theme });
+      await faultEntriesRead(s, 'reject');
+      if (!(await s.isVisible({ role: 'button', name: 'Retry' }))) throw new Error('entries error: no Retry');
+      await record(s, `entries-error-${theme}.png`, 'Entries read rejected, no cached entries, goal read OK: entry-error banner with Retry; derived panels withheld');
+      await s.close();
+
+      // 12. Weigh-in date path: a non-today date chosen in the date control.
+      // The browser-native picker popup is not part of the page and is not
+      // in a page screenshot, so this captures the control after selection.
+      s = await open({ scenario: 'populated', theme });
+      const date = s.locator({ label: 'Weigh-in date' });
+      await date.click();
+      await s.page.keyboard.press('Escape');
+      await date.fill('2026-10-20');
+      await s.locator({ label: 'Weight (lb)' }).fill('186.4');
+      await s.wait(500);
+      await record(s, `entry-date-picked-${theme}.png`, 'Weigh-in date set to 10-20-2026 (non-today) via the date control; button shows the date');
       await s.close();
     }
   } finally {
