@@ -104,7 +104,10 @@ export function LogSetLine({ sets, unit, mark, tone = 'old' }) {
 // Folded, only the newest LOG_INLINE_SESSIONS sessions are visible; older ones
 // stay mounted but hidden, and every non-session unit (unparsed/warning rows)
 // always shows. Tracked keeps ExerciseBlock's exact label, hint and handler.
-export function LogExerciseBlock({ name, isTracked, onToggleTrack, onNamePress, units, expanded, onToggleExpanded, testID, lastTone = 'last' }) {
+// `onOpenHistory(returnRef)` (#1607) adds the labelled 44dp history button;
+// the ref lets the sheet hand focus back to it on close.
+export function LogExerciseBlock({ name, isTracked, onToggleTrack, onNamePress, units, expanded, onToggleExpanded, testID, lastTone = 'last', onOpenHistory }) {
+  const historyRef = React.useRef(null);
   const styles = useThemedStyles(createStyles);
   const typography = useKuaTypography();
   const { colors } = useTheme();
@@ -119,6 +122,19 @@ export function LogExerciseBlock({ name, isTracked, onToggleTrack, onNamePress, 
     <View style={styles.exercise} testID={testID}>
       <View style={styles.exerciseHeader}>
         <Text selectable style={[typography['headline-sm'], styles.exerciseName]} onPress={onNamePress}>{name}</Text>
+        {typeof onOpenHistory === 'function' ? (
+          <Pressable
+            ref={historyRef}
+            onPress={(e) => { e?.stopPropagation?.(); onOpenHistory(historyRef); }}
+            style={styles.historyTarget}
+            accessibilityRole="button"
+            accessibilityLabel={`${name} history`}
+            accessibilityHint="Opens every logged session of this exercise"
+            testID={testID ? `${testID}-history` : undefined}
+          >
+            <MaterialIcons name="history" size={22} color={muted} accessible={false} />
+          </Pressable>
+        ) : null}
         {typeof onToggleTrack === 'function' ? (
           <Pressable
             onPress={(e) => { e?.stopPropagation?.(); onToggleTrack(); }}
@@ -185,6 +201,7 @@ const createStyles = (colors, kua = null) => {
     exercise: { paddingTop: 10, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: border, gap: 2 },
     exerciseHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
     exerciseName: { flex: 1, fontSize: 16, lineHeight: 22, color: on },
+    historyTarget: { minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'center' },
     trackTarget: { minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'flex-end' },
     trackPill: {
       flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 28, paddingHorizontal: 12,

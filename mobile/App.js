@@ -277,6 +277,7 @@ function ShellView({ onDeviceDataWiped }) {
             restTimerRemainingMs={restTimer.remainingMs}
             restTimerJustElapsed={restTimer.justElapsed}
             restTimerBackgroundAlertAvailable={restTimer.backgroundAlertAvailable}
+            restTimerDurationSec={restTimer.record?.durationSec ?? null}
             onStartRestTimer={restTimer.start}
             onCancelRestTimer={restTimer.cancel}
             onDismissRestTimerDone={restTimer.dismissDone}

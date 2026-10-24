@@ -9,6 +9,7 @@ import { formatLiftWeightValue } from '../lib/units';
 import { buildExerciseSourceAnchor } from '../lib/parser';
 import { TYPOGRAPHY } from '../theme/typography';
 import { LogDayHeading, LogBlockLabel, LogExerciseBlock, LogSetLine } from './log/LogExerciseRows';
+import { ExerciseHistorySheet } from './log/ExerciseHistorySheet';
 
 // #881 (F10a §5): the recognizer window for the exercise-name double-tap
 // gesture that jumps to raw source. Deliberately separate from the note-body
@@ -167,6 +168,10 @@ export function WorkoutContentRenderer({
     if (keys.has(key)) keys.delete(key); else keys.add(key);
     return { scope: foldScope, keys };
   });
+  // #1607: the open history sheet, keyed to this exact occurrence and scoped
+  // like the fold state, so a routine/week/dataset change drops it.
+  const [history, setHistory] = useState(null);
+  const historyTarget = history && history.scope === foldScope ? history.target : null;
   // Running counter across every section in document order — matches
   // parseWorkoutNote's own `sections` index for the slice `dayGroups` was
   // built from, since buildDayGroups only ever groups adjacent same-heading
@@ -334,6 +339,7 @@ export function WorkoutContentRenderer({
                         onToggleExpanded={() => toggleFold(foldKey)}
                         testID={`log-exercise-${foldKey}`}
                         lastTone={isDeload ? 'lead' : 'last'}
+                        onOpenHistory={(returnRef) => setHistory({ scope: foldScope, target: { key: foldKey, exercise: ex, returnRef, context: [group.heading, section.subheading, altWeekText ? `Week ${sourceWeekIndex === 1 ? 'B' : 'A'}` : null].filter(Boolean) } })}
                       />
                     </View>
                   );
@@ -367,6 +373,7 @@ export function WorkoutContentRenderer({
           <Text selectable={true} style={styles.emptyText}>{emptyText}</Text>
         )
       )}
+      {logMode ? <ExerciseHistorySheet target={historyTarget} onClose={() => setHistory(null)} /> : null}
     </>
   );
 }

@@ -89,6 +89,7 @@ export function LogScreen({
   restTimerRemainingMs = 0,
   restTimerJustElapsed = false,
   restTimerBackgroundAlertAvailable = true,
+  restTimerDurationSec = null,
   onStartRestTimer,
   onCancelRestTimer,
   onDismissRestTimerDone,
@@ -526,7 +527,7 @@ export function LogScreen({
               onCancel={onCancelRestTimer}
               onDismissDone={onDismissRestTimerDone}
               onStart={onStartRestTimer}
-              showStart={restTimerDocked} handedOff={!restTimerDockVisible}
+              showStart={restTimerDocked} handedOff={!restTimerDockVisible} durationSec={restTimerDurationSec}
               compact
             />
             <EditorHeaderActions otherEditor={otherEditor} deloadEditor={deloadEditor} currentEditor={currentEditor} />
