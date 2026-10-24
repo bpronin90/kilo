@@ -11,7 +11,7 @@ Real-app renders of the redesigned Home (tracker #1609).
 - **Clock and data:** `FIXED_NOW` 2026-10-23T12:00Z; shared fixtures plus the
   issue-local overlays in [`fixtures.cjs`](fixtures.cjs). See the
   [harness README](../README.md).
-- **Size:** 64 PNGs, 5,789,988 bytes. Themes: `hard-dark` and `clay-light` for every
+- **Size:** 64 PNGs, 5,810,043 bytes. Themes: `hard-dark` and `clay-light` for every
   state; `grass-light` and `clay-dark` for the Home first screen
   (`first-home-*`).
 
@@ -75,7 +75,7 @@ Each row is shot as `after/<name>-hard-dark.png` and `after/<name>-clay-light.pn
 | `recovery-open-week`, `recovery-between-weeks`, `recovery-note-missing`, `recovery-retry` | Recovery panel replaces hero, 1K hidden; unreadable record keeps Retry recovery | pass |
 | `error-retry`, `sync-notice` | Goal-read error banner + Retry; Cloud Sync notice | pass |
 | `empty`, `first-use` | Welcome panel; walkthrough | pass |
-| `loading-cold-start` | Real cold-start loading: the shell's "Loading your training" overlay covers Home (#1372). Held by reload under 200x CPU throttling; the runner retries until `app-startup-overlay` is present both before and after the shot (manifest records `overlay_present_before/after` and attempts). Shot via CDP at 390x844 CSS px (1x), unlike the other PNGs. Home itself is not drawn during loading, by design. | pass |
+| `loading-cold-start` | Real cold-start loading: the shell's "Loading your training" overlay covers Home (#1372). Held by reload under 200x CPU throttling; the runner retries until `app-startup-overlay` is present both before and after the shot (manifest records `overlay_present_before/after` and attempts). Shot via CDP with a 2x clip, so the PNGs are 780x1688 like the others. Home itself is not drawn during loading, by design. | pass |
 | `timer-home`, `timer-log`, `timer-back-home` | Rest timer visible on Home, Log, and back on Home; clears docked bar | pass |
 | `link-ring-analytics` | Ring row opens Analytics (Progressive Overload) | pass |
 | `link-onek-analytics` | 1K title opens Analytics (Strength) | pass |

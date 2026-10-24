@@ -75,7 +75,7 @@ const STATES = {
         for (let i = 0; i < 400 && !before; i++) { before = await count(); if (!before) await new Promise(r => setTimeout(r, 25)); }
         if (!before) continue;
         const f = path.join(out, file);
-        await cdp.send('Page.captureScreenshot', { format: 'png' }).then(r => fs.writeFileSync(f, Buffer.from(r.data, 'base64')));
+        await cdp.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 390, height: 844, scale: 2 } }).then(r => fs.writeFileSync(f, Buffer.from(r.data, 'base64')));
         const after = await count();
         if (!after) continue;
         manifest.push({ file, scenario: s.info.scenario, theme: s.info.theme, state, selected_tab: null, theme_check: await s.verifyTheme().catch(() => null), overlay_present_before: true, overlay_present_after: true, attempts: attempt });
