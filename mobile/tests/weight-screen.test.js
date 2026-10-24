@@ -111,6 +111,27 @@ function ControlledWeightScreen(props) {
   );
 }
 
+// Flattened text of a Text node, including nested Text children (#1601:
+// value + unit and "N lb to go" are composed from nested Text runs).
+function flattenText(node) {
+  const walk = (c) => {
+    if (c == null || c === false) return '';
+    if (typeof c === 'string' || typeof c === 'number') return String(c);
+    if (Array.isArray(c)) return c.map(walk).join('');
+    if (c.props) return walk(c.props.children);
+    return '';
+  };
+  return walk(node.props.children);
+}
+
+// #1601: with no goal, Weight shows a compact "Set a goal" that opens the
+// existing goal form; tests that drive the no-goal form open it first.
+function openGoalSetup(root) {
+  const btn = root.find(n => n.props && n.props.accessibilityLabel === 'Set a goal'
+    && typeof n.props.onPress === 'function');
+  render.act(() => { btn.props.onPress(); });
+}
+
 const ENTRY = {
   id: 'e1',
   date: '2026-05-24',
@@ -190,13 +211,20 @@ describe('WeightScreen edit and delete correction flows', () => {
     return undefined;
   };
 
+  // Redesign v3 (#1601): icon-only or short-text controls carry their full
+  // name on accessibilityLabel ("Save weigh-in" reads "Save" visibly, a
+  // history row is "Edit weigh-in 185 lb, …"), so a labelled pressable is
+  // matched first, then visible Text inside a pressable.
   const findPressableByText = (root, text) => {
     expandHistoryIfCollapsed(root);
+    const labelled = root.findAll(n => typeof n.type !== 'string'
+      && typeof n.props?.onPress === 'function'
+      && typeof n.props?.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.includes(text));
+    if (labelled.length > 0) return labelled[0];
     const matches = root.findAll(n => {
       if (n.type !== 'Text') return false;
-      const children = n.props.children;
-      const flat = Array.isArray(children) ? children.join('') : String(children ?? '');
-      return flat.includes(text);
+      return flattenText(n).includes(text);
     });
     for (const match of matches) {
       let node = match.parent;
@@ -211,10 +239,7 @@ describe('WeightScreen edit and delete correction flows', () => {
   const hasText = (root, text) => {
     const check = () => root.findAll(n => {
       if (n.type !== 'Text') return false;
-      const flat = Array.isArray(n.props.children)
-        ? n.props.children.join('')
-        : String(n.props.children ?? '');
-      return flat.includes(text);
+      return flattenText(n).includes(text);
     }).length > 0;
     if (check()) return true;
     expandHistoryIfCollapsed(root);
@@ -735,10 +760,7 @@ describe('WeightScreen Goals two-panel layout', () => {
   const hasText = (root, text) =>
     root.findAll(n => {
       if (n.type !== 'Text') return false;
-      const flat = Array.isArray(n.props.children)
-        ? n.props.children.join('')
-        : String(n.props.children ?? '');
-      return flat.includes(text);
+      return flattenText(n).includes(text);
     }).length > 0;
 
   test('target weight and date appear when goal is set', () => {
@@ -783,9 +805,7 @@ describe('WeightScreen DateTimePicker onChange callbacks', () => {
   const findPressableByText = (root, text) => {
     const matches = root.findAll(n => {
       if (n.type !== 'Text') return false;
-      const children = n.props.children;
-      const flat = Array.isArray(children) ? children.join('') : String(children ?? '');
-      return flat.includes(text);
+      return flattenText(n).includes(text);
     });
     for (const match of matches) {
       let node = match.parent;
@@ -829,8 +849,10 @@ describe('WeightScreen DateTimePicker onChange callbacks', () => {
       picker.props.onChange({}, selectedDate);
     });
 
+    // #1601: the compact date button shows the app's MM-DD-YYYY display
+    // format (or "Today"); the picked value is still the local YYYY-MM-DD.
     const textNode = dateBtn.findByType('Text');
-    expect(textNode.props.children).toBe('2026-05-25');
+    expect(textNode.props.children).toBe('05-25-2026');
   });
 
   test('goal target date picker uses the correct onChange prop', () => {
@@ -849,6 +871,7 @@ describe('WeightScreen DateTimePicker onChange callbacks', () => {
     });
     const root = component.root;
 
+    openGoalSetup(root);
     // Open goal date picker
     const dateBtn = root.find(n => n.props && n.props.accessibilityLabel === 'Goal target date' && typeof n.props.onPress === 'function');
     expect(dateBtn).toBeTruthy();
@@ -874,18 +897,13 @@ describe('WeightScreen Goal Editor Live Preview', () => {
   const hasText = (root, text) =>
     root.findAll(n => {
       if (n.type !== 'Text') return false;
-      const flat = Array.isArray(n.props.children)
-        ? n.props.children.join('')
-        : String(n.props.children ?? '');
-      return flat.includes(text);
+      return flattenText(n).includes(text);
     }).length > 0;
 
   const findPressableByText = (root, text) => {
     const matches = root.findAll(n => {
       if (n.type !== 'Text') return false;
-      const children = n.props.children;
-      const flat = Array.isArray(children) ? children.join('') : String(children ?? '');
-      return flat.includes(text);
+      return flattenText(n).includes(text);
     });
     for (const match of matches) {
       let node = match.parent;
@@ -918,6 +936,7 @@ describe('WeightScreen Goal Editor Live Preview', () => {
     });
     const root = component.root;
 
+    openGoalSetup(root);
     // The target weight input starts empty
     const targetWeightInput = root.findByProps({ placeholder: '175.0' });
     expect(targetWeightInput).toBeTruthy();
@@ -1305,6 +1324,7 @@ describe('WeightGoalCard goal date web fallback (#404)', () => {
       );
     });
     const root = component.root;
+    openGoalSetup(root);
     const dateInputs = root.findAll(
       n => n.type === 'input' && n.props.type === 'date' && n.props['aria-label'] === 'Goal target date'
     );
@@ -1321,6 +1341,7 @@ describe('WeightGoalCard goal date web fallback (#404)', () => {
       );
     });
     const root = component.root;
+    openGoalSetup(root);
     const dateInput = root.find(
       n => n.type === 'input' && n.props.type === 'date' && n.props['aria-label'] === 'Goal target date'
     );
@@ -1404,7 +1425,9 @@ describe('WeightHistoryList disclosure triangle convention (#393)', () => {
     expect(collapseBtn).toBeTruthy();
   });
 
-  test('collapsed default shows a latest/count summary instead of the row', () => {
+  // #1601: the History panel always shows its count in the header and a
+  // short preview of the newest rows; the header chevron expands the window.
+  test('collapsed default shows the count header and a preview of the newest rows', () => {
     let component;
     render.act(() => {
       component = render.create(
@@ -1412,16 +1435,15 @@ describe('WeightHistoryList disclosure triangle convention (#393)', () => {
       );
     });
     const root = component.root;
-    const flat = JSON.stringify(component.toJSON());
-    expect(flat).toContain('1 entry');
-    expect(flat).toContain('Latest:');
-    expect(flat).toContain('185');
-    // The full row grid (with its per-row delete affordance) is not mapped
-    // in the collapsed default.
-    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Delete weight entry').length).toBe(0);
+    const panel = root.findAll(n => n.props?.testID === 'weight-history-panel' && typeof n.type === 'string')[0];
+    const texts = panel.findAll(n => n.type === 'Text').map(t => flattenText(t));
+    expect(texts).toContain('History · 1');
+    expect(texts).toContain('185 lb');
+    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Delete weight entry'
+      && typeof n.props.onPress === 'function').length).toBeGreaterThan(0);
   });
 
-  test('an empty history shows a "0 entries" summary in the collapsed default', () => {
+  test('an empty history shows a "History · 0" header in the collapsed default', () => {
     useEntries.useWeightEntries.mockReturnValue({ entries: [], remove: jest.fn(), update: jest.fn() });
     let component;
     render.act(() => {
@@ -1429,7 +1451,8 @@ describe('WeightHistoryList disclosure triangle convention (#393)', () => {
         <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
       );
     });
-    expect(JSON.stringify(component.toJSON())).toContain('0 entries');
+    const texts = component.root.findAll(n => n.type === 'Text').map(t => flattenText(t));
+    expect(texts).toContain('History · 0');
   });
 
   // #898 44dp verification: the collapsed header is the sole tap target for a
@@ -1451,7 +1474,7 @@ describe('WeightHistoryList disclosure triangle convention (#393)', () => {
   // #898 large-text verification: the collapsed summary and "Show more"
   // control must not opt out of the OS text-scaling that large-text settings
   // rely on.
-  test('collapsed summary and Show more text scale with the OS large-text setting', () => {
+  test('history header count and Show more text scale with the OS large-text setting', () => {
     const manyEntries = Array.from({ length: 60 }, (_, i) => ({
       id: `e${i}`,
       date: `2026-0${(i % 9) + 1}-01`,
@@ -1467,9 +1490,12 @@ describe('WeightHistoryList disclosure triangle convention (#393)', () => {
       );
     });
     const root = component.root;
-    const summaryText = root.findByProps({ accessibilityLabel: 'Expand history' })
-      .findAllByType('Text')[0];
-    expect(summaryText.props.allowFontScaling).not.toBe(false);
+    const panel = root.findAll(n => n.props?.testID === 'weight-history-panel' && typeof n.type === 'string')[0];
+    const headerText = panel.findAll(n => n.type === 'Text' && flattenText(n) === 'History · 60')[0];
+    expect(headerText).toBeTruthy();
+    expect(headerText.props.allowFontScaling).not.toBe(false);
+    const collapsedShowMore = root.findAll(n => n.props?.testID === 'weight-history-show-more' && typeof n.type === 'string')[0];
+    expect(collapsedShowMore.findAllByType('Text')[0].props.allowFontScaling).not.toBe(false);
 
     render.act(() => {
       root.findByProps({ accessibilityLabel: 'Expand history' }).props.onPress();
@@ -1675,7 +1701,11 @@ describe('WeightScreen "See full trends" handoff (#717)', () => {
         />
       );
     });
-    return component.root.findByProps({ testID: 'weight-see-full-trends' });
+    // #1601: the link is the Latest panel's "Full trend in Analytics" hairline
+    // row; resolve the host-level button that carries the press region.
+    return component.root.findAll(
+      n => n.props?.testID === 'weight-see-full-trends' && n.props?.accessibilityRole === 'button'
+    )[0];
   };
 
   test('the link targets the Analytics weight section and is reusable', () => {
@@ -1693,23 +1723,22 @@ describe('WeightScreen "See full trends" handoff (#717)', () => {
   test('the link is an accessible button whose label matches its visible text', () => {
     const link = renderWithNavigate(jest.fn());
     expect(link.props.accessibilityRole).toBe('button');
-    expect(link.props.accessibilityLabel).toBe('See full trends');
+    expect(link.props.accessibilityLabel).toBe('Full trend in Analytics');
 
     const labels = link.findAllByType('Text').map(t => String(t.props.children ?? '').trim());
-    expect(labels).toContain('See full trends');
+    expect(labels).toContain('Full trend in Analytics');
   });
 
   test('the link declares a >=44pt target and owns its press region', () => {
     // Structural guard only; react-test-renderer runs no layout. Rendered
     // validation at 320/375/448dp with enlarged text is in artifacts/717-d4/.
     const link = renderWithNavigate(jest.fn());
-    const style = [].concat(link.props.style ?? []).reduce(
-      (acc, s) => (s ? Object.assign(acc, s) : acc),
-      {}
-    );
+    const rawStyle = typeof link.props.style === 'function' ? link.props.style({ pressed: false }) : link.props.style;
+    const style = StyleSheet.flatten(rawStyle);
 
-    expect(style.minHeight).toBeGreaterThanOrEqual(44);
-    expect(link.props.hitSlop).not.toBeUndefined();
+    // #1601: a full-width 48dp hairline row clears the target on its own, so
+    // it no longer needs the old compact link's hitSlop.
+    expect(style.minHeight).toBeGreaterThanOrEqual(48);
     // No fixed height, so a scaled-up label grows rather than clipping.
     expect(style.height).toBeUndefined();
     expect(link.findAll(n => n !== link && typeof n.props?.onPress === 'function')).toHaveLength(0);
@@ -1987,9 +2016,7 @@ describe('Android Back routes weight-goal edit through registerBackConsumer, gat
   const findPressableByText = (root, text) => {
     const matches = root.findAll(n => {
       if (n.type !== 'Text') return false;
-      const children = n.props.children;
-      const flat = Array.isArray(children) ? children.join('') : String(children ?? '');
-      return flat.includes(text);
+      return flattenText(n).includes(text);
     });
     for (const match of matches) {
       let node = match.parent;
@@ -2097,9 +2124,13 @@ describe('Weight loading and failure states (#737)', () => {
   };
   const has = (component, testID) => component.root.findAll(n => n.props?.testID === testID).length > 0;
   const hasText = (component, needle) => component.root.findAll(
-    n => n.type === 'Text'
-      && String(Array.isArray(n.props.children) ? n.props.children.join('') : n.props.children ?? '').includes(needle)
+    n => n.type === 'Text' && flattenText(n).includes(needle)
   ).length > 0;
+  // #1601: the derived panels are identified by testID (Latest / Goal /
+  // History) and the Save action by its accessible name ("Save weigh-in";
+  // the visible text is "Save").
+  const hasID = (component, testID) => component.root.findAll(n => n.props?.testID === testID).length > 0;
+  const hasLabel = (component, label) => component.root.findAll(n => n.props?.accessibilityLabel === label).length > 0;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -2117,9 +2148,9 @@ describe('Weight loading and failure states (#737)', () => {
     const skeleton = component.root.find(n => n.props?.testID === 'weight-skeleton');
     expect(skeleton.props.accessibilityLabel).toBe('Loading your weight history');
     // The derived sections are withheld, not faked.
-    expect(hasText(component, 'Weight History')).toBe(false);
+    expect(hasID(component, 'weight-history-panel')).toBe(false);
     // The entry form is untouched: logging never waits on history.
-    expect(hasText(component, 'Save weigh-in')).toBe(true);
+    expect(hasLabel(component, 'Save weigh-in')).toBe(true);
   });
 
   test('an unresolved goal read also holds the derived sections', () => {
@@ -2139,7 +2170,7 @@ describe('Weight loading and failure states (#737)', () => {
     const component = mount();
 
     expect(has(component, 'weight-skeleton')).toBe(false);
-    expect(hasText(component, 'Weight History')).toBe(true);
+    expect(hasID(component, 'weight-history-panel')).toBe(true);
   });
 
   test('a failed read shows the retry banner and withholds the derived sections', () => {
@@ -2151,7 +2182,7 @@ describe('Weight loading and failure states (#737)', () => {
 
     expect(hasText(component, 'Could not load weight entries.')).toBe(true);
     // Never "0 weigh-ins" as if that were a verified answer.
-    expect(hasText(component, 'Weight History')).toBe(false);
+    expect(hasID(component, 'weight-history-panel')).toBe(false);
     expect(has(component, 'weight-skeleton')).toBe(false);
 
     const retry = component.root.find(
@@ -2169,8 +2200,8 @@ describe('Weight loading and failure states (#737)', () => {
     const component = mount();
 
     expect(has(component, 'weight-skeleton')).toBe(false);
-    expect(hasText(component, 'Weight History')).toBe(true);
-    expect(hasText(component, 'Trends')).toBe(true);
+    expect(hasID(component, 'weight-history-panel')).toBe(true);
+    expect(hasID(component, 'weight-latest-panel')).toBe(true);
   });
 });
 
@@ -2193,9 +2224,13 @@ describe('Weight goal-read failure (#737 review)', () => {
   };
   const has = (component, testID) => component.root.findAll(n => n.props?.testID === testID).length > 0;
   const hasText = (component, needle) => component.root.findAll(
-    n => n.type === 'Text'
-      && String(Array.isArray(n.props.children) ? n.props.children.join('') : n.props.children ?? '').includes(needle)
+    n => n.type === 'Text' && flattenText(n).includes(needle)
   ).length > 0;
+  // #1601: the derived panels are identified by testID (Latest / Goal /
+  // History) and the Save action by its accessible name ("Save weigh-in";
+  // the visible text is "Save").
+  const hasID = (component, testID) => component.root.findAll(n => n.props?.testID === testID).length > 0;
+  const hasLabel = (component, label) => component.root.findAll(n => n.props?.accessibilityLabel === label).length > 0;
   const retryFor = (component, message) => {
     const candidates = component.root.findAll(
       n => typeof n.type === 'string'
@@ -2225,11 +2260,12 @@ describe('Weight goal-read failure (#737 review)', () => {
 
     expect(hasText(component, 'Could not load your weight goal.')).toBe(true);
     // The derived block is withheld rather than presented as a verified answer.
-    expect(hasText(component, 'Goal')).toBe(false);
-    expect(hasText(component, 'Weight History')).toBe(false);
+    expect(hasID(component, 'weight-goal-panel')).toBe(false);
+    expect(hasID(component, 'weight-latest-panel')).toBe(false);
+    expect(hasID(component, 'weight-history-panel')).toBe(false);
     expect(has(component, 'weight-skeleton')).toBe(false);
     // The weigh-in form is untouched: a goal read has nothing to do with logging.
-    expect(hasText(component, 'Save weigh-in')).toBe(true);
+    expect(hasLabel(component, 'Save weigh-in')).toBe(true);
 
     render.act(() => { retryFor(component, 'Could not load your weight goal.').props.onPress(); });
     expect(refreshGoal).toHaveBeenCalled();
@@ -2266,7 +2302,8 @@ describe('Weight goal-read failure (#737 review)', () => {
 
     expect(hasText(component, 'Could not load your weight goal.')).toBe(true);
     // Stale but true beats withholding data the screen actually has.
-    expect(hasText(component, 'Weight History')).toBe(true);
+    expect(hasID(component, 'weight-history-panel')).toBe(true);
+    expect(hasID(component, 'weight-goal-panel')).toBe(true);
   });
 
   test('a clean goal read renders the derived sections with no banner', () => {
@@ -2277,7 +2314,7 @@ describe('Weight goal-read failure (#737 review)', () => {
     const component = mount();
 
     expect(hasText(component, 'Could not load your weight goal.')).toBe(false);
-    expect(hasText(component, 'Weight History')).toBe(true);
+    expect(hasID(component, 'weight-history-panel')).toBe(true);
   });
 });
 
@@ -2298,9 +2335,13 @@ describe('Weight retry does not flash a verified-empty state (#737 review)', () 
     return component;
   };
   const hasText = (component, needle) => component.root.findAll(
-    n => n.type === 'Text'
-      && String(Array.isArray(n.props.children) ? n.props.children.join('') : n.props.children ?? '').includes(needle)
+    n => n.type === 'Text' && flattenText(n).includes(needle)
   ).length > 0;
+  // #1601: the derived panels are identified by testID (Latest / Goal /
+  // History) and the Save action by its accessible name ("Save weigh-in";
+  // the visible text is "Save").
+  const hasID = (component, testID) => component.root.findAll(n => n.props?.testID === testID).length > 0;
+  const hasLabel = (component, label) => component.root.findAll(n => n.props?.accessibilityLabel === label).length > 0;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -2321,7 +2362,7 @@ describe('Weight retry does not flash a verified-empty state (#737 review)', () 
 
     expect(hasText(component, 'Could not load your weight goal.')).toBe(true);
     // The window the finding named: this must not be a verified "no goal set".
-    expect(hasText(component, 'Weight History')).toBe(false);
+    expect(hasID(component, 'weight-history-panel')).toBe(false);
   });
 
   test('an entries retry still in flight keeps the banner up and the sections withheld', () => {
@@ -2336,7 +2377,7 @@ describe('Weight retry does not flash a verified-empty state (#737 review)', () 
     const component = mount();
 
     expect(hasText(component, 'Could not load weight entries.')).toBe(true);
-    expect(hasText(component, 'Weight History')).toBe(false);
+    expect(hasID(component, 'weight-history-panel')).toBe(false);
   });
 
   test('once the retry resolves cleanly the sections come back and the banner goes', () => {
@@ -2350,7 +2391,7 @@ describe('Weight retry does not flash a verified-empty state (#737 review)', () 
     const component = mount();
 
     expect(hasText(component, 'Could not load your weight goal.')).toBe(false);
-    expect(hasText(component, 'Weight History')).toBe(true);
+    expect(hasID(component, 'weight-history-panel')).toBe(true);
   });
 });
 
@@ -2611,7 +2652,11 @@ describe('WeightScreen — calendar-day projection refresh (#1484)', () => {
     useEntries.useWeightGoal.mockReturnValue({ goal: GOAL, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
   });
   afterEach(() => app.restore());
-  const count = (root, t) => root.findAll(n => n.type === 'Text' && [].concat(n.props.children).join('') === t).length;
+  // #1601: the 7-day average lives in the Latest panel's weight-avg-7 cell.
+  const avg7 = (root) => {
+    const cell = root.findAll(n => n.props?.testID === 'weight-avg-7' && typeof n.type === 'string')[0];
+    return cell.findAll(n => n.type === 'Text').map(t => flattenText(t));
+  };
   const mount = () => {
     jest.setSystemTime(MOUNT_AT());
     let c;
@@ -2621,17 +2666,17 @@ describe('WeightScreen — calendar-day projection refresh (#1484)', () => {
 
   test('7-day average drops out past local midnight without remount', () => {
     const c = mount();
-    const before = count(c.root, '195.0 lb');
-    expect(before).toBeGreaterThan(0);
+    expect(avg7(c.root)).toContain('195.0');
     render.act(() => { jest.advanceTimersByTime(70 * 1000); });
-    expect(count(c.root, '195.0 lb')).toBeLessThan(before);
+    expect(avg7(c.root)).not.toContain('195.0');
+    expect(avg7(c.root)).toContain('-');
   });
 
   test('foreground after a suspended-timer clock jump refreshes the projection', () => {
     const c = mount();
-    const before = count(c.root, '195.0 lb');
+    expect(avg7(c.root)).toContain('195.0');
     jest.setSystemTime(new Date(2025, 5, 17, 8, 0, 0));
     render.act(() => { app.listeners.forEach(fn => fn('active')); });
-    expect(count(c.root, '195.0 lb')).toBeLessThan(before);
+    expect(avg7(c.root)).not.toContain('195.0');
   });
 });
