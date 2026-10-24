@@ -14,9 +14,13 @@ Recovery (open week or between weeks): ONE Recovery card is the training
 surface — `Recovery · Week N`, the total as the hero number, Big 3 bars, and the
 action strip — → body weight. No training hero and no 1K card render in Recovery. Home has no
 generic Analytics footer — each section header deep-links to its own Analytics
-section. The `ScreenShell` subtitle is `Training and body weight at a glance.` in every
-state (#1341): the lead card already names the routine week or `Recovery · Week
-N`, so a state-specific subtitle only repeated it.
+section. Redesign v3 (#1605): the `ScreenShell` subtitle is retired; Home passes
+`HomeTopBar` (`home-top-bar`) as the shell `header` — the Kilo wordmark (`header`
+role, label `Kilo`) and a Cloud Sync status icon (`home-sync-status`, label
+`Cloud Sync: {statusLabel}`, glyph from the shell-owned summary: running /
+failed / pending / synced / never synced) that opens Cloud Sync. The icon is not
+drawn outside the shell. Cards are R1 `Panel`s on a 16px gap; the hero is the
+one `active` panel.
 
 ### Cloud Sync Notice (#737)
 
@@ -51,7 +55,7 @@ each screen shapes its bars to the tiers it is about to paint.
 
 | Element | Property | Value |
 |---|---|---|
-| Placeholder card | padding | `18` (Home, Log, Weight — shared Card value, #1278) |
+| Placeholder card | padding | `18` (Log, Weight — shared Card value, #1278); Home `16` on a `16` stack gap (Panel inset, #1605) |
 | | borderRadius | `16` (matches `Card`) |
 | | gap | `12` |
 | Bar | backgroundColor | `colors.cardBorder` |
@@ -101,14 +105,16 @@ surfaces never re-derive**) via `useHomeRecoverySummary`'s unchanged `big3` and
 headline caption (`N of M lifts back · avg …% · Week n`), the roster count line,
 the week-scope explainer, and `Latest week:` wording. In order:
 
-- **Header** — accent bar and `Recovery · Week N` (`home-recovery-link`, a11y
-  label `Recovery`), the identity label and the `Analytics › recovery` handoff
+- **Header** — the mono label `Recovery · Week N` with an `Evidence ›` link
+  opposite, one press target (`home-recovery-link`, a11y label `Recovery`, #1605),
+  the identity label and the `Analytics › recovery` handoff
   (ui-design-rules.md §13). `home-recovery-week` is `Week N` from the snapshot's
   selected week (#1341: the note title is no longer shown on Home); with no week
   the header reads `Recovery`. Staleness is carried by the stale message.
 - **Total** (`home-recovery-headline`) — the snapshot's `display.percent` as the
   card's hero number (`home-recovery-headline-value`: `{pct}%`, `metric-display`
-  48/52, `completion` at ≥100%) with a muted uppercase `total recovery` label;
+  44/46 — the screen's one 44px number, #1605 — `completion` at ≥100%) with a
+  muted `total recovery` label;
   absent when the snapshot has no total. With no total AND no Big 3 rows, the
   snapshot's reason prints instead (`home-recovery-headline-reason`).
 - **Fallback status** — when the block or week cannot be compared, one plain
@@ -133,11 +139,11 @@ No `on track`, prediction, or medical claim.
 
 | Element | Property | Value |
 |---|---|---|
-| Active card | surface | `weeklyHero` (padding `18`, KUA `primary` 2px border) |
-| Message card (`recoveryCard`) | padding / paddingTop / gap | `20` / `12` / `4` |
-| `Recovery` header (`home-recovery-link`) | minHeight | `44` (no fixed `height`); marginTop `-10` |
-| | label | `heroSectionLabel` (KUA `headline-sm` `13`/`17`), uppercase, `onSurface` / `text`; week inline after ` · ` |
-| Total value / label | style | `metric-display` `48`/`52` (legacy `HeroMetric.hero`), `onSurface`; label KUA `label-md` uppercase `onSurfaceVariant` |
+| Active card | surface | R1 `Panel active` (padding `16`, KUA `primary` border) — #1605 |
+| Message card (loading / unverified / pending) | surface | R1 `Panel`, padding `16`, mono label `1K recovery` |
+| `Recovery` header (`home-recovery-link`) | minHeight | `44` (no fixed `height`) |
+| | label | R1 `MonoLabel`, week inline after ` · `; `Evidence` KUA `label-lg` `12` uppercase `primaryOnContainer` + chevron |
+| Total value / label | style | `metric-display` `44`/`46` (legacy `HeroMetric.hero`), `onSurface`; label KUA `body-sm` `onSurfaceVariant` |
 | Big 3 name / scored value | style | KUA `label-lg`, legacy `body-md` / `700`; `onSurface` / `text` (value `completion` / `success` at ≥100%) |
 | Big 3 status value | style | KUA `label-md`, legacy `body-sm`; `onSurfaceVariant` / `textMuted` |
 | Big 3 age marker | style | KUA `label-sm`, legacy `label-sm`; `onSurfaceVariant` / `textMuted` |
@@ -151,67 +157,72 @@ No element in the card declares a fixed `height`, so every line grows with the
 user's text size; the `Recovery` handoff remains the card's only navigation press
 target and keeps its `minHeight: 44`.
 
-The header handoff (`home-recovery-link`) reuses the shared `sectionHeaderAction`
-treatment (label plus the plain SVG chevron) already used by `Exercise Progress`
-and `1K Progress`, and targets the `recovery` section of the Analytics tab
+The header handoff (`home-recovery-link`) is the label plus `Evidence ›` row
+(#1605; the same chevron icon the other Home panel headers use), and targets the `recovery` section of the Analytics tab
 (`onNavigate('Analytics', 'recovery')`) — the Recovery section itself, not just
 the tab that contains it, the same section-id vocabulary `weight` and `strength`
 already use and that is owned by `App.js`.
 
 ### Weekly Summary Hero Card
 
-**Current structure (#1112, #1333, #1339, #1456).** The hero answers three questions only:
-what is being trained (the routine title `home-routine-title` with its calendar
-`Week N` opposite, `home-routine-week` — the current routine's weeks since its
-own start, never session depth or a Recovery week, omitted without a usable
-start; `Current routine` / `No current routine` in the muted states, `home-hero-label`),
-how it is going (the `Exercise Progress` handoff `home-exercise-progress-link`
-at the card top → `Analytics › progressive-overload`, then the Progressing/Steady/Regressing
-trio; Home has no info icon — a first-session/inherited-tracking state is the
-inline `home-classif-caption`), and what to do next (the `Log workout` / `Log weight` strip). #1339
-removed the `Full history and insights` footer (sections deep-link instead) and,
-in Recovery, the hero's week subline, active-note title and the bare paused
-`Exercise Progress` handoff. #1341: the hero is normal-training only; in
-Recovery the Recovery card replaces it and carries the same action strip. Body weight moved to the weight card
-below. With no current routine there is no week and no trio: one line (`Pick a
-saved routine or write a new one in Log.`, or `Write a routine in Log to track
-your weeks.` with no saved routines) and the primary action reads `Choose
-routine` / `Write routine`, still `onNavigate('Log')`. An empty current routine
-reads `Current routine` with `Add exercises to this routine in Log to track
-progress.` The retired pre-#1112 geometry table is preserved in Git history.
+**Current structure (Redesign v3 #1605; supersedes #1456's order).** `HomeHeader`
+is `Panel active` (`home-hero`). Top to bottom: the mono label `Current routine ·
+Week N` (`home-routine-label`, the week in `home-routine-week` — the current
+routine's weeks since its own start, omitted without a usable start; `Current
+routine` / `No current routine` in the muted states, `home-hero-label`); the
+routine title `home-routine-title` (22/28 headline, wraps); the Exercise Progress
+row `home-exercise-progress-link` → `Analytics › progressive-overload` — a 96px
+decorative ring (`HomeProgressRing`, segments in completion / on-surface-variant /
+error tones, the canonical `classified` count in the centre over `EXERCISES`)
+beside the `Exercise Progress` title and a three-row legend
+(`home-progress-{progressing,steady,regressing}`: count then label) and a chevron.
+The ring is hidden from assistive tech; the row's label carries `N progressing, N
+steady, N regressing`. A first-session/inherited state replaces the legend with
+`home-progress-baseline`. Then the two actions as 48dp buttons: filled `+ Log
+workout` (`home-current-routine-link`) and outlined `Log weight`
+(`home-weight-action`). With no current routine there is no week and no ring: one
+line (`Pick a saved routine or write a new one in Log.`, or `Write a routine in
+Log to track your weeks.`) and the primary reads `Choose routine` / `Write
+routine`, still `onNavigate('Log')`. An empty current routine reads `Current
+routine` with `Add exercises to this routine in Log to track progress.` In
+Recovery the Recovery card replaces this hero (#1341) and carries the same two
+buttons.
 
 ### Weight Goal Card
 
-**Current structure (#1333, compact #1339).** `screens/home/HomeWeightCard.js`
-(`home-weight-card`) is supporting context, the last card on Home, not a mini
-Weight tab. Its `Body weight` header (`home-weight-link`) is the Weight-tab
-handoff; then one wrapping row: the latest weigh-in (or `No weigh-in yet`) at
-`24`/`28` metric-display-mobile, and, with a goal, `home-goal` right-aligned —
-the mode (`Cutting`/`Bulking`/`Maintaining`, primary) `· {target} {unit}` and
-weeks left / `Goal ended`. #1341: the trend graph is back (`home-weight-trend`,
-the shared `LineChart` over `dashboardData.weightSeries`, height `64`, `primary`,
-marginTop `14`) whenever a series exists, with no `7-day rolling avg` label. The
-Target/Pace stat grid lives on Weight only. The legacy-only `See weight trends` link is unchanged. An
-ended goal or an unrealistic/aggressive pace adds `home-goal-attention`: the
-Weight goal card's own sentence in `warning`/`cautionText` and a ≥44dp `Review
-goal` action (`onNavigate('Weight')`). Card padding is `20` horizontal, `4` top
-(the 44dp header supplies the rest), `16` bottom. The retired pre-#1112 table is preserved in Git history.
+**Current structure (Redesign v3 #1605).** `screens/home/HomeWeightCard.js`
+(`home-weight-card`) is the last card. Header: `Body weight` + chevron
+(`home-weight-link`, ≥44dp) → `onNavigate('Weight')`, and the series range
+caption (`home-weight-range`, `MM-DD – MM-DD`). Body (`home-weight-analytics-link`)
+→ `onNavigate('Analytics', 'weight')`: the latest weigh-in (28px metric), the goal
+line `home-goal` — mode (`Cutting`/`Bulking`/`Maintaining`) `· {target} {unit} ·
+{N} weeks left` or `Goal ended` in the warning tone — only with a goal, and a
+120×44 sparkline (`home-weight-trend`) over the existing
+`dashboardData.weightSeries` in `chartSeries1` (neutral teal, not primary), the
+latest point marked, and a dashed `completion` goal line
+(`home-weight-goal-line`) only while the goal is active. Title and body are
+siblings, never nested, so one press is one navigation; the body's label states
+latest, goal and range. Fewer than two points: no sparkline. No weigh-in: `No
+weigh-in yet` and the body is not a link. An ended goal or an unrealistic /
+aggressive pace adds `home-goal-attention`: the Weight goal card's sentence in
+`warning` and a ≥44dp `Review goal` action (`onNavigate('Weight')`). The legacy
+`See weight trends` link is retired; the body link replaces it.
 
 ### 1K Club Card (Home)
 
-**Current structure (#1458).** Home renders the same `OneKProgressSummary`
-(`mobile/components/OneKProgressSummary.js`) Analytics uses, so the card hierarchy
-and typography are Analytics': centered `1K Progress` heading (the heading is the
-44dp link to Analytics Strength, with a chevron, `home-one-k-link`), a 36px total
-(`home-one-k-total`, lerped color; no 48/56px hero), the 1K bar (`8`, `primary`
-fill, toward 1000), then the Big 3 as plain values (`home-one-k-big3`,
-`home-one-k-lift-{squat,bench,deadlift}`): value over uppercase name, wrapping at
-large text. Home keeps its own `oneKCard` wrapper (padding `20` horizontal, `4`
-top, `20` bottom) and adds no graph, explainer or mapping controls. No per-lift
-track (#1444) — only the 1K total has a target. No total yet: one `body-sm` line
-(`home-one-k-setup`: `Log a session of each Big 3 lift to see your 1K total.`) and
-values for only the lifts already logged; no `N/A` hero, empty progress bar or
-placeholder rows.
+**Current structure (Redesign v3 #1605; #1458's no-graph rule kept).** Home renders
+its own `screens/home/HomeOneKPanel.js` (the shared `OneKProgressSummary` stays
+Analytics'). Header: `1K Progress` + chevron (`home-one-k-link`, ≥44dp) →
+`Analytics › strength`, and `N lb to 1,000` / `1,000 lb reached`
+(`home-one-k-remaining`). Body: the existing total at 28px (`home-one-k-total`),
+then ONE stacked 8px bar (`home-one-k-progress-track`): the Squat / Bench /
+Deadlift segments (`home-one-k-bar-{slot}`, `chartSeries1..3`) sized by the
+existing per-lift values, then a hatched remainder toward the target
+(`home-one-k-progress-rest`); its label lists the three values and the remainder.
+Below, a three-cell split (`home-one-k-big3`, `home-one-k-lift-{slot}` with a
+series swatch, name and value). No per-lift track (#1444). No total yet: one line
+(`home-one-k-setup`: `Log a session of each Big 3 lift to see your 1K total.`),
+no bar, and cells only for lifts already logged.
 
 The retired three-column geometry and #763/#771 comparison are retained in
 [Compatibility Notes](ui-compatibility-notes.md#earlier-home-1k-layout).

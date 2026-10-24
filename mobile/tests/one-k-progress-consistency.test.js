@@ -417,23 +417,26 @@ describe('1K Progress shares one presentation unit across Home and Analytics (#1
 
   afterEach(() => { __resetWeightUnitForTests(); });
 
-  test('both consumers mount the shared component with matching typography and the 1,000-lb bar', async () => {
+  // Redesign v3 (#1605): Home renders its own 1K panel (HomeOneKPanel); Analytics keeps
+  // the shared OneKProgressSummary. Both show the same 1,000-lb ratio and Big 3 values.
+  test('Home panel and the shared Analytics summary show the same total, Big 3 values and 1,000-lb bar', async () => {
     const home = await mountHome(ONE_K);
     const analytics = await mountAnalytics(ONE_K);
-    expect(home.root.findAllByType(OneKProgressSummary)).toHaveLength(1);
+    expect(home.root.findAllByType(OneKProgressSummary)).toHaveLength(0);
     expect(analytics.root.findAllByType(OneKProgressSummary)).toHaveLength(1);
 
     const totalOf = (t) => t.root.findAll(n => n.type === 'Text' && /900/.test(textOf(n)) && flat(n).fontSize)[0];
-    expect(flat(totalOf(home)).fontSize).toBe(36);
-    expect(flat(totalOf(home)).fontSize).toBe(flat(totalOf(analytics)).fontSize);
-
+    expect(totalOf(home)).toBeDefined();
+    expect(totalOf(analytics)).toBeDefined();
     const heading = (t) => t.root.findAll(n => n.type === 'Text' && textOf(n) === '1K Progress')[0];
-    expect(flat(heading(home))).toEqual(flat(heading(analytics)));
+    expect(heading(home)).toBeDefined();
+    expect(heading(analytics)).toBeDefined();
 
-    // Same Big 3 values and one bar at 900/1000.
+    // Same Big 3 values; one bar at 900/1000 (Home: flex 900 filled, 100 rest).
+    expect(analytics.root.findAll(n => n.type === 'View' && flat(n).width === '90%')).toHaveLength(1);
+    expect(flat(home.root.findByProps({ testID: 'home-one-k-progress-fill' })).flex).toBe(900);
+    expect(flat(home.root.findByProps({ testID: 'home-one-k-progress-rest' })).flex).toBe(100);
     for (const t of [home, analytics]) {
-      const fills = t.root.findAll(n => n.type === 'View' && flat(n).width === '90%');
-      expect(fills).toHaveLength(1);
       for (const v of ['300', '250', '350']) {
         expect(t.root.findAll(n => n.type === 'Text' && textOf(n) === v).length).toBeGreaterThan(0);
       }
@@ -460,8 +463,10 @@ describe('1K Progress shares one presentation unit across Home and Analytics (#1
     const analytics = await mountAnalytics(display);
     for (const t of [home, analytics]) {
       expect(t.root.findAll(n => n.type === 'Text' && textOf(n).startsWith(kg(900).toFixed(0))).length).toBeGreaterThan(0);
-      expect(t.root.findAll(n => n.type === 'View' && flat(n).width === '90%')).toHaveLength(1);
     }
+    expect(analytics.root.findAll(n => n.type === 'View' && flat(n).width === '90%')).toHaveLength(1);
+    expect(flat(home.root.findByProps({ testID: 'home-one-k-progress-fill' })).flex).toBeCloseTo(kg(900), 5);
+    expect(flat(home.root.findByProps({ testID: 'home-one-k-progress-rest' })).flex).toBeCloseTo(kg(1000) - kg(900), 5);
   });
 
   test('Home incomplete state keeps the setup copy and only the lifts already logged', async () => {
@@ -481,7 +486,7 @@ describe('1K Progress shares one presentation unit across Home and Analytics (#1
     beforeEach(() => { mockScheme.value = scheme; });
     afterEach(() => { mockScheme.value = 'light'; });
 
-    test.each([['Home', mountHome], ['Analytics', mountAnalytics]])('%s renders 900 lb with 300/250/350 with unclipped, wrapping structure', async (_n, mount) => {
+    test.each([['Analytics', mountAnalytics]])('%s renders 900 lb with 300/250/350 with unclipped, wrapping structure', async (_n, mount) => {
       const t = await mount(ONE_K);
       const texts = t.root.findByType(OneKProgressSummary).findAll(n => n.type === 'Text');
       for (const v of ['300', '250', '350']) {

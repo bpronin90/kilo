@@ -1,13 +1,9 @@
-import React, { useMemo } from 'react';
-import { Card } from '../../components/UI';
-import { OneKProgressSummary } from '../../components/OneKProgressSummary';
-import { useTheme } from '../../theme/ThemeContext';
+import React from 'react';
 import { displayWeight } from '../../lib/units';
-import { createStyles } from './homeStyles';
-import { useKuaTypography } from '../../theme/typography';
 import { HomeRecoverySummary } from './HomeRecoverySummary';
 import { HomeWeightCard } from './HomeWeightCard';
 import { HomeActionStrip } from './HomeActionStrip';
+import { HomeOneKPanel } from './HomeOneKPanel';
 
 // Everything below the training hero, extracted from HomeScreen (#1049).
 // Presentation only: HomeScreen still owns the loading gate, the four-source
@@ -22,12 +18,8 @@ export function HomeDashboard({
   dashboardData,
   weightGoal,
   baselinePaused,
-  oneKHeroColor,
   unit,
 }) {
-  const { colors, kuaPalette: kua } = useTheme();
-  const typography = useKuaTypography();
-  const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
   const hasOneKTotal = !!dashboardData.oneK?.total;
   // Before a total, only the lifts already logged (#1333).
   const oneKLifts = [
@@ -47,20 +39,16 @@ export function HomeDashboard({
       />
 
       {baselinePaused ? null : (
-      <Card style={styles.oneKCard}>
-        {/* #1458: the same presentation unit Analytics renders; Home adds no graph or extra icons. */}
-        <OneKProgressSummary
-          testIDPrefix="home-one-k"
+        // #1458 / #1605: Home-local 1K panel — total, stacked bar, Big 3 split; no graph.
+        <HomeOneKPanel
           total={hasOneKTotal ? displayWeight(dashboardData.oneK.total, unit) : null}
           target={displayWeight(1000, unit)}
           unit={unit}
-          totalColor={oneKHeroColor}
           emptyText="Log a session of each Big 3 lift to see your 1K total."
           onTitlePress={() => onNavigate('Analytics', 'strength')}
           titleHint="Opens the strength section of the Analytics tab"
           lifts={liftRows}
         />
-      </Card>
       )}
 
       <HomeWeightCard
