@@ -206,7 +206,7 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
           help="Light, dark, or match your device"
           divider
           stacked
-          control={<SegmentedOptions options={APPEARANCE_OPTIONS} value={appearance} onSelect={setAppearance} />}
+          control={<SegmentedOptions label="Mode" options={APPEARANCE_OPTIONS} value={appearance} onSelect={setAppearance} />}
         />
       </SettingsSection>
 
@@ -218,6 +218,7 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
           help="Shows body weight and lifts in pounds or kilograms. Your notes and saved data stay in lb."
           control={(
             <SegmentedOptions
+              label="Weight unit"
               options={UNIT_OPTIONS}
               value={weightUnit}
               onSelect={handleSelectUnit}

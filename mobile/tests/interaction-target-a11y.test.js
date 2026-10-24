@@ -218,20 +218,20 @@ describe('Settings controls', () => {
     ['Use the light appearance', true],
     ['Use the dark appearance', false],
     ['Follow the device appearance', false],
-  ])('appearance tab %s carries role, selected state, and target', async (label) => {
+  ])('appearance option %s carries radio role, checked state, and target', async (label) => {
     const tab = pressableByLabel(tree.root, label);
-    expect(tab.props.accessibilityRole).toBe('button');
-    expect(tab.props.accessibilityState).toHaveProperty('selected');
+    expect(tab.props.accessibilityRole).toBe('radio');
+    expect(tab.props.accessibilityState).toHaveProperty('checked');
     expectTarget(tab, { width: true });
   });
 
   test.each([
     'Show weights in pounds',
     'Show weights in kilograms',
-  ])('weight-unit tab %s carries role, selected/disabled state, and target', (label) => {
+  ])('weight-unit option %s carries radio role, checked/disabled state, and target', (label) => {
     const tab = pressableByLabel(tree.root, label);
-    expect(tab.props.accessibilityRole).toBe('button');
-    expect(tab.props.accessibilityState).toEqual({ selected: expect.any(Boolean), disabled: false });
+    expect(tab.props.accessibilityRole).toBe('radio');
+    expect(tab.props.accessibilityState).toEqual({ checked: expect.any(Boolean), disabled: false });
     expectTarget(tab, { width: true });
   });
 

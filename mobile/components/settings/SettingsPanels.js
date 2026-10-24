@@ -50,14 +50,14 @@ export function SettingRow({ label, help = null, control = null, divider = false
   );
 }
 
-// Compact segmented control shared by Mode and Weight unit. Each option is a
-// transparent >=44x44dp target holding a compact pill; role, label and
-// selected/disabled state are exactly what each caller passes.
-export function SegmentedOptions({ options, value, onSelect, disabled = false }) {
+// Compact segmented control shared by Mode and Weight unit: a labelled
+// radiogroup of mutually exclusive radio options (checked/disabled state).
+// Each option is a transparent >=44x44dp target holding a compact pill.
+export function SegmentedOptions({ options, value, onSelect, disabled = false, label }) {
   const styles = useSettingsStyles();
   const typography = useKuaTypography();
   return (
-    <View style={styles.segment}>
+    <View style={styles.segment} accessibilityRole="radiogroup" accessibilityLabel={label}>
       {options.map((option) => {
         const selected = value === option.value;
         return (
@@ -66,8 +66,8 @@ export function SegmentedOptions({ options, value, onSelect, disabled = false })
             onPress={() => onSelect(option.value)}
             disabled={disabled}
             style={styles.segmentTarget}
-            accessibilityRole="button"
-            accessibilityState={{ selected, disabled }}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: selected, disabled }}
             accessibilityLabel={option.a11yLabel}
           >
             <View style={[styles.segmentPill, selected && styles.segmentPillActive, disabled && styles.segmentPillDisabled]}>

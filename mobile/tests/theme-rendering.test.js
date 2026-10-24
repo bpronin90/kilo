@@ -1120,17 +1120,17 @@ describe('Settings Appearance control', () => {
     expect(headings).toContain('System');
   });
 
-  test('reports selected and disabled accessibility state truthfully', () => {
+  test('reports checked and disabled radio state truthfully', () => {
     const component = renderSettings();
 
     expect(option(component, 'system').props.accessibilityState).toEqual({
-      selected: true,
+      checked: true,
       disabled: false,
     });
-    expect(option(component, 'light').props.accessibilityState.selected).toBe(false);
-    expect(option(component, 'dark').props.accessibilityState.selected).toBe(false);
+    expect(option(component, 'light').props.accessibilityState.checked).toBe(false);
+    expect(option(component, 'dark').props.accessibilityState.checked).toBe(false);
     for (const key of ['light', 'dark', 'system']) {
-      expect(option(component, key).props.accessibilityRole).toBe('button');
+      expect(option(component, key).props.accessibilityRole).toBe('radio');
     }
   });
 
@@ -1141,8 +1141,8 @@ describe('Settings Appearance control', () => {
       option(component, 'dark').props.onPress();
     });
 
-    expect(option(component, 'dark').props.accessibilityState.selected).toBe(true);
-    expect(option(component, 'system').props.accessibilityState.selected).toBe(false);
+    expect(option(component, 'dark').props.accessibilityState.checked).toBe(true);
+    expect(option(component, 'system').props.accessibilityState.checked).toBe(false);
   });
 
   test('selecting Dark repaints the Settings surface itself', () => {
@@ -1173,7 +1173,7 @@ describe('Settings Appearance control', () => {
       option(component, 'light').props.onPress();
     });
 
-    expect(option(component, 'light').props.accessibilityState.selected).toBe(true);
+    expect(option(component, 'light').props.accessibilityState.checked).toBe(true);
   });
 
   // #934 — Fatigue tracking and Deload mode default OFF, but both stay
