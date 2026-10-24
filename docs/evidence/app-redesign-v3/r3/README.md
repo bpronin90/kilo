@@ -1,6 +1,6 @@
 # R3 (#1602) evidence: Analytics chapters and navigation
 
-Rendered commit: `7622a318f8702ab55615a62f8657d4727072a5e2`. The only later product change moves
+Rendered commit: `7622a318f8702ab55615a62f8657d4727072a5e2` (web export; all 90 PNGs re-captured from it in this round). The only later product change moves
 construction of the identical `<AnalyticsRecoverySection … title={null} />` element (same props)
 from `AnalyticsSectionContent.js` into `AnalyticsScreen.js` so the screen visibly wires
 `oneKSelections` (#1351 source contract); the rendered tree is unchanged, so these captures still apply.
@@ -30,8 +30,24 @@ The runner uses the shared harness unchanged. Fixtures: shared `populated` and
 current routine, two flagged), `completedRecovery` (one completed block in history),
 `recoveryBetweenWeeks` (open block, its only week complete), `recoveryUnreadable`
 (corrupt `kilo_recovery_blocks`). Each capture records the index item carrying
-`aria-current`; the run reported 40 captures, 0 theme mismatches, and the shared
-smoke (12 scenarios, hard-dark) 0 failed.
+`aria-current`; the run reported 90 captures, 0 theme mismatches, and the shared
+smoke (12 scenarios, hard-dark) 0 failed. `newBlockStorage` (completes the open block
+and adds a fresh `Travel` block) drives the new-block reset.
+
+Techniques for states with no tappable entry point (runner-only, no product change):
+
+- **Deep links / section ids** are driven through the real navigation path: the runner
+  finds the `AnalyticsScreen` props carrying `onNavigate` + `sectionNonce` in the React
+  fiber tree and calls `onNavigate('Analytics', <id>)` — the same `handleTabPress`
+  every in-app link uses. Needed because during Recovery Home offers no Strength /
+  Exercise Progress link.
+- **Refreshing / retrying** hold the Recovery storage reads: `Storage.getItem` for
+  `kilo_recovery_blocks` / `kilo_recovery_block_weeks` returns a pending promise until
+  released (manifest records `held_reads`).
+- **Initial loading**: holds start from boot. In production the app startup overlay
+  covers every tab until Home's load (which includes Recovery) settles, so
+  `state-loading-overlay` is what the user sees; `state-loading` hides that overlay
+  with a style tag to show the Analytics render underneath.
 
 ## Layout checklist and result
 
@@ -52,6 +68,15 @@ smoke (12 scenarios, hard-dark) 0 failed.
 | 13 | Between weeks / unreadable Recovery: state stated, no fabricated count | Pass | [between weeks](after/active-recovery-between-weeks-hard-dark.png), [unreadable](after/recovery-unreadable-hard-dark.png) |
 | 14 | Deep links land: Weight `See full trends` → weight, Home `Exercise Progress` → progressive-overload, Home Recovery link → recovery | Pass | [weight](after/deeplink-weight-hard-dark.png), [overload](after/deeplink-overload-hard-dark.png), [recovery](after/deeplink-recovery-hard-dark.png) (+ clay-light) |
 | 15 | Unchanged: tab bar, Strength / Weight / Progressive Overload / Recovery evidence internals | Pass | all |
+| 16 | Deep link to `strength` / `progressive-overload` during Recovery auto-expands the collapsed baseline and lands on the section; index marks PAUSED | Pass | [strength hard-dark](after/deeplink-strength-auto-expand-hard-dark.png), [overload hard-dark](after/deeplink-progressive-overload-auto-expand-hard-dark.png), [strength clay-light](after/deeplink-strength-auto-expand-clay-light.png), [overload clay-light](after/deeplink-progressive-overload-auto-expand-clay-light.png) |
+| 17 | Old section ids land on their chapter: `weight`, repeated `weight` (from top), `bodyweight` alias, `strength`, `recovery`, `overview` | Pass (both themes) | [weight](after/ids-weight-hard-dark.png), [repeat](after/ids-weight-repeat-clay-light.png), [alias](after/ids-bodyweight-alias-clay-light.png), [strength](after/ids-strength-clay-light.png), [recovery](after/ids-recovery-hard-dark.png), [overview](after/ids-overview-clay-light.png) |
+| 18 | Check-ins enabled: details expand inside the panel; edit opens the Session check-in sheet with saved answer | Pass | [expanded](after/checkins-expanded-clay-light.png), [edit](after/checkins-edit-clay-light.png) (+ hard-dark) |
+| 19 | New Recovery block resets the baseline disclosure to collapsed | Pass | [open before](after/newblock-before-open-clay-light.png), [after new block](after/newblock-reset-clay-light.png), [new block card](after/newblock-recovery-clay-light.png) (+ hard-dark) |
+| 20 | Stale: banner + `Retry recovery`; retry in flight shows the verified evidence without the banner; success keeps it cleared | Pass | [stale](after/state-stale-clay-light.png), [retrying](after/state-stale-retrying-hard-dark.png), [retried](after/state-stale-retried-hard-dark.png) (+ other theme) |
+| 21 | Refreshing over verified data: unchanged render (no flash) | Pass (production design) | [refreshing](after/state-refreshing-hard-dark.png) |
+| 22 | Error: unknown-status banner + retry; retry in flight keeps the error message until a read succeeds; success shows real state | Pass | [error](after/state-error-hard-dark.png), [retrying](after/state-error-retrying-clay-light.png), [retried](after/state-error-retried-clay-light.png) (+ other theme) |
+| 23 | Initial loading: `Loading recovery data…`, history row without a count; settles to the real state | Pass | [overlay](after/state-loading-overlay-hard-dark.png), [loading](after/state-loading-clay-light.png), [done](after/state-loading-done-clay-light.png) (+ other theme) |
+| 24 | Missing data: empty account (no Strength/PO data, no header context), no weigh-ins | Pass | [empty](after/missing-empty-clay-light.png), [no weigh-ins](after/missing-weighins-clay-light.png) (+ hard-dark) |
 
 ## Deviations (with reasons)
 
@@ -69,10 +94,9 @@ smoke (12 scenarios, hard-dark) 0 failed.
   rather than inside it — the card is `RecoveryEvidence.js`, outside Allowed Files.
 - **Routine Health total** stays in the gauge header (no split row); with deload
   off the gauge shows Total only, as production does.
-- **Auto-expand deep link** (a link into Strength/Progressive Overload while
-  Recovery is active) is not captured: no Home surface offers one during Recovery
-  (the hero drops Exercise Progress and the 1K card). It is covered by
-  `tests/analytics-chapter-navigation.test.js` (expand + nested offset).
+- **Refreshing over verified data** renders unchanged and **retry from error** keeps the
+  error message until a read succeeds — both production `recoveryReadState` behaviour
+  (Recovery data, outside Allowed Files), shown as rendered.
 - The `← Home` web back bar above the header is R1's existing shell.
 - The dashed single-side rule of the paused body may render solid on native iOS;
   verified on web only.

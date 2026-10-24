@@ -47,4 +47,16 @@ function recoveryUnreadable(storage) {
   return { ...storage, kilo_recovery_blocks: '{not json' };
 }
 
-module.exports = { routineHealthOn, completedRecovery, recoveryBetweenWeeks, recoveryUnreadable };
+// In-page storage edit for the new-block reset: the open block and its week
+// complete, and a second block opens with week 1 on the same Recovery week note
+// (a new block id is what the disclosure reset keys on).
+function newBlockStorage({ b, w }, nowIso = '2026-10-23T11:00:00.000Z') {
+  const blocks = JSON.parse(b).map((x) => ({ ...x, completed_at: nowIso, updated_at: nowIso }));
+  const weeks = JSON.parse(w).map((x) => ({ ...x, completed_at: nowIso, updated_at: nowIso }));
+  const first = blocks[0];
+  blocks.push({ ...first, id: 'rb_r3_new', reason: 'Travel', started_at: nowIso, saved_at: nowIso, updated_at: nowIso, completed_at: null });
+  weeks.push({ ...weeks[0], id: 'rw_r3_new', block_id: 'rb_r3_new', week_number: 1, completed_at: null, saved_at: nowIso, updated_at: nowIso });
+  return { kilo_recovery_blocks: JSON.stringify(blocks), kilo_recovery_block_weeks: JSON.stringify(weeks) };
+}
+
+module.exports = { routineHealthOn, completedRecovery, recoveryBetweenWeeks, recoveryUnreadable, newBlockStorage };
