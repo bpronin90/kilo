@@ -19,33 +19,46 @@ export function topSetLoad(sets) {
   return top;
 }
 
-// Sessions in note order. kind: 'logged' (sets + mark/tail/comments as
-// parsed), 'skipped', or 'unparsed' (raw line kept verbatim). `index` is the
-// 1-based session index — the chart's x — and only counts sessions, so a
-// session-index note never gains an invented date.
+// Items in note order, walked exactly like WorkoutContentRenderer's units:
+// kind 'logged' (sets + mark/tail/comments as parsed) and 'skipped' are
+// sessions and get a 1-based `index` (the chart's x; no dates are invented);
+// 'unparsed' rows (positional, inline and trailing) keep their raw text
+// verbatim with `index: null`, so they are listed but never numbered/charted.
 export function buildExerciseHistory(ex) {
   const sessions = [];
-  if (!ex) return { sessions, points: [] };
-  const push = (s) => sessions.push({ ...s, index: sessions.length + 1 });
+  if (!ex) return { sessions, points: [], sessionCount: 0 };
+  let count = 0;
+  const session = (s) => sessions.push({ ...s, index: ++count });
+  const unparsed = (raw, error) => sessions.push({ kind: 'unparsed', raw, error, index: null });
+  const entries = ex.session_entries || [];
+  const positions = ex.unparsed_positions || [];
+  const inline = new Set();
+  let posIdx = 0;
   let loggedIdx = 0;
-  (ex.session_entries || []).forEach((entry) => {
-    if (entry.skipped) push({ kind: 'skipped' });
-    else if (entry.unparsed) push({ kind: 'unparsed', raw: entry.raw });
+  entries.forEach((entry, eni) => {
+    while (posIdx < positions.length && positions[posIdx].pos === eni) { unparsed(positions[posIdx].raw, positions[posIdx].error); posIdx++; }
+    if (entry.skipped) session({ kind: 'skipped' });
+    else if (entry.unparsed) { unparsed(entry.raw, entry.error); inline.add(entry.raw); }
     else {
       const row = ex.rows ? ex.rows[loggedIdx++] : null;
       const a = entry.annotation || null;
-      push({ kind: 'logged', sets: row ? row.sets : [], mark: a ? a.mark : null, tail: a ? a.tail : null, comments: a ? a.comments || [] : [] });
+      session({ kind: 'logged', sets: row ? row.sets : [], mark: a ? a.mark : null, tail: a ? a.tail : null, comments: a ? a.comments || [] : [] });
     }
   });
-  const loggedCount = (ex.session_entries || []).filter(e => !e.skipped && !e.unparsed).length;
-  (ex.rows || []).slice(loggedCount).forEach((row) => push({ kind: 'logged', sets: row.sets, mark: null, tail: null, comments: [] }));
+  while (posIdx < positions.length) { unparsed(positions[posIdx].raw, positions[posIdx].error); posIdx++; }
+  const loggedCount = entries.filter(e => !e.skipped && !e.unparsed).length;
+  (ex.rows || []).slice(loggedCount).forEach((row) => session({ kind: 'logged', sets: row.sets, mark: null, tail: null, comments: [] }));
+  const positional = new Set(positions.map(p => p.raw));
+  (ex.unparsed_rows || []).forEach((u) => {
+    if (!positional.has(u) && !inline.has(u) && !inline.has(u.replace(/^-\s+/, ''))) unparsed(u, null);
+  });
   const points = [];
   sessions.forEach((s) => {
     const load = s.kind === 'logged' ? topSetLoad(s.sets) : null;
     s.load = load;
     if (load != null) points.push({ index: s.index, load });
   });
-  return { sessions, points };
+  return { sessions, points, sessionCount: count };
 }
 
 // Text equivalent of the chart for screen readers.

@@ -52,11 +52,21 @@ describe('exerciseHistoryPresentation', () => {
   test('sessions keep note order with skipped/unparsed preserved; points index by session', () => {
     const ex = dayGroupsOf(NOTE)[1].sections[0].exercises[0];
     const { sessions, points } = buildExerciseHistory(ex);
-    expect(sessions.map(s => s.index)).toEqual(sessions.map((_, i) => i + 1));
+    const numbered = sessions.filter(s => s.index != null).map(s => s.index);
+    expect(numbered).toEqual(numbered.map((_, i) => i + 1));
     expect(points).toEqual([{ index: 1, load: 135 }]);
     expect(describeLoadPoints(points, 'lb')).toBe('Top-set load by session: session 1, 135 lb');
     expect(describeLoadPoints([], 'lb')).toMatch(/No numeric load/);
   });
+});
+
+test('positional unparsed source rows are kept verbatim, unnumbered and uncharted', () => {
+  const ex = dayGroupsOf('Monday\n+Strength\n-Bench Press\n185 5,5,5\nnot a set line ???\n-')[0].sections[0].exercises[0];
+  const { sessions, points, sessionCount } = buildExerciseHistory(ex);
+  expect(sessions.map(s => [s.kind, s.index])).toEqual([['logged', 1], ['unparsed', null], ['skipped', 2]]);
+  expect(sessions[1].raw).toBe('not a set line ???');
+  expect(sessionCount).toBe(2);
+  expect(points).toEqual([{ index: 1, load: 185 }]);
 });
 
 describe('ExerciseHistorySheet in the Log renderer', () => {

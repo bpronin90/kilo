@@ -120,7 +120,7 @@ export function ExerciseHistorySheet({ target, onClose }) {
               <View style={{ flex: 1 }}>
                 <Text style={[typography['headline-sm'], styles.title]} accessibilityRole="header">{target.exercise.name}</Text>
                 <Text style={[typography['body-sm'], styles.muted]}>
-                  {[...target.context, `${history.sessions.length} ${history.sessions.length === 1 ? 'session' : 'sessions'}`].join(' · ')}
+                  {[...target.context, `${history.sessionCount} ${history.sessionCount === 1 ? 'session' : 'sessions'}`].join(' · ')}
                 </Text>
               </View>
               <Pressable onPress={close} style={styles.close} accessibilityRole="button" accessibilityLabel={`Close ${target.exercise.name} history`} testID="exercise-history-close">
@@ -138,12 +138,12 @@ export function ExerciseHistorySheet({ target, onClose }) {
               </View>
               {newestFirst.length === 0 ? (
                 <Text style={[typography['body-sm'], styles.muted, styles.row]}>No logged sessions yet.</Text>
-              ) : newestFirst.map((s) => (
-                <View key={s.index} style={styles.row} testID={`exercise-history-session-${s.index}`}>
-                  <View style={styles.indexCell}><Text style={[typography['label-lg'], s === latestLogged ? styles.strong : styles.muted]}>{s.index}</Text></View>
+              ) : newestFirst.map((s, i) => (
+                <View key={s.index ?? `u-${i}`} style={styles.row} testID={s.index != null ? `exercise-history-session-${s.index}` : 'exercise-history-unparsed'}>
+                  <View style={styles.indexCell}><Text style={[typography['label-lg'], s === latestLogged ? styles.strong : styles.muted]}>{s.index ?? ''}</Text></View>
                   <View style={{ flex: 1 }}>
                     {s.kind === 'skipped' ? <Text style={[typography['label-lg'], styles.muted]}>— Skipped</Text>
-                      : s.kind === 'unparsed' ? <UnparsedRow raw={s.raw} muted selectable />
+                      : s.kind === 'unparsed' ? <UnparsedRow raw={s.raw} error={s.error} muted selectable />
                         : <LogSetLine sets={s.sets} unit={unit} mark={s.mark} tone={s === latestLogged ? 'last' : 'old'} />}
                     {s.tail ? <AnnotationNote text={s.tail} selectable /> : null}
                     {(s.comments || []).map((c, ci) => <AnnotationNote key={ci} text={c} selectable />)}
