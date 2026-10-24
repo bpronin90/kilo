@@ -11,7 +11,7 @@ Real-app renders of the redesigned Home (tracker #1609).
 - **Clock and data:** `FIXED_NOW` 2026-10-23T12:00Z; shared fixtures plus the
   issue-local overlays in [`fixtures.cjs`](fixtures.cjs). See the
   [harness README](../README.md).
-- **Size:** 64 PNGs, 5,963,797 bytes. Themes: `hard-dark` and `clay-light` for every
+- **Size:** 64 PNGs, 5,789,988 bytes. Themes: `hard-dark` and `clay-light` for every
   state; `grass-light` and `clay-dark` for the Home first screen
   (`first-home-*`).
 
