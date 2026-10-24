@@ -5,6 +5,12 @@
       "package": "node-forge",
       "reviewBy": "2026-11-01",
       "reason": "Owner-approved, time-boxed acceptance of residual risk (not a remediation): node-forge <= 1.4.0 (RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements, high, CVSS 7.5) has no patched release; npm latest is 1.4.0 and the advisory lists no first patched version. Verified at 65d968f7: node-forge@1.4.0 enters the mobile graph only via expo-updates -> @expo/code-signing-certificates and expo -> @expo/cli. Neither mobile/app.json nor mobile/app.config.js defines updates.codeSigningCertificate, and no app source imports node-forge, so exposure is build/CLI tooling only. Re-review, or bump if a patched release exists, before 2026-11-01; the gate fails after that date."
+    },
+    {
+      "id": "GHSA-mrhx-c7xc-m3w5",
+      "package": "zod",
+      "reviewBy": "2026-11-23",
+      "reason": "Owner-approved, time-boxed acceptance of residual risk (not a remediation): zod < 4.6.6 (memory exhaustion while validating oversized constrained collections, high) is fixed only in zod 4.6.6; there is no patched 3.x. Verified at fa29656f: zod@3.25.76 enters the mobile graph only via expo -> @expo/cli, which still declares zod ^3.25.76 in its latest release (58.1.15), so a 4.x override would cross a major API change in build tooling. No app source or Supabase function imports zod, and zod is not bundled into the shipped app. Exposure is confined to the local Expo CLI/dev-server process on a developer machine: it validates developer-controlled config and the JSON output of locally configured devtools plugin commands (DevToolsPluginOutputSchema, an unbounded array), so worst case is a local CLI/dev-server memory exhaustion triggered by a locally installed plugin, not remote or end-user exposure. Re-review, or remove once Expo ships a zod >= 4.6.6 dependency, before 2026-11-23; the gate fails after that date."
     }
   ]
 }
