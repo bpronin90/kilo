@@ -133,7 +133,7 @@ export function ExerciseHistorySheet({ target, onClose }) {
 }
 
 const createStyles = (kua, colors) => StyleSheet.create({
-  root: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', backgroundColor: colors.overlay || 'rgba(0,0,0,0.5)' },
+  root: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', backgroundColor: colors.overlay },
   sheet: {
     backgroundColor: kua.surfaceCard, borderTopLeftRadius: GEOMETRY['radius-xl'], borderTopRightRadius: GEOMETRY['radius-xl'],
     borderWidth: 1, borderColor: kua.surfaceBorder, paddingBottom: 24,
