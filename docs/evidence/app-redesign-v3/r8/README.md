@@ -1,6 +1,6 @@
 # R8 (#1607) visual evidence — Log history sheet and rest-timer surfaces
 
-- **Rendered commits:** panel states (`editor-presets-*`, `editor-safe-area-*`, `editor-short-safe-area-*`, `editor-timer-done-*`, `editor-timer-cancelled-*`) at `e66b911dcb40dd242f2ac5671587313f420baeeb` (vertical fit); other timer/pill states (`editor-toolbar-idle`, `editor-docked-visible`, `editor-scrolled-pill`, `pill-*`, `home-timer-pill-*`) at `42b23561d7d7cd7a1646a6836a82bd8d690b3480` — e66b911 changes only the panel's vertical placement, which those states never open; `history-*` and `log-first-*` at `eaa4bf492bd954963af27563e6b4c02e3c84eb21` — later commits change only the edit-mode timer, not the read view or sheet. Real app Expo web export, not prototype HTML.
+- **Rendered commits:** panel states (`editor-presets-*`, `editor-safe-area-*`, `editor-short-safe-area-*`, `editor-timer-done-*`, `editor-timer-cancelled-*`) at `e66b911dcb40dd242f2ac5671587313f420baeeb` (vertical fit); other timer/pill states (`editor-toolbar-idle`, `editor-docked-visible`, `editor-scrolled-pill`, `pill-*`, `home-timer-pill-*`) at `42b23561d7d7cd7a1646a6836a82bd8d690b3480` — e66b911 changes only the panel's vertical placement, which those states never open; `history-*` and `log-first-*` at `34c45b58f412ee2aad28ad4ce72ee4e97e38669e` (positional unparsed rows kept). Real app Expo web export, not prototype HTML.
 - **Viewport:** 390×844 @2x via the shared harness (`../capture.cjs`, read-only); issue-local overlays in `fixtures.cjs`.
 - **Themes:** every state in hard-dark and clay-light; Log first screen and Home pill (first affected screens) also in grass-light and clay-dark.
 - **References:** `docs/design/app-redesign-v3/shots/hybrid/` state-log-history-sheet, state-log-editor, state-log-editor-timer, state-home-timer-running (hard-dark).
@@ -24,12 +24,12 @@ cd mobile && EXPO_PUBLIC_SUPABASE_URL=https://mockproj.supabase.co EXPO_PUBLIC_S
 cd .. && KILO_RENDERED_COMMIT=795f739a6d5e20da854a19965ace2a84bd60535f   node docs/evidence/app-redesign-v3/r8/capture.cjs /tmp/kilo-1607-dist-795f /tmp/kilo-review-tools/node_modules
 ```
 
-The runs (full matrix first; `history,log-first` rerun at eaa4bf4 and `editor,home,pill` rerun at 42b2356, panel states rerun at e66b911, each with the same command plus that `only` filter) captured all 52 states without a step failure (manifest written to the work dir). Later commits on this branch change only docs/evidence/changelog, so the renders still apply.
+The runs (full matrix first; `history,log-first` rerun at 34c45b5 and `editor,home,pill` rerun at 42b2356, panel states rerun at e66b911, each with the same command plus that `only` filter) captured all 52 states without a step failure (manifest written to the work dir). Later commits on this branch change only docs/evidence/changelog, so the renders still apply.
 
 ## Degradation and preserved capabilities
 
 - BW-only / timed-only exercises: chart replaced by a text fallback; sessions still listed (`history-bw-only`, `history-timed`).
-- Unparsed and skipped rows stay verbatim in the list and are never charted (`history-unparsed`, `history-repeated-accessories`).
+- Unparsed source rows (positional, inline, trailing) are listed verbatim, unnumbered and never charted; skipped rows are numbered but not charted (`history-unparsed`, `history-repeated-accessories`).
 - Selection: latest point selected by default (`history-sheet`); tapping session 1 moves the callout and marker (`history-point-earlier`).
 - Repeated names: Monday, Thursday-Strength and Thursday-Accessories Bench Press each open only their own sessions with distinct context (`history-sheet`, `history-repeated-*`); A/B routine names the week (`history-ab-week`).
 - Timer: idle/presets/running/cancelled/done in the editor; docked control with no pill at rest (`editor-docked-visible`); in a 390×560 window (bounded extra viewport — the fixture editor cannot scroll the tool row off a 844 window) scrolling past the tool row hands the countdown to the pill (`editor-scrolled-pill`); running pill on Home, Log read view, Weight, Analytics, More; completion pill with Dismiss; inset-device panel (`editor-safe-area`); short inset window 390×560 + insets 47/34 flips the panel above the control inside the safe area (`editor-short-safe-area`). The web build has no software keyboard; keyboard placement is unchanged code (pill clearance logic untouched).
