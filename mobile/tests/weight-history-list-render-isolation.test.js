@@ -88,6 +88,8 @@ Harness.handleDelete = () => {};
 // Rows shown per expand step, mirrored from WeightHistoryList's own
 // HISTORY_WINDOW_SIZE constant (not exported, so kept in sync here).
 const HISTORY_WINDOW_SIZE = 50;
+// Collapsed preview rows (Redesign v3, #1601), mirrored from HISTORY_PREVIEW_SIZE.
+const HISTORY_PREVIEW_SIZE = 6;
 
 function expandHistory(component) {
   const expandBtn = component.root.findByProps({ accessibilityLabel: 'Expand history' });
@@ -100,7 +102,7 @@ function showMore(component) {
 }
 
 describe('WeightHistoryList render isolation on a 1,000-entry fixture (#592, #898)', () => {
-  test('the collapsed default maps no rows', () => {
+  test('the collapsed default maps only the bounded preview rows (#1601)', () => {
     const severityFn = makeCountingSeverity();
     renderer.act(() => {
       renderer.create(
@@ -108,7 +110,7 @@ describe('WeightHistoryList render isolation on a 1,000-entry fixture (#592, #89
       );
     });
 
-    expect(severityFn).not.toHaveBeenCalled();
+    expect(severityFn).toHaveBeenCalledTimes(HISTORY_PREVIEW_SIZE);
   });
 
   test('expanding the list maps only one window, not every row', () => {
@@ -119,6 +121,7 @@ describe('WeightHistoryList render isolation on a 1,000-entry fixture (#592, #89
         <Harness entries={ENTRIES_1000} severityFn={severityFn} unrelatedTick={0} />
       );
     });
+    severityFn.mockClear();
 
     expandHistory(component);
 
@@ -149,6 +152,7 @@ describe('WeightHistoryList render isolation on a 1,000-entry fixture (#592, #89
         <Harness entries={ENTRIES_1000} severityFn={severityFn} unrelatedTick={0} />
       );
     });
+    severityFn.mockClear();
     expandHistory(component);
     expect(severityFn).toHaveBeenCalledTimes(HISTORY_WINDOW_SIZE);
     severityFn.mockClear();

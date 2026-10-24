@@ -50,13 +50,14 @@ const inputs = (c) => c.root.findAllByType('TextInput');
 const byLabelStart = (c, prefix) => c.root.findAllByType('TextInput')
   .find((i) => String(i.props.accessibilityLabel || '').startsWith(prefix));
 const press = (c, label) => {
-  const node = c.root.findAll((n) => n.props.onPress && (n.props.label === label || n.props.title === label))[0];
+  const node = c.root.findAll((n) => n.props.onPress && (n.props.label === label || n.props.title === label || n.props.accessibilityLabel === label))[0];
   render.act(() => { node.props.onPress(); });
 };
 const startEdit = (c) => {
   const expand = c.root.findAll((n) => n.props.accessibilityLabel === 'Expand history' && n.props.onPress)[0];
   render.act(() => { expand.props.onPress(); });
-  const edit = c.root.findAll((n) => n.props.onPress && !n.props.accessibilityLabel && n.findAllByType('Text').some((t) => /180|81\.6/.test(String(t.props.children))))[0];
+  // History rows are named "Edit weigh-in <value>, <date>" (#1601).
+  const edit = c.root.findAll((n) => n.props.onPress && /^Edit weigh-in (180|81\.6)/.test(String(n.props.accessibilityLabel || '')))[0];
   render.act(() => { edit.props.onPress(); });
 };
 const setUnit = (u) => render.act(() => { setWeightUnitPreference(u); });
@@ -314,6 +315,8 @@ describe('goal drafts across unit changes', () => {
 
   test('invalid manual start weight is rejected at save after a unit switch', async () => {
     const c = mount({ goal: null, entries: [] });
+    // No goal shows a compact "Set a goal" that opens the form (#1601).
+    press(c, 'Set a goal');
     const [start, target] = goalInputs(c);
     type(start, '12a');
     type(target, '180');
@@ -351,6 +354,8 @@ describe('goal drafts across unit changes', () => {
 
   test('new goal with manually entered start weight converts', () => {
     const c = mount({ goal: null, entries: [] });
+    // No goal shows a compact "Set a goal" that opens the form (#1601).
+    press(c, 'Set a goal');
     const [start, target] = goalInputs(c);
     type(start, '200');
     type(target, '180');
