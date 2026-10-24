@@ -74,6 +74,18 @@ describe('ExerciseHistorySheet in the Log renderer', () => {
     expect(byTestId(tree, 'exercise-history-chart')[0].props.accessibilityLabel).toContain('session 3, 215 lb');
   });
 
+  test('chart points select a session and move the callout; latest is the default', () => {
+    const tree = renderLog(NOTE);
+    act(() => { byTestId(tree, 'log-exercise-0-0-0-history')[0].props.onPress(); });
+    const callout = () => [].concat(byTestId(tree, 'exercise-history-callout')[0].props.children).join('');
+    expect(callout()).toBe('Latest · 215 lb');
+    const first = byTestId(tree, 'exercise-history-point-1')[0];
+    expect(first.props.style.width).toBeGreaterThanOrEqual(44);
+    act(() => { first.props.onPress(); });
+    expect(callout()).toBe('Session 1 · 205 lb');
+    expect(byTestId(tree, 'exercise-history-point-1')[0].props.accessibilityState).toEqual({ selected: true });
+  });
+
   test('repeated name on another day keeps its own context and sessions', () => {
     const tree = renderLog(NOTE);
     act(() => { byTestId(tree, 'log-exercise-1-0-0-history')[0].props.onPress(); });

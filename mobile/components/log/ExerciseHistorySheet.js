@@ -22,7 +22,9 @@ import { buildExerciseHistory, describeLoadPoints } from './exerciseHistoryPrese
 const CHART_H = 96;
 const LABEL_W = 48;
 
-function LoadChart({ points, width, unit, kua, colors, typography }) {
+// `selected` is the selected session index; each point is a labelled 44dp
+// target that selects it and moves the callout.
+function LoadChart({ points, width, unit, kua, colors, typography, selected, onSelect }) {
   const fmt = (v) => formatLiftWeightValue(v, unit);
   const label = describeLoadPoints(points, unit, fmt);
   if (points.length === 0) {
@@ -38,15 +40,35 @@ function LoadChart({ points, width, unit, kua, colors, typography }) {
   const x = (i) => (maxIndex === minIndex ? plotW / 2 : pad + ((i - minIndex) / (maxIndex - minIndex)) * (plotW - pad * 2));
   const y = (v) => (max === min ? CHART_H / 2 : pad + (1 - (v - min) / (max - min)) * (CHART_H - pad * 2));
   const line = colors.chartSeries1 || kua.primary;
+  const sel = points.find(p => p.index === selected) || points[points.length - 1];
   return (
-    <View accessible accessibilityRole="image" accessibilityLabel={label} testID="exercise-history-chart">
+    <View testID="exercise-history-chart" accessibilityLabel={label}>
+      {sel ? (
+        <Text style={[typography['label-lg'], { color: kua.onSurface, paddingBottom: 6 }]} accessibilityLiveRegion="polite" testID="exercise-history-callout">
+          {`${sel.index === maxIndex ? 'Latest' : `Session ${sel.index}`} · ${fmt(sel.load)} ${unit}`}
+        </Text>
+      ) : null}
       <View style={{ flexDirection: 'row' }}>
-        <Svg width={plotW} height={CHART_H}>
+        <View style={{ width: plotW, height: CHART_H }}>
+        <Svg width={plotW} height={CHART_H} accessible accessibilityRole="image" accessibilityLabel={label}>
           <Line x1={0} x2={plotW} y1={y(max)} y2={y(max)} stroke={kua.surfaceBorder} strokeWidth={1} />
           {max !== min ? <Line x1={0} x2={plotW} y1={y(min)} y2={y(min)} stroke={kua.surfaceBorder} strokeWidth={1} /> : null}
           {points.length > 1 ? <Polyline points={points.map(p => `${x(p.index)},${y(p.load)}`).join(' ')} fill="none" stroke={line} strokeWidth={2.5} /> : null}
-          {points.map((p, i) => <Circle key={p.index} cx={x(p.index)} cy={y(p.load)} r={i === points.length - 1 ? 4.5 : 3} fill={line} />)}
+          {sel ? <Line x1={x(sel.index)} x2={x(sel.index)} y1={0} y2={CHART_H} stroke={kua.surfaceBorder} strokeWidth={1} /> : null}
+          {points.map((p) => <Circle key={p.index} cx={x(p.index)} cy={y(p.load)} r={sel && p.index === sel.index ? 5.5 : 3} fill={line} stroke={sel && p.index === sel.index ? kua.surfaceCard : undefined} strokeWidth={2} />)}
         </Svg>
+        {points.map((p) => (
+          <Pressable
+            key={p.index}
+            onPress={() => onSelect(p.index)}
+            style={{ position: 'absolute', left: x(p.index) - 22, top: y(p.load) - 22, width: 44, height: 44 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Session ${p.index}, ${fmt(p.load)} ${unit}`}
+            accessibilityState={{ selected: !!sel && p.index === sel.index }}
+            testID={`exercise-history-point-${p.index}`}
+          />
+        ))}
+        </View>
         <View style={{ width: LABEL_W, height: CHART_H }}>
           <Text style={[typography['label-md'], { position: 'absolute', top: y(max) - 9, left: 6, color: kua.onSurfaceVariant }]}>{fmt(max)}</Text>
           {max !== min ? <Text style={[typography['label-md'], { position: 'absolute', top: y(min) - 9, left: 6, color: kua.onSurfaceVariant }]}>{fmt(min)}</Text> : null}
@@ -69,6 +91,10 @@ export function ExerciseHistorySheet({ target, onClose }) {
   const styles = React.useMemo(() => createStyles(kua, colors), [kua, colors]);
   const visible = !!target;
   const history = React.useMemo(() => buildExerciseHistory(target ? target.exercise : null), [target]);
+  // Selected chart point; tied to the open target so a new occurrence starts
+  // on its latest point.
+  const [selection, setSelection] = React.useState({ target: null, index: null });
+  const selected = selection.target === target ? selection.index : null;
   const lastTarget = React.useRef(null);
   if (target) lastTarget.current = target;
   const close = () => {
@@ -104,7 +130,7 @@ export function ExerciseHistorySheet({ target, onClose }) {
             <ScrollView>
               <View style={styles.chartBlock}>
                 <Text style={[typography['label-md'], styles.kicker]}>{`TOP-SET LOAD (${unit.toUpperCase()}) · BY SESSION`}</Text>
-                <LoadChart points={history.points} width={sheetW - 40} unit={unit} kua={kua} colors={colors} typography={typography} />
+                <LoadChart points={history.points} width={sheetW - 40} unit={unit} kua={kua} colors={colors} typography={typography} selected={selected} onSelect={(index) => setSelection({ target, index })} />
               </View>
               <View style={styles.tableHead}>
                 <Text style={[typography['label-md'], styles.kicker, styles.colIndex]}>#</Text>
