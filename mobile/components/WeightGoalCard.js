@@ -9,6 +9,7 @@ import { GEOMETRY } from '../theme/spacing';
 import { formatDate } from '../lib/format';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, formatGoalWeightValue } from '../lib/units';
+import { suggestedTargetDate } from '../hooks/useWeightGoalForm';
 
 function useGoalStyles() {
   const { colors, kuaPalette: kua } = useTheme();
@@ -114,6 +115,7 @@ export function WeightGoalCard({
   goalTargetWeight,
   setGoalTargetWeight,
   goalTargetDate,
+  setGoalTargetDate,
   goalStartWeight,
   setGoalStartWeight,
   goalError,
@@ -130,15 +132,30 @@ export function WeightGoalCard({
   currentWeight,
   isGoalMet,
   aheadOfSchedule,
+  setupOpen: setupOpenProp,
+  onSetupOpenChange,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useGoalStyles();
   const unit = useWeightUnit();
   const ink = kua ? kua.onSurface : colors.text;
   // No-goal setup is a UI disclosure only; it closes once a goal exists so a
-  // later clear/archive returns to the compact "Set a goal" state.
-  const [setupOpen, setSetupOpen] = useState(false);
+  // later clear/archive returns to the compact "Set a goal" state. The screen
+  // may own it (setupOpen + onSetupOpenChange) so a closed setup's draft stays
+  // out of the analytics.
+  const [ownSetupOpen, setOwnSetupOpen] = useState(false);
+  const setupOpen = setupOpenProp ?? ownSetupOpen;
+  const setSetupOpen = onSetupOpenChange ?? setOwnSetupOpen;
   useEffect(() => { if (goal) setSetupOpen(false); }, [goal]);
+  // Cancelling no-goal setup discards the draft, so reopening starts clean.
+  const cancelForm = () => {
+    cancelEditGoal();
+    if (!goal) {
+      setGoalTargetWeight?.('');
+      setGoalTargetDate?.(suggestedTargetDate());
+    }
+    setSetupOpen(false);
+  };
 
   const remainingToGoal =
     goal && currentWeight != null && goal.target_weight != null
@@ -186,7 +203,7 @@ export function WeightGoalCard({
           {mode && goal ? <Text>{' · '}<Text style={styles.modeText}>{mode}</Text></Text> : null}
         </MonoLabel>
         {showForm ? (
-          <TextAction label="Cancel" onPress={() => { cancelEditGoal(); setSetupOpen(false); }} />
+          <TextAction label="Cancel" onPress={cancelForm} />
         ) : isGoalMet ? (
           <Text style={styles.goalMetBadge}>Goal Met!</Text>
         ) : overdue ? (

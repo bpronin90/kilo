@@ -7,6 +7,11 @@ Real-app renders of the redesigned Weight screen (tracker #1609).
   folder's README, capture script and PNGs, so they cannot change the renders).
   The 8 storage-fault / date-path PNGs were rendered from a fresh export of
   that same `mobile/` tree.
+  A later review fix (no-goal setup Cancel discards the draft; a closed setup's
+  draft no longer feeds goal direction) changes only the state after Cancel,
+  which no capture shows: `no-goal-*` has an empty draft before and after the
+  fix, and `no-goal-form-open-*` keeps the live draft. So those PNGs still
+  apply; the sequence is pinned by `redesign-weight.test.js`.
 - **Viewport:** 390×844 CSS px at DPR 2 (PNGs are 780×1688), except
   `full-weight-*` (390×2600, so the whole vertical order is one image).
 - **Clock and data:** `FIXED_NOW` 2026-10-23T12:00Z; shared scenarios from the

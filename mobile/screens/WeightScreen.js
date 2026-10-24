@@ -116,6 +116,11 @@ export function WeightScreen({
   ), [saveGoal, unit]);
 
   const goalForm = useWeightGoalForm(displayGoal, saveGoalCanonical, clearGoal, archiveGoal, isActive, registerBackConsumer, unit, goal);
+  // No-goal setup disclosure. With no saved goal the draft feeds the analytics
+  // (live direction/tone, as the always-open pre-redesign form did) only while
+  // setup is open; a closed setup leaves no goal-derived state behind.
+  const [goalSetupOpen, setGoalSetupOpen] = useState(false);
+  const draftLive = goalForm.goalEditing || (!goal && goalSetupOpen);
 
   // Draft goal fields are typed in the selected unit; convert them to lb-space
   // strings before the lb-domain analytics derivation (identity in lb mode).
@@ -138,9 +143,9 @@ export function WeightScreen({
         goal,
         {
           goalEditing: goalForm.goalEditing,
-          goalTargetWeight: draftToLbString(goalForm.goalTargetWeight),
-          goalTargetDate: goalForm.goalTargetDate,
-          goalStartWeight: draftToLbString(goalForm.goalStartWeight),
+          goalTargetWeight: draftLive ? draftToLbString(goalForm.goalTargetWeight) : '',
+          goalTargetDate: draftLive ? goalForm.goalTargetDate : '',
+          goalStartWeight: draftLive ? draftToLbString(goalForm.goalStartWeight) : '',
         },
         referenceDate,
         profile
@@ -149,6 +154,7 @@ export function WeightScreen({
       entries,
       goal,
       goalForm.goalEditing,
+      draftLive,
       goalForm.goalTargetWeight,
       goalForm.goalTargetDate,
       goalForm.goalStartWeight,
@@ -365,6 +371,8 @@ export function WeightScreen({
         isGoalMet={isGoalMet}
         aheadOfSchedule={aheadOfSchedule}
         {...goalForm}
+        setupOpen={goalSetupOpen}
+        onSetupOpenChange={setGoalSetupOpen}
       />
 
       <WeightHistoryList

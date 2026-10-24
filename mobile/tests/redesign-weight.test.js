@@ -181,4 +181,30 @@ describe('Weight goal panel (#1601)', () => {
     expect(t.some(x => /pace|Suggested|to go|cal\/day/i.test(x))).toBe(false);
     expect(host(root, 'weight-goal-progress')).toHaveLength(0);
   });
+
+  test('a cancelled no-goal setup draft stops toning Latest and is not restored on reopen', () => {
+    const root = mount({ goal: null, entries: DOWN });
+    const changeColor = () => StyleSheet.flatten(host(root, 'weight-latest-change')[0].findAllByType('Text')[0].props.style).color;
+    const press = (label) => {
+      const btn = root.find(n => n.props && n.props.accessibilityLabel === label && typeof n.props.onPress === 'function');
+      render.act(() => { btn.props.onPress(); });
+    };
+    const targetField = () => root.find(n => n.props && n.props.label === 'Target (lb)' && typeof n.props.onChangeText === 'function');
+
+    const before = changeColor();
+    expect(before).toBe(KUA.success);
+
+    press('Set a goal');
+    render.act(() => { targetField().props.onChangeText('200'); });
+    // While setup is open the draft drives the tone live (a gain draft turns a loss red).
+    expect(changeColor()).toBe(KUA.errorText);
+
+    press('Cancel');
+    expect(texts(host(root, 'weight-goal-panel')[0])).toEqual(expect.arrayContaining(['No goal set.']));
+    expect(changeColor()).toBe(before);
+
+    press('Set a goal');
+    expect(targetField().props.value).toBe('');
+    expect(changeColor()).toBe(before);
+  });
 });
