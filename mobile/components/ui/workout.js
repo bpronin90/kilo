@@ -66,7 +66,10 @@ function sessionGaugeToneColor(tone, colors, kua = null) {
 // `paused` (active Recovery, #1247): baseline sessions have stopped accumulating,
 // so the card reports the frozen routine stats instead of a lone Total.
 // `showTitle={false}`: the host already titles the section (Analytics' Routine Health).
-export function SessionGauge({ count, total, showDeload = true, paused = false, showTitle = true }) {
+// `contained={false}` (#1602) renders the same content without the Card chrome,
+// for a host panel that already supplies the surface (Analytics Routine Health).
+// Every other caller keeps the default contained card.
+export function SessionGauge({ count, total, showDeload = true, paused = false, showTitle = true, contained = true }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const typography = useKuaTypography();
@@ -78,9 +81,10 @@ export function SessionGauge({ count, total, showDeload = true, paused = false, 
     : [colors.success, colors.caution, colors.error];
   const caption = getSessionZoneCaption(count);
   const markerPct = (Math.min(count, 11) / 11) * 100;
+  const Container = contained ? Card : View;
 
   return (
-    <Card style={styles.sessionGauge}>
+    <Container style={contained ? styles.sessionGauge : styles.sessionGaugeBare}>
       {showTitle && <Text style={styles.sessionGaugePanelTitle}>{paused ? 'Routine Health · Paused' : 'Routine Health'}</Text>}
       <View style={styles.sessionGaugeHeader}>
         {(showDeload || paused) && (
@@ -124,7 +128,7 @@ export function SessionGauge({ count, total, showDeload = true, paused = false, 
         </>
       )}
       {paused && <Text style={[styles.sessionGaugeCaption, { color: kua ? kua.onSurfaceVariant : colors.textMuted }]}>Baseline training is paused during Recovery.</Text>}
-    </Card>
+    </Container>
   );
 }
 
@@ -308,6 +312,11 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     flex: 1,
     gap: 10,
     backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
+  },
+  sessionGaugeBare: {
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   sessionGaugePanelTitle: {
     ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '800' }),

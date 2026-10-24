@@ -1,8 +1,10 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
+import { View } from 'react-native';
 import { useLocalCalendarDay, localDayToDate } from '../hooks/useLocalCalendarDay';
 import { ScreenShell } from '../components/ScreenShell';
-import { ErrorBanner } from '../components/UI';
+import { RootHeader } from '../components/RootHeader';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
+import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection';
 import { deriveWeightGoalAnalytics, resolveOneKSelections, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, useWeightGoal, useDeloadHistory, useFeatureToggles, useRecoveryBlockState, useActiveTrainingContext } from '../hooks/useEntries';
 import { useRecoveryAnalyticsFilter } from '../hooks/entries/recoveryBlockHooks';
@@ -20,8 +22,6 @@ import { useTheme } from '../theme/ThemeContext';
 import { useReducedMotion } from '../lib/useReducedMotion';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, displayChartSeries, lbToKg } from '../lib/units';
-import { View } from 'react-native';
-import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection';
 import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
 import { normalizeExerciseKey } from '../lib/parser';
 import { derive1kTotalSeriesFromSectionsList } from '../lib/data/oneK';
@@ -37,16 +37,9 @@ import {
   progressionSuggestionInstanceId,
 } from '../components/ProgressionSuggestionCard';
 import { createStyles } from './analytics/analyticsStyles';
-import { AnalyticsWeightTrendsCard } from '../components/AnalyticsWeightTrendsCard';
-import { AnalyticsStrengthSection, AnalyticsBig3MappingCard } from '../components/AnalyticsStrengthSection';
-import { AnalyticsTrainingBreakdown } from '../components/AnalyticsTrainingBreakdown';
-import { AnalyticsProgressiveOverloadSection } from './analytics/AnalyticsProgressiveOverload';
-import { orderAnalyticsSections, BaselineDisclosureToggle, AnalyticsRoutineHealth } from './analytics/AnalyticsLayout';
-
-// The one section id that needs no measurement: "the top of Analytics" (#770).
-// The Overview card is gone (Home owns the summary); the legacy id still means
-// offset 0. A plain Analytics tab press preserves the last position instead.
-const OVERVIEW_SECTION = 'overview';
+import { buildAnalyticsContent } from './analytics/AnalyticsSectionContent';
+import { ChapterIndex, NORMAL_CHAPTERS, ACTIVE_RECOVERY_CHAPTERS } from './analytics/AnalyticsChapters';
+import { useAnalyticsChapterNavigation } from './analytics/useAnalyticsChapterNavigation';
 
 export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate }) {
   const { colors, kuaPalette: kua } = useTheme();
@@ -140,14 +133,6 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState(new Set());
 
-  const scrollRef = useRef(null);
-  // Measured top of every targetable section, keyed by the shell's bounded
-  // section id (#770). An id missing from this map means "not laid out yet" —
-  // the request stays pending, fulfilled by whichever layout resolves it.
-  const sectionOffsets = useRef({});
-  const pendingSection = useRef(section);
-  const hasScrolled = useRef(false);
-
   const weightEntries = useMemo(() => {
     return (hookWeightEntries || []).filter(e => e && e.date && e.weight_value != null);
   }, [hookWeightEntries]);
@@ -164,75 +149,12 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   const isNotesLoading = (loadingNotes && !notesError && notes.length === 0) || !recoveryFilter.ready;
   const isTrackedLoading = loadingTracked && Object.keys(trackedLifts).length === 0;
 
-  function scrollToOffset(y) {
-    scrollRef.current?.scrollTo({ y, animated: !reduceMotion });
-    hasScrolled.current = true;
-  }
-
-  // One navigation path for every section request (prop handoff or same-screen
-  // tap, #871). A destination inside the collapsed baseline disclosure expands
-  // it first and lets the layout that follows fulfill the pending request,
-  // rather than reading `sectionOffsets` while unmounted.
-  function navigateToSection(sectionId) {
-    pendingSection.current = sectionId;
-    hasScrolled.current = false;
-
-    // The overview is the top of the tab — its position is known without
-    // measurement. Every other destination waits for its own layout.
-    if (sectionId === OVERVIEW_SECTION) {
-      scrollToOffset(0);
-      return;
-    }
-
-    // A section inside the collapsed baseline disclosure (#871) must open it
-    // first — its onLayout never fires while unmounted. `recovery`/`weight`
-    // never need this: both stay outside the disclosure.
-    if (isActiveRecovery && baselineCollapsed
-      && (sectionId === 'strength' || sectionId === 'progressive-overload')) {
-      setBaselineCollapsed(false);
-    }
-
-    const y = sectionOffsets.current[sectionId];
-    if (y > 0) scrollToOffset(y);
-  }
-
-  useEffect(() => {
-    if (!section) {
-      pendingSection.current = section;
-      hasScrolled.current = false;
-      return;
-    }
-    navigateToSection(section);
-    // `sectionNonce` changes on every navigation request, so repeating the same
-    // handoff (weight → weight) re-targets the section instead of no-op'ing.
-  }, [section, sectionNonce, isActiveRecovery, baselineCollapsed]);
-
-  // One measurement path for every section (#770); `hasScrolled` keeps a later
-  // reflow from yanking the user back after they land.
-  function recordSectionOffset(id, y) {
-    const known = sectionOffsets.current[id];
-    if (known != null && Math.abs(known - y) < 1) return;
-    sectionOffsets.current[id] = y;
-
-    if (pendingSection.current === id && !hasScrolled.current) scrollToOffset(y);
-  }
-
-  // Named per section (not one generic handler): the weight/strength anchors
-  // are props of components outside this issue's scope, so their names/shape
-  // stay exactly as before.
-  function handleWeightLayout(e) {
-    recordSectionOffset('weight', e.nativeEvent.layout.y);
-  }
-  function handleStrengthLayout(e) {
-    recordSectionOffset('strength', e.nativeEvent.layout.y);
-  }
-  function handleRecoveryLayout(e) {
-    recordSectionOffset('recovery', e.nativeEvent.layout.y);
-  }
-
-  function handleProgressiveOverloadLayout(e) {
-    recordSectionOffset('progressive-overload', e.nativeEvent.layout.y);
-  }
+  // Chapter structure (#1602) and every scroll/navigation concern: deep-link
+  // section requests, the chapter index and its scroll-spy.
+  const chapters = isActiveRecovery ? ACTIVE_RECOVERY_CHAPTERS : NORMAL_CHAPTERS;
+  const nav = useAnalyticsChapterNavigation({
+    section, sectionNonce, isActiveRecovery, baselineCollapsed, setBaselineCollapsed, chapters, reduceMotion,
+  });
 
   // Canonical weight analytics (lib/data); presentation only below.
   const calendarDay = useLocalCalendarDay();
@@ -369,7 +291,6 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     setActiveSlot(null);
   }
 
-  const SLOT_LABELS = { bench: 'Bench', squat: 'Squat', deadlift: 'Deadlift' };
   const routineStatus = useMemo(
     () => deriveRoutineStatus(parsedSections.currentSections, currentNote, deloadHistory),
     [parsedSections.currentSections, currentNote, deloadHistory]
@@ -435,9 +356,10 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     };
   }, [analytics.oneK, unit]);
 
+  // Recovery evidence reuses Home's resolved Big 3 selections (#1351); the
+  // chapter header titles it, so the section's own title is off (#1602).
   const recoverySection = (
     <AnalyticsRecoverySection
-      key="recovery-section"
       blocks={recoveryBlocks}
       weeks={recoveryWeeks}
       notes={notes} notesError={notesError}
@@ -448,138 +370,57 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       stateError={recoveryStateError}
       onRetry={retryRecoveryState}
       oneKSelections={oneKSelections}
+      title={null}
     />
   );
-  // Mirrors AnalyticsRecoverySection's own "nothing to say" condition (#716):
-  // null only for a verified, fresh snapshot with no live block; `some(isLiveRecord)`
-  // covers both active and completed. Pinned against the section itself in
-  // analytics-screen.test.js so the two cannot drift apart silently.
-  const hasRecoverySection =
-    !recoveryReady || recoveryStale || recoveryBlocks.some(isLiveRecord);
-  const banners = [
-    notesError ? (
-      <ErrorBanner key="notes-error-banner" message="Could not load workout notes. Training analytics are incomplete." onRetry={refreshNotes} />
-    ) : null,
-    weightError ? (
-      <ErrorBanner key="weight-error-banner" message="Could not load weight entries. Weight trends are incomplete." onRetry={refreshWeightEntries} />
-    ) : null,
-  ];
-  const strength = (
-    <AnalyticsStrengthSection
-      key="strength-section"
-      handleStrengthLayout={handleStrengthLayout}
-      isNotesLoading={isNotesLoading}
-      oneK={displayOneK}
-      oneKCanonical={analytics.oneK}
-      oneKChartData={oneKChartData}
-      big3Mapping={(
-        <AnalyticsBig3MappingCard
-          activeSlot={activeSlot}
-          handleSlotTap={handleSlotTap}
-          SLOT_LABELS={SLOT_LABELS}
-          oneKSelections={oneKSelections}
-          noteExerciseNames={noteExerciseNames}
-          handleSelectExercise={handleSelectExercise}
-        />
-      )}
-    />
-  );
-  // #1580: held back like the other ordinary aggregates until the Recovery
-  // boundary is verified, so an unknown membership is never read as "nothing excluded".
-  const trainingBreakdown = (
-    <AnalyticsTrainingBreakdown
-      key="training-breakdown-section"
-      parsedSections={parsedSections}
-      populationVerified={recoveryFilter.ready}
-      isLoading={isNotesLoading}
-      hasError={!!notesError && notes.length === 0}
-      paused={isActiveRecovery}
-    />
-  );
-  const progressiveOverload = (
-    <AnalyticsProgressiveOverloadSection
-      key="progressive-overload-section"
-      styles={styles} colors={colors} kua={kua}
-      onLayout={handleProgressiveOverloadLayout}
-      isNotesLoading={isNotesLoading}
-      isTrackedLoading={isTrackedLoading}
-      analytics={analytics}
-      progressionSuggestionView={progressionSuggestionView}
-      onMuteProgression={handleMuteProgression}
-      onUnmuteProgression={handleUnmuteProgression}
-      onDismissProgression={handleDismissProgression}
-      groupedSignals={groupedSignals}
-      toggleAllGroups={toggleAllGroups}
-      allGroupsCollapsed={allGroupsCollapsed}
-      collapsedGroups={collapsedGroups}
-      toggleGroup={toggleGroup}
-      searchQuery={searchQuery}
-      setSearchQuery={setSearchQuery}
-      unit={unit}
-      onNavigate={onNavigate}
-    />
-  );
-  const weight = (
-    <AnalyticsWeightTrendsCard
-      key="weight-trends-card"
-      handleWeightLayout={handleWeightLayout}
-      weightSummary={weightSummary}
-      rolling7={rolling7}
-      rolling30={rolling30}
-      isWeightLoading={isWeightLoading}
-      onNavigate={onNavigate}
-    />
-  );
-  const routineHealth = (
-    <AnalyticsRoutineHealth
-      key="routine-health"
-      styles={styles}
-      sinceDeload={sinceDeload}
-      sessionCount={sessionCount}
-      deloadModeEnabled={deloadModeEnabled}
-      isActiveRecovery={isActiveRecovery}
-      fatigueTrackingEnabled={fatigueTrackingEnabled}
-      checkInHistory={checkInHistory}
-      fatigueExpanded={fatigueExpanded}
-      setFatigueExpanded={setFatigueExpanded}
-      handleCheckInEdit={handleCheckInEdit}
-    />
-  );
-  // Anchor for the `recovery` handoff (#770), only while the section has
-  // something to render: an empty wrapper would still take a slot in the
-  // shell's column gap, so the silent case renders the section alone (null).
-  const recovery = hasRecoverySection ? (
-    <View key="recovery-section" testID="recovery-section-anchor" onLayout={handleRecoveryLayout}>
-      {recoverySection}
-    </View>
-  ) : recoverySection;
-  const screenContent = orderAnalyticsSections({
-    isActiveRecovery,
-    baselineExpanded: !baselineCollapsed,
-    banners,
-    strength,
-    trainingBreakdown,
-    progressiveOverload,
-    weight,
-    routineHealth,
-    recovery,
-    disclosure: (
-      <BaselineDisclosureToggle
-        key="baseline-disclosure-toggle"
-        collapsed={baselineCollapsed}
-        onToggle={() => setBaselineCollapsed(v => !v)}
-        styles={styles} colors={colors} kua={kua}
-      />
-    ),
-  }).filter(Boolean);
+  const screenContent = buildAnalyticsContent({
+    styles, colors, kua, nav, chapters, onNavigate,
+    notes, notesError, refreshNotes, weightError, refreshWeightEntries,
+    isNotesLoading, isWeightLoading, isActiveRecovery, baselineCollapsed,
+    toggleBaseline: () => setBaselineCollapsed(v => !v),
+    activeRecoveryBlockId,
+    recoveryFilterReady: recoveryFilter.ready,
+    analytics, parsedSections, displayOneK, oneKChartData, oneKSelections, noteExerciseNames,
+    activeSlot, handleSlotTap, handleSelectExercise,
+    weightSummary, rolling7, rolling30,
+    overloadProps: {
+      isNotesLoading, isTrackedLoading, analytics, progressionSuggestionView,
+      onMuteProgression: handleMuteProgression,
+      onUnmuteProgression: handleUnmuteProgression,
+      onDismissProgression: handleDismissProgression,
+      groupedSignals, toggleAllGroups, allGroupsCollapsed, collapsedGroups, toggleGroup,
+      searchQuery, setSearchQuery, unit,
+    },
+    routineHealthProps: {
+      sinceDeload, sessionCount, deloadModeEnabled, fatigueTrackingEnabled,
+      checkInHistory, fatigueExpanded, setFatigueExpanded, handleCheckInEdit,
+    },
+    recoverySection,
+    recovery: {
+      ready: recoveryReady, stale: recoveryStale,
+      completedCount: recoveryBlocks.filter(b => isLiveRecord(b) && b.completed_at).length,
+    },
+  });
+  // Root header context (#1602): the current routine and Home's "Week N"
+  // (deriveRoutineStatus().weeksIn), only when there is a routine. During
+  // Recovery the current note is the Recovery week, whose title names its week.
+  const showWeek = !isActiveRecovery && routineStatus.weeksIn > 0;
+  const headerContext = currentNote
+    ? [currentNote.title || 'Untitled Routine', showWeek ? `Week ${routineStatus.weeksIn}` : null].filter(Boolean).join(' · ')
+    : null;
   const editCheckInData = shapeEditCheckInData(editPendingCheckIn);
 
   return (
     <>
       <ScreenShell
-        ref={scrollRef}
-        title="Analytics"
-        subtitle="Insights derived from your logs."
+        ref={nav.scrollRef}
+        onScroll={nav.handleScroll}
+        header={(
+          <View>
+            <RootHeader title="Analytics" context={headerContext} uppercaseContext={false} />
+            <ChapterIndex chapters={chapters} activeId={nav.activeChapter} onSelect={nav.handleChapterSelect} />
+          </View>
+        )}
       >
         {screenContent}
       </ScreenShell>

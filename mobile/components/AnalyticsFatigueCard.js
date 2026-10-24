@@ -83,20 +83,53 @@ function FatigueSection({ status, label, count, rows, onEdit, variant = 'detaile
   );
 }
 
+// The most recent check-ins, oldest first, as one row of status squares
+// (#1602): a presentation of the same rough/ok/pending lists, nothing derived.
+const STRIP_LENGTH = 10;
+function recentCheckIns(checkInHistory) {
+  const tagged = [
+    ...checkInHistory.rough.map(ci => ({ ci, status: 'rough' })),
+    ...checkInHistory.ok.map(ci => ({ ci, status: 'ok' })),
+    ...checkInHistory.pending.map(ci => ({ ci, status: 'pending' })),
+  ].sort((a, b) => String(a.ci.responded_at).localeCompare(String(b.ci.responded_at)));
+  return tagged.slice(-STRIP_LENGTH);
+}
+
+function CheckInStrip({ checkInHistory, styles }) {
+  const recent = recentCheckIns(checkInHistory);
+  const count = (status) => recent.filter(r => r.status === status).length;
+  const label = `Last ${recent.length} check-ins: ${count('rough')} flagged, ${count('ok')} no issue${count('pending') ? `, ${count('pending')} unanswered` : ''}`;
+  return (
+    <View testID="session-checkin-strip" style={styles.stripRow} accessible accessibilityRole="image" accessibilityLabel={label}>
+      {recent.map(({ ci, status }) => (
+        <View key={`${status}-${ci.responded_at}`} style={[styles.stripCell, styles[`stripCell_${status}`]]}>
+          {status === 'rough' ? <Text style={styles.stripMark}>!</Text> : null}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// `contained={false}` (#1602) drops the Card chrome so the check-ins sit as one
+// section of the Routine Health panel, led by the recent-check-in strip. The
+// default stays the standalone card.
 export function AnalyticsFatigueCard({
   checkInHistory,
   fatigueExpanded,
   setFatigueExpanded,
   handleCheckInEdit,
+  contained = true,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
+  const Container = contained ? Card : View;
+  const containerStyle = contained ? styles.fatigueCard : styles.fatigueBare;
   if (checkInHistory.rough.length === 0 && checkInHistory.ok.length === 0 && checkInHistory.pending.length === 0) {
     return (
-      <Card style={styles.fatigueCard}>
+      <Container style={containerStyle}>
         <Text style={styles.fatiguePanelLabel}>Session Check-ins</Text>
         <Text style={styles.fatigueEmpty}>No check-ins logged yet.</Text>
-      </Card>
+      </Container>
     );
   }
 
@@ -106,8 +139,9 @@ export function AnalyticsFatigueCard({
     : null;
 
   return (
-    <Card style={styles.fatigueCard}>
+    <Container style={containerStyle}>
       <Text style={styles.fatiguePanelLabel}>Session Check-ins</Text>
+      {contained ? null : <CheckInStrip checkInHistory={checkInHistory} styles={styles} />}
       <Pressable
         style={styles.fatigueSummary}
         onPress={() => setFatigueExpanded(e => !e)}
@@ -175,7 +209,7 @@ export function AnalyticsFatigueCard({
           )}
         </View>
       )}
-    </Card>
+    </Container>
   );
 }
 
@@ -184,6 +218,40 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     padding: 20,
     gap: 8,
     backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
+  },
+  fatigueBare: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 10,
+  },
+  stripRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  stripCell: {
+    flex: 1,
+    maxWidth: 32,
+    height: 30,
+    borderRadius: GEOMETRY['radius-sm'],
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stripCell_ok: {
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
+  },
+  stripCell_pending: {
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    borderStyle: 'dashed',
+  },
+  stripCell_rough: {
+    borderColor: kua ? kua.warning : colors.caution,
+    backgroundColor: colors.cautionSurface,
+  },
+  stripMark: {
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
+    fontWeight: '700',
+    color: colors.cautionSurfaceText,
   },
   fatiguePanelLabel: {
     fontSize: TYPOGRAPHY['label-sm'].fontSize,

@@ -8,6 +8,7 @@ import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue } from '../lib/units';
 import { createStyles, createHistoryPanel } from './weight/weightHistoryStyles';
 import { WeightHistoryFilters } from './weight/WeightHistoryFilters';
+import { MonoLabel, Panel } from './ui/RedesignPrimitives';
 
 // The delete affordance's pressed state is deliberately kept here rather than
 // in weightHistoryStyles.js (#915 review, tracked by the codebase-wide
@@ -27,6 +28,9 @@ const createDeleteAffordanceStyles = (colors, kua = null) => StyleSheet.create({
 // time. Windowing keeps each expand step cheap while full history stays
 // reachable via repeated "Show more" taps.
 const HISTORY_WINDOW_SIZE = 50;
+// Collapsed preview (Redesign v3, #1601): the newest rows stay on the daily
+// surface, bounded, with "Show more weight entries" opening the full window.
+const HISTORY_PREVIEW_SIZE = 6;
 
 function filterByDateRange(entries, fromDate, toDate) {
   if (!fromDate && !toDate) return entries;
@@ -38,6 +42,10 @@ function filterByDateRange(entries, fromDate, toDate) {
   });
 }
 
+// The History panel (Redesign v3, #1601): "HISTORY · N" with the date-range
+// filter and an expand/collapse control, a Weight / Change / Date / delete
+// table, and "Show more weight entries". Collapsed shows a bounded preview of
+// the newest rows; expanded shows 50-row windows. Tapping a row edits it.
 function WeightHistoryListImpl({
   entries,
   editingId,
@@ -52,9 +60,7 @@ function WeightHistoryListImpl({
   const s = useMemo(() => createHistoryPanel(colors, kua, typo), [colors, kua, typo]);
   const deleteStyles = useMemo(() => createDeleteAffordanceStyles(colors, kua), [colors, kua]);
   const unit = useWeightUnit();
-  // Collapsed by default (#898): the daily Weight surface should open on a
-  // latest/count summary, not a fully mapped history that grows unbounded
-  // with tenure. Expanding reveals a windowed slice (see HISTORY_WINDOW_SIZE).
+  const mutedInk = kua ? kua.onSurfaceVariant : colors.textMuted;
   const [collapsed, setCollapsed] = useState(true);
   const [windowSize, setWindowSize] = useState(HISTORY_WINDOW_SIZE);
   const [showDateFilter, setShowDateFilter] = useState(false);
@@ -73,8 +79,8 @@ function WeightHistoryListImpl({
   // The compact From/To controls are revealed from the history header. Turning
   // the filter off clears both bounds; clearing either bound below deliberately
   // leaves this control area open so a one-sided range is immediately usable.
-  // If the panel is collapsed, always expand it and show the filter so the
-  // controls are immediately visible (#411 feedback).
+  // If the panel is collapsed, expand it too so a filtered range is shown in
+  // full rather than as a preview (#411 feedback).
   const toggleDateFilter = () => {
     if (collapsed) {
       setCollapsed(false);
@@ -101,89 +107,43 @@ function WeightHistoryListImpl({
     });
   };
 
-  const visibleEntries = filteredEntries.slice(0, windowSize);
+  const visibleEntries = filteredEntries.slice(0, collapsed ? HISTORY_PREVIEW_SIZE : windowSize);
   const remainingCount = filteredEntries.length - visibleEntries.length;
+  const filterActive = hasRange || (!collapsed && showDateFilter);
 
   return (
-    <View style={s.card}>
-      {/* Header row IS the column-header / summary row. In expanded state the
-          filter icon groups with Date; in collapsed state it stays in the
-          trailing control cell because no Date header is visible. */}
-      <Pressable
-        onPress={toggleCollapsed}
-        accessibilityRole="button"
-        accessibilityLabel={collapsed ? 'Expand history' : 'Collapse history'}
-        style={[s.headerRow, !collapsed && s.headerRowBordered]}
-      >
-        {collapsed ? (
-          <View style={s.headerContent}>
-            {filteredEntries.length === 0 ? (
-              <Text style={s.summaryCount}>0 entries</Text>
-            ) : (
-              <View style={s.summaryStack}>
-                <Text style={s.summaryCount}>
-                  {`${filteredEntries.length} ${filteredEntries.length === 1 ? 'entry' : 'entries'}`}
-                </Text>
-                <Text style={s.summaryLatest} numberOfLines={1}>
-                  {'Latest: '}
-                  <Text style={s.summaryEmphasis}>
-                    {formatBodyweightValue(filteredEntries[0].weight_value, unit)} {unit}
-                  </Text>
-                  {' on '}
-                  {formatDate(filteredEntries[0].logged_at)}
-                </Text>
-              </View>
-            )}
-          </View>
-        ) : (
-          <View style={s.headerContent}>
-            <Text style={[s.columnLabel, s.col1]}>Weight</Text>
-            <Text style={[s.columnLabel, s.col2, s.columnLabelCenter]}>Change</Text>
-            <View style={[s.col3, s.dateHeaderGroup]} testID="weight-history-date-header">
-              <Pressable
-                onPress={toggleDateFilter}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel="Filter by date range"
-                testID="weight-history-date-filter-header"
-                style={s.dateHeaderFilterBtn}
-              >
-                <MaterialIcons
-                  name="date-range"
-                  size={18}
-                  color={(hasRange || showDateFilter) ? (kua ? kua.primary : colors.accent) : (kua ? kua.onSurfaceVariant : colors.textMuted)}
-                  accessible={false}
-                />
-              </Pressable>
-              <Text style={[s.columnLabel, s.columnLabelRight]}>Date</Text>
-            </View>
-          </View>
-        )}
-        <View style={s.controlCell}>
-          {collapsed && (
-            <Pressable
-              onPress={toggleDateFilter}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Filter by date range"
-              style={s.controlIconBtn}
-            >
-              <MaterialIcons
-                name="date-range"
-                size={18}
-                color={(hasRange || showDateFilter) ? (kua ? kua.primary : colors.accent) : (kua ? kua.onSurfaceVariant : colors.textMuted)}
-                accessible={false}
-              />
-            </Pressable>
-          )}
-          <MaterialIcons
-            name={collapsed ? 'expand-more' : 'expand-less'}
-            size={18}
-            color={kua ? kua.onSurfaceVariant : colors.textMuted}
-            accessible={false}
-          />
+    <Panel testID="weight-history-panel">
+      <View style={s.headerRow}>
+        <MonoLabel numberOfLines={1}>{`History · ${filteredEntries.length}`}</MonoLabel>
+        <View style={s.headerActions}>
+          <Pressable
+            onPress={toggleDateFilter}
+            accessibilityRole="button"
+            accessibilityLabel="Filter by date range"
+            accessibilityState={{ selected: filterActive }}
+            testID="weight-history-date-filter-header"
+            style={s.iconButton}
+          >
+            <MaterialIcons
+              name="filter-list"
+              size={22}
+              color={filterActive ? (kua ? kua.primary : colors.accent) : mutedInk}
+              accessible={false}
+            />
+          </Pressable>
+          <Pressable
+            onPress={toggleCollapsed}
+            accessibilityRole="button"
+            accessibilityLabel={collapsed ? 'Expand history' : 'Collapse history'}
+            accessibilityState={{ expanded: !collapsed }}
+            aria-expanded={!collapsed}
+            testID="weight-history-toggle"
+            style={s.iconButton}
+          >
+            <MaterialIcons name={collapsed ? 'expand-more' : 'expand-less'} size={22} color={mutedInk} accessible={false} />
+          </Pressable>
         </View>
-      </Pressable>
+      </View>
 
       <WeightHistoryFilters
         visible={!collapsed && showDateFilter}
@@ -197,7 +157,16 @@ function WeightHistoryListImpl({
         setShowToPicker={setShowToPicker}
       />
 
-      {!collapsed && visibleEntries.map((entry, index) => {
+      {filteredEntries.length > 0 ? (
+        <View style={s.columnsRow}>
+          <Text style={[s.columnLabel, s.col1]}>Weight</Text>
+          <Text style={[s.columnLabel, s.col2]}>Change</Text>
+          <Text style={[s.columnLabel, s.col3]} testID="weight-history-date-header">Date</Text>
+          <View style={s.controlCell} />
+        </View>
+      ) : null}
+
+      {visibleEntries.map((entry, index) => {
         const nextEntry = filteredEntries[index + 1];
         const delta = nextEntry ? entry.weight_value - nextEntry.weight_value : null;
         let severity = getWeightDeltaSeverity(delta);
@@ -205,52 +174,39 @@ function WeightHistoryListImpl({
           if (goalInfo.direction === 'loss' && delta < 0) severity = 'normal';
           else if (goalInfo.direction === 'gain' && delta > 0) severity = 'normal';
         }
-        // Only the last row of the whole card (no "Show more" row beneath it)
-        // drops its bottom border; the last row of a window keeps it so the
-        // affordance below reads as a distinct trailing row.
-        const isLast = index === visibleEntries.length - 1 && remainingCount === 0;
         const isActive = editingId === entry.id;
+        const valueText = `${formatBodyweightValue(entry.weight_value, unit)} ${unit}`;
 
         return (
-          <View
-            key={entry.id}
-            style={[
-              s.rowContainer,
-              isActive && s.activeRow,
-              isLast && s.lastRow,
-            ]}
-          >
+          <View key={entry.id} style={[s.rowContainer, isActive && s.activeRow]}>
             <Pressable
               onPress={() => handleEditEntry(entry)}
-              style={({ pressed }) => [
-                s.rowMain,
-                pressed && styles.historyRowPressed,
-              ]}
+              accessibilityRole="button"
+              accessibilityLabel={`Edit weigh-in ${valueText}, ${formatDate(entry.logged_at)}`}
+              style={({ pressed }) => [s.rowMain, pressed && styles.historyRowPressed]}
             >
-              <View style={s.rowCells}>
-                <View style={s.col1}>
-                  <Text style={s.value}>{formatBodyweightValue(entry.weight_value, unit)} {unit}</Text>
-                  {entry.note ? (
-                    <Text style={styles.rowNote} numberOfLines={1}>{entry.note}</Text>
-                  ) : null}
-                </View>
-                <View style={s.col2}>
-                  {delta !== null ? (
-                    <Text style={[
-                      styles.rowDelta,
-                      severity === 'notable' && styles.deltaNotable,
-                      severity === 'spike' && styles.deltaSpike,
-                      severity === 'outlier' && styles.deltaOutlier,
-                    ]}>
-                      {formatDelta(displayWeight(delta, unit))}
-                    </Text>
-                  ) : (
-                    <Text style={styles.rowDeltaEmpty}>N/A</Text>
-                  )}
-                </View>
-                <View style={s.col3}>
-                  <Text style={s.dateValue}>{formatDate(entry.logged_at)}</Text>
-                </View>
+              <View style={s.col1}>
+                <Text style={s.value} numberOfLines={1}>{valueText}</Text>
+                {entry.note ? (
+                  <Text style={styles.rowNote} numberOfLines={1}>{entry.note}</Text>
+                ) : null}
+              </View>
+              <View style={s.col2}>
+                {delta !== null ? (
+                  <Text style={[
+                    styles.rowDelta,
+                    severity === 'notable' && styles.deltaNotable,
+                    severity === 'spike' && styles.deltaSpike,
+                    severity === 'outlier' && styles.deltaOutlier,
+                  ]}>
+                    {formatDelta(displayWeight(delta, unit))}
+                  </Text>
+                ) : (
+                  <Text style={styles.rowDeltaEmpty}>N/A</Text>
+                )}
+              </View>
+              <View style={s.col3}>
+                <Text style={s.dateValue}>{formatDate(entry.logged_at)}</Text>
               </View>
             </Pressable>
             <Pressable
@@ -259,7 +215,6 @@ function WeightHistoryListImpl({
                 s.controlCellRow,
                 pressed && deleteStyles.deleteAffordancePressed,
               ]}
-              hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel="Delete weight entry"
             >
@@ -269,30 +224,37 @@ function WeightHistoryListImpl({
         );
       })}
 
-      {!collapsed && remainingCount > 0 && (
+      {remainingCount > 0 && (
         <Pressable
-          onPress={() => setWindowSize(w => w + HISTORY_WINDOW_SIZE)}
+          onPress={() => {
+            if (collapsed) {
+              setCollapsed(false);
+              setWindowSize(HISTORY_WINDOW_SIZE);
+            } else {
+              setWindowSize(w => w + HISTORY_WINDOW_SIZE);
+            }
+          }}
           style={({ pressed }) => [
             styles.loadMoreRow,
             pressed && styles.loadMorePressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel="Show more weight entries"
+          accessibilityLabel={collapsed ? 'Show more weight entries' : `Show more weight entries, ${remainingCount} remaining`}
           testID="weight-history-show-more"
         >
           <Text style={styles.loadMoreText}>
-            {`Show more (${remainingCount} remaining)`}
+            {collapsed ? 'Show more weight entries' : `Show more weight entries (${remainingCount} remaining)`}
           </Text>
         </Pressable>
       )}
 
-      {!collapsed && filteredEntries.length === 0 && entries.length === 0 && (
+      {filteredEntries.length === 0 && entries.length === 0 && (
         <Text style={styles.emptyText}>No weight entries yet.</Text>
       )}
-      {!collapsed && filteredEntries.length === 0 && entries.length > 0 && (
+      {filteredEntries.length === 0 && entries.length > 0 && (
         <Text style={styles.emptyText}>No entries in this range.</Text>
       )}
-    </View>
+    </Panel>
   );
 }
 
