@@ -96,9 +96,12 @@ const startTimer = async (s, sec = 90) => {
         await s.wait(31500);
         await s.click({ label: 'Rest timer, rest over' });
       });
-      await state({ theme }, `editor-scrolled-pill-${theme}.png`, 'Editor scrolled past the header: docked control hands off to the app-shell pill', async (s) => {
+      await state({ theme }, `editor-docked-visible-${theme}.png`, 'Editor at rest: control docked in the tool row, no pill', startTimer);
+      // 390x560 (bounded extra viewport): the only way the fixture editor
+      // scrolls far enough to take the tool row off screen.
+      await state({ theme, viewport: { width: 390, height: 560 } }, `editor-scrolled-pill-${theme}.png`, 'Short window, editor scrolled past the tool row: control hands off to the app-shell pill', async (s) => {
         await startTimer(s);
-        await s.scrollTo(400, { settle: 1200 });
+        await s.scrollTo('end', { settle: 1200 });
       });
       await state({ theme, insets: { top: 47, bottom: 34 } }, `editor-safe-area-${theme}.png`, 'Inset device: docked control and panel within the safe area', async (s) => {
         await startTimer(s);
