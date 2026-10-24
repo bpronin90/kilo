@@ -18,4 +18,14 @@ function recoveryPending(storage, { now }) {
   return { ...storage, 'kilo.auth.recoveryPending': String(now) };
 }
 
-module.exports = { pendingChange, recoveryPending };
+// Both reminders stored as enabled (production record shapes from
+// mobile/storage/entries/settings), so Settings renders their time rows.
+function remindersOn(storage, { J }) {
+  return {
+    ...storage,
+    kilo_weigh_in_reminder: J({ enabled: true, hour: 7, minute: 0 }),
+    kilo_workout_reminder: J({ enabled: true, hour: 17, minute: 30, fallbackWeekdays: [1, 2, 4, 5] }),
+  };
+}
+
+module.exports = { pendingChange, recoveryPending, remindersOn };

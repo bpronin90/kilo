@@ -1,6 +1,6 @@
 # R9 (#1608) visual evidence — More and Settings grouped panels
 
-- **Rendered commits:** More menu states (`more-*`, `back-to-menu-*`) at `547babc22a3a9a41061453be4668b3b2bcf8ec90` (App Guide row title restored to production casing); Settings, destination, recovery and Cloud Sync anchor states at `a8344a26e558606169db8e36b6d22a9e32ad9ff1` — 547babc changes only that menu-row title, which those states do not show. Real app Expo web export, not prototype HTML. Other commits add only docs, evidence and the changelog fragment.
+- **Rendered commits:** More menu states (`more-*`, `back-to-menu-*`) at `547babc22a3a9a41061453be4668b3b2bcf8ec90` (App Guide row title restored to production casing); `more-sync-error-*`, `settings-reminder-times-*` and `settings-reminder-web-*` also at 547babc; other Settings, destination, recovery and Cloud Sync anchor states at `a8344a26e558606169db8e36b6d22a9e32ad9ff1` — 547babc changes only that menu-row title, which those states do not show. Real app Expo web export, not prototype HTML. Other commits add only docs, evidence and the changelog fragment.
 - **Viewport:** 390×844 @2x via the shared harness (`../capture.cjs`, read-only); issue-local overlays in `fixtures.cjs`.
 - **Themes:** every state in hard-dark and clay-light; More and Settings first screens also in grass-light and clay-dark (`*-first-*`, full page).
 - **References:** `docs/design/app-redesign-v3/shots/hybrid/` more-hard-dark, more-clay-light, full-more-hard-dark, state-more-settings-hard-dark.
@@ -23,15 +23,15 @@ cd .. && KILO_RENDERED_COMMIT=<commit> \
   node docs/evidence/app-redesign-v3/r9/capture.cjs <scratch>/dist /tmp/kilo-review-tools/node_modules <scratch>/r9work
 ```
 
-All 60 states captured without a step failure (full run at a8344a2; `more,back` rerun at 547babc with the same command plus that `only` filter). `theme_check` reads false only on `settings-court-*` / `settings-mode-*` shots whose court or mode differs from the seeded one, because those states change the theme on purpose.
+All 64 states captured without a step failure (full run at a8344a2; `more,back` and `more-sync-error,settings-reminder` reruns at 547babc with the same command plus that `only` filter). `theme_check` reads false only on `settings-court-*` / `settings-mode-*` shots whose court or mode differs from the seeded one, because those states change the theme on purpose.
 
-Raw Playwright on `session.page` (the shared API has no hook for these): signed-out drops the seeded `sb-mockproj-auth-token` and reloads; recovery seeds `kilo.auth.recoveryPending` (overlay) and boots on `/#error=access_denied&error_description=…`; failed save makes `localStorage.setItem('kilo_fatigue_tracking_enabled', …)` throw.
+Raw Playwright on `session.page`/`session.ctx` (the shared API has no hook for these): sync error routes mockproj `rest/v1` writes (not the preflight RPC) to 500 after Data and backup opens, then presses Upload Local History; signed-out drops the seeded `sb-mockproj-auth-token` and reloads; recovery seeds `kilo.auth.recoveryPending` (overlay) and boots on `/#error=access_denied&error_description=…`; failed save makes `localStorage.setItem('kilo_fatigue_tracking_enabled', …)` throw.
 
 ## Degradation, failures and preserved capabilities
 
 - Account row honesty: signed in with no sync pass shows "Signed in · Ready to sync" (`more-signed-in`); a queued local change shows the warning tone "1 pending local change" (`more-sync-pending`); signed out shows "Not signed in" with no sync claim, Account row kept (`more-signed-out`).
-- **Limitation, sync error:** the mock backend could not be made to record a failed sync pass from the web export (Sync Now with REST answering 500 left the summary at pending), so no error render is included. The error tone (`hasFailed` → "Signed in · <statusLabel>" in the error colour, `sync-problem` icon, failure winning over an older success) is covered by `mobile/tests/redesign-more-settings.test.js`. No sync code was changed.
-- **Limitation, reminder times:** reminders are native-only; on web, switching one on shows the production inline failure ("Reminders need the mobile app…") instead of the time rows (`settings-reminder-times`). The time rows keep their unchanged markup inside the flat block; `reminder-settings-card.test.js` (28 tests) covers them.
+- Sync error: with the harness preflight passing and mockproj data writes answering 500, Upload Local History records a failed pass; the row reads "Signed in · Last sync failed" in the error tone with the `sync-problem` icon (`more-sync-error`).
+- Reminder times: both reminders stored as enabled (`remindersOn` overlay) render the weigh-in "Reminder time" and "Nudge time" rows inside the flat panel (`settings-reminder-times`). Switching one on in the web build shows production's inline "Reminders need the mobile app…" notice (`settings-reminder-web`); reminders are native-only.
 - Failed Fatigue tracking save: switch keeps the stored value, banner with Retry inside the row (`settings-toggle-failed`).
 - All eight destinations open with unchanged content (`dest-*`); back from each returns to the grouped menu (`back-to-menu`, asserted per destination).
 - Expired password-recovery link routes to Account → Set New Password with the readable error (`recovery-error`).
@@ -71,6 +71,8 @@ Raw Playwright on `session.page` (the shared API has no hook for these): signed-
 | [more-signed-in-hard-dark](after/more-signed-in-hard-dark.png) | [full-more-hard-dark.png](../../../design/app-redesign-v3/shots/hybrid/full-more-hard-dark.png) | Pass |
 | [more-signed-out-clay-light](after/more-signed-out-clay-light.png) | [full-more-hard-dark.png](../../../design/app-redesign-v3/shots/hybrid/full-more-hard-dark.png) | Pass |
 | [more-signed-out-hard-dark](after/more-signed-out-hard-dark.png) | [full-more-hard-dark.png](../../../design/app-redesign-v3/shots/hybrid/full-more-hard-dark.png) | Pass |
+| [more-sync-error-clay-light](after/more-sync-error-clay-light.png) | [full-more-hard-dark.png](../../../design/app-redesign-v3/shots/hybrid/full-more-hard-dark.png) | Pass |
+| [more-sync-error-hard-dark](after/more-sync-error-hard-dark.png) | [full-more-hard-dark.png](../../../design/app-redesign-v3/shots/hybrid/full-more-hard-dark.png) | Pass |
 | [more-sync-pending-clay-light](after/more-sync-pending-clay-light.png) | [full-more-hard-dark.png](../../../design/app-redesign-v3/shots/hybrid/full-more-hard-dark.png) | Pass |
 | [more-sync-pending-hard-dark](after/more-sync-pending-hard-dark.png) | [full-more-hard-dark.png](../../../design/app-redesign-v3/shots/hybrid/full-more-hard-dark.png) | Pass |
 | [recovery-error-clay-light](after/recovery-error-clay-light.png) | [full-more-hard-dark.png](../../../design/app-redesign-v3/shots/hybrid/full-more-hard-dark.png) | Pass |
@@ -97,6 +99,8 @@ Raw Playwright on `session.page` (the shared API has no hook for these): signed-
 | [settings-multiplier-reset-hard-dark](after/settings-multiplier-reset-hard-dark.png) | [state-more-settings-hard-dark.png](../../../design/app-redesign-v3/shots/hybrid/state-more-settings-hard-dark.png) | Pass |
 | [settings-reminder-times-clay-light](after/settings-reminder-times-clay-light.png) | [state-more-settings-hard-dark.png](../../../design/app-redesign-v3/shots/hybrid/state-more-settings-hard-dark.png) | Pass |
 | [settings-reminder-times-hard-dark](after/settings-reminder-times-hard-dark.png) | [state-more-settings-hard-dark.png](../../../design/app-redesign-v3/shots/hybrid/state-more-settings-hard-dark.png) | Pass |
+| [settings-reminder-web-clay-light](after/settings-reminder-web-clay-light.png) | [state-more-settings-hard-dark.png](../../../design/app-redesign-v3/shots/hybrid/state-more-settings-hard-dark.png) | Pass |
+| [settings-reminder-web-hard-dark](after/settings-reminder-web-hard-dark.png) | [state-more-settings-hard-dark.png](../../../design/app-redesign-v3/shots/hybrid/state-more-settings-hard-dark.png) | Pass |
 | [settings-toggle-failed-clay-light](after/settings-toggle-failed-clay-light.png) | [state-more-settings-hard-dark.png](../../../design/app-redesign-v3/shots/hybrid/state-more-settings-hard-dark.png) | Pass |
 | [settings-toggle-failed-hard-dark](after/settings-toggle-failed-hard-dark.png) | [state-more-settings-hard-dark.png](../../../design/app-redesign-v3/shots/hybrid/state-more-settings-hard-dark.png) | Pass |
 | [settings-toggles-on-clay-light](after/settings-toggles-on-clay-light.png) | [state-more-settings-hard-dark.png](../../../design/app-redesign-v3/shots/hybrid/state-more-settings-hard-dark.png) | Pass |

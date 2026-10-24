@@ -5,14 +5,15 @@
 //
 // The shared harness is used unchanged. Three states need raw Playwright on
 // `session.page` (documented in README.md): signed-out (drop the seeded mock
-// session, reload), password recovery (boot on an #error= callback URL) and a
+// session, reload), sync error (data writes answer 500, then Upload Local
+// History), password recovery (boot on an #error= callback URL) and a
 // failed feature-toggle save (make that one localStorage write throw). Reloads
 // keep the seeded storage (the harness seeds once per session).
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { launch, FIRST_SCREEN_THEMES, STATE_THEMES } = require('../capture.cjs');
-const { pendingChange, recoveryPending } = require('./fixtures.cjs');
+const { pendingChange, recoveryPending, remindersOn } = require('./fixtures.cjs');
 
 const [dist, pw, workArg, onlyArg] = process.argv.slice(2);
 const only = onlyArg ? onlyArg.split(',').filter(Boolean) : null;
@@ -73,6 +74,13 @@ const DESTINATIONS = [
         await toMore(s);
       });
       await state({ theme, overlay: pendingChange }, `more-sync-pending-${theme}.png`, 'Queued local change: status from the shell dirty-queue scan', async () => {});
+      await state({ theme, overlay: pendingChange }, `more-sync-error-${theme}.png`, 'Sync error: Upload Local History with mockproj data writes answering 500 (preflight passes); status reads the recorded failure', async (s) => {
+        await s.click({ label: 'Data and Backup' }, { settle: 1500 });
+        await s.ctx.route('**/rest/v1/**', (route) => (route.request().method() === 'OPTIONS' || route.request().url().includes('/rpc/health_sync_preflight') ? route.fallback() : route.fulfill({ status: 500, headers: { 'access-control-allow-origin': '*', 'content-type': 'application/json' }, body: '{"message":"boom"}' })));
+        await s.page.evaluate(() => { const b = [...document.querySelectorAll('[role=button]')].find((x) => x.innerText.trim() === 'Upload Local History'); b.scrollIntoView(); b.click(); });
+        await s.wait(5000);
+        await back(s);
+      });
       for (const [key, label] of DESTINATIONS) {
         await state({ theme }, `dest-${key}-${theme}.png`, `Destination: ${label} (sub-screen content unchanged)`, async (s) => {
           await s.click({ label }, { settle: 1000 });
@@ -90,6 +98,11 @@ const DESTINATIONS = [
         await openSettings(s);
         for (const l of ['Fatigue tracking', 'Deload mode', 'Progression suggestions']) await s.click({ label: l }, { settle: 400 });
       });
+      await state({ theme }, `settings-reminder-web-${theme}.png`, 'Switching a reminder on in the web build: production inline notice', async (s) => {
+        await openSettings(s);
+        await s.click({ label: 'Daily weigh-in reminder' }, { settle: 900 });
+        await s.page.getByText('REMINDERS', { exact: true }).scrollIntoViewIfNeeded();
+      });
       await state({ theme }, `settings-toggle-failed-${theme}.png`, 'Failed Fatigue tracking save: banner with Retry, switch keeps the stored value', async (s) => {
         await openSettings(s);
         await s.page.evaluate(() => {
@@ -101,11 +114,10 @@ const DESTINATIONS = [
         });
         await s.click({ label: 'Fatigue tracking' }, { settle: 900 });
       });
-      await state({ theme }, `settings-reminder-times-${theme}.png`, 'Reminders: switching on shows the time rows (or the inline failure web reports)', async (s) => {
+      await state({ theme, overlay: remindersOn }, `settings-reminder-times-${theme}.png`, 'Reminders stored on: weigh-in and nudge time rows', async (s) => {
         await openSettings(s);
-        await s.click({ label: 'Daily weigh-in reminder' }, { settle: 900 });
-        await s.click({ label: 'Workout day nudge' }, { settle: 900 });
-        await s.page.getByText('REMINDERS', { exact: true }).scrollIntoViewIfNeeded();
+        await s.page.getByText('REMINDERS', { exact: true }).locator('visible=true').first().evaluate((el) => el.scrollIntoView({ block: 'start' }));
+        await s.wait(500);
       });
       for (const [court, l] of [['hard', 'Use Hard Court'], ['clay', 'Use Clay Court'], ['grass', 'Use Grass Court']]) {
         await state({ theme }, `settings-court-${court}-${theme}.png`, `Appearance: ${court} court selected`, async (s) => {
