@@ -124,15 +124,17 @@ chars and show the redirect URI host):
   Cloud**, not data that only exists on a device;
 - data sent to the client is handled under that provider's terms; Kilo cannot
   recall data already sent;
-- how to disconnect (Account → Connected AI clients) and that signing out of Kilo
-  does not disconnect.
+- how to disconnect (Account → Connected AI clients); and that signing out of
+  Kilo signs connected clients out too, but does **not** disconnect them: the
+  connection stays listed, and the client can reconnect through the browser flow.
 
 ### 4.2 Connection management
 
 Account → Connected AI clients: `listGrants()` and, after an explicit
 confirmation, `revokeGrant({ clientId })`. Success appears only after the call
-resolves; failure keeps the row and shows a retry. Copy states that sign-out is
-separate and does not disconnect.
+resolves; failure keeps the row and shows a retry. Copy distinguishes the two
+actions. Sign-out ends client sessions (§5.2) but keeps the connection; Disconnect
+revokes it.
 
 ## 5. Identity and authorization on every request (#1625)
 
@@ -180,7 +182,7 @@ added**, so Kilo cannot drift from Auth.
 | Disconnect (`revokeGrant`) | Auth deletes that client's sessions and refresh tokens (F5) | gate: session row/refresh token absent → `session_inactive`, including for an unexpired access token |
 | Access token expiry | — | step 2 |
 | Refresh token revoked/reused | Auth revokes the token family | refresh fails; the gate sees no live refresh token for the session |
-| Kilo mobile sign-out | ends **only the app's own session** | does not touch the client's session; **not revocation** (stated in the UI) |
+| Kilo app sign-out | `useAuthSession` calls `auth.signOut()` with no scope; Supabase's default scope is **global** and deletes all of the user's sessions, OAuth sessions included | the client's next request is `session_inactive`. This is **not revocation**: the OAuth grant remains in `listGrants()`, and the client can re-authorize through the browser flow, possibly without a fresh consent screen (P5). Kilo keeps this existing behavior; the MVP does not change auth-session code. #1629 must not use sign-out as revocation proof. |
 | Sign out everywhere / password change | Auth deletes all user sessions | `session_inactive` |
 | Health-consent withdrawal | `consent_state.status` leaves `granted` | `consent_required` at the HTTP gate and inside every page RPC, in every gate mode |
 | Regrant after withdrawal | new `granted_at` | sessions created before it are `consent_stale`; the client must run the authorization flow again |
@@ -463,6 +465,7 @@ exact version.
 | OAuth token calls a page RPC directly past its quota, or during a limiter outage | §6.3 in-RPC quota | `rate_limited` / statement aborted; no rows |
 | Cross-user arguments/cursor | schema / RLS | `invalid_arguments`, or only own rows |
 | Account deleted | 5 | 401 |
+| User signs out of the Kilo app | 5 | 401 `session_inactive` (global sign-out ended the session); grant still listed; reconnect via browser flow |
 | Consent/grant lookup outage | 5 | 503, no query |
 | Limiter outage | 1/4 | 429 (deny) |
 | OAuth token calls `consent_withdraw` / writes / `account-delete` | §6.2 | denied |
@@ -511,6 +514,7 @@ for development only. HTTPS-only clients need `kilo-mcp-staging`.
 - https://supabase.com/docs/guides/auth/oauth-server/oauth-flows
 - https://supabase.com/docs/guides/auth/oauth-server/token-security
 - https://supabase.com/docs/guides/auth/signing-keys
+- https://supabase.com/docs/reference/javascript/auth-signout (default scope `global`)
 - `mobile/node_modules/@supabase/auth-js/dist/module/lib/types.d.ts` (2.108.2): `listGrants`, `revokeGrant`, `skipBrowserRedirect`
 - Repository: `supabase/migrations/20260615120000_note_first_schema.sql`,
   `20260714120001_consent_schema.sql`, `20260926120000_restore_credentials_auth_lifecycle.sql`,
