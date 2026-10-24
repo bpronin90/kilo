@@ -1,6 +1,6 @@
 // R7 (#1606) issue-local fixture overlays for the shared harness
 // (../fixtures.cjs is frozen). Each overlay is (storage, helpers) => storage.
-const { J, MAIN_NOTE_ID } = require('../fixtures.cjs');
+const { J, MAIN_NOTE_ID, RECOVERY_BASELINE } = require('../fixtures.cjs');
 
 // A short current routine that exercises the rows the Log presentation must
 // keep visible: a skipped session, bodyweight, kg-converted load, timed sets
@@ -31,4 +31,54 @@ function deloadOn(storage) {
   return storage;
 }
 
-module.exports = { EDGE_ROUTINE, edgeRows, deloadOn };
+// Valid timed-set declaration per the production parser: the header declares
+// duration, and each bare integer row is therefore rendered in seconds.
+function timedRows(storage) {
+  const notes = JSON.parse(storage.kilo_workout_notes);
+  const main = notes.find((n) => n.id === MAIN_NOTE_ID);
+  main.raw_text = [
+    'Monday — Full Body', '+Strength',
+    '-Plank 3x30 sec', '30', '30', '45',
+    '-Pull Up', 'BW 8,8,7', 'BW 9,8,8',
+  ].join('\n');
+  storage.kilo_workout_notes = J(notes);
+  return storage;
+}
+
+// No active block, with one valid completed block and completed linked week.
+// This reaches the compact Recovery entry and its completed-history manager.
+function completedRecovery(storage, { isoAgo }) {
+  const started = isoAgo(44);
+  const completed = isoAgo(30);
+  const noteId = 'wn_2026-09-21_recovery-w1';
+  const notes = JSON.parse(storage.kilo_workout_notes);
+  notes.push({
+    id: noteId, title: 'Recovery — Week 1',
+    raw_text: 'Monday — Upper\n-Bench Press\n135 8,8,8',
+    saved_at: started, created_at: started, updated_at: completed,
+  });
+  storage.kilo_workout_notes = J(notes);
+  storage.kilo_recovery_blocks = J([{
+    id: 'rb_r7_done', baseline_note_id: MAIN_NOTE_ID,
+    baseline_note_title: 'Upper / Lower — Block 3', baseline: RECOVERY_BASELINE,
+    include_in_normal_analytics: false, reason: 'Shoulder strain',
+    started_at: started, completed_at: completed, saved_at: started,
+    updated_at: completed, deleted_at: null,
+  }]);
+  storage.kilo_recovery_block_weeks = J([{
+    id: 'rw_r7_done', block_id: 'rb_r7_done', note_id: noteId,
+    week_number: 1, completed_at: completed, saved_at: started,
+    updated_at: completed, deleted_at: null,
+  }]);
+  return storage;
+}
+
+function notesUnreadable(storage) {
+  storage.kilo_workout_notes = '{not json';
+  return storage;
+}
+
+module.exports = {
+  EDGE_ROUTINE, edgeRows, deloadOn, timedRows,
+  completedRecovery, notesUnreadable,
+};
