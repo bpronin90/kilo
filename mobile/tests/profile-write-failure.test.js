@@ -133,7 +133,7 @@ describe('Settings weight unit — failed save is reported in place', () => {
 
     expect(getWeightUnit()).toBe('kg');
     const kgTab = pressableByLabel(component.root, 'Show weights in kilograms');
-    expect(kgTab.props.accessibilityState.selected).toBe(true);
+    expect(kgTab.props.accessibilityState.checked).toBe(true);
   });
 
   test('Retry is reachable from the report and re-attempts the same unit', async () => {
