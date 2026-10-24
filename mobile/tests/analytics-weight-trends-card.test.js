@@ -19,6 +19,8 @@ function selectPoint(root, point) {
   render.act(() => { charts(root)[0].props.onSelect(point); });
 }
 
+const plotOf = (root) => charts(root)[0].props.weightPlot;
+
 function pickWindow(root, key) {
   render.act(() => { root.findByProps({ testID: `weight-trends-window-${key}` }).props.onPress(); });
 }
@@ -31,27 +33,40 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 const BASE_SUMMARY = {
   latestWeightValue: '185',
   showUnit: true,
-  weightCount: '10',
+  weightCount: '8',
   avg7: '184.2 lb',
   avg30: '183.0 lb',
   paceFlag: null,
   paceLevel: null,
 };
 
-const ROLLING7 = [
-  { value: 183.0, label: '05/20', unit: 'lb' },
-  { value: 183.5, label: '05/21', unit: 'lb' },
-  { value: 184.0, label: '05/22', unit: 'lb' },
-  { value: 184.2, label: '05/23', unit: 'lb' },
-  { value: 184.5, label: '05/24', unit: 'lb' },
-  { value: 184.8, label: '05/25', unit: 'lb' },
-  { value: 185.0, label: '05/26', unit: 'lb' },
-];
+// Eight weigh-in dates, newest first, as AnalyticsScreen passes them (lb).
+const DATES = ['2026-05-26', '2026-05-25', '2026-05-24', '2026-05-23', '2026-05-22', '2026-05-21', '2026-05-20', '2026-05-19'];
+const ENTRIES = DATES.map((date, i) => ({
+  id: `w${i}`,
+  date,
+  weight_value: 185 - i * 0.5,
+  note: i === 5 ? 'Morning, fasted' : '',
+}));
+const series = (base, step) => [...DATES].reverse().map((date, i) => ({
+  value: Number((base + i * step).toFixed(1)),
+  label: date.split('-').slice(1).join('/'),
+  unit: 'lb',
+}));
+const ROLLING7 = series(181.5, 0.5);
+const ROLLING30 = series(182.0, 0.4);
 
-const ROLLING30 = [
-  ...ROLLING7,
-  { value: 182.0, label: '05/19', unit: 'lb' },
-];
+const TRENDS = {
+  currentWeight: 185,
+  avg7: 184.2,
+  avg30: 183.0,
+  priorAvg7: 184.9,
+  priorAvg30: 185.3,
+  recentDateWeight: 185,
+  priorDateWeight: 184.5,
+};
+
+const GOAL = { direction: 'loss', target: 175, met: false, info: { direction: 'loss', required_weekly_pace: -1.25, warnings: [] } };
 
 function setup(overrides = {}) {
   let component;
@@ -63,6 +78,9 @@ function setup(overrides = {}) {
         rolling7={ROLLING7}
         rolling30={ROLLING30}
         isWeightLoading={false}
+        entries={ENTRIES}
+        trends={TRENDS}
+        goalContext={null}
         {...overrides}
       />
     );
@@ -85,178 +103,239 @@ afterEach(() => {
   __resetWeightUnitForTests();
 });
 
-describe('AnalyticsWeightTrendsCard — default state', () => {
-  test('shows Latest weigh-in label and current summary values', () => {
-    const component = setup();
-    const root = component.root;
+describe('AnalyticsWeightTrendsCard — Latest weigh-in header', () => {
+  test('shows the fixed Latest weigh-in metric with its date and change vs the previous weigh-in', () => {
+    const root = setup().root;
     expect(hasText(root, 'Latest weigh-in')).toBe(true);
     expect(hasText(root, '185')).toBe(true);
-    expect(hasText(root, '184.2 lb')).toBe(true);
-    expect(hasText(root, '183.0 lb')).toBe(true);
+    expect(hasText(root, '05-26-2026')).toBe(true);
+    expect(hasText(root, 'vs previous weigh-in')).toBe(true);
+    const change = root.findByProps({ testID: 'bodyweight-latest-change' });
+    expect(change.props.text).toBe('+0.5');
+  });
+
+  test('selecting a chart point never replaces the Latest header or the averages', () => {
+    const root = setup().root;
+    const before = JSON.stringify(findAllText(root));
+    selectPoint(root, plotOf(root).points[2]);
+    expect(JSON.stringify(findAllText(root))).toBe(before);
+    expect(hasText(root, 'Selected')).toBe(false);
+    selectPoint(root, null);
+    expect(JSON.stringify(findAllText(root))).toBe(before);
+  });
+
+  test('shows the averages with their signed changes', () => {
+    const root = setup().root;
+    expect(hasText(root, '7-day avg')).toBe(true);
+    expect(hasText(root, '30-day avg')).toBe(true);
+    expect(hasText(root, '184.2')).toBe(true);
+    expect(hasText(root, '183.0')).toBe(true);
+    expect(root.findByProps({ testID: 'bodyweight-avg-7-change' }).props.text).toBe('-0.7');
+    expect(root.findByProps({ testID: 'bodyweight-avg-30-change' }).props.text).toBe('-2.3');
+  });
+
+  test('a first weigh-in has no change and no averages to compare', () => {
+    const root = setup({
+      entries: [ENTRIES[0]],
+      rolling7: [ROLLING7[0]],
+      rolling30: [ROLLING30[0]],
+      trends: { ...TRENDS, priorAvg7: null, priorAvg30: null, priorDateWeight: null },
+    }).root;
+    expect(root.findAllByProps({ testID: 'bodyweight-latest-change' })).toHaveLength(0);
+    expect(root.findAllByProps({ testID: 'bodyweight-avg-7-change' })).toHaveLength(0);
+    expect(charts(root)).toHaveLength(0);
+  });
+
+  test('no weigh-ins: N/A value, no metadata, no goal decorations', () => {
+    const root = setup({
+      entries: [],
+      rolling7: [],
+      rolling30: [],
+      trends: null,
+      weightSummary: { ...BASE_SUMMARY, latestWeightValue: 'N/A', showUnit: false, weightCount: '0' },
+    }).root;
+    expect(hasText(root, 'N/A')).toBe(true);
+    expect(root.findAllByProps({ testID: 'bodyweight-latest-meta' })).toHaveLength(0);
+    expect(root.findAllByProps({ testID: 'bodyweight-goal' })).toHaveLength(0);
+  });
+
+  test('Log or manage weight opens Weight', () => {
+    const onNavigate = jest.fn();
+    const root = setup({ onNavigate }).root;
+    render.act(() => { root.findByProps({ testID: 'bodyweight-log-weight' }).props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Weight');
   });
 });
 
-describe('AnalyticsWeightTrendsCard — selected date state', () => {
-  test('selecting a chart point updates the header to show selected date and rolling value', () => {
-    const component = setup();
-    const root = component.root;
+describe('AnalyticsWeightTrendsCard — goal-aware change tone', () => {
+  const toneOf = (root, id) => root.findByProps({ testID: id }).props.tone;
 
-    selectPoint(root, { value: 183.5, label: '05/21', unit: 'lb' });
-
-    expect(hasText(root, 'Selected · 05/21')).toBe(true);
-    expect(hasText(root, '183.5')).toBe(true);
-    expect(hasText(root, 'Latest weigh-in')).toBe(false);
+  test('cutting: falling toward the goal is positive, rising is negative', () => {
+    const root = setup({ goalContext: GOAL }).root;
+    expect(toneOf(root, 'bodyweight-avg-7-change')).toBe('positive');
+    const rising = setup({ goalContext: GOAL, trends: { ...TRENDS, avg7: 185.5, priorAvg7: 184.9 } }).root;
+    expect(toneOf(rising, 'bodyweight-avg-7-change')).toBe('negative');
   });
 
-  test('selecting a point updates 7-day and 30-day footer stats for that date', () => {
-    const component = setup();
-    const root = component.root;
-
-    selectPoint(root, { value: 183.5, label: '05/21', unit: 'lb' });
-
-    // Both rolling7 and rolling30 have 05/21 → both footer stats update
-    expect(hasText(root, '183.5 lb')).toBe(true);
+  test('bulking inverts the same movement', () => {
+    const bulk = { ...GOAL, direction: 'gain', target: 195, info: { ...GOAL.info, direction: 'gain', required_weekly_pace: 1 } };
+    const root = setup({ goalContext: bulk }).root;
+    expect(toneOf(root, 'bodyweight-avg-7-change')).toBe('negative');
   });
 
-  test('deselecting (onSelect null) restores the default summary', () => {
-    const component = setup();
-    const root = component.root;
-
-    selectPoint(root, { value: 183.5, label: '05/21', unit: 'lb' });
-    expect(hasText(root, 'Selected · 05/21')).toBe(true);
-
-    selectPoint(root, null);
-
-    expect(hasText(root, 'Latest weigh-in')).toBe(true);
-    expect(hasText(root, '185')).toBe(true);
-    expect(hasText(root, '184.2 lb')).toBe(true);
+  test('zero change is neutral and carries no arrow direction', () => {
+    const root = setup({ goalContext: GOAL, trends: { ...TRENDS, avg7: 184.9, priorAvg7: 184.9 } }).root;
+    const delta = root.findByProps({ testID: 'bodyweight-avg-7-change' });
+    expect(delta.props.text).toBe('0.0');
+    expect(delta.props.tone).toBeNull();
+    expect(delta.props.direction).toBe('flat');
   });
 
-  test('selecting a point only in rolling30 (not in rolling7) shows N/A for 7-day avg', () => {
-    const component = setup();
-    const root = component.root;
+  test('without a verified goal a bare fall/rise keeps the directional tone', () => {
+    const root = setup().root;
+    expect(toneOf(root, 'bodyweight-avg-7-change')).toBe('losing');
+  });
+});
 
-    // 05/19 exists only in rolling30, which the 30-day view draws
-    pickWindow(root, '30');
-    selectPoint(root, { value: 182.0, label: '05/19', unit: 'lb' });
-
-    expect(hasText(root, 'Selected · 05/19')).toBe(true);
-    // 7-day avg shows N/A since 05/19 is not in rolling7
-    expect(findAllText(root).some(s => s === 'N/A')).toBe(true);
-    // 30-day avg shows the matching value
-    expect(hasText(root, '182.0 lb')).toBe(true);
+describe('AnalyticsWeightTrendsCard — goal decorations', () => {
+  test('a verified active goal adds the dashed-line target, the mode/target/to-go cell and Target pace', () => {
+    const root = setup({ goalContext: GOAL }).root;
+    expect(plotOf(root).goal).toEqual({ value: 175, text: '175' });
+    expect(hasText(root, 'Goal · Cutting')).toBe(true);
+    expect(hasText(root, '10.0 to go')).toBe(true);
+    expect(hasText(root, 'Target pace')).toBe(true);
+    expect(hasText(root, '1.25')).toBe(true);
+    expect(hasText(root, 'lb/wk')).toBe(true);
   });
 
-  test('selected kg chart point keeps one decimal in the header', () => {
-    setWeightUnitPreference('kg');
-    const kgRolling7 = [
-      { value: 83.9, label: '05/20', unit: 'kg' },
-      { value: 84, label: '05/21', unit: 'kg' },
-    ];
-    const kgRolling30 = [
-      ...kgRolling7,
-      { value: 83.5, label: '05/19', unit: 'kg' },
-    ];
-    const component = setup({
-      weightSummary: {
-        latestWeightValue: '84.0',
-        showUnit: true,
-        weightCount: '10',
-        avg7: '84.0 kg',
-        avg30: '83.8 kg',
-        paceFlag: null,
-        paceLevel: null,
-      },
-      rolling7: kgRolling7,
-      rolling30: kgRolling30,
-    });
-    const root = component.root;
+  test.each([
+    ['no goal / ended / unverified (null context)', null],
+  ])('%s draws none of the goal decorations', (_n, goalContext) => {
+    const root = setup({ goalContext }).root;
+    expect(plotOf(root).goal).toBeNull();
+    expect(root.findAllByProps({ testID: 'bodyweight-goal' })).toHaveLength(0);
+    expect(root.findAllByProps({ testID: 'bodyweight-target-pace' })).toHaveLength(0);
+    expect(hasText(root, 'to go')).toBe(false);
+  });
 
-    selectPoint(root, { value: 84, label: '05/21', unit: 'kg' });
+  test('a met goal keeps the target but states no remaining distance', () => {
+    const root = setup({ goalContext: { ...GOAL, met: true } }).root;
+    expect(hasText(root, 'Goal · Cutting')).toBe(true);
+    expect(hasText(root, 'to go')).toBe(false);
+  });
 
-    expect(hasText(root, 'Selected · 05/21')).toBe(true);
-    expect(hasText(root, '84.0')).toBe(true);
-    expect(hasText(root, '84 kg')).toBe(false);
+  test('a maintain goal reads Maintain for the pace', () => {
+    const maintain = { ...GOAL, direction: 'maintain', target: 185, info: { ...GOAL.info, direction: 'maintain', required_weekly_pace: 0 } };
+    const root = setup({ goalContext: maintain }).root;
+    expect(hasText(root, 'Goal · Maintaining')).toBe(true);
+    expect(hasText(root, 'Maintain')).toBe(true);
+  });
+
+  test('a goal with no pace guidance shows a dash', () => {
+    const root = setup({ goalContext: { ...GOAL, info: { ...GOAL.info, required_weekly_pace: null } } }).root;
+    expect(findAllText(root).some(s => s === '-')).toBe(true);
   });
 });
 
 describe('AnalyticsWeightTrendsCard — pace badge elapsed period (#941)', () => {
   test('spike badge names the elapsed span alongside the fast-change label', () => {
-    const component = setup({
-      weightSummary: {
-        ...BASE_SUMMARY,
-        paceFlag: 'gain',
-        paceLevel: 'spike',
-        paceElapsedDays: 1,
-      },
-    });
-    const root = component.root;
+    const root = setup({
+      weightSummary: { ...BASE_SUMMARY, paceFlag: 'gain', paceLevel: 'spike', paceElapsedDays: 1 },
+    }).root;
     expect(hasText(root, '↑ Gaining fast')).toBe(true);
     expect(hasText(root, 'day-over-day')).toBe(true);
   });
 
   test('multi-day notable badge names the number of days', () => {
-    const component = setup({
-      weightSummary: {
-        ...BASE_SUMMARY,
-        paceFlag: 'loss',
-        paceLevel: 'notable',
-        paceElapsedDays: 5,
-      },
-    });
-    const root = component.root;
+    const root = setup({
+      weightSummary: { ...BASE_SUMMARY, paceFlag: 'loss', paceLevel: 'notable', paceElapsedDays: 5 },
+    }).root;
     expect(hasText(root, '↓ Losing fast')).toBe(true);
     expect(hasText(root, 'over 5 days')).toBe(true);
   });
+
+  test('the badge stays in the header while a point is selected', () => {
+    const root = setup({
+      weightSummary: { ...BASE_SUMMARY, paceFlag: 'loss', paceLevel: 'notable', paceElapsedDays: 5 },
+    }).root;
+    selectPoint(root, plotOf(root).points[0]);
+    expect(root.findAllByProps({ testID: 'bodyweight-pace-badge' }).length).toBeGreaterThan(0);
+  });
 });
 
-describe('AnalyticsWeightTrendsCard — one chart with a 7d/30d window', () => {
-  test('renders exactly one chart, drawing the canonical 7-day series by default', () => {
+describe('AnalyticsWeightTrendsCard — every weigh-in at its recorded date, one rolling line', () => {
+  test('renders exactly one chart and plots every usable weigh-in in date order', () => {
     const root = setup().root;
     expect(charts(root)).toHaveLength(1);
-    // Same reference: the card draws the prop it was given, never a derived copy.
-    expect(charts(root)[0].props.data).toBe(ROLLING7);
+    const { points } = plotOf(root);
+    expect(points).toHaveLength(ENTRIES.length);
+    expect(points.map(p => p.date)).toEqual([...DATES].reverse());
+    expect(points.map(p => p.id)).toEqual(['w7', 'w6', 'w5', 'w4', 'w3', 'w2', 'w1', 'w0']);
+    expect(points[points.length - 1].value).toBe(185);
     expect(charts(root)[0].props.seriesLabel).toBe('7-day rolling average bodyweight');
-    expect(root.findByProps({ testID: 'weight-trends-window-7' }).props.accessibilityState).toEqual({ selected: true });
   });
 
-  test('the selector swaps the displayed series between the existing rolling7 and rolling30', () => {
+  test('each point carries its recorded date, note and the active window average', () => {
     const root = setup().root;
+    const point = plotOf(root).points.find(p => p.id === 'w5');
+    expect(point.label).toBe('05-21-2026');
+    expect(point.note).toBe('Morning, fasted');
+    expect(point.avgText).toBe('7-day avg 182.5');
+    expect(point.announce).toContain('note: Morning, fasted');
+  });
+
+  test('the selector swaps only the rolling line and average, never the weigh-ins or the date range', () => {
+    const root = setup().root;
+    const before = plotOf(root);
     pickWindow(root, '30');
+    const after = plotOf(root);
     expect(charts(root)).toHaveLength(1);
-    expect(charts(root)[0].props.data).toBe(ROLLING30);
     expect(charts(root)[0].props.seriesLabel).toBe('30-day rolling average bodyweight');
-    expect(root.findByProps({ testID: 'weight-trends-window-30' }).props.accessibilityState).toEqual({ selected: true });
-
+    expect(after.points.map(p => [p.id, p.date, p.value])).toEqual(before.points.map(p => [p.id, p.date, p.value]));
+    expect(after.line.map(p => p.t)).toEqual(before.line.map(p => p.t));
+    expect(after.line.map(p => p.value)).toEqual(ROLLING30.map(p => p.value));
+    expect(after.points[0].avgText).toBe('30-day avg 182.0');
+    expect(root.findByProps({ testID: 'weight-trends-window-30' }).props.accessibilityState).toEqual({ selected: true, checked: true });
+    expect(root.findByProps({ testID: 'weight-trends-window-7' }).props.accessibilityState).toEqual({ selected: false, checked: false });
     pickWindow(root, '7');
-    expect(charts(root)[0].props.data).toBe(ROLLING7);
+    expect(plotOf(root).line.map(p => p.value)).toEqual(ROLLING7.map(p => p.value));
   });
 
-  test('both averages stay visible in either window', () => {
+  test('the toggle is a radio group with 44dp options', () => {
     const root = setup().root;
-    for (const key of ['7', '30']) {
-      pickWindow(root, key);
-      expect(hasText(root, '184.2 lb')).toBe(true);
-      expect(hasText(root, '183.0 lb')).toBe(true);
-      expect(hasText(root, '7-day avg')).toBe(true);
-      expect(hasText(root, '30-day avg')).toBe(true);
-    }
+    const group = root.findByProps({ accessibilityRole: 'radiogroup' });
+    expect(group.props.accessibilityLabel).toBe('Rolling average window');
+    const { createStyles } = require('../components/AnalyticsWeightTrendsCard');
+    expect(createStyles({}).toggleOption.minHeight).toBe(44);
+    expect(createStyles({}).toggleOption.minWidth).toBeGreaterThanOrEqual(44);
   });
 
-  test('selection in the 30-day view shows that point and both averages for its date', () => {
+  test('the caption states count, recorded dates, rolling line and latest ring', () => {
     const root = setup().root;
+    expect(hasText(root, '8 weigh-ins at recorded dates')).toBe(true);
+    expect(hasText(root, 'Line: 7-day rolling average')).toBe(true);
+    expect(hasText(root, 'Ring: latest weigh-in')).toBe(true);
     pickWindow(root, '30');
-    selectPoint(root, { value: 184.0, label: '05/22', unit: 'lb' });
-    expect(hasText(root, 'Selected · 05/22')).toBe(true);
-    expect(findAllText(root).filter(t => t === '184.0 lb')).toHaveLength(2);
+    expect(hasText(root, 'Line: 30-day rolling average')).toBe(true);
   });
 
-  test('switching windows clears a selection so the header matches the visible chart', () => {
-    const root = setup().root;
-    selectPoint(root, { value: 183.5, label: '05/21', unit: 'lb' });
-    pickWindow(root, '30');
-    expect(hasText(root, 'Latest weigh-in')).toBe(true);
-    expect(hasText(root, 'Selected ·')).toBe(false);
+  test('a notes-free weigh-in has an empty note, and an unmatched series attaches no average', () => {
+    const root = setup({ rolling7: ROLLING7.slice(2) }).root;
+    // rolling7 no longer lines up with the distinct dates: no wrong-day average.
+    expect(plotOf(root).points.every(p => p.avg === null)).toBe(true);
+    expect(plotOf(root).line).toEqual([]);
+  });
+
+  test('kg: weigh-ins and the goal are converted once, to one decimal', () => {
+    setWeightUnitPreference('kg');
+    const root = setup({
+      goalContext: GOAL,
+      rolling7: ROLLING7.map(p => ({ ...p, value: Math.round(p.value * 0.45359237 * 10) / 10, unit: 'kg' })),
+    }).root;
+    const { points, goal } = plotOf(root);
+    expect(points[points.length - 1].value).toBe(83.9);
+    expect(points[points.length - 1].unit).toBe('kg');
+    expect(goal).toEqual({ value: 79.4, text: '79.4' });
   });
 
   test('each window keeps its own insufficient-data handoff', () => {
@@ -271,47 +350,26 @@ describe('AnalyticsWeightTrendsCard — one chart with a 7d/30d window', () => {
     expect(root.findAllByProps({ testID: 'weight-trends-empty-log-link' })).toHaveLength(0);
   });
 
-  test('same date with different values per series: the selected view supplies the header, both footers look up their own series', () => {
-    const r7 = [{ value: 180.4, label: '06/01', unit: 'lb' }, { value: 180.6, label: '06/02', unit: 'lb' }];
-    const r30 = [{ value: 182.1, label: '06/01', unit: 'lb' }, { value: 182.3, label: '06/02', unit: 'lb' }];
-    const root = setup({ rolling7: r7, rolling30: r30 }).root;
-
-    selectPoint(root, r7[1]);
-    expect(hasText(root, 'Selected · 06/02')).toBe(true);
-    expect(hasText(root, '180.6')).toBe(true);
-    expect(hasText(root, '182.3 lb')).toBe(true);
-
-    pickWindow(root, '30');
-    selectPoint(root, r30[0]);
-    expect(hasText(root, 'Selected · 06/01')).toBe(true);
-    expect(hasText(root, '182.1')).toBe(true);
-    expect(hasText(root, '180.4 lb')).toBe(true);
-    expect(hasText(root, '182.1 lb')).toBe(true);
-  });
-
-  test('switching windows never mutates either input series', () => {
+  test('switching windows never mutates the inputs', () => {
     const r7 = Object.freeze(ROLLING7.map(p => Object.freeze({ ...p })));
     const r30 = Object.freeze(ROLLING30.map(p => Object.freeze({ ...p })));
-    const snap7 = JSON.stringify(r7);
-    const snap30 = JSON.stringify(r30);
-    const root = setup({ rolling7: r7, rolling30: r30 }).root;
+    const entries = Object.freeze(ENTRIES.map(e => Object.freeze({ ...e })));
+    const snap = JSON.stringify([r7, r30, entries]);
+    const root = setup({ rolling7: r7, rolling30: r30, entries }).root;
     pickWindow(root, '30');
-    selectPoint(root, r30[2]);
+    selectPoint(root, plotOf(root).points[2]);
     pickWindow(root, '7');
-    expect(charts(root)[0].props.data).toBe(r7);
-    expect(JSON.stringify(r7)).toBe(snap7);
-    expect(JSON.stringify(r30)).toBe(snap30);
+    expect(JSON.stringify([r7, r30, entries])).toBe(snap);
   });
 
-  test('the window header wraps so the selector cannot overlap the label at large font scales', () => {
-    const { createStyles } = require('../components/AnalyticsWeightTrendsCard');
-    const styles = createStyles({});
-    expect(styles.chartHeader.flexWrap).toBe('wrap');
-    expect(styles.chartLabelFlex.flexShrink).toBe(1);
+  test('without entries the chart falls back to the rolling series alone', () => {
+    const root = setup({ entries: null }).root;
+    expect(charts(root)[0].props.data).toBe(ROLLING7);
+    expect(plotOf(root)).toBeNull();
   });
 
   test('loading shows one spinner in place of the chart', () => {
-    const root = setup({ rolling7: [], rolling30: [], isWeightLoading: true }).root;
+    const root = setup({ rolling7: [], rolling30: [], entries: [], isWeightLoading: true }).root;
     expect(charts(root)).toHaveLength(0);
     expect(root.findAllByType('ActivityIndicator')).toHaveLength(1);
   });

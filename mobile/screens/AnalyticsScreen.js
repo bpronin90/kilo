@@ -5,10 +5,11 @@ import { ScreenShell } from '../components/ScreenShell';
 import { RootHeader } from '../components/RootHeader';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection';
-import { deriveWeightGoalAnalytics, resolveOneKSelections, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
+import { deriveWeightGoalAnalytics, computeWeightRollingAverageSeries, resolveOneKSelections, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, useWeightGoal, useDeloadHistory, useFeatureToggles, useRecoveryBlockState, useActiveTrainingContext } from '../hooks/useEntries';
 import { useRecoveryAnalyticsFilter } from '../hooks/entries/recoveryBlockHooks';
 import { isLiveRecord } from '../lib/data/recoveryBlocks';
+import { isWeightThresholdMet } from '../lib/data/weightGoal';
 import {
   deriveParsedSections,
   deriveNoteExerciseNames,
@@ -62,7 +63,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     error: weightError,
     refresh: refreshWeightEntries,
   } = useWeightEntries();
-  const { goal: weightGoal } = useWeightGoal();
+  const { goal: weightGoal, loading: goalLoading, error: goalError } = useWeightGoal();
   const { trackedLifts, activations: trackedLiftActivations, loading: loadingTracked } = useTrackedLifts();
   const { history: deloadHistory } = useDeloadHistory();
   const { fatigueTrackingEnabled, deloadModeEnabled } = useFeatureToggles();
@@ -158,14 +159,38 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
 
   // Canonical weight analytics (lib/data); presentation only below.
   const calendarDay = useLocalCalendarDay();
-  const { trendSummary: weightTrends, paceLevel: weightPaceLevel, paceInfo: weightPaceInfo, rollingSeries, rollingSeries30 } = useMemo(
+  const { trendSummary: weightTrends, paceLevel: weightPaceLevel, paceInfo: weightPaceInfo, goalInfo: weightGoalInfo } = useMemo(
     () => deriveWeightGoalAnalytics(weightEntries, weightGoal, {}, localDayToDate(calendarDay)),
     [weightEntries, weightGoal, calendarDay]
   );
   // Converted into display space here (identity in lb mode) so LineChart
   // labels and the trends card read in the selected unit.
-  const rolling7 = useMemo(() => displayChartSeries(rollingSeries || [], unit), [rollingSeries, unit]);
-  const rolling30 = useMemo(() => displayChartSeries(rollingSeries30 || [], unit), [rollingSeries30, unit]);
+  // Bodyweight (#1603) plots every weigh-in date, so both windows are the
+  // existing rolling-average derivation over the whole history (not its
+  // last-7 / last-30-date default): the 7D/30D toggle then swaps only the line.
+  const rolling7 = useMemo(() => {
+    const days = new Set(weightEntries.map(e => e.date)).size;
+    return displayChartSeries(computeWeightRollingAverageSeries(weightEntries, days, 7), unit);
+  }, [weightEntries, unit]);
+  const rolling30 = useMemo(() => {
+    const days = new Set(weightEntries.map(e => e.date)).size;
+    return displayChartSeries(computeWeightRollingAverageSeries(weightEntries, days, 30), unit);
+  }, [weightEntries, unit]);
+  // The goal decorations (line, mode, target, to-go, pace) draw only for a goal
+  // that is verified active: read without error, derivable from a current
+  // weight, and not past its target date.
+  const weightGoalContext = useMemo(() => {
+    const target = weightGoal ? weightGoal.target_weight : null;
+    const verified = !goalLoading && !goalError && !!weightGoal && !!weightGoalInfo
+      && !weightGoalInfo.isOverdue && Number.isFinite(target) && weightTrends.currentWeight != null;
+    if (!verified) return null;
+    return {
+      direction: weightGoalInfo.direction,
+      target,
+      info: weightGoalInfo,
+      met: isWeightThresholdMet(weightGoal, weightTrends.currentWeight),
+    };
+  }, [weightGoal, weightGoalInfo, weightTrends, goalLoading, goalError]);
   const weightSummary = useMemo(() => {
     if (weightEntries.length === 0) {
       return { latestWeightValue: 'N/A', showUnit: false, weightCount: '0', avg7: 'N/A', avg30: 'N/A', paceFlag: null, paceLevel: null, paceElapsedDays: null };
@@ -382,7 +407,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     recoveryFilterReady: recoveryFilter.ready,
     analytics, parsedSections, displayOneK, oneKChartData, oneKSelections, noteExerciseNames,
     activeSlot, handleSlotTap, handleSelectExercise,
-    weightSummary, rolling7, rolling30,
+    weightSummary, rolling7, rolling30, weightEntries, weightTrends, weightGoalContext,
     overloadProps: {
       isNotesLoading, isTrackedLoading, analytics, progressionSuggestionView,
       onMuteProgression: handleMuteProgression,

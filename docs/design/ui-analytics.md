@@ -15,8 +15,8 @@ section elements and `AnalyticsChapters.js` draws the index, chapter headers and
 Recovery chapter entries:
 
 - **Normal training:** 01 Progress (Strength → Progressive Overload) →
-  02 Training (Training breakdown → Routine Health) → 03 Bodyweight (Weight
-  Trends) → 04 Recovery (the Recovery section when it has something to render,
+  02 Training (Training breakdown → Routine Health) → 03 Bodyweight (the
+  Bodyweight panel) → 04 Recovery (the Recovery section when it has something to render,
   then the Recovery history entry).
 - **Active Recovery:** 01 Recovery `ACTIVE` (Recovery section → `Manage
   recovery in Log` → Recovery history entry) → 02 Bodyweight → 03 Baseline
@@ -63,28 +63,30 @@ palette. Calculations, zone thresholds, deload gating and paused Recovery copy
 are unchanged. Visual checks on device are not recorded; light/dark token
 resolution is covered by `tests/session-gauge.test.js`.
 
-### Weight Trends Card
+### Bodyweight Panel (Redesign v3, #1603)
 
-| Element | Property | Value | Line |
-|---|---|---|---|
-| Card padding | `20` | `356` |
-| "Latest weigh-in" label | fontSize | `12` | `365` |
-| | fontWeight | `700` | `366` |
-| | textTransform | `uppercase` | `367` |
-| Weight value | fontSize | `32` | `372` |
-| | fontWeight | `900` | `373` |
-| | color | `colors.accentText` | `374` |
-| Chart | height | `100` | `166` |
-| Window selector (`7D` / `30D`) | one chart; swaps `rolling7` ↔ `rolling30`, clears selection; radio role, `>=44dp` | | |
-| Pace badge | borderRadius | `12` | `379` |
-| | text fontSize | `12` | `387` |
-| | text fontWeight | `800` | `388` |
-| Footer stat value (7d/30d avg) | fontSize | `18` | `403` |
-| | fontWeight | `700` | `404` |
-| Footer stat label | fontSize | `11` | `408` |
-| | fontWeight | `600` | `409` |
-| | textTransform | `uppercase` | `410` |
-| Footer divider | borderTopWidth `1` / `colors.cardBorder` | | `394-395` |
+Sources: `components/AnalyticsWeightTrendsCard.js` (state, styles),
+`components/analyticsWeight/BodyweightPanel.js`, `BodyweightStats.js`,
+`components/LineChart.js` (opt-in `weightPlot`) and `components/lineChart/*`.
+One flat `Panel` under the `03 Bodyweight` chapter header (no second "Weight
+Trends" title), in normal and active Recovery chapters alike.
+
+| Element | Value |
+|---|---|
+| Header, left | Fixed `LATEST WEIGH-IN` mono label; value `36`/`40` mono (`metric-display`) plus unit. Never replaced by a selected point |
+| Header, right | `7D AVG` / `30D AVG` radio group, options `>=44dp`; swaps only the rolling line (and the callout average), never the weigh-ins or the date range |
+| Meta row | Measurement date, arrow and signed change vs the previous weigh-in (Weight tab's recent/prior local-date pair, goal-aware tone), then the existing spike/notable pace badge |
+| Chart | Height `150`. Every usable weigh-in is a dot at its recorded date (x is time, not index); the rolling line is the existing `rolling7` / `rolling30` derivation over the whole history; `chartSeries1` stroke; hollow ring on the latest recorded weigh-in, kept while another point is selected; date axis (4 `MM-DD` ticks) |
+| Selection | Touch, arrow keys, rotor actions and Escape as before; held by entry `id`, so it follows its entry and clears when it is removed, the dataset shrinks below a chart or the window changes. Callout: value, recorded date, N-day average, note (polite live region) |
+| Goal line | Dashed, labelled `GOAL <target>`, only for a verified active goal (read without error, derivable, not past its target date); otherwise no goal line, mode, target, to-go or pace |
+| Caption | `N weigh-ins at recorded dates · Line: <window> · Ring: latest weigh-in` |
+| Split cells | `7-DAY AVG` / `30-DAY AVG` with signed goal-aware change; with an active goal also `GOAL · CUTTING/BULKING/MAINTAINING` (target, to-go) and `TARGET PACE` |
+| Handoff | `Log or manage weight` opens Weight |
+| Empty / loading | Fewer than two weigh-in dates: the existing insufficient-data copy and `Log a weigh-in` action; loading shows one spinner; read failure keeps the screen's retry banner |
+
+The Home sparkline and the 1K session chart do not pass `weightPlot` and render
+as before. `rolling7` / `rolling30` are computed in `AnalyticsScreen` with the
+existing `computeWeightRollingAverageSeries` over every weigh-in date.
 
 ### 1K Progress Card
 

@@ -83,6 +83,9 @@ export function buildAnalyticsContent(p) {
       rolling30={p.rolling30}
       isWeightLoading={p.isWeightLoading}
       onNavigate={p.onNavigate}
+      entries={p.weightEntries}
+      trends={p.weightTrends}
+      goalContext={p.weightGoalContext}
     />
   );
   const routineHealth = (
