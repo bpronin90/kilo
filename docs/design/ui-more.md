@@ -26,7 +26,8 @@ title, a one-line 13px muted subtitle and a muted `chevron-right`. Rows in a
 panel share 1px `cardBorder` hairlines; the panel corners are
 `GEOMETRY['radius-2xl']`. Every row is a `button` with a 44dp floor and keeps
 its pre-redesign accessible name (`User Profile`, `Data and Backup`,
-`Import Routine`, `App Guide`, ...).
+`Import Routine`, `App Guide`, ...); the App Guide row also keeps its
+production visible title.
 
 The top-level destinations Settings, Profile, About, Backup, Help, and Account
 are `ScreenShell` views that receive `onBack={() => showView('menu')}` from

@@ -1,6 +1,6 @@
 # R9 (#1608) visual evidence — More and Settings grouped panels
 
-- **Rendered commit:** `a8344a26e558606169db8e36b6d22a9e32ad9ff1` (all product code in this PR). Real app Expo web export, not prototype HTML. Later commits add only docs, evidence and the changelog fragment, so the renders still apply.
+- **Rendered commits:** More menu states (`more-*`, `back-to-menu-*`) at `547babc22a3a9a41061453be4668b3b2bcf8ec90` (App Guide row title restored to production casing); Settings, destination, recovery and Cloud Sync anchor states at `a8344a26e558606169db8e36b6d22a9e32ad9ff1` — 547babc changes only that menu-row title, which those states do not show. Real app Expo web export, not prototype HTML. Other commits add only docs, evidence and the changelog fragment.
 - **Viewport:** 390×844 @2x via the shared harness (`../capture.cjs`, read-only); issue-local overlays in `fixtures.cjs`.
 - **Themes:** every state in hard-dark and clay-light; More and Settings first screens also in grass-light and clay-dark (`*-first-*`, full page).
 - **References:** `docs/design/app-redesign-v3/shots/hybrid/` more-hard-dark, more-clay-light, full-more-hard-dark, state-more-settings-hard-dark.
@@ -11,18 +11,19 @@
 2. Group labels: mono uppercase, muted, 4px inset; Preferences, Account & data, Tools & help.
 3. Rows: 22px accent icon, 16px title, one-line 13px muted subtitle (ellipsised), muted chevron; ~60px rows, 44dp floor; 1px hairlines between rows, one flat panel per group, 2xl corners.
 4. Settings: production order Features → Reminders → Appearance → Units → Advanced; one flat panel per section, hairline-split rows, no nested cards; title left / control right; Mode stacked.
-5. Unchanged: every destination and its content, sub-screen shell/back bar (shared R1 shell), copy of every setting, error banners, reset button.
+5. Row titles follow the reference's sentence case except **App Guide**, which keeps production's visible text because existing Log-tab tests (outside this issue) open it by that text.
+6. Unchanged: every destination and its content, sub-screen shell/back bar (shared R1 shell), copy of every setting, error banners, reset button.
 
 ## Reproduction
 
 ```sh
 cd mobile && EXPO_PUBLIC_SUPABASE_URL=https://mockproj.supabase.co EXPO_PUBLIC_SUPABASE_ANON_KEY=local-anon-key \
   npx expo export --platform web --output-dir <scratch>/dist
-cd .. && KILO_RENDERED_COMMIT=a8344a26e558606169db8e36b6d22a9e32ad9ff1 \
+cd .. && KILO_RENDERED_COMMIT=<commit> \
   node docs/evidence/app-redesign-v3/r9/capture.cjs <scratch>/dist /tmp/kilo-review-tools/node_modules <scratch>/r9work
 ```
 
-All 60 states captured without a step failure. `theme_check` reads false only on `settings-court-*` / `settings-mode-*` shots whose court or mode differs from the seeded one, because those states change the theme on purpose.
+All 60 states captured without a step failure (full run at a8344a2; `more,back` rerun at 547babc with the same command plus that `only` filter). `theme_check` reads false only on `settings-court-*` / `settings-mode-*` shots whose court or mode differs from the seeded one, because those states change the theme on purpose.
 
 Raw Playwright on `session.page` (the shared API has no hook for these): signed-out drops the seeded `sb-mockproj-auth-token` and reloads; recovery seeds `kilo.auth.recoveryPending` (overlay) and boots on `/#error=access_denied&error_description=…`; failed save makes `localStorage.setItem('kilo_fatigue_tracking_enabled', …)` throw.
 
