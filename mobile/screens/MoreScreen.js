@@ -1,9 +1,8 @@
-import React, { useState, useLayoutEffect, useEffect, useRef, useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import React, { useState, useLayoutEffect, useEffect, useRef } from 'react';
 import { ScreenShell } from '../components/ScreenShell';
-import { SectionTitle } from '../components/UI';
+import { RootHeader } from '../components/RootHeader';
 import { useTheme } from '../theme/ThemeContext';
+import { MoreMenuPanels } from './more/MoreMenuPanels';
 
 import { HelpScreen } from '../components/HelpScreen';
 import { AboutScreen } from '../components/AboutScreen';
@@ -13,8 +12,6 @@ import { ProfileScreen } from '../components/ProfileScreen';
 import { RoutineImportScreen } from '../components/RoutineImportScreen';
 import { RoutinePromptToolsScreen } from '../components/RoutinePromptToolsScreen';
 import { AccountScreen } from './more/AccountScreen';
-import { TYPOGRAPHY } from '../theme/typography';
-import { GEOMETRY } from '../theme/spacing';
 
 export { AccountScreen } from './more/AccountScreen';
 export { AccountLifecycle } from './more/AccountLifecycle';
@@ -43,8 +40,7 @@ export function MoreScreen({
   navSubviewAnchor = null,
   navSubviewKey = 0,
 }) {
-  const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
+  const { kuaPalette: kua } = useTheme();
   const [activeView, setActiveView] = useState('menu');
   const [routinePromptInitialTool, setRoutinePromptInitialTool] = useState(null);
 
@@ -181,100 +177,16 @@ export function MoreScreen({
   }
 
   return (
-    <ScreenShell title="More" subtitle="Settings, help, and your data." style={kua ? { backgroundColor: kua.background } : undefined}>
-      <SectionTitle>Preferences</SectionTitle>
-      <View style={styles.list}>
-        <Pressable style={styles.menuItem} onPress={() => showView('profile')} accessibilityRole="button" accessibilityLabel="User Profile">
-          <Text style={styles.menuItemText}>User Profile</Text>
-          <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
-        </Pressable>
-        <Pressable style={styles.menuItem} onPress={() => showView('settings')} accessibilityRole="button" accessibilityLabel="Settings">
-          <Text style={styles.menuItemText}>Settings</Text>
-          <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
-        </Pressable>
-      </View>
-
-      <SectionTitle>Account & Data</SectionTitle>
-      <View style={styles.list}>
-        <Pressable style={styles.menuItem} onPress={() => showView('account')} accessibilityRole="button" accessibilityLabel="Account">
-          <View style={styles.menuCopy}>
-            <Text style={styles.menuItemText}>Account</Text>
-            <Text style={styles.menuItemHelp}>Sign-in & cloud account</Text>
-          </View>
-          <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
-        </Pressable>
-        <Pressable style={styles.menuItem} onPress={() => showView('backup')} accessibilityRole="button" accessibilityLabel="Data and Backup">
-          <View style={styles.menuCopy}>
-            <Text style={styles.menuItemText}>Data & Backup</Text>
-            <Text style={styles.menuItemHelp}>Local & cloud backup</Text>
-          </View>
-          <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
-        </Pressable>
-        {/* Routine import (#955) lives beside Data & Backup rather than on the
-            Log tab: it is a data-entry surface, not part of training, and
-            keeping it here is what makes it unmistakable that it creates a new
-            routine instead of touching the one you are currently running. */}
-        <Pressable style={styles.menuItem} onPress={() => showView('import-routine')} accessibilityRole="button" accessibilityLabel="Import Routine">
-          <View style={styles.menuCopy}>
-            <Text style={styles.menuItemText}>Import Routine</Text>
-            <Text style={styles.menuItemHelp}>Paste a shared routine</Text>
-          </View>
-          <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
-        </Pressable>
-      </View>
-
-      <SectionTitle>Prompts</SectionTitle>
-      <View style={styles.list}>
-        <Pressable style={styles.menuItem} onPress={() => { setRoutinePromptInitialTool(null); showView('routine-prompts'); }} accessibilityRole="button" accessibilityLabel="Routine prompt tools">
-          <View style={styles.menuCopy}>
-            <Text style={styles.menuItemText}>Routine prompt tools</Text>
-            <Text style={styles.menuItemHelp}>Copy local templates for an external LLM</Text>
-          </View>
-          <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
-        </Pressable>
-      </View>
-
-      <SectionTitle>Help & Support</SectionTitle>
-      <View style={styles.list}>
-        <Pressable style={styles.menuItem} onPress={() => showView('help')} accessibilityRole="button" accessibilityLabel="App Guide">
-          <Text style={styles.menuItemText}>App Guide</Text>
-          <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
-        </Pressable>
-        <Pressable style={styles.menuItem} onPress={() => showView('about')} accessibilityRole="button" accessibilityLabel="About Kilo">
-          <Text style={styles.menuItemText}>About Kilo</Text>
-          <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
-        </Pressable>
-      </View>
+    <ScreenShell header={<RootHeader title="More" />} style={kua ? { backgroundColor: kua.background } : undefined}>
+      <MoreMenuPanels
+        auth={auth}
+        onOpen={(view) => {
+          // The menu's prompt-tools row opens the tool list itself, not the
+          // import → normalize handoff, so its back returns to the menu.
+          if (view === 'routine-prompts') setRoutinePromptInitialTool(null);
+          showView(view);
+        }}
+      />
     </ScreenShell>
   );
 }
-
-const createStyles = (colors, kua = null) => StyleSheet.create({
-  list: {
-    gap: 12,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    minHeight: 44,
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: kua ? kua.surfaceCard : colors.card,
-    padding: 20,
-    borderRadius: GEOMETRY['radius-2xl'],
-    borderWidth: 1,
-    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
-  },
-  menuCopy: {
-    flex: 1,
-    gap: 4,
-  },
-  menuItemText: {
-    fontSize: TYPOGRAPHY['body-lg'].fontSize,
-    fontWeight: '600',
-    color: kua ? kua.onSurface : colors.text,
-  },
-  menuItemHelp: {
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-});

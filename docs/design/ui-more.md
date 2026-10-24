@@ -9,20 +9,25 @@ Source: `mobile/screens/MoreScreen.js`, `mobile/components/SettingsScreen.js`,
 `mobile/components/BackupScreen.js`, `mobile/components/HelpScreen.js`, and
 `mobile/screens/more/`.
 
-More is a menu of quiet, individually actionable rows. The rows are grouped by
-`SectionTitle` into **Preferences** (User Profile, Settings), **Account & Data**
-(Account, Data & Backup), and **Help & Support** (App Guide, About Kilo). Rows
-with supporting copy put a 13px `colors.textMuted` help line below the label;
-all rows end with a 20px muted `MaterialIcons` `chevron-right` disclosure.
+More (Redesign v3, #1608; source `mobile/screens/more/MoreMenuPanels.js`)
+opens with an **account summary row**: a 48px accent avatar (email initial, or
+a person glyph), the auth email (or "Not signed in" / "Checking sign-in…" /
+"Cloud account" when cloud is unavailable), and one status line. The status
+reads only the existing `auth` prop and the shell-published
+`useCloudSyncSummary()` value (`Signed in · <statusLabel>`, tinted done /
+warning / error by the summary's own flags); with no summary it says only
+"Signed in" and never infers success. The row opens Account.
 
-| Element | Property | Value |
-|---|---|---|
-| Menu list | gap | `12` |
-| Menu row | background / border / radius | `colors.card` / 1px `colors.cardBorder` / `16` (`GEOMETRY['radius-2xl']`) |
-| Menu row | padding / minimum height | `20` / `44` |
-| Main label | fontSize / fontWeight / color | `17` / `600` / `colors.text` |
-| Help line | fontSize / color | `13` / `colors.textMuted` |
-| Disclosure | icon / size / color | `chevron-right` / `20` / `colors.textMuted` |
+Below it, three flat grouped panels under mono uppercase labels:
+**Preferences** (Settings, User profile), **Account & data** (Account, Data and
+backup, Import routine) and **Tools & help** (Routine prompt tools, App guide,
+About Kilo with the current version). Each row is a 22px accent icon, a 16px
+title, a one-line 13px muted subtitle and a muted `chevron-right`. Rows in a
+panel share 1px `cardBorder` hairlines; the panel corners are
+`GEOMETRY['radius-2xl']`. Every row is a `button` with a 44dp floor and keeps
+its pre-redesign accessible name (`User Profile`, `Data and Backup`,
+`Import Routine`, `App Guide`, ...); the App Guide row also keeps its
+production visible title.
 
 The top-level destinations Settings, Profile, About, Backup, Help, and Account
 are `ScreenShell` views that receive `onBack={() => showView('menu')}` from
@@ -35,11 +40,16 @@ own `ScreenShell` and receives Account's `onBack` callback. These nested
 components remain part of their parent flows rather than adding rows to the
 top-level menu.
 
-Settings' Appearance and Units controls, and Profile's height unit control, use
-the shared `unitTab` segmented convention: inline 44dp targets with 12px
-horizontal and 6px vertical padding, 12px/700 labels, muted inactive ink, and
-the active accent treatment. Settings' fatigue multiplier is a 44dp stepper
-(`borderRadius: 12`) with decrement/value/increment controls. Irreversible
+Settings keeps production's order, labels and controls: Features, Reminders,
+Appearance, Units, Advanced. Each section is one flat `Panel` under an
+uppercase label (`mobile/components/settings/SettingsPanels.js`); rows are
+padded blocks split by hairlines, never nested cards, and save-failure banners
+sit inside the row they describe. `ReminderSettingsCard` and
+`ThemeSelectionControl` take a `flat` prop for this; other callers keep their
+default card presentation. Appearance Mode and Weight unit share one compact
+segmented control (44dp targets holding 12/6-padded, 8px-radius pills); Mode
+stacks under its label. The fatigue multiplier is a 44dp stepper
+(`borderRadius: 12`) with "Reset to default (1.07)" under it. Irreversible
 Account and Backup actions stay in the error-tinted, bordered 16px-radius
 **Danger Zone** containers owned by those screens, as required by
 `docs/design/ui-design-rules.md` §14.

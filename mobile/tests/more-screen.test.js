@@ -6,10 +6,10 @@ function button(root, label) {
   return root.findAll(node => node.props?.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
 }
 
-test('More groups all routine prompt tools under the Prompts section', () => {
+test('More groups routine prompt tools under Tools & help', () => {
   let tree;
   act(() => { tree = render.create(<MoreScreen isActive />); });
-  expect(tree.root.findAllByType('Text').some(node => node.children.join('') === 'Prompts')).toBe(true);
+  expect(tree.root.findAllByType('Text').some(node => node.children.join('') === 'Tools & help')).toBe(true);
   act(() => { button(tree.root, 'Routine prompt tools').props.onPress(); });
   expect(button(tree.root, 'Plan or update routine')).toBeTruthy();
   expect(button(tree.root, 'Normalize exercise names')).toBeTruthy();

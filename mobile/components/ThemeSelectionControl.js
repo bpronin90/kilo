@@ -22,13 +22,15 @@ const THEME_OPTIONS = [
 // pill row, which cramped onto two lines at narrow widths and large font
 // scales and read as three co-equal buttons rather than one palette choice
 // with three options.
-export function ThemeSelectionControl() {
+// `flat` (#1608) drops the trailing margin so Settings can place the picker in
+// its own padded panel block; default callers are unchanged.
+export function ThemeSelectionControl({ flat = false } = {}) {
   const { themeSelection, kuaPalette: kua, colors, mode } = useTheme();
   const typography = useKuaTypography();
   const styles = useMemo(() => createStyles(kua, colors, typography), [kua, colors, typography]);
 
   return (
-    <View testID="theme-selection-control" style={styles.section}>
+    <View testID="theme-selection-control" style={flat ? null : styles.section}>
       <Text style={styles.label}>Theme</Text>
       <View style={styles.optionList}>
         {THEME_OPTIONS.map(({ value, label, a11yLabel, paletteKey }) => {
