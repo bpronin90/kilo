@@ -108,6 +108,11 @@ const startTimer = async (s, sec = 90) => {
         await s.page.getByRole('button', { name: /^Rest timer, / }).click();
         await s.wait(600);
       });
+      await state({ theme, viewport: { width: 390, height: 560 }, insets: { top: 47, bottom: 34 } }, `editor-short-safe-area-${theme}.png`, 'Short inset window (390x560, insets 47/34): panel flips above the control inside the safe area', async (s) => {
+        await startTimer(s);
+        await s.page.getByRole('button', { name: /^Rest timer, / }).click();
+        await s.wait(600);
+      });
       for (const tab of ['Log', 'Weight', 'Analytics', 'More']) {
         await state({ theme }, `pill-${tab.toLowerCase()}-${theme}.png`, `Running pill on ${tab}${tab === 'Log' ? ' (read view)' : ''}`, async (s) => {
           await startTimer(s);
