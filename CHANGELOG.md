@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.30.0 - 2026-10-24
+
+- Issue #1608: More now opens with an account row showing your email and sync status, and groups its destinations into Preferences, Account & data, and Tools & help panels with short descriptions. Settings sections are restyled as flat grouped panels; every setting and control is unchanged.
+
+## 1.29.0 - 2026-10-24
+
+- Issue #1607: Each Log exercise now has a history button that opens a sheet with every logged session of that exercise and a top-set load line by session. The rest timer's preset panel shows how much of the rest is left, and the running timer pill is restyled.
+
+## 1.28.0 - 2026-10-24
+
+- Issue #1605: Home has a new look. A top bar shows the Kilo wordmark and a Cloud Sync status icon that opens Cloud Sync. The routine panel adds an Exercise Progress ring with Progressing, Steady and Regressing counts, plus full-width Log workout and Log weight buttons. The 1K card shows how far you are from 1,000 and a stacked bar of your Squat, Bench and Deadlift. The body weight card has a compact trend line, and tapping the card body opens the Bodyweight section of Analytics. Tapping the Body weight title still opens Weight.
+
+## 1.27.0 - 2026-10-24
+
+- Issue #1604: Analytics Progress is restyled. The 1K panel leads with your total out of 1,000 lb (or the kg equivalent), how far you have to go, and a bar split by Squat, Bench and Deadlift, with the session chart and Big 3 mapping as expandable rows in the same panel. Progressive Overload gains All / Progressing / Steady / Regressing filters that work with search, aligned 1RM / Kilo / Best columns, a trend pill on each row, and a detail sheet for each exercise with your logged sets and a View in Log link.
+
+## 1.26.0 - 2026-10-24
+
+- Issue #1603: Analytics Bodyweight is now one panel: a fixed Latest weigh-in with its date and change vs the previous weigh-in, a 7D AVG / 30D AVG selector that swaps only the average line, every weigh-in plotted at its recorded date with a ring on the latest, a point callout with the note, and the goal line, goal and target pace only for an active goal.
+
 ## 1.25.0 - 2026-10-23
 
 - Issue #1606: The Log tab has a new note-first layout. A `Log` header holds Plates and a labelled ⋯ for routine actions. A day index jumps to each day of your routine and stays pinned while you scroll. Each exercise shows its last three sessions, with the latest in bold and marked LAST, and "N earlier sessions" expands the rest in place. Week A/B, Deload and Recovery keep every action and are restyled to match.
