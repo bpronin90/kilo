@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.25.0 - 2026-10-23
+
+- Issue #1606: The Log tab has a new note-first layout. A `Log` header holds Plates and a labelled ⋯ for routine actions. A day index jumps to each day of your routine and stays pinned while you scroll. Each exercise shows its last three sessions, with the latest in bold and marked LAST, and "N earlier sessions" expands the rest in place. Week A/B, Deload and Recovery keep every action and are restyled to match.
+
+## 1.24.0 - 2026-10-23
+
+- Issue #1602: Analytics is now organized into numbered chapters — Progress, Training, Bodyweight and Recovery — with a chapter index under the header that jumps to each chapter and follows you as you scroll. During Recovery the index reads Recovery, Bodyweight and Paused, and the paused baseline sections open from one toggle. Routine Health is a single panel, and the Recovery chapter links straight to Recovery management in Log.
+
+## 1.23.0 - 2026-10-23
+
+- Issue #1601: Weight has a new layout: a compact weigh-in row with a Today date button and an Add note field, a Latest panel with your newest weigh-in, its change and your 7- and 30-day averages (with a link to the full trend in Analytics), a Goal panel with a progress bar when a start weight is saved, and a History table with a date filter. With no goal set, Weight now shows a compact Set a goal button instead of the full form. The weight trend chart lives only in Analytics.
+
+## 1.22.0 - 2026-10-23
+
+- Issue #1600: The tab bar is now docked to the bottom edge: a full-width bar with a top hairline, icons over uppercase labels, and a top indicator on the active tab. It still hides while you scroll down and comes back when you scroll up, reach either end, or switch tabs.
+
 ## 1.21.2 - 2026-10-22
 
 - Issue #1597: Fixed Training breakdown showing nothing for its time ranges: it now offers Last 4 / Last 12 / All sessions per exercise (default Last 12), since workouts record sessions rather than dates.
