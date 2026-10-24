@@ -60,7 +60,16 @@ const MOCK_NOW = new Date('2026-05-26T12:00:00Z');
 beforeEach(() => {
   jest.useFakeTimers().setSystemTime(MOCK_NOW);
 });
+// Every screen setup() mounts is unmounted after its test. A screen left
+// mounted stays subscribed to the shared Recovery-filter snapshot, so each later
+// filter publish re-rendered every leaked screen; ~80 leaked screens pushed the
+// Recovery-filter tests past Jest's 5 s timeout.
+const mountedComponents = [];
 afterEach(() => {
+  while (mountedComponents.length) {
+    const component = mountedComponents.pop();
+    try { render.act(() => component.unmount()); } catch (_e) { /* already unmounted */ }
+  }
   jest.useRealTimers();
 });
 
@@ -117,6 +126,7 @@ function setup({ entries = [], hookOverrides = {}, featureToggles = {} } = {}) {
       />
     );
   });
+  mountedComponents.push(component);
   return component;
 }
 
