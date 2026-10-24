@@ -262,6 +262,10 @@ describe('Progressive Overload rows and detail sheet (#1604)', () => {
     useEntries.useWorkoutNotes.mockReturnValue({ notes: [other], currentNote: other, loading: false, update: jest.fn() });
     render.act(() => { trees[0].update(<AnalyticsScreen multiplier={1.07} />); });
     expect(sheets(root)).toHaveLength(0);
+    // Back on the original routine the stale selection must not reopen.
+    useEntries.useWorkoutNotes.mockReturnValue({ notes: [NOTE], currentNote: NOTE, loading: false, update: jest.fn() });
+    render.act(() => { trees[0].update(<AnalyticsScreen multiplier={1.07} />); });
+    expect(sheets(root)).toHaveLength(0);
   });
 
   test('a chip chosen on one routine does not filter another', async () => {

@@ -3,7 +3,8 @@
 Rendered from the **real app** (Expo web export), not prototype HTML.
 
 - **Rendered commit:** `cc666448d9e37fd8cf55bf27d76ba8c8c751daa7` (all 76 PNGs; the capture runner records it per shot).
-  Later commits on this branch are evidence/docs only unless a review round says otherwise.
+  Later commits are evidence/docs only, except the review-round fix that drops a stale detail-sheet selection when its row or routine
+  goes away (an effect that only clears state; it draws nothing and changes no layout), so every PNG here still applies.
 - **Viewport:** 390x844 CSS px, DPR 2 (780x1688 px), UTC, fixed clock `2026-10-23T12:00:00Z`.
 - **Themes:** every state in `HD` hard-dark and `CL` clay-light; the Analytics first screen also in `GL` grass-light and `CD` clay-dark.
 - **Theme check:** 76 captures, 0 theme mismatches (court canvas colour verified per shot).

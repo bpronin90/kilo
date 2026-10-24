@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { SectionTitle } from '../../components/UI';
@@ -84,6 +84,9 @@ export function AnalyticsProgressiveOverloadSection({
   const selectedSig = selected && selected.noteId === currentNoteId
     ? groupedSignals.flatMap(group => group.exercises).find(sig => overloadRowKey(sig) === selected.key) || null
     : null;
+  // A selection whose row is gone (routine or dataset change) is dropped, not
+  // just hidden, so returning to the old routine never reopens the sheet.
+  useEffect(() => { if (selected && !selectedSig) setSelected(null); }, [selected, selectedSig]);
   const selectedModel = selectedSig ? overloadRowModel(selectedSig, analytics, unit) : null;
   const openExercise = sig => setSelected({ noteId: currentNoteId, key: overloadRowKey(sig) });
   const closeSheet = () => {
