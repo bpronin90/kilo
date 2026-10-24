@@ -87,7 +87,13 @@ export function useAnalyticsChapterNavigation({
       return;
     }
     if (isActiveRecovery && baselineCollapsed && BASELINE_SECTIONS.has(sectionId)) {
+      // The paused body is unmounted while collapsed. Its previous body and
+      // child coordinates describe the old layout, so wait for both fresh
+      // onLayout measurements after opening instead of scrolling to stale data.
+      pausedBodyOffset.current = null;
+      nestedOffsets.current = {};
       setBaselineCollapsed(false);
+      return;
     }
     const y = resolveOffset(sectionId);
     if (y > 0) scrollToOffset(y);

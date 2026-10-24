@@ -77,6 +77,15 @@ Techniques for states with no tappable entry point (runner-only, no product chan
 | 22 | Error: unknown-status banner + retry; retry in flight keeps the error message until a read succeeds; success shows real state | Pass | [error](after/state-error-hard-dark.png), [retrying](after/state-error-retrying-clay-light.png), [retried](after/state-error-retried-clay-light.png) (+ other theme) |
 | 23 | Initial loading: `Loading recovery data…`, history row without a count; settles to the real state | Pass | [overlay](after/state-loading-overlay-hard-dark.png), [loading](after/state-loading-clay-light.png), [done](after/state-loading-done-clay-light.png) (+ other theme) |
 | 24 | Missing data: empty account (no Strength/PO data, no header context), no weigh-ins | Pass | [empty](after/missing-empty-clay-light.png), [no weigh-ins](after/missing-weighins-clay-light.png) (+ hard-dark) |
+| 25 | Reopen a measured paused baseline after content above it grows while collapsed; the `strength` deep link waits for fresh layouts and lands at the remounted Strength anchor | Pass | [stale baseline remount](after/stale-baseline-remount-hard-dark.png) |
+
+### Stale paused-baseline remount comparison
+
+- Reference: [issue #1602 feedback](https://github.com/bpronin90/kilo/issues/1602#issuecomment-6377750554).
+- Checklist: at 390×844 CSS px, keep the Analytics header and sticky chapter index unchanged; show the `Strength` anchor immediately below the sticky index after navigation; preserve the dashed paused-body rail and existing section presentation.
+- Rendered the real Expo web export at 390×844 CSS px (2× screenshot). In Active Recovery, opened and collapsed the baseline once to populate its measurements, increased the Recovery anchor's bottom margin by 1000 CSS px while the paused body was unmounted, then issued `section=strength` through the mounted Analytics navigation callback. The injected spacing models content above the disclosure changing height; it does not change application data or production styles.
+- Captured `after/stale-baseline-remount-hard-dark.png`. The newly mounted paused body begins at y=178 CSS px, below the 92 px sticky chapter index, and the Strength anchor is visible at y=184 px. This confirms the request lands using the new layout; the header/index, paused rail and Strength contents remain intact. Screenshot dimensions: 780×1688 px.
+- Capture steps used the shared real-app harness in `capture.cjs` with the Active Recovery fixture, `analytics-chapter-index-baseline`, `baseline-disclosure-toggle`, a 1000 px margin-bottom layout perturbation on `recovery-section-anchor`, and the app's `onNavigate('Analytics', 'strength')` callback. No prototype HTML or shared fixture was modified.
 
 ## Deviations (with reasons)
 

@@ -187,6 +187,33 @@ describe('active Recovery chapters', () => {
     expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: 2400 }));
   });
 
+  test('a reopened baseline deep link waits for fresh body and section measurements', () => {
+    const { tree, scrollTo } = mount({ activeRecovery: true, section: 'strength', nonce: 1 });
+    let body = host(tree.root, 'baseline-paused-body');
+    const strengthAnchor = () => {
+      const callback = tree.root.findAll(n => typeof n.props?.handleStrengthLayout === 'function')[0].props.handleStrengthLayout;
+      return tree.root.findAll(n => n.props?.onLayout === callback)[0];
+    };
+    layout(strengthAnchor(), 0);
+    layout(body, 1500);
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ y: 1500 }));
+
+    // Clear the consumed request before manually collapsing, then make the
+    // surrounding Recovery content taller while the paused body is unmounted.
+    render.act(() => { tree.update(<AnalyticsScreen multiplier={1.07} section={null} sectionNonce={1} />); });
+    let toggle = tree.root.findAll(n => n.props?.testID === 'baseline-disclosure-toggle' && typeof n.props.onPress === 'function')[0];
+    render.act(() => { toggle.props.onPress(); });
+    expect(tree.root.findAllByProps({ testID: 'baseline-paused-body' })).toHaveLength(0);
+
+    render.act(() => { tree.update(<AnalyticsScreen multiplier={1.07} section="strength" sectionNonce={2} />); });
+    body = host(tree.root, 'baseline-paused-body');
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    layout(strengthAnchor(), 0);
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    layout(body, 2500);
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ y: 2500 }));
+  });
+
   test('Manage recovery in Log and the history entry hand off to Log with typed intents', () => {
     const onNavigate = jest.fn();
     const { tree } = mount({ activeRecovery: true, onNavigate });
