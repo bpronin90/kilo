@@ -119,6 +119,15 @@ describe('ExerciseHistorySheet in the Log renderer', () => {
       );
     });
     expect(byTestId(tree, 'exercise-history-sheet')).toHaveLength(0);
+    act(() => {
+      tree.update(
+        <ThemeProvider>
+          <WorkoutContentRenderer dayGroups={dayGroupsOf(NOTE)} presentation="log" sourceNoteId="n1" sourceWeekIndex={0} sourceSliceText={NOTE} />
+        </ThemeProvider>,
+      );
+    });
+    // Returning to the original routine does not revive the stale sheet.
+    expect(byTestId(tree, 'exercise-history-sheet')).toHaveLength(0);
   });
 
   test('default presentation has no history control', () => {

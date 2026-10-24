@@ -171,6 +171,8 @@ export function WorkoutContentRenderer({
   // #1607: the open history sheet, keyed to this exact occurrence and scoped
   // like the fold state, so a routine/week/dataset change drops it.
   const [history, setHistory] = useState(null);
+  // Drop (not just hide) a stale sheet so returning to the old scope never revives it.
+  if (history && history.scope !== foldScope) setHistory(null);
   const historyTarget = history && history.scope === foldScope ? history.target : null;
   // Running counter across every section in document order — matches
   // parseWorkoutNote's own `sections` index for the slice `dayGroups` was
