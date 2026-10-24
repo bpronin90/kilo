@@ -114,7 +114,7 @@ export function ExerciseHistorySheet({ target, onClose }) {
                 <Text style={[typography['body-sm'], styles.muted, styles.row]}>No logged sessions yet.</Text>
               ) : newestFirst.map((s) => (
                 <View key={s.index} style={styles.row} testID={`exercise-history-session-${s.index}`}>
-                  <Text style={[typography['label-lg'], styles.colIndex, s === latestLogged ? styles.strong : styles.muted]}>{s.index}</Text>
+                  <View style={styles.indexCell}><Text style={[typography['label-lg'], s === latestLogged ? styles.strong : styles.muted]}>{s.index}</Text></View>
                   <View style={{ flex: 1 }}>
                     {s.kind === 'skipped' ? <Text style={[typography['label-lg'], styles.muted]}>— Skipped</Text>
                       : s.kind === 'unparsed' ? <UnparsedRow raw={s.raw} muted selectable />
@@ -148,5 +148,7 @@ const createStyles = (kua, colors) => StyleSheet.create({
   kicker: { letterSpacing: 1.2, color: kua.onSurfaceVariant },
   tableHead: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: kua.primaryContainer, borderTopWidth: 1, borderBottomWidth: 1, borderColor: kua.surfaceBorder },
   colIndex: { width: 40 },
+  // Matches LogSetLine's 30dp row so the index centres on the set line.
+  indexCell: { width: 40, minHeight: 30, justifyContent: 'center' },
   row: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, paddingVertical: 8, minHeight: 44, borderBottomWidth: 1, borderBottomColor: kua.surfaceBorder },
 });
