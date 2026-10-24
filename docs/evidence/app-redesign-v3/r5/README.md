@@ -2,7 +2,7 @@
 
 Rendered from the **real app** (Expo web export), not prototype HTML.
 
-- **Rendered commit:** `cc666448d9e37fd8cf55bf27d76ba8c8c751daa7` (all 76 PNGs; `manifest.json` records it per capture).
+- **Rendered commit:** `cc666448d9e37fd8cf55bf27d76ba8c8c751daa7` (all 76 PNGs; the capture runner records it per shot).
   Later commits on this branch are evidence/docs only unless a review round says otherwise.
 - **Viewport:** 390x844 CSS px, DPR 2 (780x1688 px), UTC, fixed clock `2026-10-23T12:00:00Z`.
 - **Themes:** every state in `HD` hard-dark and `CL` clay-light; the Analytics first screen also in `GL` grass-light and `CD` clay-dark.
@@ -28,7 +28,7 @@ Original problem (before): the R4 render [`first-analytics-hard-dark`](../r4/aft
 | Search | Full-width box in the panel, own hairline section | pass |
 | Column header | `EXERCISE 1RM KILO BEST` mono, values below right-aligned to the same fixed columns | pass |
 | Day group | `MONDAY · 3` strip with chevron, >=48dp | pass |
-| Row | >=60dp (measured `row_min_height` in `manifest.json`), name + trend pill top, values below | pass |
+| Row | >=60dp (measured in the rendered DOM on every shot that shows rows: smallest row 70 CSS px), name + trend pill top, values below | pass |
 | Sheet | Grabber, name, day + logged sessions, close, 1RM / Kilo / Best cells, sets table, `View in Log` | pass (see differences) |
 | Unchanged | Root header, chapter index, tab bar, Training/Bodyweight/Recovery chapters, plate sheet, explainer copy | pass |
 
