@@ -423,7 +423,7 @@ export function LogRecoverySection({
             </Card>
           ) : null}
           {activeBlock ? (
-          <Card style={styles.card}>
+          <Card style={[styles.card, styles.activeCard]}>
             {/* Zone 1 — state: a kicker, the headline fact, and the
                 de-emphasized baseline caption (#843). */}
             <View style={styles.stateZone}>

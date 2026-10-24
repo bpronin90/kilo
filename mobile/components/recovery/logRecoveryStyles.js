@@ -29,6 +29,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     overflow: 'hidden',
     gap: 0,
   },
+  // #1606 (redesign v3): the active block is the Log tab's active panel, so it
+  // carries the same 2px primary border as the current-routine card.
+  activeCard: {
+    borderWidth: 2,
+    borderColor: kua ? kua.primary : colors.accent,
+  },
   stateZone: {
     backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
     paddingHorizontal: 18,
@@ -37,15 +43,13 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 6,
   },
   stateKicker: {
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
-    fontWeight: '800',
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '800' }),
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    letterSpacing: kua ? 1.2 : 0.8,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   headline: {
-    fontSize: TYPOGRAPHY['headline-md'].fontSize,
-    fontWeight: '800',
+    ...(kua ? TYPOGRAPHY['headline-md'] : { fontSize: TYPOGRAPHY['headline-md'].fontSize, fontWeight: '800' }),
     color: kua ? kua.onSurface : colors.text,
   },
   baselineCaption: {

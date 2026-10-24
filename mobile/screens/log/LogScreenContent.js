@@ -1,6 +1,8 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { ScreenShell } from '../../components/ScreenShell';
+import { LogDayIndexOverlay } from './LogDayIndex';
+import { LogRootHeader } from './LogRoutineHeaderActions';
 import { ErrorBanner, Card, Button } from '../../components/UI';
 import { LogEmptyState } from '../../components/LogEmptyState';
 import { LogDeloadSection } from '../../components/LogDeloadSection';
@@ -13,6 +15,8 @@ import { LogSkeleton } from './LogScreenStates';
 import { RecoveryEntryRow, RecoverySurface } from './RecoveryManagementScreen';
 import { Alert } from '../../lib/platformAlert';
 import { compareRecoveryBlocksNewestCompletedFirst } from '../../storage/entries/recoveryStorage';
+
+const EMPTY_HEADER = <></>;
 
 // Presentation for the Log tab's read view (the first, non-editing ScreenShell):
 // the Routine / Deload / Recovery tab body, routine cards, recovery entry points,
@@ -32,6 +36,7 @@ export function LogScreenContent(props) {
     recoveryPendingError, handleRetryRecovery, recoveryReady, recoveryLoading, recoveryRefreshing, recoveryStale,
     recoveryStateError, recoveryMutationsAllowed, showRecoveryStartInManagement, openStartRecoveryBlock, showRecoveryEntry,
     newestCompletedRecoveryBlock, otherNotes, guardedHandleDeleteRoutine, recoveryWeekNumberByNoteId,
+    routineHeaderActions = null, dayNav = null, days = [],
   } = props;
   const { colors, kuaPalette: kua } = useTheme();
   const styles = React.useMemo(() => createStyles(colors, kua), [colors, kua]);
@@ -53,14 +58,20 @@ export function LogScreenContent(props) {
       </Text>
     </Pressable>
   );
+  // #1606: "Log" root header (Plates + Routine actions only while a current
+  // routine is readable) above ScreenShell, which gets an empty `header`; the
+  // pinned day index is positioned against the header's measured height.
+  const [headerHeight, setHeaderHeight] = React.useState(0);
+  const showRoutineActions = !!routineHeaderActions && hasContent && !isEmpty && !isNotesFirstLoad && currentEditor.mode === 'read';
+  const handleScroll = (e) => { currentEditor.handleReadScroll?.(e); dayNav?.onScroll(e); };
   return (
+    <View style={isEditing ? { display: 'none' } : { flex: 1 }}>
+      <LogRootHeader actions={showRoutineActions ? routineHeaderActions : null} headerRight={headerRight} onHeight={setHeaderHeight} />
       <ScreenShell
         ref={readScrollRef}
-        onScroll={currentEditor.handleReadScroll}
-        style={isEditing ? { display: 'none' } : { flex: 1 }}
-        title="Workout Notes"
-        subtitle={isEmpty ? "Track your active training routine." : "Your active training routine. Update it as you go."}
-        headerRight={headerRight}
+        onScroll={handleScroll}
+        style={{ flex: 1 }}
+        header={EMPTY_HEADER}
         keyboardShouldPersistTaps="handled"
       >
         {notesError ? (
@@ -267,6 +278,10 @@ export function LogScreenContent(props) {
           </>
         )}
       </ScreenShell>
+      {effectiveTabView === 'routine' && currentEditor.mode === 'read' && hasContent && !props.isCollapsed ? (
+        <LogDayIndexOverlay days={days} nav={dayNav} top={headerHeight} />
+      ) : null}
+    </View>
   );
 }
 

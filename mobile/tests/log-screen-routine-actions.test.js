@@ -92,7 +92,11 @@ function readLogScreenSource() {
   const otherEditorHook = fs.readFileSync(path.join(__dirname, '../screens/log/useLogOtherRoutineEditor.js'), 'utf8');
   const deloadEditorHook = fs.readFileSync(path.join(__dirname, '../screens/log/useLogDeloadEditor.js'), 'utf8');
   const logHelpersLocal = fs.readFileSync(path.join(__dirname, '../screens/log/logScreenHelpers.js'), 'utf8');
-  return main + '\n' + deload + '\n' + editor + '\n' + active + '\n' + previous + '\n' + helpers + '\n' + currentEditorHook + '\n' + otherEditorHook + '\n' + deloadEditorHook + '\n' + logHelpersLocal;
+  // #1606: the card is composed in LogRoutineReadView and its Routine actions
+  // items live in LogRoutineActionSheet.
+  const readView = fs.readFileSync(path.join(__dirname, '../screens/log/LogRoutineReadView.js'), 'utf8');
+  const actionSheet = fs.readFileSync(path.join(__dirname, '../components/log/LogRoutineActionSheet.js'), 'utf8');
+  return readView + '\n' + actionSheet + '\n' + main + '\n' + deload + '\n' + editor + '\n' + active + '\n' + previous + '\n' + helpers + '\n' + currentEditorHook + '\n' + otherEditorHook + '\n' + deloadEditorHook + '\n' + logHelpersLocal;
 }
 
 describe('Log web edit path: explicit edit control is wired (#314)', () => {
@@ -108,14 +112,15 @@ describe('Log web edit path: explicit edit control is wired (#314)', () => {
   });
 
   test('LogScreen forwards enterCurrentEditor to the active routine card', () => {
-    expect(src).toMatch(/enterCurrentEditor=\{(?:currentEditor\.)?enterCurrentEditor\}/);
+    // #1606: LogRoutineReadView builds the card props object for LogScreen.
+    expect(src).toMatch(/enterCurrentEditor(?:=\{|: )(?:currentEditor\.|ce\.)?enterCurrentEditor\b/);
   });
 
   test('active routine card renders an explicit Edit control bound to enterCurrentEditor', () => {
     // LogActiveRoutineCard exposes a single-press "Edit" button (web-usable path)
     // separate from the double-tap body handler.
     // #1244: the Edit item is a data-driven Routine actions menu entry.
-    expect(src).toMatch(/label: 'Edit', a11y: 'Edit routine', run: enterCurrentEditor/);
+    expect(src).toMatch(/label: 'Edit', icon: 'edit', a11y: 'Edit routine', run: enterCurrentEditor/);
   });
 });
 
