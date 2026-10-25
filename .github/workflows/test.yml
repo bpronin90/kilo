@@ -111,3 +111,10 @@ jobs:
           --lock=supabase/functions/mcp/deno.lock --frozen
           --allow-net --allow-read --allow-env --allow-import
           supabase/functions/mcp/
+
+      - name: Check the MCP integration harness and recorded evidence (no stack, no secrets)
+        run: |
+          deno check --config supabase/functions/mcp/integration/deno.json \
+            --lock=supabase/functions/mcp/integration/deno.lock --frozen \
+            supabase/functions/mcp/integration/matrix.ts
+          node scripts/verify-mcp-mvp.mjs --check

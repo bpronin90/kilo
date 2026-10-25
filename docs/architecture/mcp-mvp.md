@@ -581,3 +581,32 @@ stays the single reference.
   functions import it. It decodes the payload unverified because it only ever narrows access.
 - **Response-size backstop.** Tools use `fitItems` (envelope.ts) to trim trailing items to 256 KiB;
   the SQL byte budget arrives with the page RPCs (#1627/#1628).
+
+## 15. Verified compatibility and limitations (#1629)
+
+Evidence: `docs/verification/mcp-mvp/` (case list, results, tested SHA). Scope: the
+local `kilo_mcp_staging` stack and one client.
+
+- **Client compatibility.** Verified: `@modelcontextprotocol/client` 2.4.0 (official
+  MCP TypeScript SDK) completes discovery, dynamic registration, PKCE, approval, token
+  exchange, `initialize`, `tools/list` and tool calls against the function. **Not
+  tested:** Claude Code, ChatGPT or any HTTPS-only client; compatibility with them is
+  unclaimed.
+- **Issuer pin under `functions serve`.** The function sees an in-network host there, so
+  the derived issuer (§5 step 3) differs from the token's `iss` and every token is
+  rejected. The staging stack pins `MCP_AUTH_ISSUER`. A hosted deployment that does not
+  forward the public host must do the same.
+- **Refresh-token replay is Auth's call.** After rotation and beyond the reuse
+  interval, Auth's OAuth token endpoint still accepted the rotated-out refresh token
+  (GoTrue version in `results.json`). Kilo adds no control here; the guarantee it relies
+  on is disconnect: every token chain for the grant ended on `revokeGrant` (case R2).
+- **P3 result.** With an OAuth access token, Auth accepted `GET /user` and `PUT /user`
+  (metadata) and `POST /logout`; `POST /factors` returned 422. This is production
+  blocker PB-4 evidence, acceptable only for synthetic staging users.
+- **Shared pre-auth bucket.** Behind the gateway the function sees one client address,
+  so the 120 / 60 s pre-auth limit is shared by every caller of that gateway.
+- **Browser step.** The matrix performs the page's Auth calls (`getAuthorizationDetails`,
+  approve or deny) as the signed-in user; the page itself is evidenced by #1626's
+  renders, not re-rendered here.
+- **Time limits.** The 3 s database limit is exercised end to end (case F6); the 10 s
+  whole-request deadline is covered by unit tests only.
