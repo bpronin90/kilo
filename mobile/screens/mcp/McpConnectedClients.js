@@ -28,6 +28,10 @@ export function McpConnectedClients({ userId, client }) {
   const userRef = useRef(userId);
   userRef.current = userId;
   const mountedRef = useRef(true);
+  // Bumped on every user change and on unmount. A confirmation dialog captures the
+  // value it was opened under, so it stays dead even if the same account returns.
+  const generationRef = useRef(0);
+  const busyRef = useRef(false);
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
@@ -49,6 +53,7 @@ export function McpConnectedClients({ userId, client }) {
   }, [client]);
 
   useEffect(() => {
+    generationRef.current += 1;
     setConnections([]);
     setPendingId(null);
     setNotice('');
@@ -57,18 +62,23 @@ export function McpConnectedClients({ userId, client }) {
       return undefined;
     }
     load();
-    return () => { seqRef.current += 1; };
+    return () => {
+      seqRef.current += 1;
+      generationRef.current += 1;
+    };
   }, [userId, load]);
 
-  // `forUser` is the account that opened the confirmation. The dialog can outlive
-  // an account switch or unmount, so its callback must not revoke anything for a
-  // different (or no) current user.
-  const disconnect = useCallback(async (connection, forUser) => {
-    if (!mountedRef.current || !forUser || userRef.current !== forUser) return;
+  // `forUser`/`generation` identify the account session that opened the
+  // confirmation. The dialog can outlive an account switch (even A -> B -> A) or
+  // unmount, so its callback must not revoke anything once either has changed.
+  const disconnect = useCallback(async (connection, forUser, generation) => {
+    if (!mountedRef.current || !forUser || userRef.current !== forUser || generationRef.current !== generation || busyRef.current) return;
+    busyRef.current = true;
     const seq = ++seqRef.current;
     setPendingId(connection.clientId);
     setNotice('');
     const result = await revokeConnection(client, connection.clientId);
+    busyRef.current = false;
     if (seq !== seqRef.current || userRef.current !== forUser) return;
     setPendingId(null);
     if (!result.ok) {
@@ -82,9 +92,10 @@ export function McpConnectedClients({ userId, client }) {
 
   const confirmDisconnect = (connection) => {
     const forUser = userId;
+    const generation = generationRef.current;
     Alert.alert(COPY.confirmTitle, COPY.confirmBody(connection.name), [
       { text: COPY.cancel, style: 'cancel' },
-      { text: COPY.disconnect, style: 'destructive', onPress: () => disconnect(connection, forUser) },
+      { text: COPY.disconnect, style: 'destructive', onPress: () => disconnect(connection, forUser, generation) },
     ]);
   };
 

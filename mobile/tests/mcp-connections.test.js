@@ -189,6 +189,38 @@ describe('McpConnectedClients', () => {
     act(() => tree.unmount());
   });
 
+  test('a confirmation opened by User A stays dead after the session returns A -> B -> A', async () => {
+    const client = makeClient();
+    const tree = await mount(client, 'user-a');
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'Disconnect Claude Code' }).props.onPress(); });
+    const confirm = Alert.alert.mock.calls[0][2].find((b) => b.text === 'Disconnect');
+    await act(async () => { tree.update(<McpConnectedClients userId="user-b" client={client} />); });
+    await flush();
+    await act(async () => { tree.update(<McpConnectedClients userId="user-a" client={client} />); });
+    await flush();
+    await act(async () => { confirm.onPress(); });
+    await flush();
+    expect(client.auth.oauth.revokeGrant).not.toHaveBeenCalled();
+    // A fresh confirmation under the current session still works.
+    await disconnect(tree, 'Claude Code');
+    expect(client.auth.oauth.revokeGrant).toHaveBeenCalledWith({ clientId: 'c1' });
+    act(() => tree.unmount());
+  });
+
+  test('confirming twice sends one revoke while it is pending', async () => {
+    const client = makeClient();
+    let resolveRevoke;
+    client.auth.oauth.revokeGrant.mockReturnValue(new Promise((resolve) => { resolveRevoke = resolve; }));
+    const tree = await mount(client);
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'Disconnect Claude Code' }).props.onPress(); });
+    const confirm = Alert.alert.mock.calls[0][2].find((b) => b.text === 'Disconnect');
+    await act(async () => { confirm.onPress(); confirm.onPress(); });
+    expect(client.auth.oauth.revokeGrant).toHaveBeenCalledTimes(1);
+    await act(async () => { resolveRevoke({ data: null, error: null }); });
+    await flush();
+    act(() => tree.unmount());
+  });
+
   test('a confirmation left open across unmount or sign-out revokes nothing', async () => {
     const client = makeClient();
     const tree = await mount(client, 'user-a');
