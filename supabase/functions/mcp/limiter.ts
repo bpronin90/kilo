@@ -8,16 +8,25 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { rateLimitAllowed } from '../_shared/rate-limit.ts'
+import { cancellable, type RpcCall } from './gate.ts'
 
 export interface Limiter {
-  allow(bucket: string, max: number, windowMs: number): Promise<boolean>
+  // `signal` cancels the in-flight request when the caller's deadline expires.
+  allow(bucket: string, max: number, windowMs: number, signal?: AbortSignal): Promise<boolean>
 }
 
 type RateLimitClient = Parameters<typeof rateLimitAllowed>[0]
 
 export function limiterFromClient(admin: RateLimitClient): Limiter {
   return {
-    allow: (bucket, max, windowMs) => rateLimitAllowed(admin, bucket, max, windowMs, 'deny'),
+    allow: (bucket, max, windowMs, signal) => {
+      // The shared helper calls admin.rpc(...) without a signal. Wrapping the
+      // client attaches one to the request it makes, without touching the helper.
+      const bound = signal
+        ? ({ rpc: (fn: string, args?: Record<string, unknown>) => cancellable(admin.rpc(fn, args) as RpcCall, signal) } as unknown as RateLimitClient)
+        : admin
+      return rateLimitAllowed(bound, bucket, max, windowMs, 'deny')
+    },
   }
 }
 

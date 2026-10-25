@@ -94,3 +94,35 @@ Deno.test('the service-role capability is confined to limiter.ts', async () => {
   }
   assertEquals(offenders, [])
 })
+
+Deno.test('limiter and gate pass the request signal into the in-flight RPC', async () => {
+  const seen: AbortSignal[] = []
+  const builder = () => ({
+    then: (res: (v: { data: unknown; error: unknown }) => unknown) => Promise.resolve({ data: true, error: null }).then(res),
+    abortSignal(s: AbortSignal) { seen.push(s); return builder() },
+  })
+  const limiter = limiterFromClient({ rpc: () => builder() } as never)
+  const controller = new AbortController()
+  assertEquals(await limiter.allow('b', 1, 1000, controller.signal), true)
+  assertEquals(seen.length, 1)
+  controller.abort()
+  assertEquals(seen[0], controller.signal, 'the exact request signal reaches the limiter RPC')
+
+  const gateSeen: AbortSignal[] = []
+  const client = {
+    rpc: () => ({
+      then: (res: (v: { data: unknown; error: unknown }) => unknown) =>
+        Promise.resolve({ data: { status: 'ok' }, error: null }).then(res),
+      abortSignal(s: AbortSignal) { gateSeen.push(s); return this },
+    }),
+  }
+  const request = new AbortController()
+  assertEquals((await runGate(client as never, 3000, request.signal)).kind, 'ok')
+  assertEquals(gateSeen.length, 1)
+  request.abort()
+  assertEquals(gateSeen[0].aborted, true, 'aborting the request aborts the gate RPC')
+  const timed = new AbortController()
+  await runGate(client as never, 20, timed.signal)
+  await new Promise((r) => setTimeout(r, 60))
+  assertEquals(gateSeen[1].aborted, true, 'the 3-second DB-call limit aborts the gate RPC')
+})

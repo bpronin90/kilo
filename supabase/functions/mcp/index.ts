@@ -159,14 +159,14 @@ export function createMcpFetch(deps: McpDeps): (req: Request) => Promise<Respons
 
       for (const w of USER_WINDOWS) {
         if (signal?.aborted) return timedOut()
-        if (!(await deps.limiter.allow(`mcp:user:${identity.userId}:${w.suffix}`, w.max, w.windowMs))) {
+        if (!(await deps.limiter.allow(`mcp:user:${identity.userId}:${w.suffix}`, w.max, w.windowMs, signal))) {
           return jsonRpcError(429, -32000, 'Too many requests', { 'retry-after': String(Math.ceil(w.windowMs / 1000)) })
         }
       }
 
       if (signal?.aborted) return timedOut()
       const client = deps.clientFor ? deps.clientFor(ctx) : (ctx.supabase as unknown as RpcClient)
-      const gate = await runGate(client)
+      const gate = await runGate(client, undefined, signal)
       if (signal?.aborted) return timedOut()
       if (gate.kind === 'unauthorized') return unauthorized()
       if (gate.kind === 'unavailable') return jsonRpcError(503, -32000, 'Service unavailable', { 'retry-after': '5' })
@@ -212,7 +212,7 @@ export function createMcpFetch(deps: McpDeps): (req: Request) => Promise<Respons
   const timeoutMs = deps.requestTimeoutMs ?? REQUEST_TIMEOUT_MS
   const run = async (req: Request, signal: AbortSignal): Promise<Response> => {
     const ip = clientIp(req)
-    const allowed = await deps.limiter.allow(`mcp:${PRE_AUTH_WINDOW.suffix}:${ip}`, PRE_AUTH_WINDOW.max, PRE_AUTH_WINDOW.windowMs)
+    const allowed = await deps.limiter.allow(`mcp:${PRE_AUTH_WINDOW.suffix}:${ip}`, PRE_AUTH_WINDOW.max, PRE_AUTH_WINDOW.windowMs, signal)
     if (signal.aborted) return timedOut()
     if (!allowed) return jsonRpcError(429, -32000, 'Too many requests', { 'retry-after': '60' })
     if (req.method === 'OPTIONS') return (authed as (r: Request) => Promise<Response>)(req)
