@@ -28,10 +28,19 @@ export interface McpDeps {
   env: (name: string) => string | undefined
   limiter: Limiter
   tools?: readonly ToolModule[]
+  requestTimeoutMs?: number
   // Test seams. Production leaves both unset.
   authEnv?: Record<string, unknown>
   clientFor?: (ctx: SupabaseContext) => RpcClient
 }
+
+// Only these protocol methods are ever logged by name; anything else is
+// client-controlled text and is logged as "unknown".
+const KNOWN_METHODS = new Set([
+  'initialize', 'ping', 'tools/list', 'tools/call', 'resources/list', 'resources/read', 'resources/templates/list',
+  'prompts/list', 'prompts/get', 'completion/complete', 'logging/setLevel', 'server/discover', 'subscriptions/listen',
+  'notifications/initialized', 'notifications/cancelled',
+])
 
 const JSON_HEADERS = { 'content-type': 'application/json' }
 
@@ -49,7 +58,7 @@ function unauthorized(): Response {
 }
 
 // Reads at most MAX_REQUEST_BYTES. Returns a replayable request, or a response.
-async function boundedRequest(req: Request): Promise<Request | Response> {
+async function boundedRequest(req: Request, deadline: number): Promise<Request | Response> {
   if (req.method !== 'POST') {
     return jsonRpcError(405, -32000, 'Method not allowed', { allow: 'POST' })
   }
@@ -62,7 +71,14 @@ async function boundedRequest(req: Request): Promise<Request | Response> {
   if (req.body) {
     const reader = req.body.getReader()
     for (;;) {
-      const { done, value } = await reader.read()
+      let chunk: ReadableStreamReadResult<Uint8Array>
+      try {
+        chunk = await withTimeout(reader.read(), Math.max(1, deadline - Date.now()))
+      } catch {
+        await reader.cancel().catch(() => {})
+        return jsonRpcError(504, -32000, 'Request timed out')
+      }
+      const { done, value } = chunk
       if (done) break
       total += value.length
       if (total > MAX_REQUEST_BYTES) {
@@ -98,7 +114,7 @@ function inspectBody(text: string, known: ReadonlySet<string>): Parsed {
   }
   const { method, params } = value as { method: string; params?: { name?: unknown } }
   const name = typeof params?.name === 'string' && known.has(params.name) ? params.name : null
-  return { ok: true, method: method.length <= 64 ? method : 'invalid', tool: method === 'tools/call' ? name : null }
+  return { ok: true, method: KNOWN_METHODS.has(method) ? method : 'unknown', tool: method === 'tools/call' ? name : null }
 }
 
 export function createMcpFetch(deps: McpDeps): (req: Request) => Promise<Response> {
@@ -156,7 +172,7 @@ export function createMcpFetch(deps: McpDeps): (req: Request) => Promise<Respons
 
       let response: Response
       try {
-        response = await withTimeout(Promise.resolve(handler.fetch(replay)), REQUEST_TIMEOUT_MS)
+        response = await withTimeout(Promise.resolve(handler.fetch(replay)), timeoutMs)
       } catch {
         response = jsonRpcError(504, -32000, 'Request timed out')
       }
@@ -167,16 +183,25 @@ export function createMcpFetch(deps: McpDeps): (req: Request) => Promise<Respons
     },
   )
 
-  const preAuth = async (req: Request): Promise<Response> => {
+  const timeoutMs = deps.requestTimeoutMs ?? REQUEST_TIMEOUT_MS
+  const run = async (req: Request, deadline: number): Promise<Response> => {
     const ip = clientIp(req)
     if (!(await deps.limiter.allow(`mcp:${PRE_AUTH_WINDOW.suffix}:${ip}`, PRE_AUTH_WINDOW.max, PRE_AUTH_WINDOW.windowMs))) {
       return jsonRpcError(429, -32000, 'Too many requests', { 'retry-after': '60' })
     }
     if (req.method === 'OPTIONS') return (authed as (r: Request) => Promise<Response>)(req)
-    const bounded = await boundedRequest(req)
+    const bounded = await boundedRequest(req, deadline)
     if (bounded instanceof Response) return bounded
     return (authed as (r: Request) => Promise<Response>)(bounded)
   }
+
+  // One deadline from entry covers the body read, limiters, verification, the
+  // gate and the handler, so a stalled stream or dependency cannot hold the
+  // request past REQUEST_TIMEOUT_MS.
+  const preAuth = (req: Request): Promise<Response> =>
+    withTimeout(run(req, Date.now() + timeoutMs), timeoutMs).catch(() =>
+      jsonRpcError(504, -32000, 'Request timed out')
+    )
 
   return withOAuthProtectedResource(
     deps.env('MCP_AUTH_ISSUER') ? { authorizationServer: () => deps.env('MCP_AUTH_ISSUER') as string } : {},

@@ -262,3 +262,45 @@ Deno.test('logs carry method, tool, status and duration only', async () => {
   assertEquals(joined.includes(t), false)
   assertEquals(joined.includes(USER_A), false)
 })
+
+Deno.test('a stalled anonymous body is cut off at the request deadline', async () => {
+  const client = fakeClient(GATE_OK)
+  const fetchMcp = createMcpFetch({
+    env: (n) => ENV[n], limiter: fakeLimiter(), authEnv, clientFor: () => client, requestTimeoutMs: 150,
+  })
+  const stalled = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('{')) } })
+  const started = Date.now()
+  const res = await fetchMcp(new Request(URL_MCP, {
+    method: 'POST', body: stalled, headers: { 'content-type': 'application/json' }, // @ts-ignore deno streaming body
+    duplex: 'half',
+  }))
+  assertEquals(res.status, 504)
+  assert(Date.now() - started < 2000)
+  assertEquals(client.calls, [])
+})
+
+Deno.test('a stalled limiter is cut off at the request deadline', async () => {
+  const client = fakeClient(GATE_OK)
+  const fetchMcp = createMcpFetch({
+    env: (n) => ENV[n], authEnv, clientFor: () => client, requestTimeoutMs: 150,
+    limiter: { allow: () => new Promise<boolean>(() => {}) },
+  })
+  const res = await fetchMcp(rpc('initialize', INIT, await token()))
+  assertEquals(res.status, 504)
+  assertEquals(client.calls, [])
+})
+
+Deno.test('client-chosen method text is never logged', async () => {
+  const lines: string[] = []
+  const original = console.log
+  console.log = (...args: unknown[]) => { lines.push(args.map(String).join(' ')) }
+  try {
+    await build(fakeClient(GATE_OK))(rpc('squat 100kg; private-health-note', {}, await token()))
+  } finally {
+    console.log = original
+  }
+  const joined = lines.join('\n')
+  assertEquals(joined.includes('squat'), false)
+  assertEquals(joined.includes('private-health-note'), false)
+  assertStringIncludes(joined, '"mcp":"unknown"')
+})
