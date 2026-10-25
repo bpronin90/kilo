@@ -208,6 +208,29 @@ await check('M1', 'AC4', 'user without cloud consent connects but data tools ret
   await out.connection.close()
 })
 
+// ---------- 5b. probe P3: what else an OAuth token can do at Auth (recorded, not a Kilo guarantee) ----------
+await check('P3', 'AC4', 'probe: Auth account endpoints reachable with an OAuth access token (production blocker PB-4 evidence)', async () => {
+  const P = await L.createUser('probe')
+  const out = await L.connect(P)
+  expect(out.kind === 'connected', 'no connection')
+  const t = out.connection.accessToken()
+  const h = { apikey: L.ANON_KEY, authorization: `Bearer ${t}`, 'content-type': 'application/json' }
+  const status = async (method: string, path: string, body?: unknown) => {
+    const r = await fetch(`${L.AUTH}${path}`, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) })
+    await r.body?.cancel()
+    return r.status
+  }
+  const seen = {
+    'GET /user': await status('GET', '/user'),
+    'PUT /user (metadata)': await status('PUT', '/user', { data: { probe: true } }),
+    'POST /factors (enroll)': await status('POST', '/factors', { factor_type: 'totp', friendly_name: 'probe' }),
+    'POST /logout?scope=local': await status('POST', '/logout?scope=local'),
+  }
+  const after = (await L.call(t, 'whoami')).status
+  await out.connection.close()
+  return Object.entries(seen).map(([k, v]) => `${k} ${v}`).join('; ') + `; MCP after logout ${after}`
+})
+
 // ---------- 6. refresh, disconnect, replay ----------
 await check('R1', 'AC3', 'refresh works: a new access token is issued and accepted', async () => {
   const r = await L.refresh(conn!.clientId(), conn!.refreshToken()!)
@@ -242,7 +265,7 @@ await check('R2', 'AC3', 'rotated-out refresh token replay is observed; disconne
     const r = await L.refresh(clientId, rt)
     expect(r.status >= 400 && !r.body?.access_token, 'refresh survived disconnect')
   }
-  return replayAccepted ? 'Auth accepted the replayed refresh token (GoTrue v2.192.0); all chains ended on disconnect' : 'Auth rejected the replay; all chains ended on disconnect'
+  return replayAccepted ? 'Auth accepted the replayed refresh token (see gotrue in results.json); all chains ended on disconnect' : 'Auth rejected the replay; all chains ended on disconnect'
 })
 
 await check('D1', 'AC3', 'disconnect: unexpired access token and refresh token stop working; first-party session is unaffected', async () => {
