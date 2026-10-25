@@ -100,13 +100,27 @@ export function callbackUrlHasCode() {
   }
 }
 
+// The recovery `amr` entry must also have been minted during THIS page load
+// (timestamp >= the page's start, less a small clock-skew allowance). A rejected
+// or replayed code leaves the SDK's previously stored session in place, which may
+// itself carry an old `recovery` entry; that is not proof this callback worked.
+const PAGE_LOAD_SKEW_MS = 30 * 1000;
+
+function pageLoadedAtMs() {
+  const origin = typeof performance !== 'undefined' ? performance.timeOrigin : 0;
+  return Number.isFinite(origin) && origin > 0 ? origin : Date.now();
+}
+
 export function isRecoverySession(session) {
   try {
     const payload = String(session?.access_token || '').split('.')[1];
     if (!payload || typeof atob !== 'function') return false;
     const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
     const amr = JSON.parse(json)?.amr;
-    return Array.isArray(amr) && amr.some((entry) => entry?.method === 'recovery');
+    const since = pageLoadedAtMs() - PAGE_LOAD_SKEW_MS;
+    return Array.isArray(amr) && amr.some((entry) => (
+      entry?.method === 'recovery' && Number(entry.timestamp) * 1000 >= since
+    ));
   } catch (e) {
     return false;
   }

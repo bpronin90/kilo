@@ -19,7 +19,9 @@ function jwt(claims) {
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
   return `${b64({ alg: 'HS256' })}.${b64(claims)}.sig`;
 }
-const recoverySession = { access_token: jwt({ amr: [{ method: 'recovery', timestamp: 1 }] }), user: { email: 'a@b.com' } };
+const nowSec = () => Math.floor(Date.now() / 1000);
+const recoverySession = { access_token: jwt({ amr: [{ method: 'recovery', timestamp: nowSec() }] }), user: { email: 'a@b.com' } };
+const staleRecoverySession = { access_token: jwt({ amr: [{ method: 'recovery', timestamp: nowSec() - 3600 }] }), user: { email: 'a@b.com' } };
 const passwordSession = { access_token: jwt({ amr: [{ method: 'password', timestamp: 1 }] }), user: { email: 'old@b.com' } };
 
 function installWindow({ search = '', seed = {} } = {}) {
@@ -55,6 +57,7 @@ describe('recovery link classification (web)', () => {
   test('isRecoverySession reads the amr claim and tolerates junk', () => {
     expect(isRecoverySession(recoverySession)).toBe(true);
     expect(isRecoverySession(passwordSession)).toBe(false);
+    expect(isRecoverySession(staleRecoverySession)).toBe(false);
     expect(isRecoverySession({ access_token: 'not-a-jwt' })).toBe(false);
     expect(isRecoverySession(null)).toBe(false);
   });
@@ -86,6 +89,14 @@ describe('recovery link classification (web)', () => {
     installWindow({ search: '?code=abc', seed: { [RECOVERY_PENDING_KEY]: String(Date.now()) } });
     const ref = await mountHook(null);
     expect(ref.current.recoveryError).toMatch(/Request a new reset email/);
+  });
+
+  test('a rejected/replayed code that leaves an OLD recovery-minted session behind is a failure, not a recovery', async () => {
+    const store = installWindow({ search: '?code=abc', seed: { [RECOVERY_PENDING_KEY]: String(Date.now()) } });
+    const ref = await mountHook(staleRecoverySession);
+    expect(ref.current.passwordRecovery).toBe(false);
+    expect(ref.current.recoveryError).toMatch(/invalid, expired or already used/);
+    expect(store.has(RECOVERY_PENDING_KEY)).toBe(false);
   });
 
   test('a normal page load (no code) never enters recovery, even on a recovery-minted session', async () => {
