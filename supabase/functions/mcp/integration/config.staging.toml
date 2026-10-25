@@ -1,0 +1,35 @@
+# Isolated MCP staging stack (issue #1629). NEVER push this file to a hosted
+# project: it targets a disposable local stack only. The repository
+# supabase/config.toml stays free of [auth] settings (docs/architecture/mcp-mvp.md
+# section 3). stack.sh copies this file into a scratch workdir.
+
+project_id = "kilo_mcp_staging"
+
+[api]
+port = 56321
+schemas = ["public", "graphql_public", "kilo"]
+
+[db]
+port = 56322
+shadow_port = 56320
+major_version = 17
+
+[auth]
+site_url = "http://localhost:8081"
+additional_redirect_urls = ["http://localhost:8081", "http://127.0.0.1:8081"]
+jwt_expiry = 3600
+enable_signup = true
+enable_anonymous_sign_ins = false
+signing_keys_path = "./signing_keys.json"
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
+[auth.oauth_server]
+enabled = true
+authorization_url_path = "/oauth/consent"
+allow_dynamic_registration = true
+
+[functions.mcp]
+verify_jwt = false

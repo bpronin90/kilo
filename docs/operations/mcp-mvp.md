@@ -1,9 +1,10 @@
 # MCP MVP: staging prerequisites and operator checklist
 
 Setup for the isolated MCP proof. The design contract is
-[`docs/architecture/mcp-mvp.md`](../architecture/mcp-mvp.md). #1629 extends this
-file with verified commands and results. Until then, steps are prerequisites and
-have not been executed.
+[`docs/architecture/mcp-mvp.md`](../architecture/mcp-mvp.md). Sections A–F are
+prerequisites and per-issue notes; section G is the repeatable local run and its
+verified results (#1629). Evidence: [`docs/verification/mcp-mvp/`](../verification/mcp-mvp/README.md).
+Hosted staging (section B) has not been executed.
 
 ## Hard rules
 
@@ -28,7 +29,7 @@ have not been executed.
 | OAuth server | enabled in the staging config only |
 | Dynamic registration | enabled in the staging config only |
 | MCP URL | `http://127.0.0.1:54321/functions/v1/mcp` |
-| Function env | `MCP_AUTH_ISSUER` unset locally (defaults correctly) |
+| Function env | `MCP_AUTH_ISSUER=http://127.0.0.1:56321/auth/v1` (the stack's public Auth URL). Under `functions serve` the function sees an in-network host, so the unset default does not match the token issuer and every token is rejected (verified in #1629). `stack.sh` sets it. |
 
 Checks before starting implementation work:
 
@@ -71,7 +72,8 @@ records "blocked: operator" rather than simulating success.
 
 Claude Code: `claude mcp add --transport http kilo-staging <MCP URL>`, then `/mcp`
 → authenticate. Record the client version and date. Testing one client does not
-establish compatibility with another.
+establish compatibility with another. #1629 verified the official MCP TypeScript SDK
+client only (section G); Claude Code was not run.
 
 ## D. Teardown and rollback
 
@@ -108,3 +110,93 @@ therefore remembers approvals; the page follows that redirect (when safe) withou
 showing the disclosure again. OD-1 is resolved: **accept** (operator decision on
 #1626). No grant revocation is added to the withdrawal flow, and enforcement
 (`consent_stale`, the session gate) is unaffected.
+
+## G. Repeatable local run and verified results (#1629)
+
+Everything here is local and disposable. Nothing touches production
+`ogzhnscdqcdrhfqcobuv`, hosted Auth, signing keys or `supabase config push`.
+
+| Item | Value |
+| --- | --- |
+| Supabase CLI | `npx supabase@2.117.0` (override with `KILO_SUPABASE_CLI_VERSION`); CI stays on 2.109.0 |
+| GoTrue / edge runtime | whatever the CLI pins; the tested versions are recorded in `docs/verification/mcp-mvp/results.json` |
+| Deno / Node / Docker | Deno 2.x, Node 24, Docker running |
+| MCP client under test | `@modelcontextprotocol/client` 2.4.0, the official MCP TypeScript SDK client (pinned in `integration/deno.json` and `deno.lock`) |
+| Project id and ports | `kilo_mcp_staging`; API 56321, DB 56322 (no clash with a normal local stack) |
+| MCP URL | `http://127.0.0.1:56321/functions/v1/mcp` |
+| Discovery | `…/mcp/oauth-protected-resource` and `…/auth/v1/.well-known/oauth-authorization-server` |
+| Browser route | Site URL `http://localhost:8081`, authorization path `/oauth/consent` |
+| Registration policy | open dynamic registration, staging only (production blocker PB-2) |
+| Staging Auth config | `supabase/functions/mcp/integration/config.staging.toml`, copied into a scratch workdir; asymmetric ES256 signing key generated locally |
+| Operator-owned | nothing for the local run; hosted staging and HTTPS-only clients stay in section B |
+
+Environment variable names (values come from the stack, none are committed):
+`API_URL`, `ANON_KEY`, `SERVICE_ROLE_KEY`, `JWT_SECRET` (local demo keys read from
+`stack.env`), `KILO_MCP_SIGNING_KEYS`, `KILO_MCP_FUNCTIONS_LOG`, `KILO_MCP_RESULTS`,
+`KILO_MCP_STACK_DIR`, `KILO_MCP_SHOTS`, `KILO_MCP_CHROMIUM`, `KILO_MCP_ONLY` (run chosen case ids while iterating); function secret `MCP_AUTH_ISSUER`. The runner starts from a minimal environment and refuses any `API_URL` other than `http://127.0.0.1:56321`; fault injection only ever targets the container `supabase_db_kilo_mcp_staging`.
+
+```sh
+bash supabase/functions/mcp/integration/stack.sh up        # Postgres, Auth, PostgREST, migrations, mcp function
+bash supabase/functions/mcp/integration/stack.sh web       # Kilo web build on 127.0.0.1:8081 (needs `npm --prefix mobile ci`)
+node scripts/verify-mcp-mvp.mjs                             # ~12 minutes, needs Chromium; writes docs/verification/mcp-mvp/results.json
+bash supabase/functions/mcp/integration/stack.sh serve      # re-snapshot supabase/functions after a code change
+bash supabase/functions/mcp/integration/stack.sh down       # teardown: containers, volumes, workdir
+```
+
+Seed and cleanup: the matrix creates its own `@example.test` users and synthetic rows
+(manifest: `docs/verification/mcp-mvp/fixture-manifest.json`), sets the consent gate to
+`consent_required`, and leaves cleanup to `stack.sh down`, which discards the whole
+database. `node scripts/verify-mcp-mvp.mjs --check` is the offline CI consistency
+check (case list, recorded results, no credentials in evidence).
+
+The matrix covers, with assertions on response content and row access: discovery and
+anonymous challenge; SDK connect with dynamic registration, PKCE and explicit
+approval, including a run where a real browser opens the authorization link, signs in
+through the Kilo web build and approves or denies (the web build uses Cloudflare's
+always-pass Turnstile test key and the local stack, never a hosted project); `tools/list` (exactly `whoami`, `workout_notes_list`, `weight_entries_list`,
+all read-only); workout and weight pagination, tombstones, raw-text bounds, unknown
+dates and the lb-only unit; empty snapshots; cross-user cursors and arguments; direct
+table, write, withdrawal and other-function attempts with an OAuth token; eleven bad
+token shapes; denied OAuth request; missing consent; refresh; disconnect and replay of
+an unexpired token; withdrawal before purge, regrant and reconnect; deleted account;
+gate, consent, session, page-RPC and limiter outages (the first three prove through function-call counters that no data RPC ran; the page-RPC and limiter cases check the fixed error and the fail-closed 429); a slow database; request-size,
+batch and method limits; per-user, data-quota (with a second user unaffected) and pre-auth rate limits (one shared gateway address, so per-address isolation is not tested); and a log scan.
+
+### Connecting a client (user guide)
+
+1. The user keeps Cloud Sync health consent granted in Kilo. Without it the client
+   connects but every data tool answers `consent_required`.
+2. In the client, add the MCP URL. The client registers itself, then opens the
+   authorization URL; Kilo's `/oauth/consent` page asks the user to sign in if needed
+   and shows who is asking and what is shared.
+3. Disclosure to give users: the client reads **only data already synced to Kilo
+   Cloud** (workout note text and body-weight entries, read-only). Anything that exists
+   only on a device is invisible, and an empty answer means "no cloud rows", not "no
+   history". Weights are in pounds; the unit originally typed is not stored.
+4. Disconnect: Account → Connected AI clients → Disconnect. The client's next request
+   fails immediately, even with an unexpired access token. Signing out of the Kilo
+   app is not a disconnect.
+
+### Troubleshooting
+
+| Symptom | Cause and check |
+| --- | --- |
+| Every token gets 401 on a fresh stack | `MCP_AUTH_ISSUER` missing from the function env (see section A); `stack.sh serve` re-applies it |
+| 401 after the client worked | disconnected, signed out of Kilo everywhere, account deleted, or consent re-granted (`consent_stale`): reconnect through the browser flow |
+| Tool result `consent_required` | consent withdrawn or never granted; grant it in Kilo, then reconnect if it was re-granted |
+| 503 | the session/grant, consent or gate lookup failed; the request ran no data RPC (verified by call counters, F1–F3). Retry; check Auth and Postgres health |
+| 429 | per-IP, per-user or data quota; honor `Retry-After` / `rate_limited`. Behind the local gateway all requests share one IP bucket (120 / 60 s) |
+| Client loops on refresh | a refresh token for a disconnected grant fails by design; reconnect |
+| Matrix says "pre-auth bucket busy" | a run finished less than a minute ago; the matrix waits |
+
+Minimal-log check: function logs contain `{"mcp": method, "tool", "status", "ms"}` only.
+Case G1 scans the log for every token, refresh token, authorization code, authorization
+id, cursor and user id the run handled (over a hundred values), plus JWT-shaped text,
+fixture markers and cursor field names.
+
+Rollback: nothing in production changed, so rollback is `stack.sh down`. For a hosted
+staging project, delete `kilo-mcp-staging`; never roll back by editing production.
+
+Production stays separate: PB-1–PB-4 (architecture §12), a co-tenant impact
+assessment and explicit operator approval are required before any production
+enablement. #1629 does not authorize them.

@@ -1,0 +1,211 @@
+{
+  "environment": "local stack, project id kilo_mcp_staging (disposable; not production)",
+  "date": "2026-10-25",
+  "testedSha": "a4b59d3b7acdfb6fa36ac364f57d6ee4a65675aa",
+  "testedTreeDirty": false,
+  "supabaseCli": "2.117.0",
+  "gotrue": "v2.196.0",
+  "deno": "deno 2.9.1 (stable, release, x86_64-unknown-linux-gnu)",
+  "node": "v24.14.0",
+  "mcpClient": "@modelcontextprotocol/client 2.4.0 (official MCP TypeScript SDK client)",
+  "passed": 28,
+  "total": 28,
+  "cases": [
+    {
+      "id": "S1",
+      "criterion": "AC1",
+      "title": "discovery metadata matches the Auth issuer; anonymous request gets a 401 challenge",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "id": "C1",
+      "criterion": "AC2",
+      "title": "SDK client: discovery, DCR, PKCE, explicit approval, initialize, tools/list, whoami",
+      "status": "pass",
+      "detail": "three read-only tools; whoami identity matches"
+    },
+    {
+      "id": "C2",
+      "criterion": "AC2",
+      "title": "workout reads: own rows only, tombstone excluded, pagination, raw text opt-in and bounded",
+      "status": "pass",
+      "detail": "5 pages, 31 notes"
+    },
+    {
+      "id": "C3",
+      "criterion": "AC2/AC5",
+      "title": "weight reads: pagination, unknown dates honest, unit reported as lb with original unavailable",
+      "status": "pass",
+      "detail": "3 pages; range [from,to) gave 24"
+    },
+    {
+      "id": "C4",
+      "criterion": "AC5",
+      "title": "empty cloud snapshot is reported as no_cloud_records with unknown coverage",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "id": "B1",
+      "criterion": "AC2",
+      "title": "real browser: direct link, sign-in, disclosure, Approve; the SDK client then reads only that user's data",
+      "status": "pass",
+      "detail": "12 weights and 4 notes read through the SDK client after a browser approval"
+    },
+    {
+      "id": "C5",
+      "criterion": "AC2",
+      "title": "two users, two SDK clients: each reads only its own rows",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "id": "X1",
+      "criterion": "AC4",
+      "title": "cross-user cursor and arguments cannot reach another user's rows",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "id": "X2",
+      "criterion": "AC4",
+      "title": "OAuth token has no direct table, writer, withdrawal or other-function access",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "id": "N1",
+      "criterion": "AC4",
+      "title": "anonymous, malformed, HS256, expired, wrong issuer/audience/client and first-party tokens are rejected",
+      "status": "pass",
+      "detail": "11 rejected; forged control accepted"
+    },
+    {
+      "id": "O1",
+      "criterion": "AC4",
+      "title": "denied OAuth request (real browser) yields an error redirect and no code; the decided request id is recorded",
+      "status": "pass",
+      "detail": "re-approving a denied request: HTTP 400, no code"
+    },
+    {
+      "id": "M1",
+      "criterion": "AC4",
+      "title": "user without cloud consent connects but data tools return consent_required and no rows",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "id": "P3",
+      "criterion": "AC4",
+      "title": "probe: Auth account endpoints reachable with an OAuth access token (production blocker PB-4 evidence)",
+      "status": "pass",
+      "detail": "GET /user 200; PUT /user (metadata) 200; POST /factors (enroll) 422; POST /logout?scope=local 204; MCP after logout 401"
+    },
+    {
+      "id": "R1",
+      "criterion": "AC3",
+      "title": "refresh works: a new access token is issued and accepted",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "id": "R2",
+      "criterion": "AC3",
+      "title": "rotated-out refresh token replay is observed; disconnect kills every token chain",
+      "status": "pass",
+      "detail": "Auth accepted the replayed refresh token (see gotrue in results.json); all chains ended on disconnect"
+    },
+    {
+      "id": "D1",
+      "criterion": "AC3",
+      "title": "disconnect: unexpired access token and refresh token stop working; first-party session is unaffected",
+      "status": "pass",
+      "detail": "replay of unexpired token -> 401"
+    },
+    {
+      "id": "W1",
+      "criterion": "AC3",
+      "title": "withdrawal blocks reads immediately (before purge); regrant needs the approved reconnect",
+      "status": "pass",
+      "detail": "before-purge window blocked; old session 401 after regrant; reconnect works"
+    },
+    {
+      "id": "A1",
+      "criterion": "AC4",
+      "title": "deleted account: unexpired token stops working",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "id": "F1",
+      "criterion": "AC4",
+      "title": "gate lookup outage -> 503 and no data RPC runs; recovery restores service",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "id": "F2",
+      "criterion": "AC4",
+      "title": "consent lookup outage -> 503 and no data RPC runs, never an implicit allow",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "id": "F3",
+      "criterion": "AC4",
+      "title": "OAuth grant/session lookup outage -> 503 and no data RPC runs, never an implicit allow",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "id": "F4",
+      "criterion": "AC4",
+      "title": "data page RPC outage -> fixed internal tool error without database text",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "id": "F5",
+      "criterion": "AC4",
+      "title": "rate limiter outage fails closed (429), not open",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "id": "F6",
+      "criterion": "AC4",
+      "title": "slow database: the read ends with a timeout tool error at the database-call limit, long before the 10 s request deadline",
+      "status": "pass",
+      "detail": "3019 ms"
+    },
+    {
+      "id": "L1",
+      "criterion": "AC4",
+      "title": "request size, batch, malformed JSON and method limits",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "id": "Q1",
+      "criterion": "AC4",
+      "title": "per-user limits: the data quota and HTTP limit stop one user and leave another unaffected",
+      "status": "pass",
+      "detail": "data served 30 limited 5; http 429 17; second user unaffected"
+    },
+    {
+      "id": "Q2",
+      "criterion": "AC4",
+      "title": "pre-auth limit: about 120 requests a minute from one address are challenged, then 429 (every caller shares the gateway address, so per-address isolation is not tested)",
+      "status": "pass",
+      "detail": "first 429 at request 121; 120 challenged; 5 got 429"
+    },
+    {
+      "id": "G1",
+      "criterion": "AC6",
+      "title": "function logs hold none of the tokens, codes, cursors, authorization ids or user ids the run handled",
+      "status": "pass",
+      "detail": "129 handled artifacts absent from the log"
+    }
+  ]
+}

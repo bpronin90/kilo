@@ -12,6 +12,10 @@ lifecycle operations, and explicit health-data consent. The app stays
 local-first: without cloud configuration it runs entirely on its local storage
 path, and signed-out users remain local-only.
 
+Read-only AI-client access (MCP) is an isolated, non-production MVP: see
+[`docs/operations/mcp-mvp.md`](docs/operations/mcp-mvp.md) for how to connect,
+disconnect and verify it.
+
 ## Tech Stack
 
 | Layer | Technology |

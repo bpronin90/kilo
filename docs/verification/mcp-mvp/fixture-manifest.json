@@ -1,0 +1,187 @@
+{
+  "purpose": "Synthetic fixtures and case list for the isolated MCP integration matrix (#1629). No real accounts or health data.",
+  "users": [
+    {
+      "label": "a",
+      "consent": "granted",
+      "data": "125 weights (120 dated hourly from 2026-01-01T00:00Z, 5 with logged_at null, two of those with date null), 31 workout notes (30 short, one with saved_at set, 1 with 6000-character raw text) and 1 tombstoned note",
+      "marker": "SYNA"
+    },
+    {
+      "label": "b",
+      "consent": "granted",
+      "data": "same shape, marker SYNB; second SDK client and cross-user isolation",
+      "marker": "SYNB"
+    },
+    {
+      "label": "browser",
+      "consent": "granted",
+      "data": "12 weights, 4 notes (marker SYNR); signs in and approves through the real Kilo web build",
+      "marker": "SYNR"
+    },
+    {
+      "label": "deny",
+      "consent": "granted",
+      "data": "no rows; denies through the real Kilo web build"
+    },
+    {
+      "label": "empty",
+      "consent": "granted",
+      "data": "no rows"
+    },
+    {
+      "label": "noconsent",
+      "consent": "never granted",
+      "data": "one weight row inserted directly in the disposable database (marker SYNC)"
+    },
+    {
+      "label": "withdraw / deleted / outage / limits / quota / probe / replay",
+      "consent": "as each case needs",
+      "data": "small per-case fixtures (markers SYNW, SYNU, SYNQ)"
+    }
+  ],
+  "gateMode": "consent_required (health_sync_config), so the armed gate is exercised",
+  "emailDomain": "example.test",
+  "cases": [
+    {
+      "id": "S1",
+      "criterion": "AC1",
+      "title": "discovery metadata matches the Auth issuer; anonymous request gets a 401 challenge"
+    },
+    {
+      "id": "C1",
+      "criterion": "AC2",
+      "title": "SDK client: discovery, DCR, PKCE, explicit approval, initialize, tools/list, whoami"
+    },
+    {
+      "id": "C2",
+      "criterion": "AC2",
+      "title": "workout reads: own rows only, tombstone excluded, pagination, raw text opt-in and bounded"
+    },
+    {
+      "id": "C3",
+      "criterion": "AC2/AC5",
+      "title": "weight reads: pagination, unknown dates honest, unit reported as lb with original unavailable"
+    },
+    {
+      "id": "C4",
+      "criterion": "AC5",
+      "title": "empty cloud snapshot is reported as no_cloud_records with unknown coverage"
+    },
+    {
+      "id": "B1",
+      "criterion": "AC2",
+      "title": "real browser: direct link, sign-in, disclosure, Approve; the SDK client then reads only that user's data"
+    },
+    {
+      "id": "C5",
+      "criterion": "AC2",
+      "title": "two users, two SDK clients: each reads only its own rows"
+    },
+    {
+      "id": "X1",
+      "criterion": "AC4",
+      "title": "cross-user cursor and arguments cannot reach another user's rows"
+    },
+    {
+      "id": "X2",
+      "criterion": "AC4",
+      "title": "OAuth token has no direct table, writer, withdrawal or other-function access"
+    },
+    {
+      "id": "N1",
+      "criterion": "AC4",
+      "title": "anonymous, malformed, HS256, expired, wrong issuer/audience/client and first-party tokens are rejected"
+    },
+    {
+      "id": "O1",
+      "criterion": "AC4",
+      "title": "denied OAuth request (real browser) yields an error redirect and no code; the decided request id is recorded"
+    },
+    {
+      "id": "M1",
+      "criterion": "AC4",
+      "title": "user without cloud consent connects but data tools return consent_required and no rows"
+    },
+    {
+      "id": "P3",
+      "criterion": "AC4",
+      "title": "probe: Auth account endpoints reachable with an OAuth access token (production blocker PB-4 evidence)"
+    },
+    {
+      "id": "R1",
+      "criterion": "AC3",
+      "title": "refresh works: a new access token is issued and accepted"
+    },
+    {
+      "id": "R2",
+      "criterion": "AC3",
+      "title": "rotated-out refresh token replay is observed; disconnect kills every token chain"
+    },
+    {
+      "id": "D1",
+      "criterion": "AC3",
+      "title": "disconnect: unexpired access token and refresh token stop working; first-party session is unaffected"
+    },
+    {
+      "id": "W1",
+      "criterion": "AC3",
+      "title": "withdrawal blocks reads immediately (before purge); regrant needs the approved reconnect"
+    },
+    {
+      "id": "A1",
+      "criterion": "AC4",
+      "title": "deleted account: unexpired token stops working"
+    },
+    {
+      "id": "F1",
+      "criterion": "AC4",
+      "title": "gate lookup outage -> 503 and no data RPC runs; recovery restores service"
+    },
+    {
+      "id": "F2",
+      "criterion": "AC4",
+      "title": "consent lookup outage -> 503 and no data RPC runs, never an implicit allow"
+    },
+    {
+      "id": "F3",
+      "criterion": "AC4",
+      "title": "OAuth grant/session lookup outage -> 503 and no data RPC runs, never an implicit allow"
+    },
+    {
+      "id": "F4",
+      "criterion": "AC4",
+      "title": "data page RPC outage -> fixed internal tool error without database text"
+    },
+    {
+      "id": "F5",
+      "criterion": "AC4",
+      "title": "rate limiter outage fails closed (429), not open"
+    },
+    {
+      "id": "F6",
+      "criterion": "AC4",
+      "title": "slow database: the read ends with a timeout tool error at the database-call limit, long before the 10 s request deadline"
+    },
+    {
+      "id": "L1",
+      "criterion": "AC4",
+      "title": "request size, batch, malformed JSON and method limits"
+    },
+    {
+      "id": "Q1",
+      "criterion": "AC4",
+      "title": "per-user limits: the data quota and HTTP limit stop one user and leave another unaffected"
+    },
+    {
+      "id": "Q2",
+      "criterion": "AC4",
+      "title": "pre-auth limit: 120 requests per minute per client address, then 429"
+    },
+    {
+      "id": "G1",
+      "criterion": "AC6",
+      "title": "function logs hold none of the tokens, codes, cursors, authorization ids or user ids the run handled"
+    }
+  ]
+}

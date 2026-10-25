@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@modelcontextprotocol/client": "npm:@modelcontextprotocol/client@2.4.0",
+    "playwright-core": "npm:playwright-core@1.59.0"
+  }
+}
