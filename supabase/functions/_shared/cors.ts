@@ -9,12 +9,15 @@
 // authenticates the bearer itself and that remains the trust boundary.
 //
 // Matching is exact string equality. Pages preview deployments
-// (<hash>.kilo-app.pages.dev), localhost, custom domains, lookalikes, and
-// `Origin: null` stay unallowlisted. Do not add wildcards, suffix matching, or
+// (<hash>.kilo-app.pages.dev), localhost, `www`/`app`/`.online` hosts,
+// lookalikes, and `Origin: null` stay unallowlisted. Do not add wildcards, suffix matching, or
 // Origin reflection; another origin needs an explicit contract amendment.
 export const PRODUCTION_WEB_ORIGIN = 'https://kilo-app.pages.dev'
+// Custom production domain (#1635). The pages.dev origin stays for migration
+// and rollback.
+export const CUSTOM_WEB_ORIGIN = 'https://kilofitnesstracker.com'
 
-const ALLOWED_ORIGINS: readonly string[] = [PRODUCTION_WEB_ORIGIN]
+const ALLOWED_ORIGINS: readonly string[] = [PRODUCTION_WEB_ORIGIN, CUSTOM_WEB_ORIGIN]
 
 // Headers that don't depend on the origin (safe to return unconditionally).
 // Vary is unconditional because the response differs by Origin either way; a

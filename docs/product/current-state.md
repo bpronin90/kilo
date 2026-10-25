@@ -124,8 +124,9 @@ Supported repository build paths are:
 - Android preview and production builds through the mobile EAS scripts.
 - An Expo web export served as a static application, published at
   https://kilo-app.pages.dev by the [Web Deployment](../operations/web-deployment.md)
-  workflow. Web sign-out and the Edge-Function account flows do not work there
-  yet; see its Known web gaps.
+  workflow. The Edge Functions also accept `https://kilofitnesstracker.com`, but
+  that domain is not yet live: DNS, Pages, Turnstile, and auth cutover are
+  pending owner configuration (see the Web Deployment custom-domain section).
 - iOS simulator and device profiles documented in the mobile build runbook.
 
 Remote EAS Update publication is intentionally blocked while update-signing key
