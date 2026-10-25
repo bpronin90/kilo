@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.33.4 - 2026-10-25
+
+- Issue #1640: Signed-out users now see a Sign in button on the Home header instead of a Cloud Sync icon, and opening a password-reset link on the web now shows the set-new-password step (or a clear retry message if the link failed) even when you were already signed in.
+
+## 1.33.3 - 2026-10-25
+
+- Issue #1637: Backend account, export, deletion and Android restore functions now build from a pinned, integrity-checked dependency set, so a third-party build outage can no longer block their tests or deployment.
+
+## 1.33.2 - 2026-10-25
+
+- Issue #1635: Backend account, export, deletion and Android restore functions now accept browser requests from https://kilofitnesstracker.com in addition to https://kilo-app.pages.dev, ahead of the owner's domain cutover.
+
+## 1.33.1 - 2026-10-25
+
+- Issue #1629: Added the connection guide and verified runbook for the read-only MCP preview.
+
+## 1.33.0 - 2026-10-25
+
+- Issue #1628: Connected AI clients can now read a bounded, read-only list of your synced weight entries, newest first, in pounds with the originally entered unit reported as unavailable.
+
+## 1.32.0 - 2026-10-25
+
+- Issue #1627: Connected AI clients can now read a bounded, read-only list of your synced workout notes, newest first, with raw note text only when explicitly requested.
+
+## 1.31.0 - 2026-10-25
+
+- Issue #1626: Added a browser approval step for connecting an external AI client to read your synced workout notes and weight entries, and a Connected AI clients list in Account where you can disconnect a client.
+
 ## 1.30.0 - 2026-10-24
 
 - Issue #1608: More now opens with an account row showing your email and sync status, and groups its destinations into Preferences, Account & data, and Tools & help panels with short descriptions. Settings sections are restyled as flat grouped panels; every setting and control is unchanged.
