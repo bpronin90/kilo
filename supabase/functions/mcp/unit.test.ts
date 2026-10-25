@@ -73,7 +73,7 @@ Deno.test('limiter fails closed when the durable limiter errors', async () => {
 })
 
 Deno.test('the registry registers nothing it was not given and tools see only the user client', () => {
-  assertEquals(TOOLS.map((t) => t.name), ['whoami', 'workout_notes_list'])
+  assertEquals(TOOLS.map((t) => t.name), ['whoami', 'workout_notes_list', 'weight_entries_list'])
   let seen: Record<string, unknown> | undefined
   const probe: ToolModule = { name: 'probe', register: (_s, ctx) => { seen = ctx as unknown as Record<string, unknown> } }
   registerTools({} as never, { client: { rpc: () => Promise.resolve({ data: null, error: null }) }, identity: { userId: USER_A, sessionId: SESSION_A, clientId: 'c' }, consent: 'granted', grantedAt: null }, [probe])

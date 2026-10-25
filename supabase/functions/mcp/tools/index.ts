@@ -5,6 +5,7 @@
 import type { McpServer } from '@modelcontextprotocol/server'
 import type { McpIdentity } from '../auth.ts'
 import type { RpcClient } from '../gate.ts'
+import { weightHistory } from './weight-history.ts'
 import { whoami } from './whoami.ts'
 import { workoutHistory } from './workout-history.ts'
 
@@ -24,7 +25,7 @@ export interface ToolModule {
   register(server: McpServer, ctx: ToolContext): void
 }
 
-export const TOOLS: readonly ToolModule[] = [whoami, workoutHistory]
+export const TOOLS: readonly ToolModule[] = [whoami, workoutHistory, weightHistory]
 
 export function registerTools(server: McpServer, ctx: ToolContext, tools: readonly ToolModule[] = TOOLS): void {
   for (const tool of tools) tool.register(server, ctx)
