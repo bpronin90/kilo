@@ -2,7 +2,7 @@
 
 The reference is the approved Home/Log/More hybrid design in the tracked
 [redesign specification](../../../design/app-redesign-v3/README.md), especially
-the [Log structure and behavior notes](../../../design/app-redesign-v3/hybrid/README.md).
+the [Log structure and behavior notes](../../../design/app-redesign-v3/source-notes/hybrid.md).
 The first-screen references are
 [`log-hard-dark.png`](../../../design/app-redesign-v3/shots/hybrid/log-hard-dark.png)
 and
