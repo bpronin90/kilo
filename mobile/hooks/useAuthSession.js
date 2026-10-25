@@ -18,8 +18,9 @@ import { getSupabaseClient, getSupabaseConfig, hasSupabaseConfig, callAndroidRes
 import { revokeRestoreCredentialsBeforeSignOut } from '../lib/signOutRevocation';
 import {
   RECOVERY_PENDING_KEY, RECOVERY_PENDING_TTL_MS, markRecoveryPending, clearRecoveryPending,
-  consumeRecoveryPending, peekRecoveryPending, callbackUrlHasCode, isRecoverySession,
+  consumeRecoveryPending, peekRecoveryPending,
 } from '../lib/authRecoveryLink';
+import { exchangeWebCallbackCode } from '../lib/webAuthCodeExchange';
 import { authErrorResult, usableAuthMessage } from '../lib/authErrorMessage';
 import { wipeSensitiveDeviceData } from '../storage/secureStorage';
 import { isAndroidRestoreCredentialsAvailable, getRestoreCredential as nativeGetRestoreCredential, clearRestoreCredential as nativeClearRestoreCredential } from 'android-restore-credentials';
@@ -97,27 +98,23 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
       };
     }
 
-    // Captured before the restore probe settles: the URL is cleaned and the
-    // pending flag consumed by then (#1640).
-    const codeInUrl = callbackUrlHasCode();
-    const resetPending = codeInUrl && peekRecoveryPending();
-    client.auth
-      .getSession()
-      .then(({ data }) => {
-        const restored = data?.session || null;
-        applySession(restored);
-        if (!codeInUrl || !mountedRef.current) return;
-        if (isRecoverySession(restored)) {
-          setPasswordRecovery(true);
-          setRecoveryError('');
-          clearRecoveryPending();
-        } else if (resetPending) {
-          // A reset was requested here but the link produced no recovery
-          // session (expired, replayed, or an unrelated session survived):
-          // never let the old session read as a finished reset.
+    // Web callback code (#1640): exchanged here, after the subscription below
+    // exists (so PASSWORD_RECOVERY is delivered), and BEFORE the restore probe.
+    // The exchange result alone decides success; a failed one never lets a
+    // retained older session stand in for it.
+    const resetPending = peekRecoveryPending();
+    const probe = Platform.OS === 'web'
+      ? exchangeWebCallbackCode(client).then((outcome) => {
+        if (outcome?.error && resetPending && mountedRef.current) {
           consumeRecoveryPending();
           setRecoveryError('This password reset link is invalid, expired or already used. Request a new reset email.');
         }
+        return client.auth.getSession();
+      })
+      : client.auth.getSession();
+    probe
+      .then(({ data }) => {
+        applySession(data?.session || null);
       })
       .catch(() => {
         applySession(null);

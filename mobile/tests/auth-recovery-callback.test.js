@@ -1,127 +1,150 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 
-// #1640: a web reset link's `?code=` is exchanged by supabase-js during client
-// init, before the hook subscribes, so PASSWORD_RECOVERY is never seen. These
-// pin the classification the hook derives from the restored session instead.
+// #1640: the web `?code=` is exchanged by the hook (detectSessionInUrl is off),
+// after it subscribes. Success/failure comes from the exchange result, never
+// from whichever session happens to be stored.
 let mockAuth;
+let mockPlatform = 'web';
 jest.mock('../storage/secureStorage', () => ({ wipeSensitiveDeviceData: jest.fn().mockResolvedValue(undefined) }));
-jest.mock('@supabase/supabase-js', () => ({ createClient: () => ({ auth: mockAuth }) }));
+jest.mock('@supabase/supabase-js', () => ({ createClient: (url, key, opts) => { mockOpts = opts; return { auth: mockAuth }; } }));
+jest.mock('react-native/Libraries/Utilities/Platform', () => {
+  const platform = { get OS() { return mockPlatform; }, select: (o) => o[mockPlatform] ?? o.default };
+  return { __esModule: true, default: platform, ...platform };
+});
+let mockOpts;
 
 process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
 process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'anon-key';
 
 const { useAuthSession, RECOVERY_PENDING_KEY } = require('../hooks/useAuthSession');
 const { resetSupabaseClientForTests } = require('../lib/supabaseClient');
-const { isRecoverySession, callbackUrlHasCode, peekRecoveryPending } = require('../lib/authRecoveryLink');
+const { resetWebCallbackExchangeForTests } = require('../lib/webAuthCodeExchange');
 
-function jwt(claims) {
-  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-  return `${b64({ alg: 'HS256' })}.${b64(claims)}.sig`;
-}
-const nowSec = () => Math.floor(Date.now() / 1000);
-const recoverySession = { access_token: jwt({ amr: [{ method: 'recovery', timestamp: nowSec() }] }), user: { email: 'a@b.com' } };
-const staleRecoverySession = { access_token: jwt({ amr: [{ method: 'recovery', timestamp: nowSec() - 3600 }] }), user: { email: 'a@b.com' } };
-// Minted a few seconds BEFORE this page load (the retained-session replay case).
-const justBeforeLoadSession = { access_token: jwt({ amr: [{ method: 'recovery', timestamp: Math.floor(performance.timeOrigin / 1000) - 5 }] }), user: { email: 'a@b.com' } };
-const passwordSession = { access_token: jwt({ amr: [{ method: 'password', timestamp: 1 }] }), user: { email: 'old@b.com' } };
+const oldSession = { access_token: 'old', user: { email: 'old@b.com' } };
+const newSession = { access_token: 'new', user: { email: 'new@b.com' } };
 
 function installWindow({ search = '', seed = {} } = {}) {
   const store = new Map(Object.entries(seed));
+  const replaceState = jest.fn();
   global.window = {
     location: { search, href: `https://app.example/${search}` },
+    history: { state: null, replaceState },
     localStorage: {
       getItem: (k) => (store.has(k) ? store.get(k) : null),
       setItem: (k, v) => { store.set(k, String(v)); },
       removeItem: (k) => { store.delete(k); },
     },
   };
-  return store;
+  return { store, replaceState };
 }
 
-async function mountHook(session) {
+// `exchange` runs inside exchangeCodeForSession so tests can emit
+// PASSWORD_RECOVERY the way auth-js does on a recovery exchange.
+async function mountHook({ stored = null, exchange } = {}) {
+  let cb = null;
   mockAuth = {
-    getSession: jest.fn().mockResolvedValue({ data: { session }, error: null }),
-    onAuthStateChange: jest.fn(() => ({ data: { subscription: { unsubscribe: jest.fn() } } })),
+    getSession: jest.fn().mockResolvedValue({ data: { session: stored }, error: null }),
+    onAuthStateChange: jest.fn((fn) => { cb = fn; return { data: { subscription: { unsubscribe: jest.fn() } } }; }),
+    exchangeCodeForSession: jest.fn(async (code) => exchange(code, (e, s) => cb && cb(e, s))),
     signInWithOAuth: jest.fn().mockResolvedValue({ data: { url: 'https://oauth' }, error: null }),
   };
   resetSupabaseClientForTests();
+  resetWebCallbackExchangeForTests();
   const ref = { current: null };
   function Probe() { ref.current = useAuthSession(); return null; }
   await act(async () => { renderer.create(React.createElement(Probe)); });
-  await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+  await act(async () => { for (let i = 0; i < 6; i += 1) await Promise.resolve(); });
   return ref;
 }
 
-afterEach(() => { delete global.window; });
+const recoveryExchange = async (code, emit) => { emit('PASSWORD_RECOVERY', newSession); return { data: { session: newSession }, error: null }; };
+const rejectedExchange = async () => ({ data: { session: null }, error: { message: 'invalid grant' } });
 
-describe('recovery link classification (web)', () => {
-  test('isRecoverySession reads the amr claim and tolerates junk', () => {
-    expect(isRecoverySession(recoverySession)).toBe(true);
-    expect(isRecoverySession(passwordSession)).toBe(false);
-    expect(isRecoverySession(staleRecoverySession)).toBe(false);
-    expect(isRecoverySession(justBeforeLoadSession)).toBe(false);
-    expect(isRecoverySession({ access_token: 'not-a-jwt' })).toBe(false);
-    expect(isRecoverySession(null)).toBe(false);
+afterEach(() => { delete global.window; mockPlatform = 'web'; });
+
+describe('web callback code exchange', () => {
+  test('supabase-js no longer consumes the URL itself', () => {
+    installWindow();
+    resetSupabaseClientForTests();
+    require('../lib/supabaseClient').getSupabaseClient();
+    expect(mockOpts.auth.detectSessionInUrl).toBe(false);
   });
 
-  test('a ?code= that restores a recovery session opens set-new-password, with or without a pending flag', async () => {
-    const store = installWindow({ search: '?code=abc' });
-    const ref = await mountHook(recoverySession);
+  test('a reset link opens set-new-password via PASSWORD_RECOVERY, and the code leaves the URL', async () => {
+    const { store, replaceState } = installWindow({ search: '?code=abc', seed: { [RECOVERY_PENDING_KEY]: String(Date.now()) } });
+    const ref = await mountHook({ stored: newSession, exchange: recoveryExchange });
+    expect(mockAuth.exchangeCodeForSession).toHaveBeenCalledWith('abc');
     expect(ref.current.passwordRecovery).toBe(true);
     expect(ref.current.recoveryError).toBe('');
     expect(store.has(RECOVERY_PENDING_KEY)).toBe(false);
+    expect(replaceState).toHaveBeenCalled();
+    expect(replaceState.mock.calls[0][2]).not.toMatch(/code=/);
   });
 
-  test('an already signed-in user who follows a reset link still gets the recovery step', async () => {
-    installWindow({ search: '?code=abc', seed: { [RECOVERY_PENDING_KEY]: String(Date.now()) } });
-    const ref = await mountHook(recoverySession);
+  test('already signed in: the recovery exchange still replaces the session and opens the step', async () => {
+    installWindow({ search: '?code=abc' });
+    const ref = await mountHook({ stored: newSession, exchange: recoveryExchange });
     expect(ref.current.signedIn).toBe(true);
     expect(ref.current.passwordRecovery).toBe(true);
   });
 
-  test('a failed link leaves an unrelated session in place but reports the failure', async () => {
-    const store = installWindow({ search: '?code=abc', seed: { [RECOVERY_PENDING_KEY]: String(Date.now()) } });
-    const ref = await mountHook(passwordSession);
+  test('a rejected/replayed code with ANY retained session (even a recovery-minted one) is a failed link', async () => {
+    const { store } = installWindow({ search: '?code=abc', seed: { [RECOVERY_PENDING_KEY]: String(Date.now()) } });
+    const ref = await mountHook({ stored: oldSession, exchange: rejectedExchange });
     expect(ref.current.passwordRecovery).toBe(false);
     expect(ref.current.recoveryError).toMatch(/invalid, expired or already used/);
+    expect(ref.current.signedIn).toBe(true);
     expect(store.has(RECOVERY_PENDING_KEY)).toBe(false);
   });
 
-  test('a code with no session and a pending reset reports the failure (replayed link)', async () => {
+  test('a thrown exchange is a failure too', async () => {
     installWindow({ search: '?code=abc', seed: { [RECOVERY_PENDING_KEY]: String(Date.now()) } });
-    const ref = await mountHook(null);
+    const ref = await mountHook({ exchange: async () => { throw new Error('network'); } });
     expect(ref.current.recoveryError).toMatch(/Request a new reset email/);
   });
 
-  test('a rejected/replayed code that leaves an OLD recovery-minted session behind is a failure, not a recovery', async () => {
-    const store = installWindow({ search: '?code=abc', seed: { [RECOVERY_PENDING_KEY]: String(Date.now()) } });
-    const ref = await mountHook(staleRecoverySession);
-    expect(ref.current.passwordRecovery).toBe(false);
-    expect(ref.current.recoveryError).toMatch(/invalid, expired or already used/);
-    expect(store.has(RECOVERY_PENDING_KEY)).toBe(false);
-  });
-
-  test('a normal page load (no code) never enters recovery, even on a recovery-minted session', async () => {
-    installWindow({ search: '' });
-    const ref = await mountHook(recoverySession);
-    expect(ref.current.passwordRecovery).toBe(false);
-    expect(ref.current.recoveryError).toBe('');
-  });
-
-  test('an OAuth return (code, non-recovery session) is not a recovery failure', async () => {
+  test('an OAuth return (no pending reset) signs in and is not a recovery failure or recovery', async () => {
     installWindow({ search: '?code=abc' });
-    const ref = await mountHook(passwordSession);
+    const ref = await mountHook({ stored: newSession, exchange: async () => ({ data: { session: newSession }, error: null }) });
     expect(ref.current.passwordRecovery).toBe(false);
     expect(ref.current.recoveryError).toBe('');
+  });
+
+  test('a failed OAuth return with no pending reset stays silent on the recovery surface', async () => {
+    installWindow({ search: '?code=abc' });
+    const ref = await mountHook({ exchange: rejectedExchange });
+    expect(ref.current.recoveryError).toBe('');
+  });
+
+  test('a normal page load never exchanges or enters recovery', async () => {
+    installWindow({ search: '' });
+    const ref = await mountHook({ stored: newSession, exchange: recoveryExchange });
+    expect(mockAuth.exchangeCodeForSession).not.toHaveBeenCalled();
+    expect(ref.current.passwordRecovery).toBe(false);
+  });
+
+  test('a remount reuses the one exchange instead of replaying the consumed code', async () => {
+    installWindow({ search: '?code=abc' });
+    await mountHook({ exchange: recoveryExchange });
+    const first = mockAuth.exchangeCodeForSession.mock.calls.length;
+    const ref = { current: null };
+    function Probe() { ref.current = useAuthSession(); return null; }
+    await act(async () => { renderer.create(React.createElement(Probe)); });
+    expect(mockAuth.exchangeCodeForSession.mock.calls.length).toBe(first);
   });
 
   test('starting GitHub sign-in drops a pending reset flag so its return is not misfiled', async () => {
-    const store = installWindow({ seed: { [RECOVERY_PENDING_KEY]: String(Date.now()) } });
-    const ref = await mountHook(null);
-    expect(peekRecoveryPending()).toBe(true);
+    const { store } = installWindow({ seed: { [RECOVERY_PENDING_KEY]: String(Date.now()) } });
+    const ref = await mountHook({ exchange: recoveryExchange });
     await act(async () => { await ref.current.signInWithOAuth('github'); });
     expect(store.has(RECOVERY_PENDING_KEY)).toBe(false);
-    expect(callbackUrlHasCode()).toBe(false);
+  });
+
+  test('native never touches the web exchange', async () => {
+    mockPlatform = 'ios';
+    installWindow({ search: '?code=abc' });
+    await mountHook({ exchange: recoveryExchange });
+    expect(mockAuth.exchangeCodeForSession).not.toHaveBeenCalled();
   });
 });

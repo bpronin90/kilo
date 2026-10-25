@@ -209,7 +209,8 @@ export function useAppShell({ onDeviceDataWiped }) {
     if (Platform.OS !== 'web' || !auth.configured) return;
     if (typeof window === 'undefined') return;
     const href = window.location?.href || '';
-    if (!/[?#&](code|access_token|error)=/.test(href)) return;
+    // `?code=` is exchanged by useAuthSession itself (lib/webAuthCodeExchange, #1640).
+    if (!/[?#&](access_token|error)=/.test(href)) return;
     auth.handleAuthCallbackUrl(href).catch(() => {});
   }, [auth.configured]);
 
