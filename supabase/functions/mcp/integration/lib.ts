@@ -139,13 +139,13 @@ export async function seedUser(s: Session, marker: string, dated = 120, undated 
 
 // ---- DB fault injection through the disposable container (never any other target) ----
 
-function dbExec(args: string[]) {
+function dbExec(args: string[], user = 'postgres') {
   // The container name is a constant; this is the only place a command is aimed at it.
-  return new Deno.Command('docker', { args: ['exec', DB_CONTAINER, 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1', ...args], stdout: 'piped', stderr: 'piped' })
+  return new Deno.Command('docker', { args: ['exec', DB_CONTAINER, 'psql', '-U', user, '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', ...args], stdout: 'piped', stderr: 'piped' })
 }
 
-export async function sql(statement: string): Promise<string> {
-  const out = await dbExec(['-tAc', statement]).output()
+export async function sql(statement: string, user = 'postgres'): Promise<string> {
+  const out = await dbExec(['-tAc', statement], user).output()
   if (!out.success) throw new Error(`sql failed: ${new TextDecoder().decode(out.stderr).slice(0, 200)}`)
   return new TextDecoder().decode(out.stdout).trim()
 }
@@ -158,8 +158,9 @@ export function holdWeightLock(seconds: number) {
 // Per-function execution counters, so a case can prove that a rejected request ran
 // no data RPC at all (not merely that the response looked safe).
 export async function enableCallTracking() {
-  await sql("alter system set track_functions = 'all'")
-  await sql('select pg_reload_conf()')
+  // Server settings need the superuser role of the disposable database.
+  await sql("alter system set track_functions = 'all'", 'supabase_admin')
+  await sql('select pg_reload_conf()', 'supabase_admin')
 }
 
 export async function dataRpcCalls(): Promise<number> {
