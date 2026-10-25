@@ -23,7 +23,7 @@ function writeExecutable(path, source) {
   chmodSync(path, 0o755);
 }
 
-function run({ functions = activeFunctions, secrets = JSON.stringify(presentSecrets), secretsListFails = false, vault = 'present', cron = 'active', dispatch = 'dispatched', fixture, lock = 'present', importMap = 'present', databaseUrl = 'postgres://operator:credential-must-not-appear@example.test/kilo' } = {}) {
+function run({ functions = activeFunctions, secrets = JSON.stringify(presentSecrets), secretsListFails = false, vault = 'present', cron = 'active', dispatch = 'dispatched', fixture, lock = 'present', denoFails = false, importMap = 'present', databaseUrl = 'postgres://operator:credential-must-not-appear@example.test/kilo' } = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'kilo-deploy-test-'));
   const binDirectory = join(directory, 'bin');
   mkdirSync(binDirectory);
@@ -59,6 +59,28 @@ else
   exit 91
 fi
 `);
+    // Stands in for `deno cache`: records the call, can fail (a lock that would
+    // change under --frozen), and otherwise fills the cache with the package
+    // manifests the real resolver would have downloaded. Their dependencies come
+    // from the committed lock, i.e. the real graph, not the lock under test.
+    writeExecutable(join(binDirectory, 'deno'), `#!/usr/bin/env bash
+set -euo pipefail
+printf 'deno %s\\n' "$*" >> "$CALL_LOG"
+[[ -z "\${DENO_FAILS:-}" ]] || exit 1
+node - "$DENO_DIR" "$REAL_LOCK" <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
+const [root, lockPath] = process.argv.slice(2);
+const npm = JSON.parse(fs.readFileSync(lockPath, 'utf8')).npm;
+for (const [key, entry] of Object.entries(npm)) {
+  const at = key.lastIndexOf('@');
+  const directory = path.join(root, 'npm/registry.npmjs.org', key.slice(0, at), key.slice(at + 1));
+  fs.mkdirSync(directory, { recursive: true });
+  const dependencies = Object.fromEntries((entry.dependencies ?? []).map((edge) => [edge.lastIndexOf('@') > 0 ? edge.slice(0, edge.lastIndexOf('@')) : edge, '*']));
+  fs.writeFileSync(path.join(directory, 'package.json'), JSON.stringify({ dependencies }));
+}
+NODE
+`);
     writeExecutable(join(binDirectory, 'psql'), `#!/usr/bin/env bash
 set -euo pipefail
 input="$(cat)"
@@ -81,6 +103,8 @@ fi
         ...process.env,
         PATH: `${binDirectory}:${process.env.PATH}`,
         CALL_LOG: callLog,
+        REAL_LOCK: join(repoRoot, 'supabase/functions/deno.lock'),
+        ...(denoFails ? { DENO_FAILS: '1' } : {}),
         PSQL_LOG: psqlLog,
         FUNCTIONS_JSON: JSON.stringify(functions),
         SECRETS_JSON: secrets,
@@ -167,13 +191,24 @@ for (const options of [{ lock: 'missing' }, { lock: 'empty' }]) {
 // A lock that exists but does not cover the graph lets the bundler resolve
 // floating ranges (for example @peculiar/asn1-android 2.11.1) without failing.
 const incompleteLocks = [
-  [() => ({ version: '5' }), /Lock does not resolve @simplewebauthn\/server/],
+  // Package and the edge to it both removed: only the real manifests reveal it.
+  [(l) => { delete l.npm['@peculiar/asn1-android@2.11.0']; l.npm['@simplewebauthn/server@14.0.2'].dependencies = l.npm['@simplewebauthn/server@14.0.2'].dependencies.filter((d) => d !== '@peculiar/asn1-android'); return l; }, /@simplewebauthn\/server@14\.0\.2 omits its dependency @peculiar\/asn1-android/],
+  // Edge kept but package removed.
   [(l) => { delete l.npm['@peculiar/asn1-android@2.11.0']; return l; }, /depends on @peculiar\/asn1-android, which the lock does not contain/],
-  [(l) => { delete l.remote['https://deno.land/std@0.168.0/http/server.ts']; return l; }, /no integrity for https:\/\/deno\.land\/std@0\.168\.0\/http\/server\.ts imported by android-restore-credentials/],
+  [(l) => { l.npm['tslib@2.8.1'].integrity = 'md5-abc'; return l; }, /Lock entry lacks integrity: tslib@2\.8\.1/],
 ];
 for (const [lock, message] of incompleteLocks) {
   const { output, calls } = expectFailure({ lock }, message);
-  assert.match(output, /deno\.lock is incomplete or stale/);
+  assert.match(output, /deno\.lock is incomplete/);
+  assert.match(calls, /deno cache .*--frozen/);
+  assert.doesNotMatch(calls, /functions deploy|secrets list/);
+  assert.doesNotMatch(output, /Deploying kilo functions/);
+}
+// The frozen resolve of the four entrypoints failing (stub lock, missing remote
+// entry, changed pin) stops the deploy before any prerequisite call.
+{
+  const { output, calls } = expectFailure({ denoFails: true }, /deno\.lock does not match the pinned dependencies/);
+  assert.match(calls, /deno cache --config supabase\/functions\/deno\.json --lock=supabase\/functions\/deno\.lock --frozen supabase\/functions\/account-export\/index\.ts supabase\/functions\/account-delete\/index\.ts supabase\/functions\/health-data-delete\/index\.ts supabase\/functions\/android-restore-credentials\/index\.ts/);
   assert.doesNotMatch(calls, /functions deploy|secrets list/);
   assert.doesNotMatch(output, /Deploying kilo functions/);
 }

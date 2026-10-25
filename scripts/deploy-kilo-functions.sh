@@ -15,8 +15,10 @@ set -euo pipefail
 #
 # Dependency resolution is pinned by supabase/functions/deno.json (exact npm:
 # specifiers) and supabase/functions/deno.lock (integrity for the full graph).
-# The CLI bundler finds both from the function entrypoint. With no lock it
-# silently resolves floating transitive ranges, so a missing lock stops the run.
+# The CLI bundler finds both from the function entrypoint. With no lock, or an
+# incomplete one, it silently resolves floating transitive ranges, so the run
+# verifies the lock first (needs deno and registry access; see
+# verify_dependency_lock).
 #
 # Only the Kilo-owned functions listed below are deployed by this script.
 
@@ -41,47 +43,54 @@ verify_dependency_lock() {
     || die "supabase/functions/deno.json (pinned import map) not found; refusing an unpinned deploy."
   [[ -s "supabase/functions/deno.lock" ]] \
     || die "supabase/functions/deno.lock not found or empty; refusing to deploy with floating dependencies."
+  need_cmd deno
 
   # The CLI bundler does not fail on an incomplete lock: it silently resolves
-  # whatever the lock leaves out from floating ranges. Require the lock to cover
-  # every pinned import, every npm dependency edge and every remote import of
-  # the deployed entrypoints, so a stale or truncated lock stops the deploy.
-  node - "${FUNCTIONS[@]}" <<'NODE' \
-    || die "supabase/functions/deno.lock is incomplete or stale; regenerate it and review the dependency diff (docs/testing/automated-tests.md)."
+  # whatever the lock leaves out from floating ranges, and a lock that omits a
+  # package AND the edge to it still bundles but cannot start. So the lock is
+  # verified here against the real packages, from an empty cache:
+  #   1. a frozen resolve of the four entrypoints fails if the lock would change;
+  #   2. every locked package's real package.json "dependencies" must appear as
+  #      edges of its lock entry, and every edge must name a locked package.
+  local deno_dir entrypoints=() fn
+  deno_dir="$(mktemp -d)" || die "Could not create a scratch Deno cache."
+  for fn in "${FUNCTIONS[@]}"; do entrypoints+=("supabase/functions/${fn}/index.ts"); done
+
+  DENO_DIR="${deno_dir}" deno cache --config supabase/functions/deno.json \
+    --lock=supabase/functions/deno.lock --frozen "${entrypoints[@]}" \
+    || { rm -rf "${deno_dir}"; die "supabase/functions/deno.lock does not match the pinned dependencies; regenerate it and review the dependency diff (docs/testing/automated-tests.md)."; }
+
+  DENO_DIR="${deno_dir}" node <<'NODE' \
+    || { rm -rf "${deno_dir}"; die "supabase/functions/deno.lock is incomplete; regenerate it and review the dependency diff (docs/testing/automated-tests.md)."; }
 const fs = require('node:fs');
+const path = require('node:path');
 const fail = (message) => { process.stderr.write(`${message}\n`); process.exit(1); };
-let config; let lock;
-try {
-  config = JSON.parse(fs.readFileSync('supabase/functions/deno.json', 'utf8'));
-  lock = JSON.parse(fs.readFileSync('supabase/functions/deno.lock', 'utf8'));
-} catch { fail('Dependency configuration or lock is not valid JSON.'); }
-const specifiers = lock.specifiers ?? {};
+let lock;
+try { lock = JSON.parse(fs.readFileSync('supabase/functions/deno.lock', 'utf8')); }
+catch { fail('Dependency lock is not valid JSON.'); }
 const npm = lock.npm ?? {};
-const remote = lock.remote ?? {};
-const npmKeys = Object.keys(npm);
-for (const [alias, target] of Object.entries(config.imports ?? {})) {
-  if (!target.startsWith('npm:')) continue;
-  const resolved = specifiers[target];
-  if (!resolved) fail(`Lock does not resolve ${alias} (${target}).`);
-  if (!npmKeys.some((key) => key === `${target.slice(4).replace(/@[^@]*$/, '')}@${resolved.split('_')[0]}`)) {
-    fail(`Lock has no package entry for ${target}.`);
-  }
-}
+const keys = Object.keys(npm);
+const nameOf = (key) => key.slice(0, key.lastIndexOf('@'));
+const covers = (edge, name) => (edge.lastIndexOf('@') > 0 ? nameOf(edge) : edge) === name;
 for (const [key, entry] of Object.entries(npm)) {
   if (typeof entry.integrity !== 'string' || !entry.integrity.startsWith('sha512-')) fail(`Lock entry lacks integrity: ${key}.`);
-  for (const dependency of entry.dependencies ?? []) {
-    const exact = dependency.lastIndexOf('@') > 0;
-    const found = exact ? npm[dependency] !== undefined : npmKeys.some((candidate) => candidate.slice(0, candidate.lastIndexOf('@')) === dependency);
-    if (!found) fail(`Lock entry ${key} depends on ${dependency}, which the lock does not contain.`);
+  const edges = entry.dependencies ?? [];
+  for (const edge of edges) {
+    if (!(edge.lastIndexOf('@') > 0 ? npm[edge] !== undefined : keys.some((k) => nameOf(k) === edge))) {
+      fail(`Lock entry ${key} depends on ${edge}, which the lock does not contain.`);
+    }
   }
-}
-for (const name of process.argv.slice(2)) {
-  const source = fs.readFileSync(`supabase/functions/${name}/index.ts`, 'utf8');
-  for (const match of source.matchAll(/from\s+'(https:\/\/[^']+)'/g)) {
-    if (!remote[match[1]]) fail(`Lock has no integrity for ${match[1]} imported by ${name}.`);
+  const version = key.slice(key.lastIndexOf('@') + 1);
+  const manifest = path.join(process.env.DENO_DIR, 'npm/registry.npmjs.org', nameOf(key), version, 'package.json');
+  let declared;
+  try { declared = Object.keys(JSON.parse(fs.readFileSync(manifest, 'utf8')).dependencies ?? {}); }
+  catch { fail(`Could not read the resolved package manifest for ${key}.`); }
+  for (const name of declared) {
+    if (!edges.some((edge) => covers(edge, name))) fail(`Lock entry ${key} omits its dependency ${name}.`);
   }
 }
 NODE
+  rm -rf "${deno_dir}"
 }
 
 verify_functions_active() {
