@@ -14,7 +14,9 @@
 //   3. The database's kilo.health_gated_tables() names the same nine tables.
 //   4. Every read and delete in this module is filtered to a single user_id.
 //
-// Run:  deno test --no-check --no-lock --allow-read supabase/functions/_shared/health-data-scope.test.ts
+// Run:  deno test --no-check --config supabase/functions/deno.json \
+//        --lock=supabase/functions/deno.lock --frozen --allow-import --allow-read \
+//        supabase/functions/_shared/health-data-scope.test.ts
 
 import { assert, assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 import {

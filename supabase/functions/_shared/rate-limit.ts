@@ -17,7 +17,7 @@
 // a service-role-keyed Supabase client. End users never touch the throttle
 // table directly.
 
-import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.108.2'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { recordSecurityEvent, type SecurityEventSource } from './security-event.ts'
 
 // Who the bucket is throttling, for the security event a rejection produces.

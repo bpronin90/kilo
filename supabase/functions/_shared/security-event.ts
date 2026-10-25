@@ -23,7 +23,7 @@
 //      text. The database re-sanitizes against the same allow-list, so this
 //      module is defense in depth, not the boundary.
 
-import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.108.2'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 type SecurityEventClient = SupabaseClient<any, any, any, any, any>
 

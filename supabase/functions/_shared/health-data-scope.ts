@@ -28,7 +28,7 @@
 // is used only to reach past the consent gate, never to widen scope. The user_id
 // filter is applied HERE, inside the shared module, so no call site can forget it.
 
-import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.108.2'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export interface HealthTableDescriptor {
   /** Table name inside the `kilo` schema. */

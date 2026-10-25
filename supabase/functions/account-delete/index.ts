@@ -45,7 +45,7 @@
 // Unanticipated exceptions resolve to a sanitized, CORS-aware 500 through the
 // shared boundary in _shared/unexpected-error.ts (#1560).
 
-import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.108.2'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { corsHeaders } from '../_shared/cors.ts'
 import { extractToken } from '../_shared/auth.ts'
 import { forbiddenForClients, hasOAuthClientClaim } from '../mcp/oauth-client-token.ts'
