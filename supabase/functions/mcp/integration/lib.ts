@@ -164,10 +164,9 @@ export async function enableCallTracking() {
 }
 
 export async function dataRpcCalls(): Promise<number> {
-  // PostgREST's pooled connections hold their function statistics until they close.
-  // Recycling the idle ones (they reconnect on the next request) makes the counters current.
-  await sql("select count(pg_terminate_backend(pid)) from pg_stat_activity where usename = 'authenticator' and state = 'idle'", 'supabase_admin')
-  await new Promise((r) => setTimeout(r, 700))
+  // An idle backend publishes its pending function statistics only after PostgreSQL's
+  // 10 s idle stats interval, so wait past it before reading.
+  await new Promise((r) => setTimeout(r, 11_500))
   const n = await sql("select coalesce(sum(calls), 0) from pg_stat_user_functions where funcname in ('mcp_weight_entries_page', 'mcp_workout_notes_page')")
   return Number(n)
 }

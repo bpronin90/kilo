@@ -1,14 +1,14 @@
 {
   "environment": "local stack, project id kilo_mcp_staging (disposable; not production)",
   "date": "2026-10-25",
-  "testedSha": "61237a72299dba6a3fcb5fd5dc695a3af57bc503",
+  "testedSha": "af473b46e5290f686bb8dbc5a124c6430737269b",
   "testedTreeDirty": false,
   "supabaseCli": "2.117.0",
   "gotrue": "v2.196.0",
   "deno": "deno 2.9.1 (stable, release, x86_64-unknown-linux-gnu)",
   "node": "v24.14.0",
   "mcpClient": "@modelcontextprotocol/client 2.4.0 (official MCP TypeScript SDK client)",
-  "passed": 26,
+  "passed": 25,
   "total": 28,
   "cases": [
     {
@@ -71,8 +71,8 @@
       "id": "X2",
       "criterion": "AC4",
       "title": "OAuth token has no direct table, writer, withdrawal or other-function access",
-      "status": "fail",
-      "detail": "account-delete status 429"
+      "status": "pass",
+      "detail": ""
     },
     {
       "id": "N1",
@@ -142,7 +142,7 @@
       "criterion": "AC4",
       "title": "gate lookup outage -> 503 and no data RPC runs; recovery restores service",
       "status": "fail",
-      "detail": "call counter did not move on a served read (status 200, 136 -> 136); the no-query proof below would be vacuous"
+      "detail": "call counter did not move on a served read (status 429, 195 -> 195); the no-query proof below would be vacuous"
     },
     {
       "id": "F2",
@@ -155,15 +155,15 @@
       "id": "F3",
       "criterion": "AC4",
       "title": "OAuth grant/session lookup outage -> 503 and no data RPC runs, never an implicit allow",
-      "status": "pass",
-      "detail": ""
+      "status": "fail",
+      "detail": "not recovered"
     },
     {
       "id": "F4",
       "criterion": "AC4",
       "title": "data page RPC outage -> fixed internal tool error without database text",
-      "status": "pass",
-      "detail": ""
+      "status": "fail",
+      "detail": "status 429 code undefined"
     },
     {
       "id": "F5",
@@ -177,7 +177,7 @@
       "criterion": "AC4",
       "title": "slow database: the 3 s database-call limit ends the read with a timeout tool error",
       "status": "pass",
-      "detail": "3038 ms"
+      "detail": "3032 ms"
     },
     {
       "id": "L1",
