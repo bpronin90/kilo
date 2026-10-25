@@ -22,6 +22,8 @@ function jwt(claims) {
 const nowSec = () => Math.floor(Date.now() / 1000);
 const recoverySession = { access_token: jwt({ amr: [{ method: 'recovery', timestamp: nowSec() }] }), user: { email: 'a@b.com' } };
 const staleRecoverySession = { access_token: jwt({ amr: [{ method: 'recovery', timestamp: nowSec() - 3600 }] }), user: { email: 'a@b.com' } };
+// Minted a few seconds BEFORE this page load (the retained-session replay case).
+const justBeforeLoadSession = { access_token: jwt({ amr: [{ method: 'recovery', timestamp: Math.floor(performance.timeOrigin / 1000) - 5 }] }), user: { email: 'a@b.com' } };
 const passwordSession = { access_token: jwt({ amr: [{ method: 'password', timestamp: 1 }] }), user: { email: 'old@b.com' } };
 
 function installWindow({ search = '', seed = {} } = {}) {
@@ -58,6 +60,7 @@ describe('recovery link classification (web)', () => {
     expect(isRecoverySession(recoverySession)).toBe(true);
     expect(isRecoverySession(passwordSession)).toBe(false);
     expect(isRecoverySession(staleRecoverySession)).toBe(false);
+    expect(isRecoverySession(justBeforeLoadSession)).toBe(false);
     expect(isRecoverySession({ access_token: 'not-a-jwt' })).toBe(false);
     expect(isRecoverySession(null)).toBe(false);
   });

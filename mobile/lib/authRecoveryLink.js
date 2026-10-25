@@ -100,11 +100,14 @@ export function callbackUrlHasCode() {
   }
 }
 
-// The recovery `amr` entry must also have been minted during THIS page load
-// (timestamp >= the page's start, less a small clock-skew allowance). A rejected
-// or replayed code leaves the SDK's previously stored session in place, which may
-// itself carry an old `recovery` entry; that is not proof this callback worked.
-const PAGE_LOAD_SKEW_MS = 30 * 1000;
+// The recovery `amr` entry must also have been minted during THIS page load:
+// its timestamp (whole seconds, hence the 1s allowance) may not precede the
+// page's start. A rejected or replayed code leaves the SDK's previously stored
+// session in place, which may itself carry a recovery entry — even one minted
+// seconds before this load — and that is not proof this callback worked. A
+// client clock running ahead of the server can reject a genuine fresh link;
+// that fails safe into the retry message rather than into a password form.
+const PAGE_LOAD_GRANULARITY_MS = 1000;
 
 function pageLoadedAtMs() {
   const origin = typeof performance !== 'undefined' ? performance.timeOrigin : 0;
@@ -117,7 +120,7 @@ export function isRecoverySession(session) {
     if (!payload || typeof atob !== 'function') return false;
     const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
     const amr = JSON.parse(json)?.amr;
-    const since = pageLoadedAtMs() - PAGE_LOAD_SKEW_MS;
+    const since = pageLoadedAtMs() - PAGE_LOAD_GRANULARITY_MS;
     return Array.isArray(amr) && amr.some((entry) => (
       entry?.method === 'recovery' && Number(entry.timestamp) * 1000 >= since
     ));
