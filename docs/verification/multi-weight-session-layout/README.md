@@ -3,7 +3,7 @@
 The [reported Squat fixture and layout contract](https://github.com/bpronin90/kilo/issues/1647) are reproduced in the real Expo app, using its Log read view and exercise history sheet. The current routine is expanded to show every session. Captures use Chromium with mobile/touch emulation at **320 × 844** and **390 × 844** CSS pixels, DPR 1, in Hard Court light and dark modes. These are Android-sized phone viewports rendered by React Native Web; they are **not native Android screenshots**. The configured emulator has an older Kilo binary and was not used to claim native verification.
 
 Before revision: `ff90c93a01b4c2cc92587a75679378b500dcb933`.
-After rendering revision: the commit that adds the typography change to `mobile/components/log/LogExerciseRows.js` (the PR head's parent evidence commit; evidence files change no rendering). Captures were taken from the working tree of that commit on Expo web. Spacing-only captures from `d403952c` are superseded.
+Rendered revision: `b1d9595df00ebf91d0d1d0adefcdb63ff3d6013b`. The after/day/stress captures were taken from the working tree immediately before that commit was created; its `mobile/` content is identical to the commit's (nothing in `mobile/` changed between capture and commit). Later commits on this PR change only this evidence directory, so they do not affect rendering. Spacing-only captures from `d403952c` are superseded.
 
 Layout checklist (expanded contract): one Space Grotesk family; day 16 >= exercise 16 >= every session 15; latest session bold (SpaceGrotesk-Bold) with no LAST text or badge; older sessions regular and muted; same newest-three fold and order; 4/16dp group gaps; no overflow.
 
