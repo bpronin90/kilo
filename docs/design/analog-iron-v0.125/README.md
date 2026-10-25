@@ -1,5 +1,10 @@
 # Analog Iron & Newsprint v0.125
 
+> **Historical images:** retired design exports have been removed from the current tree.
+> [Browse the preserved image snapshot](https://github.com/bpronin90/kilo/tree/f7cf024e488471136e11e76834570093b140eaec/docs/design/analog-iron-v0.125/) at
+> `f7cf024e488471136e11e76834570093b140eaec`; image filenames, counts and sizes below describe that snapshot.
+> The historical design notes remain here.
+
 > **Retired design record.** Preserved for provenance; the authority statements,
 > approval checkboxes, "current-main" inventories and proposed cards below refer
 > to the historical Analog Iron handoff. They do not govern current implementation.
@@ -91,12 +96,12 @@ screenshots or invent values from them.
 
 | Surface | Light | Dark |
 |---|---|---|
-| Home | [home-light.png](https://github.com/bpronin90/kilo/blob/main/docs/design/analog-iron-v0.125/home-light.png) | [home-dark.png](https://github.com/bpronin90/kilo/blob/main/docs/design/analog-iron-v0.125/home-dark.png) |
-| Log | [log-light.png](https://github.com/bpronin90/kilo/blob/main/docs/design/analog-iron-v0.125/log-light.png) | [log-dark.png](https://github.com/bpronin90/kilo/blob/main/docs/design/analog-iron-v0.125/log-dark.png) |
-| Weight | [weight-light.png](https://github.com/bpronin90/kilo/blob/main/docs/design/analog-iron-v0.125/weight-light.png) | Extend dark token rules |
-| Stats | [stats-light.png](https://github.com/bpronin90/kilo/blob/main/docs/design/analog-iron-v0.125/stats-light.png) | Extend dark token rules |
-| Settings | [settings-light.png](https://github.com/bpronin90/kilo/blob/main/docs/design/analog-iron-v0.125/settings-light.png) | [settings-dark.png](https://github.com/bpronin90/kilo/blob/main/docs/design/analog-iron-v0.125/settings-dark.png) |
-| Plate Calculator | [plate-calculator-light.png](https://github.com/bpronin90/kilo/blob/main/docs/design/analog-iron-v0.125/plate-calculator-light.png) | Extend dark token rules |
+| Home | [home-light.png](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/design/analog-iron-v0.125/home-light.png) | [home-dark.png](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/design/analog-iron-v0.125/home-dark.png) |
+| Log | [log-light.png](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/design/analog-iron-v0.125/log-light.png) | [log-dark.png](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/design/analog-iron-v0.125/log-dark.png) |
+| Weight | [weight-light.png](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/design/analog-iron-v0.125/weight-light.png) | Extend dark token rules |
+| Stats | [stats-light.png](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/design/analog-iron-v0.125/stats-light.png) | Extend dark token rules |
+| Settings | [settings-light.png](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/design/analog-iron-v0.125/settings-light.png) | [settings-dark.png](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/design/analog-iron-v0.125/settings-dark.png) |
+| Plate Calculator | [plate-calculator-light.png](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/design/analog-iron-v0.125/plate-calculator-light.png) | Extend dark token rules |
 
 ### Owner approval checklist
 

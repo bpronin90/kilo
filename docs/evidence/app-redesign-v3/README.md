@@ -1,5 +1,10 @@
 # App redesign v3: real-app capture harness
 
+> **Historical images:** completed captures have been removed from the current tree.
+> [Browse the preserved image snapshot](https://github.com/bpronin90/kilo/tree/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/) at
+> `f7cf024e488471136e11e76834570093b140eaec`; image filenames, counts and sizes below describe that snapshot.
+> Capture scripts, fixtures and the verification record remain here.
+
 This folder holds the shared harness that renders the **real app** (an Expo web
 export) for every app-redesign-v3 issue (tracker #1609). R1 (#1600) added it.
 Design references live in
@@ -8,7 +13,7 @@ Design references live in
 - `capture.cjs`: the browser harness (serve, seed, open, act, shoot, smoke).
 - `fixtures.cjs`: deterministic localStorage scenarios at a fixed clock.
 - `<rid>/`: one folder per redesign issue (`r1/`, `r2/`, ...) holding that
-  issue's runner, overlays, `after/` PNGs and evidence README.
+  issue's runner, overlays and evidence README; the historical PNGs are linked above.
 
 **The two shared files are frozen.** Downstream issues `require()` them from
 `<rid>/capture.cjs` and add their own data in `<rid>/fixtures.cjs` overlays.
@@ -197,7 +202,7 @@ production ones (`mobile/lib/storage`, `mobile/lib/data`); the harness never
 stubs app logic. You can also pass a whole scenario object
 (`{ build: (now) => storage }`) as `scenario`.
 
-## Downstream layout
+## Historical downstream layout
 
 ```
 docs/evidence/app-redesign-v3/<rid>/
@@ -210,8 +215,10 @@ docs/evidence/app-redesign-v3/<rid>/
 `r1/capture.cjs` is a worked example. It covers first screens across four
 themes, tab-bar behaviour states, an overlay, a wide window, emulated insets, a
 manifest with `verifyTheme()` and `tabBar()` per shot, and the smoke run.
-Issue scopes track PNGs only under `after/`, so manifests go to a work
-directory outside the repo and the evidence README quotes their results.
+The completed issue scopes tracked PNGs under `after/`; those images now live
+in the linked snapshot. For new work, follow the [evidence retention rules](../README.md#retention)
+and select only the captures needed for review. Keep scratch manifests outside
+the tracked tree and record relevant results in the evidence note.
 
 The evidence README records the reference images, the viewport and DPR, the
 rendered commit, the export and capture commands, fixture setup and a pass/fail

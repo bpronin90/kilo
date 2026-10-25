@@ -11,11 +11,13 @@ conflicts are called out where the affected contract lives.
 docs/
   architecture/  Runtime, persistence, sync, recovery and schema contracts
   design/        UI rules, screen references and visual specification packages
+  evidence/      Capture harnesses, visual verification notes and image archives
   operations/    Development, builds, backend activation and release procedures
   privacy/       Health-data consent and optional product measurement
   product/       Current product state and calculation explanations
   security/      Trust boundaries, review, monitoring and incident response
   testing/       Automated tests, coverage, CI gates and manual QA
+  verification/  Integration results, fixture manifests and verification records
   archive/       Historical plans, specifications and retired prototype
 ```
 
@@ -41,6 +43,7 @@ testing and phone-runbook entry pages. Detailed guides live in the folders above
 | Reader task | Authoritative guide |
 |---|---|
 | Which verification guide do I need? | [Testing and QA index](testing-and-qa.md) |
+| Where are current and historical screenshots, and what should be retained? | [Visual Evidence](evidence/README.md) |
 | Run targeted tests or avoid Jest isolation leaks | [Automated Tests](testing/automated-tests.md) |
 | Assess coverage, gaps and measured performance evidence | [Test Coverage](testing/test-coverage.md) |
 | Diagnose a required merge check | [CI Gates](testing/ci-gates.md) |

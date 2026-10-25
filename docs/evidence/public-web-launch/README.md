@@ -1,5 +1,10 @@
 # Public web launch verification (#1548)
 
+> **Historical images:** completed captures have been removed from the current tree.
+> [Browse the preserved image snapshot](https://github.com/bpronin90/kilo/tree/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/public-web-launch/) at
+> `f7cf024e488471136e11e76834570093b140eaec`; image filenames, counts and sizes below describe that snapshot.
+> Capture scripts, fixtures and the verification record remain here.
+
 Captured 2026-10-21 with headless Chromium (Playwright `chromium-1243`) at
 390×844 (mobile browser) and 1440×900 (desktop). Every run started with fresh
 browser storage.
@@ -17,8 +22,8 @@ evidence, so they cannot change the rendered app.
 
 | | 390×844 | 1440×900 |
 |---|---|---|
-| Before (production) | ![](before-prod-390x844-home.png) | ![](before-prod-1440x900-home.png) |
-| After (preview) | ![](after-390x844-01-home.png) | ![](after-1440x900-01-home.png) |
+| Before (production) | ![](https://raw.githubusercontent.com/bpronin90/kilo/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/public-web-launch/before-prod-390x844-home.png) | ![](https://raw.githubusercontent.com/bpronin90/kilo/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/public-web-launch/before-prod-1440x900-home.png) |
+| After (preview) | ![](https://raw.githubusercontent.com/bpronin90/kilo/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/public-web-launch/after-390x844-01-home.png) | ![](https://raw.githubusercontent.com/bpronin90/kilo/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/public-web-launch/after-1440x900-01-home.png) |
 
 **Before:** tab-bar icons are blank. Cloudflare Pages drops the uploaded
 `assets/node_modules/…/MaterialIcons.ttf`, so the font URL returns

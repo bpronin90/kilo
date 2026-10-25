@@ -1,5 +1,10 @@
 # Web export download (#1563): verification evidence
 
+> **Historical images:** completed captures have been removed from the current tree.
+> [Browse the preserved image snapshot](https://github.com/bpronin90/kilo/tree/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/web-export-download/) at
+> `f7cf024e488471136e11e76834570093b140eaec`; image filenames, counts and sizes below describe that snapshot.
+> Capture scripts, fixtures and the verification record remain here.
+
 Rendered evidence for issue #1563: web exports must produce a file when Web
 Share is unavailable or fails.
 

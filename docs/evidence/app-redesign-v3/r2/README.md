@@ -1,5 +1,10 @@
 # R2 (#1601) evidence: Weight entry, Latest, goal and history
 
+> **Historical images:** completed captures have been removed from the current tree.
+> [Browse the preserved image snapshot](https://github.com/bpronin90/kilo/tree/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r2/) at
+> `f7cf024e488471136e11e76834570093b140eaec`; image filenames, counts and sizes below describe that snapshot.
+> Capture scripts, fixtures and the verification record remain here.
+
 Real-app renders of the redesigned Weight screen (tracker #1609).
 
 - **Rendered commit:** `ae6775977747d832bae497f10e17f722543a026d` (the only
@@ -58,7 +63,7 @@ to `workDir`, not to this folder.
 - **Before:** production 1.21.2 Weight is a stacked form (Weight / Date / Note
   fields, full-width Save), a "Goal" section, a Trends table and collapsed
   history summaries; see
-  [`r1/after/first-weight-hard-dark.png`](../r1/after/first-weight-hard-dark.png).
+  [`r1/after/first-weight-hard-dark.png`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r1/after/first-weight-hard-dark.png).
 
 ## Layout checklist (from the reference)
 

@@ -34,10 +34,17 @@ authoritative description of the active product.
 - [D9a/D10 preview checklist](d9a-d10-preview-checklist.md) preserves the
   completed validation checklist for the retired `0.103.0` preview.
 - [Browser prototype](browser-prototype/) contains the frozen pre-native app and
-  its tests. It is not built, tested, or shipped.
+  its tests. It is not built, tested, or shipped. The logo and wordmark used by
+  its UI remain; six unused raster experiments were removed from the current
+  tree and are available in the
+  [original asset snapshot](https://github.com/bpronin90/kilo/tree/f7cf024e488471136e11e76834570093b140eaec/docs/archive/browser-prototype/src/assets/brand/).
 - The former `samples/` directory was removed after its inputs were identified
   as personal workout exports; synthetic parser fixtures remain in the retired
   browser prototype tests and seed data.
+
+Completed screenshot packages and retired design exports are listed in the
+[historical image index](../evidence/README.md#historical-image-index), with
+commit-pinned links that preserve the original verification evidence.
 
 Return to the [current documentation index](../README.md) before using an
 archived statement as implementation guidance.
