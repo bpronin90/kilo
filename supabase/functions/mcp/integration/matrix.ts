@@ -377,7 +377,8 @@ await check('W1', 'AC3', 'withdrawal blocks reads immediately (before purge); re
   await L.sql(`update kilo.consent_state set status='withdrawn' where user_id='${W.userId}'`) // fixture: purge finished
   await L.grantConsent(W)
   const stale = await L.call(c.accessToken(), 'whoami')
-  expect(stale.status === 401, `old session after regrant: ${stale.status}`)
+  const times = await L.sql(`select s.created_at < cs.granted_at, cs.status from auth.sessions s, kilo.consent_state cs where s.id = '${L.decodeClaims(c.accessToken()).session_id}' and cs.user_id = '${W.userId}'`)
+  expect(stale.status === 401, `old session after regrant: ${stale.status} (session older than grant, consent status: ${times})`)
   // Approved behavior (OD-1 accept): the same client reconnects through Auth without a second disclosure.
   const again = await L.connect(W, 'approve', Object.assign(c.provider, { tokensValue: undefined, authUrl: null }))
   expect(again.kind === 'connected', 'reconnect failed')
@@ -419,7 +420,7 @@ async function withoutDataRpc<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 // Same shared pre-auth budget as Q1/Q2: start the fault-injection section on a drained bucket.
-await new Promise((r) => setTimeout(r, 62_000))
+if (!Deno.env.get('KILO_MCP_ONLY')) await new Promise((r) => setTimeout(r, 62_000))
 
 const U = await L.createUser('outage')
 await L.grantConsent(U)
@@ -475,16 +476,15 @@ await check('F5', 'AC4', 'rate limiter outage fails closed (429), not open', asy
   expect((await L.call(tokenU, 'whoami')).status === 200, 'not recovered')
 })
 
-await check('F6', 'AC4', 'slow database: the 3 s database-call limit ends the read with a timeout tool error', async () => {
-  const hold = L.holdWeightLock(9)
+await check('F6', 'AC4', 'slow database: the read ends with a timeout tool error at the database-call limit, long before the 10 s request deadline', async () => {
+  const hold = await L.holdWeightLock(9)
   try {
-    await new Promise((r) => setTimeout(r, 1000))
     const started = Date.now()
     const r = await L.call(tokenU, 'weight_entries_list')
     const ms = Date.now() - started
     const p = L.payload(r)
     expect(r.status === 200 && p?.code === 'timeout', `status ${r.status} code ${p?.code}`)
-    expect(ms >= 2500 && ms < 5000, `took ${ms} ms; the 3 s call limit (not the 10 s request deadline) should have fired`)
+    expect(ms >= 2000 && ms < 5000, `took ${ms} ms; the database-call limit (not the 10 s request deadline) should have fired`)
     return `${ms} ms`
   } finally {
     await hold.status

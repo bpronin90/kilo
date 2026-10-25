@@ -151,8 +151,15 @@ export async function sql(statement: string, user = 'postgres'): Promise<string>
 }
 
 // Holds an exclusive lock on kilo.weight_entries for `seconds` (slow-database case).
-export function holdWeightLock(seconds: number) {
-  return dbExec(['-c', `begin; lock table kilo.weight_entries in access exclusive mode; select pg_sleep(${Number(seconds)}); commit;`]).spawn()
+export async function holdWeightLock(seconds: number) {
+  const child = dbExec(['-c', `begin; lock table kilo.weight_entries in access exclusive mode; select pg_sleep(${Number(seconds)}); commit;`]).spawn()
+  // Return only once the lock is really held, so timings do not depend on process start-up.
+  for (let i = 0; i < 40; i++) {
+    const held = await sql("select count(*) from pg_locks where locktype = 'relation' and mode = 'AccessExclusiveLock' and granted and relation = 'kilo.weight_entries'::regclass")
+    if (Number(held) > 0) return child
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  throw new Error('the slow-database lock was never taken')
 }
 
 // Per-function execution counters, so a case can prove that a rejected request ran
@@ -358,7 +365,11 @@ export async function refresh(clientId: string, refreshToken: string) {
 export interface CaseResult { id: string; criterion: string; title: string; status: 'pass' | 'fail' | 'blocked'; detail: string }
 export const results: CaseResult[] = []
 
+// KILO_MCP_ONLY=F6,W1 runs just those cases while iterating; a full run never sets it.
+const only = Deno.env.get('KILO_MCP_ONLY')?.split(',')
+
 export async function check(id: string, criterion: string, title: string, fn: () => Promise<string | void>) {
+  if (only && !only.includes(id)) return
   try {
     const detail = (await fn()) ?? ''
     results.push({ id, criterion, title, status: 'pass', detail })
