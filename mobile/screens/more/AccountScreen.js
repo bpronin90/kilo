@@ -12,6 +12,7 @@ import { useKuaTypography } from '../../theme/typography';
 import { GEOMETRY } from '../../theme/spacing';
 import { KILO_AUTH_REDIRECT } from '../../hooks/useAuthSession';
 import { AccountLifecycle } from './AccountLifecycle';
+import { McpConnectedClients } from '../mcp/McpConnectedClients';
 import { AuthStatusMessage } from './AuthStatusMessage';
 import { LegalLinks } from './LegalLinks';
 import { SetNewPasswordScreen } from './SetNewPasswordScreen';
@@ -245,6 +246,7 @@ export function AccountScreen({ onBack, auth }) {
             onPress={() => run(() => auth.signOut().then((r) => (r.ok ? { ok: true, message: r.message ?? 'Signed out.' } : r)))}
           />
           <AuthStatusMessage status={status} />
+          <McpConnectedClients userId={auth.user?.id} />
           <View style={styles.dangerZone}>
             <View style={styles.dangerZoneHeading}>
               <MaterialIcons name="warning" size={16} style={[styles.dangerZoneHeadingText, { fontSize: 16, marginRight: 6 }]} accessible={false} />

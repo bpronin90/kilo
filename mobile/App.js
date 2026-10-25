@@ -26,6 +26,8 @@ import { invalidateRecoveryReadState } from './hooks/entries/recoveryReadState';
 import { importBackup, getStorageMode } from './storage/entries';
 import { RestTimerBanner } from './components/RestTimerBanner';
 import { useAppShell } from './app/AppShell';
+import { useMcpAuthorization } from './hooks/useMcpAuthorization';
+import { McpAuthorizationScreen } from './screens/mcp/McpAuthorizationScreen';
 import { runBackupImport } from './app/import';
 import { AppStartupOverlay, AppLocalReadyContext, useAppLocalReadyLatch } from './components/AppStartupOverlay';
 
@@ -157,6 +159,9 @@ function ShellView({ onDeviceDataWiped }) {
     analyticsTarget, analyticsTargetKey, logNoteTarget, logNoteTargetKey, logRecoveryTarget,
     logRecoveryTargetKey, moreSubviewTarget, moreSubviewTargetKey,
   } = useAppShell({ onDeviceDataWiped });
+  // External MCP client authorization (#1626): web-only route rendered over the
+  // mounted tabs; idle (and invisible) everywhere else.
+  const mcpAuthorization = useMcpAuthorization(auth);
   // Startup overlay (#1372): covers the mounted app until Home reports local-
   // ready. One-way per shell instance, so a wipe remount starts a new wait and
   // nothing later (tabs, theme, retries, refreshes) shows it again.
@@ -166,7 +171,7 @@ function ShellView({ onDeviceDataWiped }) {
   const walkthrough = useWelcomeWalkthrough({
     ready: localReady,
     firstUse,
-    blocked: !!(ownershipPrompt || auth.loading || auth.passwordRecovery || auth.recoveryError || auth.deviceWipeRequired),
+    blocked: !!(ownershipPrompt || mcpAuthorization.active || auth.loading || auth.passwordRecovery || auth.recoveryError || auth.deviceWipeRequired),
     activeTab,
     navigate: handleTabPress,
   });
@@ -448,6 +453,7 @@ function ShellView({ onDeviceDataWiped }) {
           />
         ) : null}
         </View>
+        {mcpAuthorization.active ? <McpAuthorizationScreen mcp={mcpAuthorization} auth={auth} /> : null}
         <WelcomeWalkthrough tour={walkthrough} anchorVisible={!tabBarHidden} />
         {startupCovered ? <AppStartupOverlay /> : null}
       </View>

@@ -1,0 +1,176 @@
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { Button } from '../../components/UI';
+import { Alert } from '../../lib/platformAlert';
+import { listConnections, revokeConnection } from '../../lib/mcpAuthorization';
+import { useThemedStyles } from '../../theme/ThemeContext';
+import { TYPOGRAPHY } from '../../theme/typography';
+import { GEOMETRY } from '../../theme/spacing';
+import { CONNECTIONS_COPY as COPY } from './mcpCopy';
+
+// Account -> Connected AI clients (#1626). Lists the signed-in user's OAuth
+// grants and revokes exactly the selected client after an explicit confirmation.
+// Success is shown only after Auth confirms; a failure keeps the row. Everything
+// is bound to the current user id: a user change or unmount drops any response
+// still in flight, so one account's clients never render under another.
+//
+// With no grants and no load error the section renders nothing, so accounts that
+// never used the feature (and builds whose Auth project has no OAuth server) see
+// no change in Account.
+// `client` is a test seam; the lib wrappers default to the app's Auth client.
+export function McpConnectedClients({ userId, client }) {
+  const styles = useThemedStyles(createStyles);
+  const [loadState, setLoadState] = useState('loading');
+  const [connections, setConnections] = useState([]);
+  const [pendingId, setPendingId] = useState(null);
+  const [notice, setNotice] = useState('');
+  const seqRef = useRef(0);
+  const userRef = useRef(userId);
+  userRef.current = userId;
+  const mountedRef = useRef(true);
+  // Bumped on every user change and on unmount. A confirmation dialog captures the
+  // value it was opened under, so it stays dead even if the same account returns.
+  const generationRef = useRef(0);
+  const busyRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  const load = useCallback(async () => {
+    const seq = ++seqRef.current;
+    const forUser = userRef.current;
+    setLoadState('loading');
+    const result = await listConnections(client);
+    if (seq !== seqRef.current || userRef.current !== forUser) return;
+    if (result.ok) {
+      setConnections(result.connections);
+      setLoadState('ready');
+    } else {
+      setConnections([]);
+      setLoadState('failed');
+    }
+  }, [client]);
+
+  useEffect(() => {
+    generationRef.current += 1;
+    setConnections([]);
+    setPendingId(null);
+    setNotice('');
+    if (!userId) {
+      seqRef.current += 1;
+      return undefined;
+    }
+    load();
+    return () => {
+      seqRef.current += 1;
+      generationRef.current += 1;
+    };
+  }, [userId, load]);
+
+  // `forUser`/`generation` identify the account session that opened the
+  // confirmation. The dialog can outlive an account switch (even A -> B -> A) or
+  // unmount, so its callback must not revoke anything once either has changed.
+  const disconnect = useCallback(async (connection, forUser, generation) => {
+    if (!mountedRef.current || !forUser || userRef.current !== forUser || generationRef.current !== generation || busyRef.current) return;
+    busyRef.current = true;
+    const seq = ++seqRef.current;
+    setPendingId(connection.clientId);
+    setNotice('');
+    const result = await revokeConnection(client, connection.clientId);
+    busyRef.current = false;
+    if (seq !== seqRef.current || userRef.current !== forUser) return;
+    setPendingId(null);
+    if (!result.ok) {
+      setNotice(COPY.revokeFailed(connection.name));
+      return;
+    }
+    // Only now, after the server confirmed, does the row leave the list.
+    setConnections((prev) => prev.filter((item) => item.clientId !== connection.clientId));
+    setNotice(COPY.revoked(connection.name));
+  }, [client]);
+
+  const confirmDisconnect = (connection) => {
+    const forUser = userId;
+    const generation = generationRef.current;
+    Alert.alert(COPY.confirmTitle, COPY.confirmBody(connection.name), [
+      { text: COPY.cancel, style: 'cancel' },
+      { text: COPY.disconnect, style: 'destructive', onPress: () => disconnect(connection, forUser, generation) },
+    ]);
+  };
+
+  if (!userId) return null;
+  if (loadState === 'loading' && connections.length === 0 && !notice) return null;
+  if (loadState === 'ready' && connections.length === 0 && !notice) return null;
+
+  return (
+    <View style={styles.block} testID="mcp-connected-clients">
+      <Text style={styles.heading} accessibilityRole="header">{COPY.title}</Text>
+      <Text style={styles.note}>{COPY.note}</Text>
+      {loadState === 'failed' ? (
+        <>
+          <Text style={styles.note}>{COPY.loadFailed}</Text>
+          <Button title={COPY.retry} onPress={load} accessibilityLabel="Retry loading connected AI clients" />
+        </>
+      ) : null}
+      {connections.map((connection) => (
+        <View key={connection.clientId} style={styles.row} testID={`mcp-connection-${connection.clientId}`}>
+          <View style={styles.rowText}>
+            <Text style={styles.name} selectable>{connection.name}</Text>
+            {connection.grantedAt ? (
+              <Text style={styles.meta}>Connected {connection.grantedAt.slice(0, 10)}</Text>
+            ) : null}
+          </View>
+          <Button
+            title={COPY.disconnect}
+            loadingTitle={COPY.working}
+            loading={pendingId === connection.clientId}
+            disabled={pendingId !== null}
+            onPress={() => confirmDisconnect(connection)}
+            tone="danger"
+            accessibilityLabel={`Disconnect ${connection.name}`}
+          />
+        </View>
+      ))}
+      {notice ? <Text style={styles.note} accessibilityLiveRegion="polite" testID="mcp-connection-notice">{notice}</Text> : null}
+    </View>
+  );
+}
+
+const createStyles = (colors, kua = null) => StyleSheet.create({
+  block: {
+    gap: 10,
+    marginTop: 16,
+  },
+  heading: {
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
+  note: {
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
+    lineHeight: 22,
+    color: kua ? kua.onSurface : colors.text,
+  },
+  row: {
+    gap: 8,
+    padding: 12,
+    borderRadius: GEOMETRY['radius-sm'],
+    borderWidth: 1,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
+  },
+  rowText: {
+    gap: 2,
+  },
+  name: {
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
+    fontWeight: '700',
+    color: kua ? kua.onSurface : colors.text,
+    flexShrink: 1,
+  },
+  meta: {
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
+});

@@ -136,6 +136,25 @@ deleted values. Re-grant is forbidden while deletion is pending; a later grant
 after completed withdrawal creates a new event and rebuilds the cloud copy from
 the user's current local data.
 
+## External AI Clients (MCP)
+
+Approving an external AI client is a separate, explicit step from the Cloud Sync
+consent above and never grants, replaces or implies it. The approval page
+(`/oauth/consent`) discloses, before the Approve choice, that the client will
+read workout notes and weight entries already synced to Kilo Cloud, that this
+data is sent to the client and handled under its provider's terms, and that Kilo
+cannot recall data already sent. Without an active Cloud Sync consent the page
+offers Deny only; it does not start sync or record consent.
+
+Disconnecting is a separate action in Account → Connected AI clients and revokes
+only the selected client. Signing out of Kilo ends client sessions but does not
+disconnect them. Withdrawing Cloud Sync consent stops all client reads server-side
+at once; the existing Cloud Sync withdrawal copy is unchanged. A client that
+reconnects after withdrawal and re-grant may not be shown the approval page again
+if the sign-in service remembers the earlier approval (accepted, #1624 OD-1);
+server enforcement does not depend on that page. The technical contract is
+[`docs/architecture/mcp-mvp.md`](../architecture/mcp-mvp.md).
+
 ## Re-consent and Change Control
 
 A fresh material version and affirmative grant are required before processing a
