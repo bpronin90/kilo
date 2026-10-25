@@ -15,7 +15,8 @@ This directory is the implementation-ready design specification for Kilo's three
 
 ## Source material inventory
 
-The files under `new design templates/` map as follows:
+The original design exports live beside this specification in
+[`source-templates/`](source-templates/). They map as follows:
 
 | Directory | Maps to |
 |---|---|

@@ -31,10 +31,12 @@ update-policy, audit, and Jest commands.
 | `supabase/` | Kilo migrations, Edge Functions, configuration, operations, and database tests. |
 | `scripts/` | Repository verification, deployment, monitoring, and release tooling. |
 | `docs/` | Current documentation indexed by [`docs/README.md`](README.md). |
-| `docs/archive/` | Historical plans, specifications, samples, and retired prototype code. |
+| `docs/archive/` | Historical plans, specifications, and retired prototype code. |
 
 Local workflow-layer files such as `AGENTS.md`, `CLAUDE.md`, `CODEX.md`,
-`GEMINI.md`, and `.codex/` are gitignored and are not product artifacts.
+`GEMINI.md`, `.agents/`, `.agent-workflows/`, and `.codex/` are gitignored and
+are not product artifacts. Scratch captures under `.visual-evidence/` and
+Windows `*:Zone.Identifier` download metadata are also ignored.
 
 ## Mobile Application
 
@@ -96,6 +98,15 @@ internal commands into documentation.
 
 [`docs/README.md`](README.md) is the canonical documentation index.
 [`docs/archive/README.md`](archive/README.md) explains the historical boundary.
+Design specifications and references live in `docs/design/`; the original
+court-theme exports are in
+[`kinetic-utilitarian-athletic/source-templates/`](design/kinetic-utilitarian-athletic/source-templates/).
+`docs/evidence/` holds issue-specific rendered comparisons and capture harnesses;
+`docs/verification/` holds nonvisual verification results and fixture manifests.
+Keep existing evidence URLs stable. Promote scratch captures to accessible,
+durable evidence before linking them in a review handoff; ignored local paths
+are not sufficient evidence for another reviewer.
+
 Living guides are grouped by topic under the [folder map](README.md#folder-layout);
 the root retains the shared entry indexes. Living docs describe current contracts;
 completed delivery chronology belongs in
