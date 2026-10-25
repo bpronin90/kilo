@@ -264,7 +264,11 @@ Both functions:
   - gate mode is not `paused`.
 
   On a failure they raise a fixed SQLSTATE carrying only the status. The tool maps
-  it to the §5.1 response.
+  it to the §5.1 response. `mcp_workout_notes_page` raises `42501` for a
+  first-party token, `MC001` (session or account no longer valid; surfaced as a
+  retryable `internal` because the next request is rejected by the HTTP gate),
+  `MC002` (`consent_required`, also when the gate mode is `paused`), `MC003`
+  (`invalid_arguments`) and `MC004` (`rate_limited`).
 - Filter `user_id = auth.uid()` explicitly; definer rights bypass RLS, so the
   owner filter is in the body.
 - Validate arguments: `p_limit` 1–100, or 1–25 when raw text is requested; the
@@ -384,6 +388,10 @@ Semantics: one item is a **notebook record that may contain several sessions**.
 No session date is produced; `saved_at`/`updated_at` are labeled as save/modify
 times. No parsed or derived fields (`tracked_exercises` etc. are never selected).
 Tombstones (`deleted_at is not null`) are excluded.
+The response also carries `item_semantics` (the notebook-record and save/modify-time
+wording above) and `result_state: "no_cloud_records"` only for an empty first page.
+`has_more` from the RPC, or a trim of trailing items to fit the response cap, yields
+`next_cursor` built from the last item returned.
 
 Order and cursor: `(updated_at desc, id desc)`, restricted to
 `updated_at <= as_of`, where `as_of` is fixed on the first page. Rows edited during
