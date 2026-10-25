@@ -204,7 +204,9 @@ action on web or Android.
 
 1. In GitHub, create an OAuth App for Kilo.
 2. Set the homepage to the production web origin
-   (`https://kilo-app.pages.dev`; see [Web Deployment](web-deployment.md)).
+   (`https://kilo-app.pages.dev`; see [Web Deployment](web-deployment.md)). When
+   `https://kilofitnesstracker.com` goes live, update it there; until the owner
+   completes that cutover, `pages.dev` remains the configured origin.
 3. Set the authorization callback to
    `https://<project-ref>.supabase.co/auth/v1/callback`.
 
@@ -217,6 +219,9 @@ to the allow-listed client URL.
    OAuth App client ID and secret.
 2. In Authentication → URL Configuration, allow the production web origin
    (`https://kilo-app.pages.dev/**`), required local web origins, and `kilo://auth/callback`.
+   For the custom domain also allow `https://kilofitnesstracker.com/**` and add
+   its hostname to the Turnstile widget; keep `pages.dev` during migration. These
+   are owner-side steps and are not done by deploying code.
 3. Keep the GitHub client secret in provider configuration only; never expose it
    to the app.
 

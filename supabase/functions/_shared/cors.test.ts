@@ -4,7 +4,7 @@
 //        --lock=supabase/functions/deno.lock --frozen --allow-import --allow-read \
 //        supabase/functions/_shared/cors.test.ts
 
-import { corsHeaders, isAllowedOrigin, PRODUCTION_WEB_ORIGIN } from './cors.ts'
+import { corsHeaders, CUSTOM_WEB_ORIGIN, isAllowedOrigin, PRODUCTION_WEB_ORIGIN } from './cors.ts'
 
 function assertEquals(actual: unknown, expected: unknown, message: string) {
   const a = JSON.stringify(actual)
@@ -27,6 +27,16 @@ const DISALLOWED = [
   'https://kilo-app.pages.dev:8443', // wrong port
   'https://kilo-app.pages.dev/', // trailing slash is not an origin
   'https://KILO-APP.pages.dev', // browsers serialize lowercase; no case folding
+  'https://kilofitnesstracker.online', // redirect-only domain, never an API origin
+  'https://www.kilofitnesstracker.com',
+  'https://app.kilofitnesstracker.com',
+  'https://abc123.kilofitnesstracker.com', // preview-style subdomain
+  'https://kilofitnesstracker.com.evil.example', // suffix lookalike
+  'https://evilkilofitnesstracker.com', // prefix lookalike
+  'http://kilofitnesstracker.com', // wrong scheme
+  'https://kilofitnesstracker.com:8443', // wrong port
+  'https://kilofitnesstracker.com/', // trailing slash is not an origin
+  'https://KILOFITNESSTRACKER.com', // no case folding
   'http://localhost:8081',
   'https://evil.example',
   'null',
@@ -34,16 +44,23 @@ const DISALLOWED = [
   '*',
 ]
 
-Deno.test('only the exact production web origin is allowed', () => {
-  assertEquals(PRODUCTION_WEB_ORIGIN, 'https://kilo-app.pages.dev', 'the production origin')
-  assertEquals(isAllowedOrigin(PRODUCTION_WEB_ORIGIN), true, 'production is allowed')
+Deno.test('only the two exact web origins are allowed', () => {
+  assertEquals(PRODUCTION_WEB_ORIGIN, 'https://kilo-app.pages.dev', 'the pages.dev origin')
+  assertEquals(CUSTOM_WEB_ORIGIN, 'https://kilofitnesstracker.com', 'the custom origin')
+  assertEquals(isAllowedOrigin(PRODUCTION_WEB_ORIGIN), true, 'pages.dev is allowed')
+  assertEquals(isAllowedOrigin(CUSTOM_WEB_ORIGIN), true, 'custom domain is allowed')
   assertEquals(isAllowedOrigin(null), false, 'an absent origin is not allowed')
   for (const origin of DISALLOWED) assertEquals(isAllowedOrigin(origin), false, `${origin} is not allowed`)
 })
 
-Deno.test('the allowed origin is echoed exactly, with no credentials', () => {
-  const headers = corsHeaders(request(PRODUCTION_WEB_ORIGIN))
-  assertEquals(headers['Access-Control-Allow-Origin'], PRODUCTION_WEB_ORIGIN, 'exact echo')
+Deno.test('each allowed origin is echoed exactly, with no credentials', () => {
+  for (const origin of [PRODUCTION_WEB_ORIGIN, CUSTOM_WEB_ORIGIN]) {
+    const headers = corsHeaders(request(origin))
+    assertEquals(headers['Access-Control-Allow-Origin'], origin, `exact echo of ${origin}`)
+    assertEquals(headers.Vary, 'Origin', `${origin} varies by Origin`)
+    assertEquals('Access-Control-Allow-Credentials' in headers, false, `${origin} has no ambient credentials`)
+  }
+  const headers = corsHeaders(request(CUSTOM_WEB_ORIGIN))
   assertEquals(headers['Access-Control-Allow-Methods'], 'POST, OPTIONS', 'POST is allowed')
   assertEquals(headers['Access-Control-Allow-Headers'], 'authorization, x-client-info, apikey, content-type', 'client headers are allowed')
   assertEquals(headers.Vary, 'Origin', 'varies by Origin')

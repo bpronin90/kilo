@@ -121,6 +121,37 @@ Afterwards confirm the deployment list shows the intended commit and reload
 the production URL. The next successful `main` push deploys over a rollback,
 so revert or fix the faulty change on `main` before merging anything else.
 
+## Custom domain: kilofitnesstracker.com
+
+Kilo supports serving the web app from `https://kilofitnesstracker.com`
+([#1635](https://github.com/bpronin90/kilo/issues/1635)) while
+`https://kilo-app.pages.dev` stays live for migration and rollback. Supporting
+the domain in code is not the same as it being live: the owner-side
+configuration below is separate and is not recorded here as complete.
+
+- **Owner configuration (pending).** DNS and the Pages custom domain, the
+  Turnstile hostname, the Supabase Auth Site URL and redirect allowlist, and
+  `KILO_WEB_URL` (repoint it to the new origin only once the domain serves the
+  app, or the post-deploy live check keeps testing `pages.dev`).
+- **`kilofitnesstracker.online`** redirects to `.com` and is not an API origin.
+- **Do not** add a global `pages.dev` redirect: the Android restore RP ID
+  depends on the direct, unredirected
+  `https://kilo-app.pages.dev/.well-known/assetlinks.json`.
+- **Deploying the web app does not deploy Edge Functions.** The CORS change
+  only takes effect once these functions, which import
+  `supabase/functions/_shared/cors.ts`, are redeployed by an authorized
+  operator: `account-delete`, `account-export`, `health-data-delete`, and
+  `android-restore-credentials`. For each:
+  `supabase functions deploy <name> --project-ref <ref>`, then confirm with an
+  `OPTIONS` request carrying `Origin: https://kilofitnesstracker.com` that the
+  response echoes that exact origin with `Vary: Origin`, and that an unauthenticated
+  `POST` still returns 401.
+- **Storage and sessions are origin-bound.** `localStorage` and the Supabase
+  session on `pages.dev` are invisible to `.com`, and a DNS redirect cannot move
+  them. Before switching, signed-in users should confirm their data has synced
+  to the cloud; local-only users should export a local backup and import it on
+  the new origin. Keep `pages.dev` reachable for local-only users.
+
 ## Browser storage boundaries
 
 - All local data lives in the origin's `localStorage` under the `kilo_*` keys
@@ -159,12 +190,14 @@ so revert or fix the faulty change on `main` before merging anything else.
 
 ### Known web gaps
 
-Kilo's Supabase Edge Functions allow exactly one browser origin,
-`https://kilo-app.pages.dev` (`supabase/functions/_shared/cors.ts`); preview
-deployments and other origins get no `Access-Control-Allow-Origin` and cannot
-call them. The bearer token, not CORS, is the trust boundary. Web sign-out,
-cloud export, account deletion, and health-data deletion were verified on
-production for [#1552](../evidence/web-edge-cors/README.md).
+Kilo's Supabase Edge Functions allow exactly two browser origins,
+`https://kilo-app.pages.dev` and `https://kilofitnesstracker.com`
+(`supabase/functions/_shared/cors.ts`, exact match only); preview deployments,
+`www`/`app` hosts, `kilofitnesstracker.online`, and other origins get no
+`Access-Control-Allow-Origin` and cannot call them. Credentials stay disabled
+and the bearer token, not CORS, is the trust boundary. Web sign-out, cloud
+export, account deletion, and health-data deletion were verified on the
+`pages.dev` production origin for [#1552](../evidence/web-edge-cors/README.md).
 Remaining gaps:
 
 - **Cloud export download** reaches the server but the file cannot be saved
