@@ -37,6 +37,10 @@ export function HomeTopBar() {
   const { width } = useWindowDimensions();
   const column = centeredColumnInsets(width, { left: leftInset, right: rightInset });
   const summary = cloudSync?.summary || null;
+  // #1640: signed-out users get an obvious Sign in entry instead of a cloud
+  // glyph that opens Cloud Sync; while the session restores nothing is drawn so
+  // a persisted session is never mislabelled.
+  const accountEntry = cloudSync?.accountEntry;
   const failed = !!summary?.hasFailed && !summary?.isRunning;
   const iconColor = failed ? (kua ? kua.errorText : colors.error) : (kua ? kua.onSurfaceVariant : colors.textMuted);
   return (
@@ -44,7 +48,19 @@ export function HomeTopBar() {
       <View style={styles.topBarMark} accessible accessibilityRole="header" accessibilityLabel="Kilo">
         <KiloWordmark width={72} height={26} />
       </View>
-      {cloudSync ? (
+      {cloudSync && accountEntry === 'loading' ? null : cloudSync && accountEntry === 'signed-out' ? (
+        <Pressable
+          testID="home-sign-in"
+          onPress={() => cloudSync.openAccount?.()}
+          style={styles.topBarSignIn}
+          accessibilityRole="button"
+          accessibilityLabel="Sign in"
+          accessibilityHint="Opens Account to sign in or create an account. Kilo works without one."
+        >
+          <Icon name="account-circle" size={20} color={iconColor} />
+          <Text style={styles.topBarSignInText}>Sign in</Text>
+        </Pressable>
+      ) : cloudSync ? (
         <Pressable
           testID="home-sync-status"
           onPress={() => cloudSync.openCloudSync?.()}

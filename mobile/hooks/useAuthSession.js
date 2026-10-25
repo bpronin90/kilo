@@ -16,6 +16,11 @@ import { Linking, Platform } from 'react-native';
 import { getCaptchaConfig } from '../lib/captchaConfig';
 import { getSupabaseClient, getSupabaseConfig, hasSupabaseConfig, callAndroidRestoreApi, clearAndroidRestoreCredentialId, enrollAndroidRestoreCredential, loadAndroidRestoreCredentialId, saveAndroidRestoreCredentialId } from '../lib/supabaseClient';
 import { revokeRestoreCredentialsBeforeSignOut } from '../lib/signOutRevocation';
+import {
+  RECOVERY_PENDING_KEY, RECOVERY_PENDING_TTL_MS, markRecoveryPending, clearRecoveryPending,
+  consumeRecoveryPending, peekRecoveryPending,
+} from '../lib/authRecoveryLink';
+import { exchangeWebCallbackCode } from '../lib/webAuthCodeExchange';
 import { authErrorResult, usableAuthMessage } from '../lib/authErrorMessage';
 import { wipeSensitiveDeviceData } from '../storage/secureStorage';
 import { isAndroidRestoreCredentialsAvailable, getRestoreCredential as nativeGetRestoreCredential, clearRestoreCredential as nativeClearRestoreCredential } from 'android-restore-credentials';
@@ -44,78 +49,9 @@ function networkErrorResult(e) {
 // origin (see App.js's web callback effect).
 export const KILO_AUTH_REDIRECT = 'kilo://auth/callback';
 
-// Web-only recovery discriminator (#497).
-//
-// GitHub OAuth and password recovery both return to window.location on web, so
-// a callback URL alone cannot tell a recovery-link error apart from a generic
-// OAuth error. We deliberately do NOT solve this by marking the redirect URL:
-// the redirect must stay a plain allowlisted base URL (`kilo://auth/callback`
-// native, the web origin on web). A query-bearing variant is not guaranteed to
-// match Supabase's redirect-URL allowlist, and a rejected redirect falls back
-// to the project Site URL — recreating the exact dead end this issue fixes.
-//
-// Instead, when a reset is requested we record a short-lived "recovery pending"
-// flag in localStorage, and consume it when a callback error arrives. It is
-// localStorage, not sessionStorage, because the email link commonly opens a new
-// tab. The TTL is aligned to the reset-link validity so a stale flag cannot
-// misclassify a much-later unrelated OAuth error.
-//
-// Native needs no discriminator at all: GitHub OAuth is captured by
-// WebBrowser.openAuthSessionAsync's own return value, so any error that reaches
-// the general kilo:// deep-link listener is unambiguously a recovery error
-// (handled by that listener directly). getRecoveryStorage() returns null on
-// native, so every helper here is a no-op there.
-export const RECOVERY_PENDING_KEY = 'kilo.auth.recoveryPending';
-// ~1h, matching the default Supabase reset-link validity.
-export const RECOVERY_PENDING_TTL_MS = 60 * 60 * 1000;
-
-function getRecoveryStorage() {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) return window.localStorage;
-  } catch (e) {
-    // Accessing window.localStorage can throw (privacy mode, sandboxed frame).
-  }
-  return null;
-}
-
-function markRecoveryPending() {
-  const storage = getRecoveryStorage();
-  if (!storage) return;
-  try {
-    storage.setItem(RECOVERY_PENDING_KEY, String(Date.now()));
-  } catch (e) {
-    // Best-effort: if this fails, a returning web error just stays unclassified.
-  }
-}
-
-function clearRecoveryPending() {
-  const storage = getRecoveryStorage();
-  if (!storage) return;
-  try {
-    storage.removeItem(RECOVERY_PENDING_KEY);
-  } catch (e) {
-    // ignore
-  }
-}
-
-// Returns true — and clears the flag — when a recovery request was made within
-// the TTL window. Returns false (leaving nothing behind) otherwise, including
-// on native where there is no localStorage.
-function consumeRecoveryPending() {
-  const storage = getRecoveryStorage();
-  if (!storage) return false;
-  let raw = null;
-  try {
-    raw = storage.getItem(RECOVERY_PENDING_KEY);
-  } catch (e) {
-    return false;
-  }
-  if (raw == null) return false;
-  clearRecoveryPending();
-  const ts = Number(raw);
-  if (!Number.isFinite(ts)) return false;
-  return Date.now() - ts <= RECOVERY_PENDING_TTL_MS;
-}
+// Web-only recovery discriminator (#497) and callback classification (#1640)
+// live in lib/authRecoveryLink.js.
+export { RECOVERY_PENDING_KEY, RECOVERY_PENDING_TTL_MS };
 
 export function useAuthSession({ onDeviceDataWiped } = {}) {
   const configured = hasSupabaseConfig();
@@ -162,8 +98,21 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
       };
     }
 
-    client.auth
-      .getSession()
+    // Web callback code (#1640): exchanged here, after the subscription below
+    // exists (so PASSWORD_RECOVERY is delivered), and BEFORE the restore probe.
+    // The exchange result alone decides success; a failed one never lets a
+    // retained older session stand in for it.
+    const resetPending = peekRecoveryPending();
+    const probe = Platform.OS === 'web'
+      ? exchangeWebCallbackCode(client).then((outcome) => {
+        if (outcome?.error && resetPending && mountedRef.current) {
+          consumeRecoveryPending();
+          setRecoveryError('This password reset link is invalid, expired or already used. Request a new reset email.');
+        }
+        return client.auth.getSession();
+      })
+      : client.auth.getSession();
+    probe
       .then(({ data }) => {
         applySession(data?.session || null);
       })
@@ -420,6 +369,8 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
   const signInWithOAuth = useCallback(async (provider, options) => {
     const client = requireClient();
     if (!client) return LOCAL_ONLY_RESULT;
+    // A provider return is never a reset link (#1640).
+    clearRecoveryPending();
     const oauthOptions = options
       ? {
           redirectTo: options.redirectTo,

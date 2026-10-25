@@ -277,12 +277,13 @@ export function getSupabaseClient() {
       autoRefreshToken: true,
       persistSession: true,
       // PKCE is required for native Android so the OAuth callback carries
-      // ?code= rather than an implicit #access_token= fragment. detectSessionInUrl
-      // is kept true only on web so supabase-js can auto-exchange the code after
-      // the provider redirects back; native delivers the callback via deep link
-      // and we call exchangeCodeForSession explicitly.
+      // ?code= rather than an implicit #access_token= fragment. The callback code
+      // is exchanged explicitly on every platform (web: lib/webAuthCodeExchange,
+      // native: the deep-link listener), never by supabase-js at client init:
+      // that runs before the app can subscribe, loses PASSWORD_RECOVERY, and on
+      // failure silently keeps an older stored session (#1640).
       flowType: 'pkce',
-      detectSessionInUrl: isWeb,
+      detectSessionInUrl: false,
     },
   });
   return cachedClient;

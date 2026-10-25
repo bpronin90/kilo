@@ -108,6 +108,19 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Signed-out Sign in entry (#1640): same 44dp tap target as topBarAction.
+  topBarSignIn: {
+    minHeight: 44,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  topBarSignInText: {
+    color: kua ? kua.primary : colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
   // The active panel's padded column (prototype `.pad`: 16dp, 12dp rhythm).
   heroPad: {
     padding: 16,

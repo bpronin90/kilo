@@ -77,6 +77,29 @@ describe('HomeTopBar', () => {
     expect(openCloudSync).toHaveBeenCalledTimes(1);
   });
 
+  test('#1640: signed out shows a labelled Sign in entry that opens Account, not Cloud Sync', () => {
+    const openAccount = jest.fn();
+    const openCloudSync = jest.fn();
+    mockCloudSync.current = { summary: null, openCloudSync, openAccount, accountEntry: 'signed-out' };
+    const tree = mount(<HomeTopBar />);
+    expect(hosts(tree, 'home-sync-status')).toHaveLength(0);
+    expect(host(tree, 'home-sign-in').props.accessibilityLabel).toBe('Sign in');
+    act(() => { pressable(tree, 'home-sign-in').props.onPress(); });
+    expect(openAccount).toHaveBeenCalledTimes(1);
+    expect(openCloudSync).not.toHaveBeenCalled();
+  });
+
+  test('#1640: while the session restores neither entry is drawn; signed in keeps Cloud Sync', () => {
+    mockCloudSync.current = { summary: null, accountEntry: 'loading' };
+    let tree = mount(<HomeTopBar />);
+    expect(hosts(tree, 'home-sign-in')).toHaveLength(0);
+    expect(hosts(tree, 'home-sync-status')).toHaveLength(0);
+    mockCloudSync.current = { summary: { statusLabel: 'Synced', hasLastSuccess: true }, openCloudSync: jest.fn(), accountEntry: 'signed-in' };
+    tree = mount(<HomeTopBar />);
+    expect(hosts(tree, 'home-sign-in')).toHaveLength(0);
+    expect(host(tree, 'home-sync-status')).toBeTruthy();
+  });
+
   test('outside the shell (no sync summary) the icon is not drawn', () => {
     const tree = mount(<HomeTopBar />);
     expect(hosts(tree, 'home-sync-status')).toHaveLength(0);
