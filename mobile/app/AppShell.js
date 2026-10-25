@@ -399,6 +399,20 @@ export function useAppShell({ onDeviceDataWiped }) {
     handleTabPress('More', CLOUD_SYNC_NAV_TARGET);
   }, [handleTabPress]);
 
+  // Account sign-in entry for the Home header (#1640): the same typed More
+  // sub-view intent the More menu's own Account row uses.
+  const openAccount = useCallback(() => {
+    handleTabPress('More', { kind: 'subview', view: 'account' });
+  }, [handleTabPress]);
+
+  // Which Home header entry applies. Session restoration is its own state so a
+  // persisted session is never flashed as signed-out; an unconfigured
+  // (local-only) build has no account to offer.
+  const accountEntry = !auth.configured ? 'unavailable'
+    : auth.loading ? 'loading'
+    : auth.signedIn ? 'signed-in'
+    : 'signed-out';
+
   const handleRetrySync = useCallback(async () => {
     if (typeof retrySync !== 'function') {
       return { ok: false, error: 'Cloud Sync is not available in this build yet.' };
@@ -415,8 +429,8 @@ export function useAppShell({ onDeviceDataWiped }) {
   // screens, so a fresh literal per render would re-render every consumer on
   // every keystroke anywhere in the shell.
   const cloudSync = React.useMemo(
-    () => ({ summary: cloudSyncSummary, retrySync: handleRetrySync, openCloudSync }),
-    [cloudSyncSummary, handleRetrySync, openCloudSync]
+    () => ({ summary: cloudSyncSummary, retrySync: handleRetrySync, openCloudSync, openAccount, accountEntry }),
+    [cloudSyncSummary, handleRetrySync, openCloudSync, openAccount, accountEntry]
   );
 
   const saveWeight = useCallback(async (date, retainedLb) => {
