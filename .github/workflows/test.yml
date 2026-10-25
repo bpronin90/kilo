@@ -104,3 +104,10 @@ jobs:
           supabase/functions/account-export/index.test.ts
           supabase/functions/account-delete/index.test.ts
           supabase/functions/health-data-delete/index.test.ts
+
+      - name: Run MCP function tests against the committed lockfile
+        run: >
+          deno test --config supabase/functions/mcp/deno.json
+          --lock=supabase/functions/mcp/deno.lock --frozen
+          --allow-net --allow-read --allow-env --allow-import
+          supabase/functions/mcp/

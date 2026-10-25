@@ -37,6 +37,20 @@ Checks before starting implementation work:
    in `…/auth/v1/.well-known/oauth-authorization-server`.
 3. Run probes P1–P5 (architecture §11) and record the results in #1625/#1626.
 
+Verified for #1625 on 2026-10-25 (synthetic user, scratch local stack with
+Supabase CLI 2.109.0 and GoTrue v2.192.0, project id `kilo_probe_1625`, ports
+56321/56322, OAuth server and dynamic registration on, torn down afterwards):
+P1, P2 and P4 results are in the architecture §11. End to end, an OAuth access
+token reached `initialize` and `whoami` through the function; the same function
+rejected anonymous and first-party tokens (401); a direct PostgREST read of
+`kilo.weight_entries` returned `[]` and `consent_withdraw` returned 403
+(`42501`) for the OAuth token; after `DELETE /auth/v1/user/oauth/grants` (204),
+replaying the unexpired token returned 401. Run the function tests with
+`deno test --config supabase/functions/mcp/deno.json
+--lock=supabase/functions/mcp/deno.lock --frozen --allow-net --allow-read
+--allow-env --allow-import supabase/functions/mcp/`. Claude Code and HTTPS-only
+clients were not exercised (#1629).
+
 ## B. Hosted staging (operator-owned prerequisites)
 
 Needed only for HTTPS-only clients. Each item is an operator action; an agent

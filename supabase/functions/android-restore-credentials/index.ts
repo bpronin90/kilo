@@ -32,6 +32,7 @@ import {
   readTokenClaims,
   type RestoreIdentity,
 } from '../_shared/android-restore-credentials.ts'
+import { hasOAuthClientClaim } from '../mcp/oauth-client-token.ts'
 import { createRestoreHandler } from './handler.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -57,6 +58,9 @@ function errorCode(error: { code?: unknown; status?: unknown }): string {
 // credential, and failures are classified by the caller from bounded codes.
 const identity: RestoreIdentity = {
   async userFromToken(token) {
+    // A connected MCP client's token (it carries `client_id`) is never a valid
+    // identity here, so every authenticated route answers 401 (issue #1625).
+    if (hasOAuthClientClaim(token)) return null
     const { data, error } = await admin.auth.getUser(token)
     if (error || !data.user) return null
     // Decoded only now that GoTrue has validated the token.

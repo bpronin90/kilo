@@ -5,10 +5,11 @@ Implementation issues #1625–#1629 build against this document and update only 
 sections their issue names. Operator steps and the staging checklist live in
 [`docs/operations/mcp-mvp.md`](../operations/mcp-mvp.md).
 
-Status: **design contract, not implemented.** Nothing here is deployed, and no
-live Supabase configuration was inspected while writing it. Each claim is backed
-by a dated source (§13), a repository file, or is marked as a **probe** (§11) that
-must be run in isolated staging before the dependent handoff.
+Status: **transport, request gates and `whoami` implemented (#1625); history
+tools and browser flow pending.** Nothing is deployed. The contract was written
+without inspecting live Supabase configuration; each claim is backed by a dated
+source (§13), a repository file, or a **probe** (§11). Probe results recorded so
+far are in §11; implementation deviations are in §14.
 
 ## 1. Scope and non-goals
 
@@ -485,10 +486,10 @@ exact version.
 
 | # | Question | Needed by | If the answer is unfavorable |
 | --- | --- | --- | --- |
-| P1 | After `revokeGrant`, what happens to `auth.sessions` and `auth.refresh_tokens` rows for that client's `session_id`? | #1625 | The gate already requires both. If **neither** changes, #1625 is blocked and returns here. |
-| P2 | Does `auth.sessions` record the OAuth client (column name)? | #1625 | Rely on the signed `client_id` claim only. |
+| P1 | After `revokeGrant`, what happens to `auth.sessions` and `auth.refresh_tokens` rows for that client's `session_id`? | #1625 | The gate already requires both. If **neither** changes, #1625 is blocked and returns here. **Result (2026-10-25, GoTrue v2.192.0 local): the session row and its refresh-token rows are both deleted; the user's first-party session is untouched. Replaying the unexpired access token then returned 401.** |
+| P2 | Does `auth.sessions` record the OAuth client (column name)? | #1625 | Rely on the signed `client_id` claim only. **Result: yes, `auth.sessions.oauth_client_id uuid`; the gate requires it to equal the `client_id` claim when the column exists.** |
 | P3 | Can an OAuth access token call Auth `PUT /user`, `/logout`, `/factors`? | #1629 | Record it; it is a production blocker (PB-4), acceptable for synthetic staging users. |
-| P4 | Does `withSupabase` enforce `iss`/`aud`, and what does it return on failure? | #1625 | Kilo's step 3 already checks `iss`. |
+| P4 | Does `withSupabase` enforce `iss`/`aud`, and what does it return on failure? | #1625 | Kilo's step 3 already checks `iss`. **Result: `audience` is enforced by the library (set to `authenticated`); `issuer` is a static option, so Kilo pins `iss` itself per request (§5 step 3). Wrong audience, bad signature, HS256 and expired tokens return 401 (`index.test.ts`, real ES256 verification). Anonymous requests return the library's `MISSING_CREDENTIALS` 401 body, which the discovery middleware enriches with the `resource_metadata` challenge.** |
 | P5 | Does `getAuthorizationDetails` skip consent for a previously approved client? | #1626 | See OD-1. |
 
 ## 12. Blockers and open decisions
@@ -530,3 +531,34 @@ for development only. HTTPS-only clients need `kilo-mcp-staging`.
   `20260714120001_consent_schema.sql`, `20260926120000_restore_credentials_auth_lifecycle.sql`,
   `20260622120001_edge_rate_limit.sql`, `supabase/functions/_shared/rate-limit.ts`,
   `mobile/storage/cloud/transport.js`, `mobile/lib/units.js`, `mobile/app/AppShell.js`
+
+## 14. Implementation notes (#1625)
+
+Deviations and decisions made while implementing §5–§6, kept here so the contract
+stays the single reference.
+
+- **Restrictive policy scope.** §6.2 says every RLS table. The policy is added to every
+  RLS table that `authenticated` holds a privilege on (14 today). Service-role-only tables
+  (rate limits, security events, restore credentials, product measurement, consent evidence)
+  are already unreachable by any API token, and their existing tests assert they have no
+  policy at all. The catalog test fails if such a table later gains an `authenticated` grant
+  without the policy, so the guarantee is the same.
+- **Claims read from `request.jwt.claims`.** `kilo.is_oauth_client_token()` and the gate read
+  the setting PostgREST provides, not `auth.jwt()`, because GoTrue creates `auth.jwt()` and the
+  pgTAP database has no GoTrue. `client_id` is detected by presence, so even an empty value counts.
+- **Session lookup is its own function** (`kilo.mcp_session_created_at`) so pgTAP can replace it
+  with temp-table stand-ins (the test role cannot create tables in `auth`), as the restore tests do
+  for `restore_session_active`. The real SQL ran against GoTrue's tables in the local-stack probes.
+- **Refresh-token requirement.** The gate requires a non-revoked `auth.refresh_tokens` row, which
+  GoTrue v2.192.0 writes for OAuth sessions. If a future GoTrue stops writing those rows, the gate
+  fails closed (every request 401), never open; revisit the requirement then.
+- **Writer guards** are injected into the stored definitions by the migration and asserted, so the
+  guard cannot drift from each function's latest body.
+- **Dependencies.** `@supabase/middleware` is not used: nesting `withOAuthProtectedResource(config,
+  handler)` around `withSupabase` composes the same stack. `deno.lock` pins the resolved set.
+- **Issuer default.** With no `MCP_AUTH_ISSUER`, the expected issuer follows the discovery
+  middleware's public-origin rule (`SUPABASE_PUBLIC_URL`, else `X-Forwarded-*`), so metadata and check agree.
+- **Cross-function guard.** `mcp/oauth-client-token.ts` holds the `client_id` check; the four existing
+  functions import it. It decodes the payload unverified because it only ever narrows access.
+- **Response-size backstop.** Tools use `fitItems` (envelope.ts) to trim trailing items to 256 KiB;
+  the SQL byte budget arrives with the page RPCs (#1627/#1628).
