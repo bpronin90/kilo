@@ -414,6 +414,9 @@ async function withoutDataRpc<T>(fn: () => Promise<T>): Promise<T> {
   return result
 }
 
+// Same shared pre-auth budget as Q1/Q2: start the fault-injection section on a drained bucket.
+await new Promise((r) => setTimeout(r, 62_000))
+
 const U = await L.createUser('outage')
 await L.grantConsent(U)
 await L.seedUser(U, 'SYNU', 5, 1, 3)

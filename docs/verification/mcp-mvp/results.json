@@ -1,15 +1,15 @@
 {
   "environment": "local stack, project id kilo_mcp_staging (disposable; not production)",
   "date": "2026-10-25",
-  "testedSha": "da8c1fbb1bc5d2c708d1a077b27a8a897beaf8df",
+  "testedSha": "0b263468101efbaa27a358d351a20c285fafe844",
   "testedTreeDirty": false,
   "supabaseCli": "2.117.0",
   "gotrue": "v2.196.0",
   "deno": "deno 2.9.1 (stable, release, x86_64-unknown-linux-gnu)",
   "node": "v24.14.0",
   "mcpClient": "@modelcontextprotocol/client 2.4.0 (official MCP TypeScript SDK client)",
-  "passed": 26,
-  "total": 26,
+  "passed": 25,
+  "total": 28,
   "cases": [
     {
       "id": "S1",
@@ -47,6 +47,20 @@
       "detail": ""
     },
     {
+      "id": "B1",
+      "criterion": "AC2",
+      "title": "real browser: direct link, sign-in, disclosure, Approve; the SDK client then reads only that user's data",
+      "status": "pass",
+      "detail": "12 weights and 4 notes read through the SDK client after a browser approval"
+    },
+    {
+      "id": "C5",
+      "criterion": "AC2",
+      "title": "two users, two SDK clients: each reads only its own rows",
+      "status": "pass",
+      "detail": ""
+    },
+    {
       "id": "X1",
       "criterion": "AC4",
       "title": "cross-user cursor and arguments cannot reach another user's rows",
@@ -70,9 +84,9 @@
     {
       "id": "O1",
       "criterion": "AC4",
-      "title": "denied OAuth request yields an error redirect and no usable code; the id cannot be replayed",
+      "title": "denied OAuth request (real browser) yields an error redirect and no code; the decided request id is recorded",
       "status": "pass",
-      "detail": ""
+      "detail": "re-approving a denied request: HTTP 400, no code"
     },
     {
       "id": "M1",
@@ -126,21 +140,21 @@
     {
       "id": "F1",
       "criterion": "AC4",
-      "title": "gate lookup outage -> 503 with no query; recovery restores service",
-      "status": "pass",
-      "detail": ""
+      "title": "gate lookup outage -> 503 and no data RPC runs; recovery restores service",
+      "status": "fail",
+      "detail": "call counter did not move on a served read; the no-query proof below would be vacuous"
     },
     {
       "id": "F2",
       "criterion": "AC4",
-      "title": "consent lookup outage -> 503, never an implicit allow",
+      "title": "consent lookup outage -> 503 and no data RPC runs, never an implicit allow",
       "status": "pass",
       "detail": ""
     },
     {
       "id": "F3",
       "criterion": "AC4",
-      "title": "auth session lookup outage -> 503, never an implicit allow",
+      "title": "OAuth grant/session lookup outage -> 503 and no data RPC runs, never an implicit allow",
       "status": "pass",
       "detail": ""
     },
@@ -161,37 +175,37 @@
     {
       "id": "F6",
       "criterion": "AC4",
-      "title": "slow database: the 3 s call limit ends the read with a timeout error",
-      "status": "pass",
-      "detail": "3030 ms"
+      "title": "slow database: the 3 s database-call limit ends the read with a timeout tool error",
+      "status": "fail",
+      "detail": "status 429 code undefined"
     },
     {
       "id": "L1",
       "criterion": "AC4",
       "title": "request size, batch, malformed JSON and method limits",
-      "status": "pass",
-      "detail": ""
+      "status": "fail",
+      "detail": "oversized 429"
     },
     {
       "id": "Q1",
       "criterion": "AC4",
-      "title": "durable limits: per-user MCP and per-user data quota",
+      "title": "per-user limits: the data quota and HTTP limit stop one user and leave another unaffected",
       "status": "pass",
-      "detail": "data served 30 limited 5; http 429 17"
+      "detail": "data served 30 limited 5; http 429 17; second user unaffected"
     },
     {
       "id": "Q2",
       "criterion": "AC4",
-      "title": "durable pre-auth limit per client address",
+      "title": "pre-auth limit: 120 requests per minute per client address, then 429",
       "status": "pass",
-      "detail": "denied 5 of 125"
+      "detail": "first 429 at request 121; 120 challenged; 5 denied"
     },
     {
       "id": "G1",
       "criterion": "AC6",
-      "title": "function logs hold no tokens, codes, cursors, authorization ids or health data",
+      "title": "function logs hold none of the tokens, codes, cursors, authorization ids or user ids the run handled",
       "status": "pass",
-      "detail": ""
+      "detail": "114 handled artifacts absent from the log"
     }
   ]
 }

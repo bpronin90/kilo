@@ -164,7 +164,7 @@ export async function enableCallTracking() {
 }
 
 export async function dataRpcCalls(): Promise<number> {
-  await new Promise((r) => setTimeout(r, 1200)) // stats are flushed asynchronously
+  await new Promise((r) => setTimeout(r, 2500)) // pooled connections flush their stats when idle
   const n = await sql("select coalesce(sum(calls), 0) from pg_stat_user_functions where funcname in ('mcp_weight_entries_page', 'mcp_workout_notes_page')")
   return Number(n)
 }
