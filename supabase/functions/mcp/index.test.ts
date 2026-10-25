@@ -124,15 +124,15 @@ Deno.test('gate rejection (thrown rpc) -> 503', async () => {
   assertEquals(res.status, 503)
 })
 
-Deno.test('initialize + tools/list advertise only whoami, read-only', async () => {
+Deno.test('initialize + tools/list advertise whoami and workout_notes_list, read-only', async () => {
   const client = fakeClient(GATE_OK)
   const fetchMcp = build(client)
   const t = await token()
   const init = await fetchMcp(rpc('initialize', INIT, t))
   assertEquals(init.status, 200)
   const list = await json(await fetchMcp(rpc('tools/list', {}, t, 2)))
-  assertEquals(list.result.tools.map((x: { name: string }) => x.name), ['whoami'])
-  assertEquals(list.result.tools[0].annotations.readOnlyHint, true)
+  assertEquals(list.result.tools.map((x: { name: string }) => x.name), ['whoami', 'workout_notes_list'])
+  assertEquals(list.result.tools.every((x: { annotations: { readOnlyHint: boolean } }) => x.annotations.readOnlyHint), true)
 })
 
 Deno.test('whoami returns only approved identity fields', async () => {

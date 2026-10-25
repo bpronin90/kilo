@@ -6,6 +6,7 @@ import type { McpServer } from '@modelcontextprotocol/server'
 import type { McpIdentity } from '../auth.ts'
 import type { RpcClient } from '../gate.ts'
 import { whoami } from './whoami.ts'
+import { workoutHistory } from './workout-history.ts'
 
 // Everything a tool is allowed to touch. Deliberately small: the request-scoped
 // *user* client (RLS applies, restricted to the kilo schema) and facts the gates
@@ -23,7 +24,7 @@ export interface ToolModule {
   register(server: McpServer, ctx: ToolContext): void
 }
 
-export const TOOLS: readonly ToolModule[] = [whoami]
+export const TOOLS: readonly ToolModule[] = [whoami, workoutHistory]
 
 export function registerTools(server: McpServer, ctx: ToolContext, tools: readonly ToolModule[] = TOOLS): void {
   for (const tool of tools) tool.register(server, ctx)
