@@ -198,9 +198,16 @@ await check('X2', 'AC4', 'OAuth token has no direct table, writer, withdrawal or
   const state = await L.sql(`select status from kilo.consent_state where user_id='${A.userId}'`)
   expect(state === 'granted', 'consent changed')
   for (const fn of ['account-export', 'account-delete']) {
-    const r = await fetch(`${L.API}/functions/v1/${fn}`, { method: 'POST', headers: { apikey: L.ANON_KEY, authorization: `Bearer ${tokenA}`, 'content-type': 'application/json' }, body: '{}' })
-    expect(r.status === 401 || r.status === 403, `${fn} status ${r.status}`)
-    await r.body?.cancel()
+    // These functions have their own limiter; a 429 would prove nothing about the OAuth-token guard, so wait it out.
+    let status = 0
+    for (let i = 0; i < 4; i++) {
+      const r = await fetch(`${L.API}/functions/v1/${fn}`, { method: 'POST', headers: { apikey: L.ANON_KEY, authorization: `Bearer ${tokenA}`, 'content-type': 'application/json' }, body: '{}' })
+      status = r.status
+      await r.body?.cancel()
+      if (status !== 429) break
+      await new Promise((res) => setTimeout(res, 20_000))
+    }
+    expect(status === 401 || status === 403, `${fn} status ${status}`)
   }
   const exists = await L.sql(`select count(*) from auth.users where id='${A.userId}'`)
   expect(exists === '1', 'account affected')
@@ -425,7 +432,9 @@ const tokenU = outU.kind === 'connected' ? outU.connection.accessToken() : ''
 
 await check('F1', 'AC4', 'gate lookup outage -> 503 and no data RPC runs; recovery restores service', async () => {
   const before = await L.dataRpcCalls()
-  expect(ok(await L.call(tokenU, 'weight_entries_list')) && (await L.dataRpcCalls()) > before, 'call counter did not move on a served read; the no-query proof below would be vacuous')
+  const served = await L.call(tokenU, 'weight_entries_list')
+  const afterServed = await L.dataRpcCalls()
+  expect(ok(served) && afterServed > before, `call counter did not move on a served read (status ${served.status}, ${before} -> ${afterServed}); the no-query proof below would be vacuous`)
   await outage('gate', 'revoke execute on function kilo.mcp_request_gate() from authenticated', 'grant execute on function kilo.mcp_request_gate() to authenticated', async () => {
     const r = await withoutDataRpc(() => L.call(tokenU, 'weight_entries_list'))
     expect(r.status === 503 && !JSON.stringify(r.body).includes('SYNU'), `status ${r.status}`)
