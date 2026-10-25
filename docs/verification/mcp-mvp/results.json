@@ -1,7 +1,7 @@
 {
   "environment": "local stack, project id kilo_mcp_staging (disposable; not production)",
   "date": "2026-10-25",
-  "testedSha": "aeb43d131cec35ace93b82c76c450943ebe7e543",
+  "testedSha": "61237a72299dba6a3fcb5fd5dc695a3af57bc503",
   "testedTreeDirty": false,
   "supabaseCli": "2.117.0",
   "gotrue": "v2.196.0",
@@ -142,7 +142,7 @@
       "criterion": "AC4",
       "title": "gate lookup outage -> 503 and no data RPC runs; recovery restores service",
       "status": "fail",
-      "detail": "call counter did not move on a served read; the no-query proof below would be vacuous"
+      "detail": "call counter did not move on a served read (status 200, 136 -> 136); the no-query proof below would be vacuous"
     },
     {
       "id": "F2",
@@ -177,7 +177,7 @@
       "criterion": "AC4",
       "title": "slow database: the 3 s database-call limit ends the read with a timeout tool error",
       "status": "pass",
-      "detail": "3029 ms"
+      "detail": "3038 ms"
     },
     {
       "id": "L1",

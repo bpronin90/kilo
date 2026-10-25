@@ -198,15 +198,12 @@ await check('X2', 'AC4', 'OAuth token has no direct table, writer, withdrawal or
   const state = await L.sql(`select status from kilo.consent_state where user_id='${A.userId}'`)
   expect(state === 'granted', 'consent changed')
   for (const fn of ['account-export', 'account-delete']) {
-    // These functions have their own limiter; a 429 would prove nothing about the OAuth-token guard, so wait it out.
-    let status = 0
-    for (let i = 0; i < 4; i++) {
-      const r = await fetch(`${L.API}/functions/v1/${fn}`, { method: 'POST', headers: { apikey: L.ANON_KEY, authorization: `Bearer ${tokenA}`, 'content-type': 'application/json' }, body: '{}' })
-      status = r.status
-      await r.body?.cancel()
-      if (status !== 429) break
-      await new Promise((res) => setTimeout(res, 20_000))
-    }
+    // These functions keep their own hourly per-address limiter (5 attempts); clear it in the
+    // disposable database so a 429 cannot stand in for the OAuth-token guard under test.
+    await L.sql("delete from kilo.rate_limit_hits where bucket like 'delete:ip:%' or bucket like 'export:ip:%'")
+    const r = await fetch(`${L.API}/functions/v1/${fn}`, { method: 'POST', headers: { apikey: L.ANON_KEY, authorization: `Bearer ${tokenA}`, 'content-type': 'application/json' }, body: '{}' })
+    const status = r.status
+    await r.body?.cancel()
     expect(status === 401 || status === 403, `${fn} status ${status}`)
   }
   const exists = await L.sql(`select count(*) from auth.users where id='${A.userId}'`)
