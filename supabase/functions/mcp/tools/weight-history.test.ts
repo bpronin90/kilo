@@ -201,6 +201,34 @@ Deno.test('a valid range is forwarded as instants', async () => {
   assertEquals(exact.calls.map((x) => x.fn), ['mcp_request_gate', 'mcp_weight_entries_page'])
 })
 
+Deno.test('range comparison keeps microsecond precision', async () => {
+  const c = client(GATE_OK, () => page([]))
+  await call(c, { logged_from: '2026-10-01T00:00:00.000001Z', logged_to: '2026-10-01T00:00:00.000002Z' })
+  assertEquals(c.calls.map((x) => x.fn), ['mcp_request_gate', 'mcp_weight_entries_page'])
+  const same = client(GATE_OK, () => page([]))
+  await call(same, { logged_from: '2026-10-01T00:00:00.000002Z', logged_to: '2026-10-01T00:00:00.000002+00:00' })
+  assertEquals(same.calls.map((x) => x.fn), ['mcp_request_gate'])
+  const leap = client(GATE_OK, () => page([]))
+  await call(leap, { logged_from: '2028-02-29T00:00:00Z', logged_to: '2028-03-01T00:00:00Z' })
+  assertEquals(leap.calls.length, 2)
+})
+
+Deno.test('impossible calendar instants are rejected in ranges and cursors without reaching the RPC', async () => {
+  const impossible = [
+    '2026-02-30T00:00:00Z', '2026-02-29T00:00:00Z', '2026-13-01T00:00:00Z', '2026-04-31T00:00:00Z',
+    '2026-10-01T24:00:00Z', '2026-10-01T00:60:00Z', '2026-10-01T00:00:60Z', '2026-10-01T00:00:00+24:00',
+    '2026-10-01T00:00:00.1234567Z',
+  ]
+  for (const bad of impossible) {
+    const c = client(GATE_OK, () => page([]))
+    assertEquals(sc(await call(c, { logged_from: bad, logged_to: '2026-12-01T00:00:00Z' })).code, 'invalid_arguments', bad)
+    assertEquals(sc(await call(c, { logged_from: '2026-09-01T00:00:00Z', logged_to: bad })).code, 'invalid_arguments', bad)
+    const forged = btoa(JSON.stringify({ v: 1, phase: 'dated', l: bad, id: 'w1' })).replace(/=+$/, '')
+    assertEquals(sc(await call(c, { cursor: forged })).code, 'invalid_cursor', bad)
+    assertEquals(c.calls.map((x) => x.fn), ['mcp_request_gate', 'mcp_request_gate', 'mcp_request_gate'])
+  }
+})
+
 Deno.test('invalid, reversed, one-sided, offset-less and overlarge ranges are rejected before any data RPC', async () => {
   const cases: Record<string, unknown>[] = [
     { logged_from: '2026-10-02T00:00:00Z', logged_to: '2026-10-01T00:00:00Z' },

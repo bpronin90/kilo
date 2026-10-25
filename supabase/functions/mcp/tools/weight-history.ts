@@ -16,13 +16,34 @@ import type { ToolModule } from './index.ts'
 export const WEIGHT_ENTRIES_SCHEMA = 'kilo.mcp.weight_entries_list/v1'
 const DEFAULT_LIMIT = 50
 const MAX_ID_CHARS = 512
-const MAX_RANGE_MS = 366 * 24 * 60 * 60 * 1000
+const MAX_RANGE_MICROS = 366n * 24n * 60n * 60n * 1_000_000n
 
-const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})$/
+const INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(?:Z|([+-])(\d{2}):?(\d{2}))$/
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/
 
+// Microseconds since the epoch, or null. Exact where Date.parse is not: it keeps
+// PostgreSQL's six fractional digits and rejects impossible calendar values
+// (2026-02-30, hour 24, offset +24:00) that the database would refuse with a
+// raw date error.
+function instantMicros(value: unknown): bigint | null {
+  if (typeof value !== 'string') return null
+  const m = INSTANT.exec(value)
+  if (!m) return null
+  const [year, month, day, hour, minute, second] = m.slice(1, 7).map(Number)
+  const offH = m[9] === undefined ? 0 : Number(m[9])
+  const offM = m[10] === undefined ? 0 : Number(m[10])
+  if (month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59 || offH > 23 || offM > 59) return null
+  const d = new Date(0)
+  d.setUTCFullYear(year, month - 1, day)
+  if (d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return null
+  d.setUTCHours(hour, minute, second, 0)
+  const frac = BigInt((m[7] ?? '').padEnd(6, '0'))
+  const offset = BigInt((offH * 60 + offM) * 60) * 1_000_000n * (m[8] === '-' ? -1n : 1n)
+  return BigInt(d.getTime()) * 1000n + frac - offset
+}
+
 function isInstant(value: unknown): value is string {
-  return typeof value === 'string' && RFC3339.test(value) && !Number.isNaN(Date.parse(value))
+  return instantMicros(value) !== null
 }
 
 const INPUT = z
@@ -136,8 +157,8 @@ const RPC_ERRORS: Record<string, ToolErrorCode> = {
 function parseRange(from?: string, to?: string): { from: string; to: string } | null | 'invalid' {
   if (from === undefined && to === undefined) return null
   if (from === undefined || to === undefined || !isInstant(from) || !isInstant(to)) return 'invalid'
-  const span = Date.parse(to) - Date.parse(from)
-  return span > 0 && span <= MAX_RANGE_MS ? { from, to } : 'invalid'
+  const span = instantMicros(to)! - instantMicros(from)!
+  return span > 0n && span <= MAX_RANGE_MICROS ? { from, to } : 'invalid'
 }
 
 export const weightHistory: ToolModule = {
