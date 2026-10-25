@@ -8,7 +8,7 @@
 // The run never targets a hosted project: it reads connection details only from the
 // scratch workdir that supabase/functions/mcp/integration/stack.sh created.
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -74,12 +74,16 @@ function run() {
   const sha = sh('git', ['rev-parse', 'HEAD'])
   if (dirty) console.error('warning: supabase/ or scripts/ has uncommitted changes; the recorded SHA will not describe the tested code')
 
+  rmSync(env.KILO_MCP_RESULTS, { force: true }) // never report a previous run's results
   const deno = spawnSync('deno', ['run', '--config', join(integration, 'deno.json'), '--lock', join(integration, 'deno.lock'), '--frozen', '--allow-all', join(integration, 'matrix.ts')], {
     cwd: root,
     env,
     stdio: ['ignore', 'inherit', 'inherit'],
   })
-  if (!existsSync(env.KILO_MCP_RESULTS)) process.exit(deno.status ?? 1)
+  if (!existsSync(env.KILO_MCP_RESULTS)) {
+    console.error('the matrix ended without writing results')
+    process.exit(deno.status || 1)
+  }
 
   const auth = JSON.parse(execFileSync('curl', ['-s', `${env.API_URL}/auth/v1/health`, '-H', `apikey: ${env.ANON_KEY}`], { encoding: 'utf8' }))
   const cases = JSON.parse(readFileSync(env.KILO_MCP_RESULTS, 'utf8'))

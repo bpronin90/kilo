@@ -33,6 +33,12 @@ const tamper = (cursor: string, patch: Record<string, unknown>) => {
   return btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
+// A previous run may have spent the shared pre-auth bucket (Q2); wait it out.
+for (let i = 0; i < 6 && (await L.raw(null, { jsonrpc: '2.0', id: 0, method: 'tools/list' })).status === 429; i++) {
+  console.log('pre-auth bucket busy; waiting 20 s')
+  await new Promise((r) => setTimeout(r, 20_000))
+}
+
 await L.setGateMode('consent_required')
 
 const A = await L.createUser('a')
