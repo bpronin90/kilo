@@ -1,6 +1,7 @@
 // Exact-origin CORS policy shared by every Kilo Edge Function (#1552).
 //
-// Run: deno test --no-check --no-lock --allow-import --allow-read \
+// Run: deno test --no-check --config supabase/functions/deno.json \
+//        --lock=supabase/functions/deno.lock --frozen --allow-import --allow-read \
 //        supabase/functions/_shared/cors.test.ts
 
 import { corsHeaders, isAllowedOrigin, PRODUCTION_WEB_ORIGIN } from './cors.ts'

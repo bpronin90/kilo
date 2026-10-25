@@ -91,9 +91,15 @@ jobs:
         with:
           deno-version: v2.x
 
+      - name: Require the committed Edge Function dependency lock
+        # deno --frozen does not fail when the lock file is absent; it resolves
+        # in memory instead. Fail here so CI can never test a floating graph.
+        run: test -s supabase/functions/deno.lock
+
       - name: Run shared Edge Function module tests
         run: >
-          deno test --no-check --no-lock --allow-import --allow-read
+          deno test --no-check --config supabase/functions/deno.json
+          --lock=supabase/functions/deno.lock --frozen --allow-import --allow-read
           supabase/functions/_shared/cors.test.ts
           supabase/functions/_shared/security-event.test.ts
           supabase/functions/_shared/rate-limit.test.ts
@@ -104,6 +110,15 @@ jobs:
           supabase/functions/account-export/index.test.ts
           supabase/functions/account-delete/index.test.ts
           supabase/functions/health-data-delete/index.test.ts
+
+      - name: Check deployed Edge Function entrypoints against the lock
+        run: >
+          deno check --config supabase/functions/deno.json
+          --lock=supabase/functions/deno.lock --frozen
+          supabase/functions/account-export/index.ts
+          supabase/functions/account-delete/index.ts
+          supabase/functions/health-data-delete/index.ts
+          supabase/functions/android-restore-credentials/index.ts
 
       - name: Run MCP function tests against the committed lockfile
         run: >

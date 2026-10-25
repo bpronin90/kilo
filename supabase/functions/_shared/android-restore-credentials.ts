@@ -12,7 +12,7 @@
 // magic-link exchange (generateLink + verifyOtp, both server-side). The OTP
 // never leaves this process and nothing about the session is stored.
 
-import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.108.2'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export const RESTORE_API_VERSION = 1
 export const CHALLENGE_TTL_SECONDS = 300

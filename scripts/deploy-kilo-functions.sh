@@ -13,6 +13,13 @@ set -euo pipefail
 # the CLI reads that config during deploy so the setting cannot silently
 # regress to the default of true.
 #
+# Dependency resolution is pinned by supabase/functions/deno.json (exact npm:
+# specifiers) and supabase/functions/deno.lock (integrity for the full graph).
+# The CLI bundler finds both from the function entrypoint. With no lock, or an
+# incomplete one, it silently resolves floating transitive ranges, so the run
+# verifies the lock first (needs deno and registry access; see
+# verify_dependency_lock).
+#
 # Only the Kilo-owned functions listed below are deployed by this script.
 
 readonly PROJECT_REF="ogzhnscdqcdrhfqcobuv"
@@ -29,6 +36,61 @@ die() {
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"
+}
+
+verify_dependency_lock() {
+  [[ -f "supabase/functions/deno.json" ]] \
+    || die "supabase/functions/deno.json (pinned import map) not found; refusing an unpinned deploy."
+  [[ -s "supabase/functions/deno.lock" ]] \
+    || die "supabase/functions/deno.lock not found or empty; refusing to deploy with floating dependencies."
+  need_cmd deno
+
+  # The CLI bundler does not fail on an incomplete lock: it silently resolves
+  # whatever the lock leaves out from floating ranges, and a lock that omits a
+  # package AND the edge to it still bundles but cannot start. So the lock is
+  # verified here against the real packages, from an empty cache:
+  #   1. a frozen resolve of the four entrypoints fails if the lock would change;
+  #   2. every locked package's real package.json "dependencies" must appear as
+  #      edges of its lock entry, and every edge must name a locked package.
+  local deno_dir entrypoints=() fn
+  deno_dir="$(mktemp -d)" || die "Could not create a scratch Deno cache."
+  for fn in "${FUNCTIONS[@]}"; do entrypoints+=("supabase/functions/${fn}/index.ts"); done
+
+  DENO_DIR="${deno_dir}" deno cache --config supabase/functions/deno.json \
+    --lock=supabase/functions/deno.lock --frozen "${entrypoints[@]}" \
+    || { rm -rf "${deno_dir}"; die "supabase/functions/deno.lock does not match the pinned dependencies; regenerate it and review the dependency diff (docs/testing/automated-tests.md)."; }
+
+  DENO_DIR="${deno_dir}" node <<'NODE' \
+    || { rm -rf "${deno_dir}"; die "supabase/functions/deno.lock is incomplete; regenerate it and review the dependency diff (docs/testing/automated-tests.md)."; }
+const fs = require('node:fs');
+const path = require('node:path');
+const fail = (message) => { process.stderr.write(`${message}\n`); process.exit(1); };
+let lock;
+try { lock = JSON.parse(fs.readFileSync('supabase/functions/deno.lock', 'utf8')); }
+catch { fail('Dependency lock is not valid JSON.'); }
+const npm = lock.npm ?? {};
+const keys = Object.keys(npm);
+const nameOf = (key) => key.slice(0, key.lastIndexOf('@'));
+const covers = (edge, name) => (edge.lastIndexOf('@') > 0 ? nameOf(edge) : edge) === name;
+for (const [key, entry] of Object.entries(npm)) {
+  if (typeof entry.integrity !== 'string' || !entry.integrity.startsWith('sha512-')) fail(`Lock entry lacks integrity: ${key}.`);
+  const edges = entry.dependencies ?? [];
+  for (const edge of edges) {
+    if (!(edge.lastIndexOf('@') > 0 ? npm[edge] !== undefined : keys.some((k) => nameOf(k) === edge))) {
+      fail(`Lock entry ${key} depends on ${edge}, which the lock does not contain.`);
+    }
+  }
+  const version = key.slice(key.lastIndexOf('@') + 1);
+  const manifest = path.join(process.env.DENO_DIR, 'npm/registry.npmjs.org', nameOf(key), version, 'package.json');
+  let declared;
+  try { declared = Object.keys(JSON.parse(fs.readFileSync(manifest, 'utf8')).dependencies ?? {}); }
+  catch { fail(`Could not read the resolved package manifest for ${key}.`); }
+  for (const name of declared) {
+    if (!edges.some((edge) => covers(edge, name))) fail(`Lock entry ${key} omits its dependency ${name}.`);
+  }
+}
+NODE
+  rm -rf "${deno_dir}"
 }
 
 verify_functions_active() {
@@ -185,6 +247,8 @@ main() {
   [[ -n "${KILO_DATABASE_URL:-}" ]] \
     || die "KILO_DATABASE_URL is required to verify health-deletion worker prerequisites."
   need_cmd psql
+
+  verify_dependency_lock
 
   # Verify external prerequisites before changing any deployed function. The
   # function status check remains after deploy because it must prove this run.

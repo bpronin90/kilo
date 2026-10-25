@@ -9,7 +9,8 @@
 // what did NOT happen afterwards: no later deletion step, no auth identity
 // removal, no success event, and no body that claims the account is gone.
 //
-// Run: deno test --no-check --no-lock --allow-import --allow-read \
+// Run: deno test --no-check --config supabase/functions/deno.json \
+//        --lock=supabase/functions/deno.lock --frozen --allow-import --allow-read \
 //        supabase/functions/account-delete/index.test.ts
 
 import { PRODUCTION_WEB_ORIGIN } from '../_shared/cors.ts'

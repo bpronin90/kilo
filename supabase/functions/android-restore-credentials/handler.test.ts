@@ -6,13 +6,14 @@
 // in-memory double with the same semantics as the kilo.restore_* functions
 // (pgTAP covers the SQL itself); GoTrue is a fake RestoreIdentity.
 //
-// Run: deno test --no-check --no-lock --allow-import --allow-read \
+// Run: deno test --no-check --config supabase/functions/deno.json \
+//        --lock=supabase/functions/deno.lock --frozen --allow-import --allow-read \
 //        supabase/functions/android-restore-credentials/handler.test.ts
 
 import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
-} from 'https://esm.sh/@simplewebauthn/server@14.0.2'
+} from '@simplewebauthn/server'
 import { createRestoreHandler } from './handler.ts'
 import type { RestoreConfig, RestoreIdentity, RestoreUser } from '../_shared/android-restore-credentials.ts'
 import { assertionResponse, createAuthenticator, registrationResponse } from './webauthn-fixtures.ts'

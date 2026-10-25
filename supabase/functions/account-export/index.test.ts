@@ -5,7 +5,8 @@
 // Supabase clients are doubles, so an injected rejection travels through exactly
 // the code that runs in production.
 //
-// Run: deno test --no-check --no-lock --allow-import --allow-read \
+// Run: deno test --no-check --config supabase/functions/deno.json \
+//        --lock=supabase/functions/deno.lock --frozen --allow-import --allow-read \
 //        supabase/functions/account-export/index.test.ts
 
 import { PRODUCTION_WEB_ORIGIN } from '../_shared/cors.ts'

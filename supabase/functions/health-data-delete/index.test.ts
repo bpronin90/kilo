@@ -10,7 +10,8 @@
 // completion, no success event, no later job claimed, and no body that claims the
 // data is gone. The job itself stays queued for cron, as after any crash.
 //
-// Run: deno test --no-check --no-lock --allow-import --allow-read \
+// Run: deno test --no-check --config supabase/functions/deno.json \
+//        --lock=supabase/functions/deno.lock --frozen --allow-import --allow-read \
 //        supabase/functions/health-data-delete/index.test.ts
 
 import { PRODUCTION_WEB_ORIGIN } from '../_shared/cors.ts'

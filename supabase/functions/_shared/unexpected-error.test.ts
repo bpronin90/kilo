@@ -1,6 +1,7 @@
 // Outer exception boundary shared by Kilo Edge Functions (#1559).
 //
-// Run: deno test --no-check --no-lock --allow-import --allow-read \
+// Run: deno test --no-check --config supabase/functions/deno.json \
+//        --lock=supabase/functions/deno.lock --frozen --allow-import --allow-read \
 //        supabase/functions/_shared/unexpected-error.test.ts
 
 import { PRODUCTION_WEB_ORIGIN } from './cors.ts'

@@ -178,7 +178,7 @@ The primary contract checks are:
 
 ```sh
 npm --prefix mobile test -- --runInBand tests/health-consent.test.js tests/consent-gate-client.test.js
-deno test --no-check --no-lock --allow-read supabase/functions/_shared/health-data-scope.test.ts
+deno test --no-check --config supabase/functions/deno.json --lock=supabase/functions/deno.lock --frozen --allow-read supabase/functions/_shared/health-data-scope.test.ts
 ```
 
 Database consent-gate, withdrawal, purge, protocol, and migration checks live
