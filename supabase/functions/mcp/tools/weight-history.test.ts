@@ -213,11 +213,29 @@ Deno.test('range comparison keeps microsecond precision', async () => {
   assertEquals(leap.calls.length, 2)
 })
 
+Deno.test('the widest PostgreSQL-supported offset and year 0001 are accepted', async () => {
+  const c = client(GATE_OK, () => page([]))
+  await call(c, { logged_from: '2026-10-01T00:00:00+15:59', logged_to: '2026-10-02T00:00:00-15:59' })
+  await call(c, { logged_from: '0001-10-01T00:00:00Z', logged_to: '0001-10-02T00:00:00Z' })
+  assertEquals(c.calls.filter((x) => x.fn === 'mcp_weight_entries_page').length, 2)
+})
+
+Deno.test('a database data-exception (class 22) is a non-retryable invalid_arguments, not internal', async () => {
+  for (const code of ['22007', '22008', '22009', '22P02']) {
+    const c = client(GATE_OK, () => ({ data: null, error: { code, message: 'secret db detail' } }))
+    const r = await call(c, {})
+    assertEquals(sc(r).code, 'invalid_arguments', code)
+    assertEquals(sc(r).retryable, false)
+    assertEquals(JSON.stringify(r.body).includes('secret db detail'), false)
+  }
+})
+
 Deno.test('impossible calendar instants are rejected in ranges and cursors without reaching the RPC', async () => {
   const impossible = [
     '2026-02-30T00:00:00Z', '2026-02-29T00:00:00Z', '2026-13-01T00:00:00Z', '2026-04-31T00:00:00Z',
     '2026-10-01T24:00:00Z', '2026-10-01T00:60:00Z', '2026-10-01T00:00:60Z', '2026-10-01T00:00:00+24:00',
-    '2026-10-01T00:00:00.1234567Z',
+    '2026-10-01T00:00:00.1234567Z', '2026-10-01T00:00:00+16:00', '2026-10-01T00:00:00-1600', '2026-10-01T00:00:00+05:60',
+    '0000-10-01T00:00:00Z',
   ]
   for (const bad of impossible) {
     const c = client(GATE_OK, () => page([]))

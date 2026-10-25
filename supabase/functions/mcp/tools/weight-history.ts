@@ -22,9 +22,9 @@ const INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/
 
 // Microseconds since the epoch, or null. Exact where Date.parse is not: it keeps
-// PostgreSQL's six fractional digits and rejects impossible calendar values
-// (2026-02-30, hour 24, offset +24:00) that the database would refuse with a
-// raw date error.
+// PostgreSQL's six fractional digits and rejects values outside the timestamptz
+// input domain (2026-02-30, hour 24, year 0000, offsets beyond +-15:59) that the
+// database would refuse with a raw data-exception error.
 function instantMicros(value: unknown): bigint | null {
   if (typeof value !== 'string') return null
   const m = INSTANT.exec(value)
@@ -32,7 +32,7 @@ function instantMicros(value: unknown): bigint | null {
   const [year, month, day, hour, minute, second] = m.slice(1, 7).map(Number)
   const offH = m[9] === undefined ? 0 : Number(m[9])
   const offM = m[10] === undefined ? 0 : Number(m[10])
-  if (month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59 || offH > 23 || offM > 59) return null
+  if (year < 1 || month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59 || offH > 15 || offM > 59) return null
   const d = new Date(0)
   d.setUTCFullYear(year, month - 1, day)
   if (d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return null
@@ -199,7 +199,10 @@ export const weightHistory: ToolModule = {
         }
         if (result.error) {
           const code = (result.error as { code?: unknown }).code
-          return toolError(typeof code === 'string' && code in RPC_ERRORS ? RPC_ERRORS[code] : 'internal')
+          if (typeof code === 'string' && code in RPC_ERRORS) return toolError(RPC_ERRORS[code])
+          // SQLSTATE class 22 (data exception) can only come from an argument the
+          // database could not parse: a caller error, never retryable.
+          return toolError(typeof code === 'string' && code.startsWith('22') ? 'invalid_arguments' : 'internal')
         }
 
         const page = result.data as { as_of?: unknown; has_more?: unknown; items?: unknown } | null
