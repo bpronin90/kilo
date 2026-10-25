@@ -43,3 +43,14 @@ verify_jwt = false
 # the functions above.
 [functions.android-restore-credentials]
 verify_jwt = false
+
+# mcp (issue #1625): the authenticated read-only MCP endpoint. verify_jwt = false
+# because OAuth discovery (GET .../oauth-protected-resource) and the RFC 9728
+# challenge must be reachable without a token. It does not weaken auth: every
+# other request is verified in-function (JWKS signature, expiry, audience, Kilo
+# claim checks and kilo.mcp_request_gate) before any data path runs. Applies to
+# this function only. No [auth] or OAuth-server settings belong in this file:
+# `supabase config push` from it targets production (docs/architecture/mcp-mvp.md
+# section 3).
+[functions.mcp]
+verify_jwt = false

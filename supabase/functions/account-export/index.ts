@@ -39,6 +39,7 @@
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.108.2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { extractToken } from '../_shared/auth.ts'
+import { forbiddenForClients, hasOAuthClientClaim } from '../mcp/oauth-client-token.ts'
 import { clientIp, rateLimitAllowed, rateLimitRefund } from '../_shared/rate-limit.ts'
 import { exportHealthData, LEGACY_HEALTH_COLUMNS } from '../_shared/health-data-scope.ts'
 import { recordSecurityEvent, requestId } from '../_shared/security-event.ts'
@@ -109,6 +110,10 @@ export function createExportHandler(deps: ExportHandlerDeps): (req: Request) => 
     }
 
     const token = extractToken(req)
+    // Connected MCP clients hold ordinary `authenticated` tokens; they may not
+    // reach this function (issue #1625). Refuse before any other work.
+    if (token && hasOAuthClientClaim(token)) return forbiddenForClients(cors)
+
     if (!token) {
       // Pre-auth, so the only subject available is the network origin. One of
       // these is a misconfigured client; a rate of them is a probe.

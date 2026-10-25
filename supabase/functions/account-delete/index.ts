@@ -48,6 +48,7 @@
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.108.2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { extractToken } from '../_shared/auth.ts'
+import { forbiddenForClients, hasOAuthClientClaim } from '../mcp/oauth-client-token.ts'
 import { clientIp, rateLimitAllowed } from '../_shared/rate-limit.ts'
 import { deleteHealthData } from '../_shared/health-data-scope.ts'
 import { revokeUserCredentials } from '../_shared/android-restore-credentials.ts'
@@ -226,6 +227,10 @@ export function createDeleteHandler(deps: DeleteHandlerDeps): (req: Request) => 
     }
 
     const token = extractToken(req)
+    // Connected MCP clients hold ordinary `authenticated` tokens; they may not
+    // reach this function (issue #1625). Refuse before any other work.
+    if (token && hasOAuthClientClaim(token)) return forbiddenForClients(cors)
+
     if (!token) {
       await recordSecurityEvent(admin, {
         name: 'auth.token_missing',

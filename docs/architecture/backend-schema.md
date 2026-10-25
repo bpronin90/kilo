@@ -103,6 +103,16 @@ material version, and re-consent. Adding another representation of an already
 disclosed category still requires the export/deletion scope and its parity tests
 to move in the same change.
 
+### OAuth-client tokens (MCP)
+
+A Supabase OAuth access token is an ordinary `authenticated` JWT plus a `client_id` claim, and OAuth scopes do not limit database access. `20261024230000_mcp_request_gate.sql` therefore denies such tokens everything except the MCP path (contract: [`mcp-mvp.md`](mcp-mvp.md) §6):
+
+- `kilo.is_oauth_client_token()` is true when the claims carry `client_id`.
+- Every RLS table that `authenticated` can reach carries a restrictive policy `mcp_oauth_token_denied` (`FOR ALL`, `not is_oauth_client_token()`). Service-role-only tables have no `authenticated` grant, so they are already unreachable and carry no policy; `supabase/tests/mcp-oauth-token-isolation.test.sql` fails if a table gains an `authenticated` grant without the policy.
+- The five writer RPCs (`consent_grant`, `consent_withdraw`, `health_sync_preflight`, `record_product_measurement_event`, `delete_product_measurement_install`) raise `insufficient_privilege` for such a token. The guard is injected into each function's current definition by the migration.
+- `kilo.mcp_request_gate()` (executable by `authenticated`) returns the connection status; `kilo.mcp_gate_status()` and `kilo.mcp_session_created_at()` are internal and executable by no API role. The gate reads `auth.sessions` and `auth.refresh_tokens` through dynamic SQL, so a missing table or column means "inactive".
+- A new function executable by `authenticated` must be guarded or allowlisted in the isolation test.
+
 ## Operational Notes
 
 - **Migrations** live in `supabase/migrations/**`. Schema changes are made there and nowhere else; the shipped baseline is `20260615120000_note_first_schema.sql`.
