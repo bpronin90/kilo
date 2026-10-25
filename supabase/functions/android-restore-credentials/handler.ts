@@ -23,8 +23,8 @@
 import type {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
-} from 'https://esm.sh/@simplewebauthn/server@14.0.2'
-import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.108.2'
+} from '@simplewebauthn/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { corsHeaders } from '../_shared/cors.ts'
 import { withUnexpectedErrorResponse } from '../_shared/unexpected-error.ts'
 import { extractToken } from '../_shared/auth.ts'

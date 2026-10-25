@@ -48,13 +48,20 @@ node scripts/run-pgtap-suite.mjs
 ```
 
 A third `shared-deno` job runs the shared Edge Function module tests on every
-pull request and every push to `main`. It installs Deno and executes all three
-`supabase/functions/_shared/*.test.ts` files (`security-event`, `rate-limit`,
-and `health-data-scope`) in one `deno test` invocation. The permissions are the
-minimum the current suite needs: `--allow-import` for the remote `deno.land`
-standard-library import and `--allow-read` for the migration-directory reads
-that `health-data-scope.test.ts` performs; `--no-check` and `--no-lock` keep the
-suite's established invocation. The rate-limit cases assert event
+pull request and every push to `main`. It installs Deno and executes the shared
+module tests plus the four deployed functions' tests in one `deno test`
+invocation. Dependencies resolve through `supabase/functions/deno.json` (exact
+`npm:` specifiers for `@simplewebauthn/server` and `@supabase/supabase-js`) and
+the committed `supabase/functions/deno.lock`, run with `--frozen`, so no test
+depends on esm.sh builds or floating transitive versions. Deno does not fail
+`--frozen` when the lock file is missing, so a preceding step requires it to
+exist. After changing the pinned versions, regenerate the lock with
+`deno install --config supabase/functions/deno.json --lock=supabase/functions/deno.lock`
+(or any non-frozen `deno test` run) and review the transitive diff. The
+permissions are the minimum the current suite needs: `--allow-import` for the
+remote `deno.land` standard-library import and `--allow-read` for the
+migration-directory reads that `health-data-scope.test.ts` performs;
+`--no-check` keeps the suite's established invocation. The rate-limit cases assert event
 classification behaviorally — they drive `rateLimitAllowed` through a recording
 client double and inspect the `record_security_event` RPC it receives, so an
 exhausted bucket is proven to emit the subject-attributed
@@ -66,7 +73,8 @@ to reach that verdict.
 Run the same shared-module suite locally with Deno installed:
 
 ```sh
-deno test --no-check --no-lock --allow-import --allow-read \
+deno test --no-check --config supabase/functions/deno.json \
+  --lock=supabase/functions/deno.lock --frozen --allow-import --allow-read \
   supabase/functions/_shared/security-event.test.ts \
   supabase/functions/_shared/rate-limit.test.ts \
   supabase/functions/_shared/health-data-scope.test.ts

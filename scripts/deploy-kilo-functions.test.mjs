@@ -23,10 +23,17 @@ function writeExecutable(path, source) {
   chmodSync(path, 0o755);
 }
 
-function run({ functions = activeFunctions, secrets = JSON.stringify(presentSecrets), secretsListFails = false, vault = 'present', cron = 'active', dispatch = 'dispatched', fixture, databaseUrl = 'postgres://operator:credential-must-not-appear@example.test/kilo' } = {}) {
+function run({ functions = activeFunctions, secrets = JSON.stringify(presentSecrets), secretsListFails = false, vault = 'present', cron = 'active', dispatch = 'dispatched', fixture, lock = 'present', importMap = 'present', databaseUrl = 'postgres://operator:credential-must-not-appear@example.test/kilo' } = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'kilo-deploy-test-'));
   const binDirectory = join(directory, 'bin');
   mkdirSync(binDirectory);
+  // The script runs from a project root; model only the files it checks.
+  const projectDirectory = join(directory, 'project');
+  mkdirSync(join(projectDirectory, 'supabase/functions'), { recursive: true });
+  writeFileSync(join(projectDirectory, 'supabase/config.toml'), '');
+  if (importMap === 'present') writeFileSync(join(projectDirectory, 'supabase/functions/deno.json'), '{}');
+  if (lock === 'present') writeFileSync(join(projectDirectory, 'supabase/functions/deno.lock'), '{"version":"5"}');
+  if (lock === 'empty') writeFileSync(join(projectDirectory, 'supabase/functions/deno.lock'), '');
 
   try {
     writeExecutable(join(binDirectory, 'npx'), `#!/usr/bin/env bash
@@ -61,7 +68,7 @@ fi
     const callLog = join(directory, 'calls.log');
     const psqlLog = join(directory, 'psql.log');
     const result = spawnSync('bash', [scriptPath], {
-      cwd: repoRoot,
+      cwd: projectDirectory,
       encoding: 'utf8',
       env: {
         ...process.env,
@@ -142,3 +149,16 @@ expectFailure({ fixture: 'not-a-uuid' }, /HEALTH_DELETION_FIXTURE_USER_ID must b
 expectFailure({ databaseUrl: '' }, /KILO_DATABASE_URL is required/);
 
 console.log('deploy-kilo-functions tests passed');
+
+// Pinned dependency graph is a deploy prerequisite: missing, empty, or unmapped
+// resolution fails before any prerequisite call or function deploy.
+for (const options of [{ lock: 'missing' }, { lock: 'empty' }]) {
+  const { output, calls } = expectFailure(options, /deno\.lock not found or empty/);
+  assert.doesNotMatch(calls, /functions deploy|secrets list/);
+  assert.doesNotMatch(output, /Deploying kilo functions/);
+}
+{
+  const { output, calls } = expectFailure({ importMap: 'missing' }, /deno\.json \(pinned import map\) not found/);
+  assert.doesNotMatch(calls, /functions deploy|secrets list/);
+  assert.doesNotMatch(output, /Deploying kilo functions/);
+}

@@ -22,11 +22,11 @@
 // mechanism the user authorized on #1157; no project Auth setting changes.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.108.2'
+import { createClient } from '@supabase/supabase-js'
 import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
-} from 'https://esm.sh/@simplewebauthn/server@14.0.2'
+} from '@simplewebauthn/server'
 import {
   loadRestoreConfig,
   readTokenClaims,

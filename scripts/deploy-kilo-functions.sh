@@ -13,6 +13,11 @@ set -euo pipefail
 # the CLI reads that config during deploy so the setting cannot silently
 # regress to the default of true.
 #
+# Dependency resolution is pinned by supabase/functions/deno.json (exact npm:
+# specifiers) and supabase/functions/deno.lock (integrity for the full graph).
+# The CLI bundler finds both from the function entrypoint. With no lock it
+# silently resolves floating transitive ranges, so a missing lock stops the run.
+#
 # Only the Kilo-owned functions listed below are deployed by this script.
 
 readonly PROJECT_REF="ogzhnscdqcdrhfqcobuv"
@@ -29,6 +34,13 @@ die() {
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"
+}
+
+verify_dependency_lock() {
+  [[ -f "supabase/functions/deno.json" ]] \
+    || die "supabase/functions/deno.json (pinned import map) not found; refusing an unpinned deploy."
+  [[ -s "supabase/functions/deno.lock" ]] \
+    || die "supabase/functions/deno.lock not found or empty; refusing to deploy with floating dependencies."
 }
 
 verify_functions_active() {
@@ -185,6 +197,8 @@ main() {
   [[ -n "${KILO_DATABASE_URL:-}" ]] \
     || die "KILO_DATABASE_URL is required to verify health-deletion worker prerequisites."
   need_cmd psql
+
+  verify_dependency_lock
 
   # Verify external prerequisites before changing any deployed function. The
   # function status check remains after deploy because it must prove this run.
