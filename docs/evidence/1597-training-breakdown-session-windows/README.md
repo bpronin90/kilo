@@ -1,5 +1,10 @@
 # Training breakdown session windows (#1597): visual evidence
 
+> **Historical images:** completed captures have been removed from the current tree.
+> [Browse the preserved image snapshot](https://github.com/bpronin90/kilo/tree/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1597-training-breakdown-session-windows/) at
+> `f7cf024e488471136e11e76834570093b140eaec`; image filenames, counts and sizes below describe that snapshot.
+> Capture scripts, fixtures and the verification record remain here.
+
 The defect: in release 1.21.1, Training breakdown's 30D and 90D were always empty.
 They read `note.date`, but real workout notes don't have that field. #1597 replaces
 them with per-exercise session windows: **Last 4 / Last 12 / All**, defaulting to
@@ -7,7 +12,7 @@ Last 12.
 
 ## References
 
-- Original layout: [`../1588-training-breakdown-dashboard/after/01-movement-hard-dark.png`](../1588-training-breakdown-dashboard/after/01-movement-hard-dark.png)
+- Original layout: [`../1588-training-breakdown-dashboard/after/01-movement-hard-dark.png`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/01-movement-hard-dark.png)
   (90D Movement, hard dark). That evidence used an invented `date` seed, so it hid the defect.
   It is read-only and unchanged here.
 - Defect statement and window contract: issue #1597.
@@ -57,15 +62,15 @@ bounded windows retain only newer sessions, and each retained unit resolves agai
 
 | File | Theme | State | Result |
 | --- | --- | --- | --- |
-| [01-movement-last4-hard-dark](after/01-movement-last4-hard-dark.png) | Hard dark | Last 4 selected, 163 | PASS |
-| [02-movement-last12-hard-dark](after/02-movement-last12-hard-dark.png) | Hard dark | default Last 12, 457 | PASS |
-| [03-movement-all-hard-dark](after/03-movement-all-hard-dark.png) | Hard dark | All, 842 | PASS |
-| [11-movement-last4-hard-light](after/11-movement-last4-hard-light.png) | Hard light | Last 4, 163 | PASS |
-| [12-movement-last12-hard-light](after/12-movement-last12-hard-light.png) | Hard light | Last 12, 457 | PASS |
-| [13-movement-all-hard-light](after/13-movement-all-hard-light.png) | Hard light | All, 842 | PASS |
-| [21-large-text-selector-last12](after/21-large-text-selector-last12.png) | Hard dark, 1.3x | Last 12 | PASS |
-| [22-large-text-selector-last4](after/22-large-text-selector-last4.png) | Hard dark, 1.3x | Last 4 | PASS |
-| [30-info-methodology](after/30-info-methodology.png) | Hard dark | Methodology sheet | PASS |
+| [01-movement-last4-hard-dark](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1597-training-breakdown-session-windows/after/01-movement-last4-hard-dark.png) | Hard dark | Last 4 selected, 163 | PASS |
+| [02-movement-last12-hard-dark](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1597-training-breakdown-session-windows/after/02-movement-last12-hard-dark.png) | Hard dark | default Last 12, 457 | PASS |
+| [03-movement-all-hard-dark](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1597-training-breakdown-session-windows/after/03-movement-all-hard-dark.png) | Hard dark | All, 842 | PASS |
+| [11-movement-last4-hard-light](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1597-training-breakdown-session-windows/after/11-movement-last4-hard-light.png) | Hard light | Last 4, 163 | PASS |
+| [12-movement-last12-hard-light](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1597-training-breakdown-session-windows/after/12-movement-last12-hard-light.png) | Hard light | Last 12, 457 | PASS |
+| [13-movement-all-hard-light](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1597-training-breakdown-session-windows/after/13-movement-all-hard-light.png) | Hard light | All, 842 | PASS |
+| [21-large-text-selector-last12](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1597-training-breakdown-session-windows/after/21-large-text-selector-last12.png) | Hard dark, 1.3x | Last 12 | PASS |
+| [22-large-text-selector-last4](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1597-training-breakdown-session-windows/after/22-large-text-selector-last4.png) | Hard dark, 1.3x | Last 4 | PASS |
+| [30-info-methodology](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1597-training-breakdown-session-windows/after/30-info-methodology.png) | Hard dark | Methodology sheet | PASS |
 
 Per-capture probe results: `overflowX: false` everywhere, and no `training-breakdown-*` control is
 under 44x44 (14 to 16 checked per capture). Selector options measured 58–60 / 66–68 / 44 px wide

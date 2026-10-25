@@ -1,5 +1,10 @@
 # Web Edge Function CORS (#1552) — verification evidence
 
+> **Historical images:** completed captures have been removed from the current tree.
+> [Browse the preserved image snapshot](https://github.com/bpronin90/kilo/tree/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/web-edge-cors/) at
+> `f7cf024e488471136e11e76834570093b140eaec`; image filenames, counts and sizes below describe that snapshot.
+> Capture scripts, fixtures and the verification record remain here.
+
 Durable evidence for issue #1552.
 
 ## Before: production preflight probes (2026-10-21)
@@ -138,12 +143,12 @@ read-only SQL on `auth.*` and `kilo.*`.
 
 | Flow | Account | Calls (status, `Access-Control-Allow-Origin`) | Outcome |
 | --- | --- | --- | --- |
-| Sign-out, revoke network aborted | A | `revoke` aborted by the test harness | "Could not revoke Android restore key. Sign out again to retry." User stays signed in — fails closed. [a-02](a-02-revoke-failed.png) |
-| Sign-out retry | A | `android-restore-credentials/v1/revoke` 200, ACAO `https://kilo-app.pages.dev` | "Signed out." [a-03](a-03-signed-out.png). Old refresh token → 400. SQL: 0 sessions, 0 unrevoked restore credentials. (`/auth/v1/logout` 403 afterwards is expected: the session was already revoked server-side.) |
-| Cloud export | B | `account-export` 200, ACAO production | Payload contains only B's user id. Delivering the file then fails on web (`Share.share`, "Export failed.") — separate defect, [#1563](https://github.com/bpronin90/kilo/issues/1563). [b-04](b-04-export.png) |
-| Account deletion | B | `account-delete` 200, ACAO production | Signed out to the sign-in screen [b-06](b-06-deleted.png). Old refresh token → 400; `auth.users` has 0 rows for B. |
-| Consent grant + upload | C | `consent_grant` 200; one weight entry uploaded | Export showed only C's id across cloud tables. [c-11](c-11-uploaded.png) |
-| Consent withdrawal + health-data deletion | C | `consent_withdraw` 200 (job queued, `deletion_pending`); `health-data-delete` 200 `{"ok":true,"status":"withdrawn"}`, ACAO production | "Cloud Sync is off. Your cloud health data is being deleted; your data on this device is untouched." [c-13](c-13-withdrawn.png). SQL: `weight_entries` 0, consent `withdrawn` with `cloud_data_deleted_at` set, job `complete`. |
+| Sign-out, revoke network aborted | A | `revoke` aborted by the test harness | "Could not revoke Android restore key. Sign out again to retry." User stays signed in — fails closed. [a-02](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/web-edge-cors/a-02-revoke-failed.png) |
+| Sign-out retry | A | `android-restore-credentials/v1/revoke` 200, ACAO `https://kilo-app.pages.dev` | "Signed out." [a-03](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/web-edge-cors/a-03-signed-out.png). Old refresh token → 400. SQL: 0 sessions, 0 unrevoked restore credentials. (`/auth/v1/logout` 403 afterwards is expected: the session was already revoked server-side.) |
+| Cloud export | B | `account-export` 200, ACAO production | Payload contains only B's user id. Delivering the file then fails on web (`Share.share`, "Export failed.") — separate defect, [#1563](https://github.com/bpronin90/kilo/issues/1563). [b-04](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/web-edge-cors/b-04-export.png) |
+| Account deletion | B | `account-delete` 200, ACAO production | Signed out to the sign-in screen [b-06](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/web-edge-cors/b-06-deleted.png). Old refresh token → 400; `auth.users` has 0 rows for B. |
+| Consent grant + upload | C | `consent_grant` 200; one weight entry uploaded | Export showed only C's id across cloud tables. [c-11](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/web-edge-cors/c-11-uploaded.png) |
+| Consent withdrawal + health-data deletion | C | `consent_withdraw` 200 (job queued, `deletion_pending`); `health-data-delete` 200 `{"ok":true,"status":"withdrawn"}`, ACAO production | "Cloud Sync is off. Your cloud health data is being deleted; your data on this device is untouched." [c-13](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/web-edge-cors/c-13-withdrawn.png). SQL: `weight_entries` 0, consent `withdrawn` with `cloud_data_deleted_at` set, job `complete`. |
 
 ### Visual comparison
 
@@ -154,7 +159,7 @@ which existing state the user reaches.
 **Reference (original problem):** the issue's quoted web sign-out failure —
 every sign-out ends on "Could not revoke Android restore key. Sign out again to
 retry." because the browser rejects the revoke `fetch`. No screenshot was taken
-before the function deploy. [a-02](a-02-revoke-failed.png) renders that exact
+before the function deploy. [a-02](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/web-edge-cors/a-02-revoke-failed.png) renders that exact
 state on the revision above: the harness aborts the revoke request, which gives
 the client the same rejected `fetch` (`TypeError`) a CORS block did, and the same
 code path (`useAuthSession.signOut`).
@@ -174,11 +179,11 @@ code path (`useAuthSession.signOut`).
 
 | State | Screenshot | Result |
 | --- | --- | --- |
-| Revoke rejected (reference / pre-fix state) | [a-02](a-02-revoke-failed.png) | Pass 1–3: message wraps over two lines at the gutter; button, Danger Zone and links unchanged. |
-| Revoke allowed (fixed) | [a-03](a-03-signed-out.png) | Pass 4: the signed-out form renders; the user is no longer stuck. Before the fix this state was unreachable on web. |
-| Account deleted | [b-06](b-06-deleted.png) | Pass 4: the same signed-out form after deletion. |
-| Health-data deletion pending | [c-13](c-13-withdrawn.png) | Pass 1–2: the truthful pending copy wraps inside the Cloud Sync section; Danger Zone unchanged. |
-| Cloud export | [b-04](b-04-export.png) | Server call passes (200, own data only). The visible "Export failed." is the separate delivery defect #1563, unchanged by #1552. |
+| Revoke rejected (reference / pre-fix state) | [a-02](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/web-edge-cors/a-02-revoke-failed.png) | Pass 1–3: message wraps over two lines at the gutter; button, Danger Zone and links unchanged. |
+| Revoke allowed (fixed) | [a-03](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/web-edge-cors/a-03-signed-out.png) | Pass 4: the signed-out form renders; the user is no longer stuck. Before the fix this state was unreachable on web. |
+| Account deleted | [b-06](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/web-edge-cors/b-06-deleted.png) | Pass 4: the same signed-out form after deletion. |
+| Health-data deletion pending | [c-13](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/web-edge-cors/c-13-withdrawn.png) | Pass 1–2: the truthful pending copy wraps inside the Cloud Sync section; Danger Zone unchanged. |
+| Cloud export | [b-04](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/web-edge-cors/b-04-export.png) | Server call passes (200, own data only). The visible "Export failed." is the separate delivery defect #1563, unchanged by #1552. |
 
 Found during verification, outside #1552's scope:
 

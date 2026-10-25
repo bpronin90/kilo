@@ -1,5 +1,10 @@
 # Account auth feedback placement (#1565): visual evidence
 
+> **Historical images:** completed captures have been removed from the current tree.
+> [Browse the preserved image snapshot](https://github.com/bpronin90/kilo/tree/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/account-auth-feedback/) at
+> `f7cf024e488471136e11e76834570093b140eaec`; image filenames, counts and sizes below describe that snapshot.
+> Capture scripts, fixtures and the verification record remain here.
+
 Evidence for the Visual acceptance gate on issue #1565. The issue moves the
 Account status from its detached spot at the bottom of the screen into the auth
 action block it belongs to, and makes it a polite live region.

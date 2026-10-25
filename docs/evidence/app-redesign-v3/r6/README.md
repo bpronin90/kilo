@@ -1,5 +1,10 @@
 # R6 (#1605) evidence: Home progress hero, summary cards and navigation
 
+> **Historical images:** completed captures have been removed from the current tree.
+> [Browse the preserved image snapshot](https://github.com/bpronin90/kilo/tree/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r6/) at
+> `f7cf024e488471136e11e76834570093b140eaec`; image filenames, counts and sizes below describe that snapshot.
+> Capture scripts, fixtures and the verification record remain here.
+
 Real-app renders of the redesigned Home (tracker #1609).
 
 - **Rendered commit:** `247aea0dc1259736d56f2dec9d2b89896182d906`, rebased onto
@@ -25,10 +30,10 @@ Real-app renders of the redesigned Home (tracker #1609).
 - **Before:** production Home (local only,
   `.visual-evidence/app-wide-redesign-exploration/baseline/shots/`): stacked
   summary cards, no ring, no sparkline, 1K via the shared summary.
-- **After (primary):** [`populated-hard-dark`](after/populated-hard-dark.png),
-  [`populated-clay-light`](after/populated-clay-light.png),
-  [`recovery-open-week-hard-dark`](after/recovery-open-week-hard-dark.png),
-  [`timer-home-clay-light`](after/timer-home-clay-light.png).
+- **After (primary):** [`populated-hard-dark`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r6/after/populated-hard-dark.png),
+  [`populated-clay-light`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r6/after/populated-clay-light.png),
+  [`recovery-open-week-hard-dark`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r6/after/recovery-open-week-hard-dark.png),
+  [`timer-home-clay-light`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r6/after/timer-home-clay-light.png).
 
 ## Layout checklist (from the reference)
 

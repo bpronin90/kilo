@@ -1,5 +1,10 @@
 # Walkthrough verification
 
+> **Historical images:** completed captures have been removed from the current tree.
+> [Browse the preserved image snapshot](https://github.com/bpronin90/kilo/tree/f7cf024e488471136e11e76834570093b140eaec/docs/verification/issue-1553/) at
+> `f7cf024e488471136e11e76834570093b140eaec`; image filenames, counts and sizes below describe that snapshot.
+> Capture scripts, fixtures and the verification record remain here.
+
 Reference: [issue #1553 and its visual checklist](https://github.com/bpronin90/kilo/issues/1553),
 [existing KUA foundation](../../design/kinetic-utilitarian-athletic/foundation.md), and the existing five app screens and floating tab bar.
 
@@ -28,13 +33,13 @@ components. No native simulator or physical-device screen-reader session was run
 
 | State | Image | Result |
 | --- | --- | --- |
-| Home, 1 of 5 | [Home](step-1-home.png) | Pass: Home visible; ring exactly matches Home tab. |
-| Log, 2 of 5 | [Log](step-2-log.png) | Pass: Log and its existing example visible; correct tab. |
-| Weight, 3 of 5 | [Weight](step-3-weight.png) | Pass: unsaved weight form visible; correct tab. |
-| Analytics, 4 of 5 | [Analytics](step-4-analytics.png) | Pass: empty analytics visible; correct tab. |
-| More, 5 of 5 | [More](step-5-more.png) | Pass: More visible; correct tab and Done action. |
-| Replay after completion/reload | [Replay](replay-home.png) | Pass: starts at Home, 1 of 5. |
-| Longest tip, 200% text | [Large text](log-large-text.png) | Pass: title, body and action labels wrap without clipping; all actions visible. |
+| Home, 1 of 5 | [Home](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/verification/issue-1553/step-1-home.png) | Pass: Home visible; ring exactly matches Home tab. |
+| Log, 2 of 5 | [Log](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/verification/issue-1553/step-2-log.png) | Pass: Log and its existing example visible; correct tab. |
+| Weight, 3 of 5 | [Weight](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/verification/issue-1553/step-3-weight.png) | Pass: unsaved weight form visible; correct tab. |
+| Analytics, 4 of 5 | [Analytics](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/verification/issue-1553/step-4-analytics.png) | Pass: empty analytics visible; correct tab. |
+| More, 5 of 5 | [More](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/verification/issue-1553/step-5-more.png) | Pass: More visible; correct tab and Done action. |
+| Replay after completion/reload | [Replay](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/verification/issue-1553/replay-home.png) | Pass: starts at Home, 1 of 5. |
+| Longest tip, 200% text | [Large text](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/verification/issue-1553/log-large-text.png) | Pass: title, body and action labels wrap without clipping; all actions visible. |
 
 All normal tips have 16 px side clearance, and end at y=777, 12 px above their
 anchors at y=789. The 46 px-high highlight bounds equal the actual tab bounds on

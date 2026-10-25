@@ -1,5 +1,10 @@
 # R4 (#1603) evidence: Analytics Bodyweight chart and latest weigh-in panel
 
+> **Historical images:** completed captures have been removed from the current tree.
+> [Browse the preserved image snapshot](https://github.com/bpronin90/kilo/tree/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/) at
+> `f7cf024e488471136e11e76834570093b140eaec`; image filenames, counts and sizes below describe that snapshot.
+> Capture scripts, fixtures and the verification record remain here.
+
 Rendered from the **real app** (Expo web export), not prototype HTML.
 
 - **Rendered commit:** `229a48fbc20bebd3a01d1acb49f23eac99160e0c` (all 66 PNGs; the manifest records it per capture). Later commits
@@ -20,7 +25,7 @@ Approved hybrid-v3 (tracked copy, [`reference-index.md`](../../../design/app-red
 [`analytics-bodyweight-30d-hard-dark`](../../../design/app-redesign-v3/shots/hybrid-v3/analytics-bodyweight-30d-hard-dark.png),
 [`analytics-active-recovery-bodyweight-hard-dark`](../../../design/app-redesign-v3/shots/hybrid-v3/analytics-active-recovery-bodyweight-hard-dark.png).
 Original problem (before): the R3 render
-[`chapter-bodyweight-hard-dark`](../r3/after/chapter-bodyweight-hard-dark.png): a "Weight Trends" title over a
+[`chapter-bodyweight-hard-dark`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r3/after/chapter-bodyweight-hard-dark.png): a "Weight Trends" title over a
 card whose header became "Selected" on any point, a last-7-dates line, no goal line.
 
 ## Layout checklist (written before coding, from the references)
@@ -81,37 +86,37 @@ entry in `selection-removed-*` uses the Weight tab's own delete control.
 
 | State | Scenario (+ overlay) | Themes | What it shows |
 |---|---|---|---|
-| [`first-analytics`](after/first-analytics-hard-dark.png) | populated | HD CL GL CD | Analytics first screen (Progress chapter), unchanged by this issue |
-| [`bodyweight-first`](after/bodyweight-first-hard-dark.png) | populated | HD CL GL CD | Bodyweight chapter, normal training: Latest weigh-in, 7D AVG, ring, GOAL line, split cells |
-| [`bodyweight`](after/bodyweight-hard-dark.png) | populated | HD CL | Normal training Bodyweight: fixed Latest, 7D AVG line over every weigh-in, latest ring, GOAL line, active cutting goal |
-| [`bodyweight-30d`](after/bodyweight-30d-hard-dark.png) | populated | HD CL | 30D AVG selected: same weigh-ins and date range, 30-day line |
-| [`point-selected`](after/point-selected-hard-dark.png) | populated | HD CL | Earlier weigh-in selected by keyboard: callout with value, date, 7-day average and note; Latest header and ring unchanged |
-| [`point-selected-30d`](after/point-selected-30d-hard-dark.png) | populated | HD CL | Earlier weigh-in selected in the 30D view: callout reads the 30-day average |
-| [`window-clears-selection`](after/window-clears-selection-hard-dark.png) | populated | HD CL | Selection made, then 30D chosen: selection cleared, callout gone, Latest unchanged |
-| [`goal-no-start`](after/goal-no-start-hard-dark.png) | goal-no-start | HD CL | Active goal without a stored start weight: goal line, mode, target, to-go and pace still shown |
-| [`goal-none`](after/goal-none-hard-dark.png) | no-goal | HD CL | No goal: no GOAL line, goal split or target pace |
-| [`goal-ended`](after/goal-ended-hard-dark.png) | goal-ended | HD CL | Ended goal (target date passed): no goal decorations |
-| [`goal-unreadable`](after/goal-unreadable-hard-dark.png) | goal-unreadable | HD CL | Goal record unreadable: unverified, no goal decorations |
-| [`goal-bulking`](after/goal-bulking-hard-dark.png) | populated + bulking | HD CL | Bulking goal: falling weights are away from the goal (negative tone) |
-| [`goal-maintain`](after/goal-maintain-hard-dark.png) | populated + maintain | HD CL | Maintain goal: Goal MAINTAINING, Target pace Maintain |
-| [`change-zero`](after/change-zero-hard-dark.png) | populated + zeroChange | HD CL | Zero change over the last 14 days: neutral 0.0, no arrow |
-| [`pace-spike`](after/pace-spike-hard-dark.png) | populated + spike | HD CL | Spike pace badge kept in the header |
-| [`pace-notable`](after/pace-notable-hard-dark.png) | populated + notable | HD CL | Notable pace badge kept in the header |
-| [`unit-kg`](after/unit-kg-hard-dark.png) | populated + metric | HD CL | Metric display: kg values, one decimal, GOAL in kg |
-| [`unit-lb`](after/unit-lb-hard-dark.png) | populated | HD CL | Imperial display (default): lb values |
-| [`long-history`](after/long-history-hard-dark.png) | populated + longHistory | HD CL | 400 daily weigh-ins: every one plotted at its date, one line |
-| [`empty`](after/empty-hard-dark.png) | weigh-in-empty | HD CL | No weigh-ins: N/A Latest, insufficient-data copy with Log a weigh-in, no goal decorations |
-| [`one-entry`](after/one-entry-hard-dark.png) | weigh-in-one | HD CL | One weigh-in: Latest header, no chart, insufficient-data copy |
-| [`one-date`](after/one-date-hard-dark.png) | populated + oneDate | HD CL | Two weigh-ins on one date: one date is not a chart, insufficient-data copy |
-| [`active-recovery`](after/active-recovery-hard-dark.png) | recovery-active | HD CL | Active Recovery: the same Bodyweight panel, no duplicate chart |
-| [`log-or-manage`](after/log-or-manage-hard-dark.png) | populated | HD CL | Log or manage weight tapped: the Weight tab opens |
-| [`selection-removed`](after/selection-removed-hard-dark.png) | populated | HD CL | Selected entry deleted on Weight: stale selection cleared (callout before: 1), latest ring kept |
-| [`loading`](after/loading-hard-dark.png) | populated | HD CL | Entries read pending: spinner in place of the chart, Latest N/A |
-| [`read-error`](after/read-error-hard-dark.png) | populated | HD CL | Entries read rejected: error banner with Retry above the chapters |
-| [`read-error-bodyweight`](after/read-error-bodyweight-hard-dark.png) | populated | HD CL | Entries read rejected: Bodyweight shows N/A and the insufficient-data copy, no chart |
-| [`read-error-retried`](after/read-error-retried-hard-dark.png) | populated | HD CL | Retry after the read recovers: banner gone, Bodyweight chart and Latest restored |
-| [`compat-home-sparkline`](after/compat-home-sparkline-hard-dark.png) | populated | HD CL | Home weight sparkline (no weightPlot): unchanged |
-| [`compat-1k-chart`](after/compat-1k-chart-hard-dark.png) | populated | HD CL | Progress chapter 1K session chart (no weightPlot): unchanged |
+| [`first-analytics`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/first-analytics-hard-dark.png) | populated | HD CL GL CD | Analytics first screen (Progress chapter), unchanged by this issue |
+| [`bodyweight-first`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/bodyweight-first-hard-dark.png) | populated | HD CL GL CD | Bodyweight chapter, normal training: Latest weigh-in, 7D AVG, ring, GOAL line, split cells |
+| [`bodyweight`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/bodyweight-hard-dark.png) | populated | HD CL | Normal training Bodyweight: fixed Latest, 7D AVG line over every weigh-in, latest ring, GOAL line, active cutting goal |
+| [`bodyweight-30d`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/bodyweight-30d-hard-dark.png) | populated | HD CL | 30D AVG selected: same weigh-ins and date range, 30-day line |
+| [`point-selected`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/point-selected-hard-dark.png) | populated | HD CL | Earlier weigh-in selected by keyboard: callout with value, date, 7-day average and note; Latest header and ring unchanged |
+| [`point-selected-30d`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/point-selected-30d-hard-dark.png) | populated | HD CL | Earlier weigh-in selected in the 30D view: callout reads the 30-day average |
+| [`window-clears-selection`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/window-clears-selection-hard-dark.png) | populated | HD CL | Selection made, then 30D chosen: selection cleared, callout gone, Latest unchanged |
+| [`goal-no-start`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/goal-no-start-hard-dark.png) | goal-no-start | HD CL | Active goal without a stored start weight: goal line, mode, target, to-go and pace still shown |
+| [`goal-none`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/goal-none-hard-dark.png) | no-goal | HD CL | No goal: no GOAL line, goal split or target pace |
+| [`goal-ended`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/goal-ended-hard-dark.png) | goal-ended | HD CL | Ended goal (target date passed): no goal decorations |
+| [`goal-unreadable`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/goal-unreadable-hard-dark.png) | goal-unreadable | HD CL | Goal record unreadable: unverified, no goal decorations |
+| [`goal-bulking`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/goal-bulking-hard-dark.png) | populated + bulking | HD CL | Bulking goal: falling weights are away from the goal (negative tone) |
+| [`goal-maintain`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/goal-maintain-hard-dark.png) | populated + maintain | HD CL | Maintain goal: Goal MAINTAINING, Target pace Maintain |
+| [`change-zero`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/change-zero-hard-dark.png) | populated + zeroChange | HD CL | Zero change over the last 14 days: neutral 0.0, no arrow |
+| [`pace-spike`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/pace-spike-hard-dark.png) | populated + spike | HD CL | Spike pace badge kept in the header |
+| [`pace-notable`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/pace-notable-hard-dark.png) | populated + notable | HD CL | Notable pace badge kept in the header |
+| [`unit-kg`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/unit-kg-hard-dark.png) | populated + metric | HD CL | Metric display: kg values, one decimal, GOAL in kg |
+| [`unit-lb`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/unit-lb-hard-dark.png) | populated | HD CL | Imperial display (default): lb values |
+| [`long-history`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/long-history-hard-dark.png) | populated + longHistory | HD CL | 400 daily weigh-ins: every one plotted at its date, one line |
+| [`empty`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/empty-hard-dark.png) | weigh-in-empty | HD CL | No weigh-ins: N/A Latest, insufficient-data copy with Log a weigh-in, no goal decorations |
+| [`one-entry`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/one-entry-hard-dark.png) | weigh-in-one | HD CL | One weigh-in: Latest header, no chart, insufficient-data copy |
+| [`one-date`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/one-date-hard-dark.png) | populated + oneDate | HD CL | Two weigh-ins on one date: one date is not a chart, insufficient-data copy |
+| [`active-recovery`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/active-recovery-hard-dark.png) | recovery-active | HD CL | Active Recovery: the same Bodyweight panel, no duplicate chart |
+| [`log-or-manage`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/log-or-manage-hard-dark.png) | populated | HD CL | Log or manage weight tapped: the Weight tab opens |
+| [`selection-removed`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/selection-removed-hard-dark.png) | populated | HD CL | Selected entry deleted on Weight: stale selection cleared (callout before: 1), latest ring kept |
+| [`loading`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/loading-hard-dark.png) | populated | HD CL | Entries read pending: spinner in place of the chart, Latest N/A |
+| [`read-error`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/read-error-hard-dark.png) | populated | HD CL | Entries read rejected: error banner with Retry above the chapters |
+| [`read-error-bodyweight`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/read-error-bodyweight-hard-dark.png) | populated | HD CL | Entries read rejected: Bodyweight shows N/A and the insufficient-data copy, no chart |
+| [`read-error-retried`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/read-error-retried-hard-dark.png) | populated | HD CL | Retry after the read recovers: banner gone, Bodyweight chart and Latest restored |
+| [`compat-home-sparkline`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/compat-home-sparkline-hard-dark.png) | populated | HD CL | Home weight sparkline (no weightPlot): unchanged |
+| [`compat-1k-chart`](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r4/after/compat-1k-chart-hard-dark.png) | populated | HD CL | Progress chapter 1K session chart (no weightPlot): unchanged |
 
 ## Compatibility: charts that do not opt in
 

@@ -1,5 +1,10 @@
 # R1 (#1600) evidence: docked tab bar and shell foundation
 
+> **Historical images:** completed captures have been removed from the current tree.
+> [Browse the preserved image snapshot](https://github.com/bpronin90/kilo/tree/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/app-redesign-v3/r1/) at
+> `f7cf024e488471136e11e76834570093b140eaec`; image filenames, counts and sizes below describe that snapshot.
+> Capture scripts, fixtures and the verification record remain here.
+
 Real-app renders for the redesign v3 foundation (tracker #1609).
 
 - **Rendered commit:** `88ed6fa5985cb71c2cd92e4e8e1ec21a9a31bb50`. It is the

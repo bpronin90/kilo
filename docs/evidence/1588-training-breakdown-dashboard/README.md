@@ -1,5 +1,10 @@
 # Training breakdown dashboard (#1588): visual evidence
 
+> **Historical images:** completed captures have been removed from the current tree.
+> [Browse the preserved image snapshot](https://github.com/bpronin90/kilo/tree/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/) at
+> `f7cf024e488471136e11e76834570093b140eaec`; image filenames, counts and sizes below describe that snapshot.
+> Capture scripts, fixtures and the verification record remain here.
+
 Rendered evidence for issue #1588. It replaces the #1580 text lists with the
 approved hybrid dashboard.
 
@@ -48,30 +53,30 @@ approved hybrid dashboard.
 
 | File | State | Reference | Result |
 | --- | --- | --- | --- |
-| [01-movement-hard-dark](after/01-movement-hard-dark.png) | Hard dark, 90D, Movement | h-movement.png | PASS |
-| [02-muscles-hard-dark](after/02-muscles-hard-dark.png) | Hard dark, 90D, Muscles | h-muscles.png | PASS |
-| [03-equipment-hard-dark](after/03-equipment-hard-dark.png) | Hard dark, 90D, Equipment | h-equipment.png | PASS |
-| [04-movement-30d-hard-dark](after/04-movement-30d-hard-dark.png) | 30D (re-derived: 310 sets) | h-movement-30d.png | PASS |
-| [05-movement-all-hard-dark](after/05-movement-all-hard-dark.png) | All | h-movement-all.png | PASS |
-| [10-drill-group](after/10-drill-group.png) | Group sheet | h-drill-group.png | PASS |
-| [11-drill-allgroups](after/11-drill-allgroups.png) | All groups sheet | h-drill-allgroups.png | PASS |
-| [12-drill-override](after/12-drill-override.png) | All groups → saved choice "Pull" (stacked, back) | h-drill-override.png | PASS |
-| [13-drill-unclassified](after/13-drill-unclassified.png) | All groups → Unclassified (stacked) | (none) | PASS |
-| [14-drill-region](after/14-drill-region.png) | Legs region sheet, primary + secondary (+n) | h-drill-region.png | PASS |
-| [15-drill-muscle-back](after/15-drill-muscle-back.png) | Region → Glutes, back control | h-drill-muscle.png | PASS |
-| [16-drill-unknown-muscles](after/16-drill-unknown-muscles.png) | Unknown muscles | h-drill-unknown-muscles.png | PASS |
-| [17-drill-equipment](after/17-drill-equipment.png) | Barbell sheet | h-drill-equipment.png | PASS |
-| [18-drill-unknown-equipment](after/18-drill-unknown-equipment.png) | Unknown equipment | (none) | PASS |
-| [19-drill-allequipment](after/19-drill-allequipment.png) | All equipment | h-drill-allequipment.png | PASS |
-| [20-drill-timed](after/20-drill-timed.png) | Timed/cardio, "not counted as strength sets" | h-drill-timed.png | PASS |
-| [21-drill-info](after/21-drill-info.png) | Methodology | h-info.png | PASS |
-| [30](after/30-movement-hard-light.png) / [31](after/31-muscles-hard-light.png) | Hard light | n/a | PASS |
-| [32](after/32-movement-clay-light.png) / [33](after/33-muscles-clay-dark.png) / [34](after/34-equipment-clay-dark.png) / [38](after/38-drill-region-clay-light.png) | Clay light/dark | n/a | PASS |
-| [35](after/35-movement-grass-light.png) / [36](after/36-muscles-grass-dark.png) / [37](after/37-equipment-grass-light.png) | Grass light/dark | n/a | PASS |
-| [40-integration-strength-above](after/40-integration-strength-above.png) | Analytics header and Strength above the section | n/a | PASS |
-| [41](after/41-large-text-movement.png) / [42](after/42-large-text-muscles.png) | Text scaled 1.3x (see note) | n/a | PASS |
-| [43-recovery-disclosure-collapsed](after/43-recovery-disclosure-collapsed.png) | Active Recovery, baseline disclosure collapsed | n/a | PASS |
-| [44-recovery-paused-expanded](after/44-recovery-paused-expanded.png) | Disclosure expanded: "Paused during Recovery · baseline history" | n/a | PASS |
+| [01-movement-hard-dark](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/01-movement-hard-dark.png) | Hard dark, 90D, Movement | h-movement.png | PASS |
+| [02-muscles-hard-dark](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/02-muscles-hard-dark.png) | Hard dark, 90D, Muscles | h-muscles.png | PASS |
+| [03-equipment-hard-dark](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/03-equipment-hard-dark.png) | Hard dark, 90D, Equipment | h-equipment.png | PASS |
+| [04-movement-30d-hard-dark](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/04-movement-30d-hard-dark.png) | 30D (re-derived: 310 sets) | h-movement-30d.png | PASS |
+| [05-movement-all-hard-dark](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/05-movement-all-hard-dark.png) | All | h-movement-all.png | PASS |
+| [10-drill-group](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/10-drill-group.png) | Group sheet | h-drill-group.png | PASS |
+| [11-drill-allgroups](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/11-drill-allgroups.png) | All groups sheet | h-drill-allgroups.png | PASS |
+| [12-drill-override](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/12-drill-override.png) | All groups → saved choice "Pull" (stacked, back) | h-drill-override.png | PASS |
+| [13-drill-unclassified](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/13-drill-unclassified.png) | All groups → Unclassified (stacked) | (none) | PASS |
+| [14-drill-region](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/14-drill-region.png) | Legs region sheet, primary + secondary (+n) | h-drill-region.png | PASS |
+| [15-drill-muscle-back](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/15-drill-muscle-back.png) | Region → Glutes, back control | h-drill-muscle.png | PASS |
+| [16-drill-unknown-muscles](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/16-drill-unknown-muscles.png) | Unknown muscles | h-drill-unknown-muscles.png | PASS |
+| [17-drill-equipment](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/17-drill-equipment.png) | Barbell sheet | h-drill-equipment.png | PASS |
+| [18-drill-unknown-equipment](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/18-drill-unknown-equipment.png) | Unknown equipment | (none) | PASS |
+| [19-drill-allequipment](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/19-drill-allequipment.png) | All equipment | h-drill-allequipment.png | PASS |
+| [20-drill-timed](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/20-drill-timed.png) | Timed/cardio, "not counted as strength sets" | h-drill-timed.png | PASS |
+| [21-drill-info](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/21-drill-info.png) | Methodology | h-info.png | PASS |
+| [30](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/30-movement-hard-light.png) / [31](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/31-muscles-hard-light.png) | Hard light | n/a | PASS |
+| [32](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/32-movement-clay-light.png) / [33](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/33-muscles-clay-dark.png) / [34](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/34-equipment-clay-dark.png) / [38](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/38-drill-region-clay-light.png) | Clay light/dark | n/a | PASS |
+| [35](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/35-movement-grass-light.png) / [36](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/36-muscles-grass-dark.png) / [37](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/37-equipment-grass-light.png) | Grass light/dark | n/a | PASS |
+| [40-integration-strength-above](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/40-integration-strength-above.png) | Analytics header and Strength above the section | n/a | PASS |
+| [41](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/41-large-text-movement.png) / [42](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/42-large-text-muscles.png) | Text scaled 1.3x (see note) | n/a | PASS |
+| [43-recovery-disclosure-collapsed](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/43-recovery-disclosure-collapsed.png) | Active Recovery, baseline disclosure collapsed | n/a | PASS |
+| [44-recovery-paused-expanded](https://github.com/bpronin90/kilo/blob/f7cf024e488471136e11e76834570093b140eaec/docs/evidence/1588-training-breakdown-dashboard/after/44-recovery-paused-expanded.png) | Disclosure expanded: "Paused during Recovery · baseline history" | n/a | PASS |
 
 ## Comparison against `reference/shots/h-*.png`
 
