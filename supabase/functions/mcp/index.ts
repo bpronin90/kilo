@@ -16,10 +16,11 @@
 
 import { withOAuthProtectedResource, withSupabase, type SupabaseContext } from '@supabase/server'
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { clientIp } from '../_shared/rate-limit.ts'
 import { checkClaims, expectedIssuer } from './auth.ts'
 import { SERVER_VERSION } from './envelope.ts'
-import { runGate, withTimeout, type RpcClient } from './gate.ts'
+import { runGate, type RpcClient } from './gate.ts'
 import { createLimiter, type Limiter } from './limiter.ts'
 import { MAX_REQUEST_BYTES, PRE_AUTH_WINDOW, REQUEST_TIMEOUT_MS, USER_WINDOWS } from './limits.ts'
 import { registerTools, TOOLS, type ToolModule } from './tools/index.ts'
@@ -57,8 +58,23 @@ function unauthorized(): Response {
   return new Response(JSON.stringify({ error: 'invalid_token' }), { status: 401, headers: JSON_HEADERS })
 }
 
+const timedOut = () => jsonRpcError(504, -32000, 'Request timed out')
+
+// Rejects when the request deadline fires; never resolves otherwise.
+function abortion(signal: AbortSignal): Promise<never> {
+  return new Promise((_, reject) => {
+    if (signal.aborted) reject(new Error('aborted'))
+    signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+  })
+}
+
+// The deadline travels with the request through the library's middleware, which
+// cannot be handed it directly. Every stage checks it before starting work, so
+// nothing runs (and no quota is spent) after the 504 has been sent.
+const requestScope = new AsyncLocalStorage<{ signal: AbortSignal }>()
+
 // Reads at most MAX_REQUEST_BYTES. Returns a replayable request, or a response.
-async function boundedRequest(req: Request, deadline: number): Promise<Request | Response> {
+async function boundedRequest(req: Request, signal: AbortSignal): Promise<Request | Response> {
   if (req.method !== 'POST') {
     return jsonRpcError(405, -32000, 'Method not allowed', { allow: 'POST' })
   }
@@ -71,12 +87,16 @@ async function boundedRequest(req: Request, deadline: number): Promise<Request |
   if (req.body) {
     const reader = req.body.getReader()
     for (;;) {
+      if (signal.aborted) {
+        await reader.cancel().catch(() => {})
+        return timedOut()
+      }
       let chunk: ReadableStreamReadResult<Uint8Array>
       try {
-        chunk = await withTimeout(reader.read(), Math.max(1, deadline - Date.now()))
+        chunk = await Promise.race([reader.read(), abortion(signal)])
       } catch {
         await reader.cancel().catch(() => {})
-        return jsonRpcError(504, -32000, 'Request timed out')
+        return timedOut()
       }
       const { done, value } = chunk
       if (done) break
@@ -130,27 +150,33 @@ export function createMcpFetch(deps: McpDeps): (req: Request) => Promise<Respons
     },
     async (req: Request, ctx: SupabaseContext) => {
       const started = Date.now()
+      const signal = requestScope.getStore()?.signal
+      if (signal?.aborted) return timedOut()
       const issuer = expectedIssuer(req, deps.env)
       const claims = checkClaims(ctx.jwtClaims, issuer)
       if (!claims.ok) return unauthorized()
       const { identity } = claims
 
       for (const w of USER_WINDOWS) {
+        if (signal?.aborted) return timedOut()
         if (!(await deps.limiter.allow(`mcp:user:${identity.userId}:${w.suffix}`, w.max, w.windowMs))) {
           return jsonRpcError(429, -32000, 'Too many requests', { 'retry-after': String(Math.ceil(w.windowMs / 1000)) })
         }
       }
 
+      if (signal?.aborted) return timedOut()
       const client = deps.clientFor ? deps.clientFor(ctx) : (ctx.supabase as unknown as RpcClient)
       const gate = await runGate(client)
+      if (signal?.aborted) return timedOut()
       if (gate.kind === 'unauthorized') return unauthorized()
       if (gate.kind === 'unavailable') return jsonRpcError(503, -32000, 'Service unavailable', { 'retry-after': '5' })
 
       // Read once and replay: the SDK needs a fresh, unread body.
       const text = await req.text()
+      if (signal?.aborted) return timedOut()
       const parsed = inspectBody(text, known)
       if (!parsed.ok) return parsed.response
-      const replay = new Request(req.url, { method: req.method, headers: req.headers, body: text })
+      const replay = new Request(req.url, { method: req.method, headers: req.headers, body: text, signal })
 
       const handler = createMcpHandler(
         () => {
@@ -172,9 +198,9 @@ export function createMcpFetch(deps: McpDeps): (req: Request) => Promise<Respons
 
       let response: Response
       try {
-        response = await withTimeout(Promise.resolve(handler.fetch(replay)), timeoutMs)
+        response = await Promise.race([Promise.resolve(handler.fetch(replay)), signal ? abortion(signal) : new Promise<never>(() => {})])
       } catch {
-        response = jsonRpcError(504, -32000, 'Request timed out')
+        response = timedOut()
       }
       // Method, tool name, status and duration only: never arguments, tokens,
       // cursors, query strings or response bodies.
@@ -184,24 +210,34 @@ export function createMcpFetch(deps: McpDeps): (req: Request) => Promise<Respons
   )
 
   const timeoutMs = deps.requestTimeoutMs ?? REQUEST_TIMEOUT_MS
-  const run = async (req: Request, deadline: number): Promise<Response> => {
+  const run = async (req: Request, signal: AbortSignal): Promise<Response> => {
     const ip = clientIp(req)
-    if (!(await deps.limiter.allow(`mcp:${PRE_AUTH_WINDOW.suffix}:${ip}`, PRE_AUTH_WINDOW.max, PRE_AUTH_WINDOW.windowMs))) {
-      return jsonRpcError(429, -32000, 'Too many requests', { 'retry-after': '60' })
-    }
+    const allowed = await deps.limiter.allow(`mcp:${PRE_AUTH_WINDOW.suffix}:${ip}`, PRE_AUTH_WINDOW.max, PRE_AUTH_WINDOW.windowMs)
+    if (signal.aborted) return timedOut()
+    if (!allowed) return jsonRpcError(429, -32000, 'Too many requests', { 'retry-after': '60' })
     if (req.method === 'OPTIONS') return (authed as (r: Request) => Promise<Response>)(req)
-    const bounded = await boundedRequest(req, deadline)
+    const bounded = await boundedRequest(req, signal)
     if (bounded instanceof Response) return bounded
+    if (signal.aborted) return timedOut()
     return (authed as (r: Request) => Promise<Response>)(bounded)
   }
 
   // One deadline from entry covers the body read, limiters, verification, the
-  // gate and the handler, so a stalled stream or dependency cannot hold the
-  // request past REQUEST_TIMEOUT_MS.
-  const preAuth = (req: Request): Promise<Response> =>
-    withTimeout(run(req, Date.now() + timeoutMs), timeoutMs).catch(() =>
-      jsonRpcError(504, -32000, 'Request timed out')
-    )
+  // gate and the handler. Expiry answers 504 AND aborts the signal that every
+  // later stage checks, so a late-resolving dependency starts no further work.
+  const preAuth = async (req: Request): Promise<Response> => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      return await requestScope.run({ signal: controller.signal }, () =>
+        Promise.race([run(req, controller.signal), abortion(controller.signal)])
+      )
+    } catch {
+      return timedOut()
+    } finally {
+      clearTimeout(timer)
+    }
+  }
 
   return withOAuthProtectedResource(
     deps.env('MCP_AUTH_ISSUER') ? { authorizationServer: () => deps.env('MCP_AUTH_ISSUER') as string } : {},

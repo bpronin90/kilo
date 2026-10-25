@@ -304,3 +304,46 @@ Deno.test('client-chosen method text is never logged', async () => {
   assertEquals(joined.includes('private-health-note'), false)
   assertStringIncludes(joined, '"mcp":"unknown"')
 })
+
+Deno.test('a dependency that resolves after the deadline starts no further work', async () => {
+  const client = fakeClient(GATE_OK)
+  const buckets: string[] = []
+  let release!: (v: boolean) => void
+  const late = new Promise<boolean>((resolve) => { release = resolve })
+  const fetchMcp = createMcpFetch({
+    env: (n) => ENV[n], authEnv, clientFor: () => client, requestTimeoutMs: 60,
+    limiter: { allow: (b) => { buckets.push(b); return buckets.length === 1 ? late : Promise.resolve(true) } },
+  })
+  const res = await fetchMcp(rpc('tools/list', {}, await token()))
+  assertEquals(res.status, 504)
+  release(true)
+  await new Promise((r) => setTimeout(r, 300))
+  assertEquals(client.calls, [], 'no gate call after the deadline')
+  assertEquals(buckets, [buckets[0]], 'no per-user quota spent after the deadline')
+})
+
+Deno.test('a gate that resolves after the deadline starts no handler', async () => {
+  let release!: () => void
+  const late = new Promise<void>((resolve) => { release = resolve })
+  const calls: string[] = []
+  const client = {
+    calls,
+    rpc(fn: string) { calls.push(fn); return late.then(() => ({ data: GATE_OK, error: null })) },
+  } as unknown as FakeClient
+  const lines: string[] = []
+  const original = console.log
+  console.log = (...args: unknown[]) => { lines.push(args.map(String).join(' ')) }
+  try {
+    const fetchMcp = createMcpFetch({
+      env: (n) => ENV[n], authEnv, clientFor: () => client, requestTimeoutMs: 400, limiter: fakeLimiter(),
+    })
+    const pending = fetchMcp(rpc('tools/list', {}, await token()))
+    const res = await pending
+    assertEquals(res.status, 504)
+    release()
+    await new Promise((r) => setTimeout(r, 300))
+  } finally {
+    console.log = original
+  }
+  assertEquals(lines.filter((l) => l.includes('"mcp"')).length, 0, 'handler never ran after expiry')
+})
