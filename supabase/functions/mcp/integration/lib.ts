@@ -16,18 +16,27 @@ const need = (name: string): string => {
 }
 
 export const API = need('API_URL')
+// Local-only boundary: refuse to run against anything but the disposable stack that
+// stack.sh creates, whatever the ambient environment holds.
+if (API !== 'http://127.0.0.1:56321') throw new Error('refusing to run: API_URL is not the disposable local stack')
 export const ANON_KEY = need('ANON_KEY')
 export const SERVICE_ROLE_KEY = need('SERVICE_ROLE_KEY')
 export const JWT_SECRET = need('JWT_SECRET')
 export const SIGNING_KEYS_PATH = need('KILO_MCP_SIGNING_KEYS')
-export const DB_CONTAINER = Deno.env.get('KILO_MCP_DB_CONTAINER') ?? 'supabase_db_kilo_mcp_staging'
+export const DB_CONTAINER = 'supabase_db_kilo_mcp_staging'
 export const MCP_URL = `${API}/functions/v1/mcp`
 export const AUTH = `${API}/auth/v1`
 export const CONSENT_CATALOG_REVISION = 1
 
+// Every credential or protocol artifact the run handles, so the log scan (case G1) can
+// look for the real values instead of guessing at their shape.
+export const secrets = new Set<string>()
+const remember = (...values: unknown[]) => { for (const v of values) if (typeof v === 'string' && v.length >= 8) secrets.add(v) }
+
 export interface Session {
   userId: string
   email: string
+  password: string
   token: string
   refresh: string
 }
@@ -65,7 +74,8 @@ export async function createUser(label: string): Promise<Session> {
   })
   const body = await json(login)
   if (!login.ok) throw new Error(`login ${login.status}`)
-  return { userId: user.id, email, token: body.access_token, refresh: body.refresh_token }
+  remember(user.id, password, body.access_token, body.refresh_token)
+  return { userId: user.id, email, password, token: body.access_token, refresh: body.refresh_token }
 }
 
 export const deleteUser = (userId: string) =>
@@ -92,6 +102,11 @@ export async function grantConsent(s: Session) {
   if (r.status >= 300) throw new Error(`consent_grant ${r.status}`)
 }
 
+export const decide = async (user: Session, id: string, action: 'approve' | 'deny') => {
+  const res = await fetch(`${AUTH}/oauth/authorizations/${id}/consent`, { method: 'POST', headers: authHeaders(user.token), body: JSON.stringify({ action }) })
+  return { status: res.status, body: await json(res) }
+}
+
 export const withdrawConsent = (s: Session) => rpc(s.token, 'consent_withdraw')
 
 export interface Fixtures { weights: number; datedWeights: number; notes: number; marker: string }
@@ -113,10 +128,10 @@ export async function seedUser(s: Session, marker: string, dated = 120, undated 
   if (wr.status >= 300) throw new Error(`seed weights ${wr.status}`)
   const notes: Record<string, unknown>[] = []
   for (let i = 0; i < plain; i++) {
-    notes.push({ user_id: s.userId, id: `n-${marker}-${String(i).padStart(3, '0')}`, title: `${marker} note ${i}`, raw_text: `${marker} push day ${i}\nbench 5x5`, is_current: i === 0, deleted_at: null })
+    notes.push({ user_id: s.userId, id: `n-${marker}-${String(i).padStart(3, '0')}`, title: `${marker} note ${i}`, raw_text: `${marker} push day ${i}\nbench 5x5`, is_current: i === 0, saved_at: i === 1 ? '2026-01-02T10:00:00+00:00' : null, deleted_at: null })
   }
-  notes.push({ user_id: s.userId, id: `n-${marker}-long`, title: `${marker} long`, raw_text: `${marker} ` + 'x'.repeat(6000), is_current: false, deleted_at: null })
-  notes.push({ user_id: s.userId, id: `n-${marker}-gone`, title: `${marker} deleted`, raw_text: `${marker} tombstoned`, is_current: false, deleted_at: new Date().toISOString() })
+  notes.push({ user_id: s.userId, id: `n-${marker}-long`, title: `${marker} long`, raw_text: `${marker} ` + 'x'.repeat(6000), is_current: false, saved_at: null, deleted_at: null })
+  notes.push({ user_id: s.userId, id: `n-${marker}-gone`, title: `${marker} deleted`, raw_text: `${marker} tombstoned`, is_current: false, saved_at: null, deleted_at: new Date().toISOString() })
   const nr = await rest(s.token, 'POST', 'workout_notes', notes)
   if (nr.status >= 300) throw new Error(`seed notes ${nr.status}`)
   return { weights: dated + undated, datedWeights: dated, notes: plain + 1, marker }
@@ -124,15 +139,33 @@ export async function seedUser(s: Session, marker: string, dated = 120, undated 
 
 // ---- DB fault injection through the disposable container (never any other target) ----
 
+function dbExec(args: string[]) {
+  // The container name is a constant; this is the only place a command is aimed at it.
+  return new Deno.Command('docker', { args: ['exec', DB_CONTAINER, 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1', ...args], stdout: 'piped', stderr: 'piped' })
+}
+
 export async function sql(statement: string): Promise<string> {
-  if (!DB_CONTAINER.startsWith('supabase_db_kilo_mcp')) throw new Error('refusing fault injection outside the staging container')
-  const out = await new Deno.Command('docker', {
-    args: ['exec', DB_CONTAINER, 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1', '-tAc', statement],
-    stdout: 'piped',
-    stderr: 'piped',
-  }).output()
+  const out = await dbExec(['-tAc', statement]).output()
   if (!out.success) throw new Error(`sql failed: ${new TextDecoder().decode(out.stderr).slice(0, 200)}`)
   return new TextDecoder().decode(out.stdout).trim()
+}
+
+// Holds an exclusive lock on kilo.weight_entries for `seconds` (slow-database case).
+export function holdWeightLock(seconds: number) {
+  return dbExec(['-c', `begin; lock table kilo.weight_entries in access exclusive mode; select pg_sleep(${Number(seconds)}); commit;`]).spawn()
+}
+
+// Per-function execution counters, so a case can prove that a rejected request ran
+// no data RPC at all (not merely that the response looked safe).
+export async function enableCallTracking() {
+  await sql("alter system set track_functions = 'all'")
+  await sql('select pg_reload_conf()')
+}
+
+export async function dataRpcCalls(): Promise<number> {
+  await new Promise((r) => setTimeout(r, 1200)) // stats are flushed asynchronously
+  const n = await sql("select coalesce(sum(calls), 0) from pg_stat_user_functions where funcname in ('mcp_weight_entries_page', 'mcp_workout_notes_page')")
+  return Number(n)
 }
 
 // ---- tokens: minted with the stack's own staging key for negative cases ----
@@ -191,7 +224,11 @@ export const call = (token: string | null, name: string, args: Record<string, un
   raw(token, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } })
 
 // The tool payload (structuredContent) of a tools/call, or null.
-export const payload = (r: Rpc): any => r.body?.result?.structuredContent ?? null
+export const payload = (r: Rpc): any => {
+  const p = r.body?.result?.structuredContent ?? null
+  remember(p?.next_cursor)
+  return p
+}
 export const isToolError = (r: Rpc, code: string) => r.status === 200 && r.body?.result?.isError === true && payload(r)?.code === code
 
 // ---- OAuth against Supabase Auth, driven by the real MCP client library ----
@@ -200,6 +237,7 @@ export const isToolError = (r: Rpc, code: string) => r.status === 200 && r.body?
 // (/oauth/consent?authorization_id=...), then approves or denies as the signed-in user
 // through the same Auth endpoints the Kilo page uses. Returns the redirect Auth sends
 // back to the client (code or error) without following it.
+export const lastAuthorizationId = { value: '' }
 export async function browser(user: Session, authorizationUrl: URL, action: 'approve' | 'deny' = 'approve'): Promise<URL> {
   const hop = await fetch(authorizationUrl, { redirect: 'manual' })
   const location = hop.headers.get('location')
@@ -208,6 +246,8 @@ export async function browser(user: Session, authorizationUrl: URL, action: 'app
   if (landing.pathname !== '/oauth/consent') throw new Error('authorize did not land on /oauth/consent')
   const id = landing.searchParams.get('authorization_id')
   if (!id) throw new Error('no authorization_id')
+  remember(id)
+  lastAuthorizationId.value = id
   const details = await fetch(`${AUTH}/oauth/authorizations/${id}`, { headers: authHeaders(user.token) })
   const shown = await json(details)
   if (!details.ok) throw new Error(`details ${details.status}`)
@@ -249,7 +289,7 @@ class Provider implements OAuthClientProvider {
   clientInformation() { return this.info }
   saveClientInformation(info: any) { this.info = info }
   tokens() { return this.tokensValue }
-  saveTokens(t: any) { this.tokensValue = t; if (Deno.env.get('KILO_DEBUG_TOKEN')) (globalThis as any).__tok = t.access_token }
+  saveTokens(t: any) { this.tokensValue = t; remember(t.access_token, t.refresh_token) }
   redirectToAuthorization(url: URL) { this.authUrl = url }
   saveCodeVerifier(v: string) { this.verifier = v }
   codeVerifier() { return this.verifier }
@@ -261,7 +301,9 @@ export type Outcome =
 
 // Connects with the SDK client: discovery, dynamic registration, PKCE, code exchange.
 // `action` is what the signed-in user chooses on the consent screen.
-export async function connect(user: Session, action: 'approve' | 'deny' = 'approve', provider = new Provider()): Promise<Outcome> {
+export type Decider = (user: Session, url: URL, action: 'approve' | 'deny') => Promise<URL>
+
+export async function connect(user: Session, action: 'approve' | 'deny' = 'approve', provider = new Provider(), decider: Decider = browser): Promise<Outcome> {
   const make = () => new StreamableHTTPClientTransport(new URL(MCP_URL), {
     authProvider: provider,
   })
@@ -271,10 +313,11 @@ export async function connect(user: Session, action: 'approve' | 'deny' = 'appro
     await client.connect(transport)
   } catch (e) {
     if (!(e instanceof UnauthorizedError) || !provider.authUrl) throw e
-    const redirect = await browser(user, provider.authUrl, action)
+    const redirect = await decider(user, provider.authUrl, action)
     if (action === 'deny') return { kind: 'redirected', redirect }
     const code = redirect.searchParams.get('code')
     if (!code) throw new Error('no code in approve redirect')
+    remember(code)
     await transport.finishAuth(code)
     transport = make()
     client = new Client({ name: 'kilo-integration-harness', version: '1.0.0' })

@@ -1,7 +1,8 @@
 {
   "version": "5",
   "specifiers": {
-    "npm:@modelcontextprotocol/client@2.4.0": "2.4.0"
+    "npm:@modelcontextprotocol/client@2.4.0": "2.4.0",
+    "npm:playwright-core@1.59.0": "1.59.0"
   },
   "npm": {
     "@modelcontextprotocol/client@2.4.0": {
@@ -51,6 +52,10 @@
     "pkce-challenge@5.0.1": {
       "integrity": "sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ=="
     },
+    "playwright-core@1.59.0": {
+      "integrity": "sha512-PW/X/IoZ6BMUUy8rpwHEZ8Kc0IiLIkgKYGNFaMs5KmQhcfLILNx9yCQD0rnWeWfz1PNeqcFP1BsihQhDOBCwZw==",
+      "bin": true
+    },
     "shebang-command@2.0.0": {
       "integrity": "sha512-kHxr2zZpYtdmrN1qDjrrX/Z1rR1kG8Dx+gkpK1G4eXmvXswmcE1hTWBWYUzlraYw1/yZp6YuDY77YtvbN0dmDA==",
       "dependencies": [
@@ -73,7 +78,8 @@
   },
   "workspace": {
     "dependencies": [
-      "npm:@modelcontextprotocol/client@2.4.0"
+      "npm:@modelcontextprotocol/client@2.4.0",
+      "npm:playwright-core@1.59.0"
     ]
   }
 }

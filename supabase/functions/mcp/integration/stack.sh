@@ -2,6 +2,8 @@
 # Bring the isolated MCP staging stack up or down (issue #1629).
 #   stack.sh up     start Postgres + Auth + PostgREST and serve the mcp function
 #   stack.sh serve  restart only the function from a fresh snapshot
+#   stack.sh web    build the Kilo web app against this stack and serve it on 127.0.0.1:8081
+#                   (needs `npm --prefix mobile ci`; uses Cloudflare's always-pass Turnstile test key)
 #   stack.sh down   stop everything and delete the scratch workdir
 #   stack.sh env    print the connection variables for scripts/verify-mcp-mvp.mjs
 # Local only: ports 56321/56322, project id kilo_mcp_staging. Production is never
@@ -59,9 +61,22 @@ case "${1:-}" in
       sleep 1
     done
     ;;
+  web)
+    prepare
+    cd "$WORK"
+    ( cd "$REPO/mobile" && set -a && . "$WORK/stack.env" && set +a &&
+      EXPO_PUBLIC_SUPABASE_URL="$API_URL" EXPO_PUBLIC_SUPABASE_ANON_KEY="$ANON_KEY" \
+      EXPO_PUBLIC_TURNSTILE_SITE_KEY=1x00000000000000000000AA npm run export:web )
+    rm -rf "$WORK/web" && cp -R "$REPO/mobile/dist" "$WORK/web"
+    [ -f web.pid ] && kill "$(cat web.pid)" 2>/dev/null || true
+    nohup node "$HERE/serve-web.mjs" "$WORK/web" 8081 > "$WORK/web.log" 2>&1 &
+    echo $! > "$WORK/web.pid"
+    echo "web build served at http://localhost:8081"
+    ;;
   down)
     cd "$WORK" 2>/dev/null || { echo "nothing to stop"; exit 0; }
     [ -f functions.pid ] && kill "$(cat functions.pid)" 2>/dev/null || true
+    [ -f web.pid ] && kill "$(cat web.pid)" 2>/dev/null || true
     "${SB[@]}" stop --no-backup || true
     cd / && rm -rf "$WORK"
     ;;
@@ -69,7 +84,7 @@ case "${1:-}" in
     cat "$WORK/stack.env"
     ;;
   *)
-    echo "usage: stack.sh up|down|env" >&2
+    echo "usage: stack.sh up|serve|web|down|env" >&2
     exit 2
     ;;
 esac

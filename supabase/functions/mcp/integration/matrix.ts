@@ -6,6 +6,9 @@
 
 import * as L from './lib.ts'
 import { check, expect } from './lib.ts'
+import { browserDecision, webServed } from './real-browser.ts'
+
+const SHOTS = Deno.env.get('KILO_MCP_SHOTS')
 
 const THREE_TOOLS = ['weight_entries_list', 'whoami', 'workout_notes_list']
 const ok = (r: L.Rpc) => r.status === 200 && !r.body?.result?.isError
@@ -40,6 +43,7 @@ for (let i = 0; i < 6 && (await L.raw(null, { jsonrpc: '2.0', id: 0, method: 'to
 }
 
 await L.setGateMode('consent_required')
+await L.enableCallTracking()
 
 const A = await L.createUser('a')
 const B = await L.createUser('b')
@@ -85,6 +89,12 @@ await check('C2', 'AC2', 'workout reads: own rows only, tombstone excluded, pagi
   expect(ids.length === fxA.notes && new Set(ids).size === ids.length, `got ${ids.length} unique ${new Set(ids).size}, want ${fxA.notes}`)
   expect(ids.every((i: string) => i.includes('SYNA')) && !ids.some((i: string) => i.includes('gone')), 'foreign or deleted row')
   expect(all.items.every((i) => !('raw_text' in i)), 'raw_text without opt-in')
+  const allowed = new Set(['id', 'title', 'saved_at', 'updated_at', 'is_current'])
+  expect(all.items.every((i) => Object.keys(i).every((k) => allowed.has(k))), 'unexpected or derived field on a note')
+  const stamped = all.items.find((i) => i.id === 'n-SYNA-001')
+  expect(stamped?.saved_at?.startsWith('2026-01-02T10:00:00') && all.items.filter((i) => i.saved_at === null).length === fxA.notes - 1, 'saved_at not returned verbatim / unknown not null')
+  const first = L.payload(await L.call(tokenA, 'workout_notes_list', { limit: 1 }))
+  expect(/neither is a session date/.test(first.item_semantics ?? ''), 'notes are not labeled as save/modify times')
   const raw = L.payload(await L.call(tokenA, 'workout_notes_list', { limit: 25, include_raw_text: true }))
   const long = raw.items.find((i: any) => i.id.endsWith('long'))
   expect(long && long.raw_text.length <= 4000 && long.raw_text_truncated === true && long.raw_text_chars > 4000, 'raw text bound not applied')
@@ -121,6 +131,39 @@ await check('C4', 'AC5', 'empty cloud snapshot is reported as no_cloud_records w
     expect(!('sync_unavailable' in p) && p.provenance.source === 'kilo_cloud_snapshot', 'invented sync claim')
   }
   await out.connection.close()
+})
+
+await check('B1', 'AC2', 'real browser: direct link, sign-in, disclosure, Approve; the SDK client then reads only that user\'s data', async () => {
+  expect(await webServed(), 'web build not served; run stack.sh web')
+  const R = await L.createUser('browser')
+  await L.grantConsent(R)
+  const fxR = await L.seedUser(R, 'SYNR', 10, 2, 3)
+  const out = await L.connect(R, 'approve', undefined, (u, url, action) => browserDecision(u, url, action, SHOTS, 'approve'))
+  expect(out.kind === 'connected', 'no connection')
+  const c = out.connection
+  const me = (await c.client.callTool({ name: 'whoami', arguments: {} })) as any
+  expect(me.structuredContent.user_id === R.userId && me.structuredContent.health_consent === 'granted', 'whoami mismatch')
+  const w = (await c.client.callTool({ name: 'weight_entries_list', arguments: { limit: 100 } })) as any
+  const n = (await c.client.callTool({ name: 'workout_notes_list', arguments: { limit: 100 } })) as any
+  expect(w.structuredContent.items.length === fxR.weights && w.structuredContent.items.every((i: any) => i.id.includes('SYNR')), 'weights')
+  expect(n.structuredContent.items.length === fxR.notes && n.structuredContent.items.every((i: any) => i.id.includes('SYNR')), 'notes')
+  await c.close()
+  return `${fxR.weights} weights and ${fxR.notes} notes read through the SDK client after a browser approval`
+})
+
+await check('C5', 'AC2', 'two users, two SDK clients: each reads only its own rows', async () => {
+  const ob = await L.connect(B)
+  expect(ob.kind === 'connected', 'no connection for user b')
+  const cb = ob.connection
+  const read = async (client: any, tool: string) => ((await client.callTool({ name: tool, arguments: { limit: 100 } })) as any).structuredContent.items.map((i: any) => i.id as string)
+  const aw = await read(conn!.client, 'weight_entries_list')
+  const bw = await read(cb.client, 'weight_entries_list')
+  const an = await read(conn!.client, 'workout_notes_list')
+  const bn = await read(cb.client, 'workout_notes_list')
+  expect(aw.length === 100 && aw.every((i: string) => i.includes('SYNA')) && bw.length === 100 && bw.every((i: string) => i.includes('SYNB')), 'weights crossed')
+  expect(an.length === fxA.notes && an.every((i: string) => i.includes('SYNA')) && bn.length === fxB.notes && bn.every((i: string) => i.includes('SYNB')), 'notes crossed')
+  expect(((await cb.client.callTool({ name: 'whoami', arguments: {} })) as any).structuredContent.user_id === B.userId, 'whoami b')
+  await cb.close()
 })
 
 // ---------- 3. cross-user, direct access, wrong-surface ----------
@@ -192,10 +235,20 @@ await check('N1', 'AC4', 'anonymous, malformed, HS256, expired, wrong issuer/aud
 })
 
 // ---------- 5. OAuth consent outcomes ----------
-await check('O1', 'AC4', 'denied OAuth request yields an error redirect and no usable code; the id cannot be replayed', async () => {
-  const out = await L.connect(A, 'deny')
+await check('O1', 'AC4', 'denied OAuth request (real browser) yields an error redirect and no code; the decided request id is recorded', async () => {
+  expect(await webServed(), 'web build not served; run stack.sh web')
+  const D = await L.createUser('deny')
+  await L.grantConsent(D)
+  const out = await L.connect(D, 'deny', undefined, (u, url, action) => browserDecision(u, url, action, SHOTS, 'deny'))
   expect(out.kind === 'redirected', 'deny did not redirect')
   expect(out.redirect.searchParams.get('error') === 'access_denied' && !out.redirect.searchParams.get('code'), 'deny redirect carries a code or lacks access_denied')
+  // Observation: whether Auth lets a decided request be decided again (REST, same user).
+  const o2 = await L.connect(D, 'deny')
+  expect(o2.kind === 'redirected', 'second deny did not redirect')
+  const again = await L.decide(D, L.lastAuthorizationId.value, 'approve')
+  const reused = again.status === 200 && Boolean(new URL(again.body?.redirect_url ?? 'http://x/').searchParams.get('code'))
+  expect(!reused, 'a denied authorization request could be approved afterwards and yielded a code')
+  return `re-approving a denied request: HTTP ${again.status}, no code`
 })
 
 await check('M1', 'AC4', 'user without cloud consent connects but data tools return consent_required and no rows', async () => {
@@ -352,33 +405,45 @@ async function outage(name: string, breakIt: string, fixIt: string, run: () => P
 }
 const results_note = (_: string) => {}
 
+// Runs `fn` and proves no data page RPC executed meanwhile (function-call counters).
+async function withoutDataRpc<T>(fn: () => Promise<T>): Promise<T> {
+  const before = await L.dataRpcCalls()
+  const result = await fn()
+  const after = await L.dataRpcCalls()
+  expect(after === before, `a data RPC ran ${after - before} time(s)`)
+  return result
+}
+
 const U = await L.createUser('outage')
 await L.grantConsent(U)
 await L.seedUser(U, 'SYNU', 5, 1, 3)
 const outU = await L.connect(U)
 const tokenU = outU.kind === 'connected' ? outU.connection.accessToken() : ''
 
-await check('F1', 'AC4', 'gate lookup outage -> 503 with no query; recovery restores service', async () => {
+await check('F1', 'AC4', 'gate lookup outage -> 503 and no data RPC runs; recovery restores service', async () => {
+  const before = await L.dataRpcCalls()
+  expect(ok(await L.call(tokenU, 'weight_entries_list')) && (await L.dataRpcCalls()) > before, 'call counter did not move on a served read; the no-query proof below would be vacuous')
   await outage('gate', 'revoke execute on function kilo.mcp_request_gate() from authenticated', 'grant execute on function kilo.mcp_request_gate() to authenticated', async () => {
-    const r = await L.call(tokenU, 'weight_entries_list')
+    const r = await withoutDataRpc(() => L.call(tokenU, 'weight_entries_list'))
     expect(r.status === 503 && !JSON.stringify(r.body).includes('SYNU'), `status ${r.status}`)
   })
   expect((await L.call(tokenU, 'whoami')).status === 200, 'not recovered')
 })
 
-await check('F2', 'AC4', 'consent lookup outage -> 503, never an implicit allow', async () => {
+await check('F2', 'AC4', 'consent lookup outage -> 503 and no data RPC runs, never an implicit allow', async () => {
   await outage('consent', 'alter table kilo.consent_state rename to consent_state_down', 'alter table kilo.consent_state_down rename to consent_state', async () => {
-    const r = await L.call(tokenU, 'weight_entries_list')
+    const r = await withoutDataRpc(() => L.call(tokenU, 'weight_entries_list'))
     expect(r.status === 503 && !JSON.stringify(r.body).includes('SYNU'), `status ${r.status}`)
   })
   expect((await L.call(tokenU, 'whoami')).status === 200, 'not recovered')
 })
 
-await check('F3', 'AC4', 'auth session lookup outage -> 503, never an implicit allow', async () => {
+await check('F3', 'AC4', 'OAuth grant/session lookup outage -> 503 and no data RPC runs, never an implicit allow', async () => {
+  // The grant evidence the gate reads is the Auth session bound to the client (architecture §6.1).
   await outage('session', 'alter function kilo.mcp_session_created_at(uuid, uuid, text) rename to mcp_session_created_at_down', 'alter function kilo.mcp_session_created_at_down(uuid, uuid, text) rename to mcp_session_created_at', async () => {
-    const r = await L.call(tokenU, 'whoami')
-    expect(r.status === 503 || r.status === 401, `status ${r.status}`)
-    expect(!JSON.stringify(r.body).includes(U.userId), 'identity leaked')
+    const r = await withoutDataRpc(() => L.call(tokenU, 'weight_entries_list'))
+    expect(r.status === 503, `status ${r.status}`)
+    expect(!JSON.stringify(r.body).includes('SYNU') && !JSON.stringify(r.body).includes(U.userId), 'data or identity leaked')
   })
   expect((await L.call(tokenU, 'whoami')).status === 200, 'not recovered')
 })
@@ -401,21 +466,22 @@ await check('F5', 'AC4', 'rate limiter outage fails closed (429), not open', asy
   expect((await L.call(tokenU, 'whoami')).status === 200, 'not recovered')
 })
 
-await check('F6', 'AC4', 'slow database: the 3 s call limit ends the read with a timeout error', async () => {
-  const hold = new Deno.Command('docker', { args: ['exec', L.DB_CONTAINER, 'psql', '-U', 'postgres', '-c', 'begin; lock table kilo.weight_entries in access exclusive mode; select pg_sleep(8); commit;'], stdout: 'null', stderr: 'null' }).spawn()
+await check('F6', 'AC4', 'slow database: the 3 s database-call limit ends the read with a timeout tool error', async () => {
+  const hold = L.holdWeightLock(9)
   try {
     await new Promise((r) => setTimeout(r, 1000))
     const started = Date.now()
     const r = await L.call(tokenU, 'weight_entries_list')
     const ms = Date.now() - started
     const p = L.payload(r)
-    expect((r.status === 200 && p?.code === 'timeout') || r.status === 504, `status ${r.status} code ${p?.code}`)
-    expect(ms < 9000, `took ${ms} ms`)
+    expect(r.status === 200 && p?.code === 'timeout', `status ${r.status} code ${p?.code}`)
+    expect(ms >= 2500 && ms < 5000, `took ${ms} ms; the 3 s call limit (not the 10 s request deadline) should have fired`)
     return `${ms} ms`
   } finally {
     await hold.status
   }
 })
+
 if (outU.kind === 'connected') await outU.connection.close()
 
 // ---------- 10. size and quota limits (each case uses its own user/IP buckets) ----------
@@ -446,7 +512,7 @@ await check('L1', 'AC4', 'request size, batch, malformed JSON and method limits'
 // bucket (120 / 60 s) is shared by the whole run. Let it drain before measuring it.
 await new Promise((r) => setTimeout(r, 62_000))
 
-await check('Q1', 'AC4', 'durable limits: per-user MCP and per-user data quota', async () => {
+await check('Q1', 'AC4', 'per-user limits: the data quota and HTTP limit stop one user and leave another unaffected', async () => {
   const Q = await L.createUser('quota')
   await L.grantConsent(Q)
   await L.seedUser(Q, 'SYNQ', 3, 0, 1)
@@ -459,31 +525,40 @@ await check('Q1', 'AC4', 'durable limits: per-user MCP and per-user data quota',
     if (L.isToolError(r, 'rate_limited')) limited++
     else if (ok(r)) served++
   }
-  expect(served > 0 && served <= 30 && limited >= 1, `data quota: served ${served}, limited ${limited}`)
+  expect(served === 30 && limited === 5, `data quota 30 / 60 s: served ${served}, limited ${limited}`)
   let http429 = 0
   for (let i = 0; i < 40; i++) if ((await L.call(t, 'whoami')).status === 429) http429++
   expect(http429 >= 1, 'per-user HTTP limit never applied')
+  const other = await L.connect(await L.createUser('quota2').then(async (u) => { await L.grantConsent(u); return u }))
+  expect(other.kind === 'connected' && ok(await L.call(other.connection.accessToken(), 'whoami')), 'a second user was limited by the first user\'s traffic')
+  if (other.kind === 'connected') await other.connection.close()
   await o.connection.close()
-  return `data served ${served} limited ${limited}; http 429 ${http429}`
+  return `data served ${served} limited ${limited}; http 429 ${http429}; second user unaffected`
 })
 
-await check('Q2', 'AC4', 'durable pre-auth limit per client address', async () => {
+await check('Q2', 'AC4', 'pre-auth limit: 120 requests per minute per client address, then 429', async () => {
   await new Promise((r) => setTimeout(r, 62_000))
-  let denied = 0
-  for (let i = 0; i < 125; i++) if ((await L.raw(null, { jsonrpc: '2.0', id: i, method: 'tools/list' })).status === 429) denied++
-  expect(denied >= 4, `pre-auth denied ${denied} of 125`)
-  return `denied ${denied} of 125`
+  const statuses: number[] = []
+  for (let i = 0; i < 125; i++) statuses.push((await L.raw(null, { jsonrpc: '2.0', id: i, method: 'tools/list' })).status)
+  const firstDenied = statuses.indexOf(429)
+  const allowed = statuses.filter((s) => s === 401).length
+  expect(allowed >= 118 && allowed <= 120 && firstDenied >= 118 && statuses.slice(0, 100).every((s) => s === 401), `allowed ${allowed}, first denied at ${firstDenied}`)
+  return `first 429 at request ${firstDenied + 1}; ${allowed} challenged; ${125 - allowed} denied`
 })
 
 // ---------- 11. minimal logs ----------
-await check('G1', 'AC6', 'function logs hold no tokens, codes, cursors, authorization ids or health data', async () => {
+await check('G1', 'AC6', 'function logs hold none of the tokens, codes, cursors, authorization ids or user ids the run handled', async () => {
   const path = Deno.env.get('KILO_MCP_FUNCTIONS_LOG')
   expect(path, 'KILO_MCP_FUNCTIONS_LOG unset')
   const log = await Deno.readTextFile(path)
   expect(log.includes('"mcp":'), 'no request log lines found')
-  for (const [name, re] of [['jwt', /eyJ[A-Za-z0-9_-]{10,}/], ['authorization_id', /authorization_id/i], ['marker', /SYN[ABUWQ]|w-SYN|n-SYN/], ['user id', new RegExp(A.userId)], ['cursor', /next_cursor|"cursor"/]] as const) {
+  expect(L.secrets.size > 100, `only ${L.secrets.size} artifacts registered; the scan would be vacuous`)
+  const leaked = [...L.secrets].filter((s) => log.includes(s))
+  expect(leaked.length === 0, `${leaked.length} handled artifacts appear in the log`)
+  for (const [name, re] of [['jwt', /eyJ[A-Za-z0-9_-]{10,}/], ['authorization_id', /authorization_id/i], ['fixture marker', /SYN[ABUWQRDC]|w-SYN|n-SYN/], ['cursor', /next_cursor|"cursor"/]] as const) {
     expect(!re.test(log), `log contains ${name}`)
   }
+  return `${L.secrets.size} handled artifacts absent from the log`
 })
 
 await conn?.close().catch(() => {})

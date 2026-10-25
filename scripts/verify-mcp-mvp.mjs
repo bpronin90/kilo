@@ -8,7 +8,7 @@
 // The run never targets a hosted project: it reads connection details only from the
 // scratch workdir that supabase/functions/mcp/integration/stack.sh created.
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, rmSync, mkdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -61,11 +61,19 @@ function run() {
     console.error(`no stack at ${workdir}; run: bash supabase/functions/mcp/integration/stack.sh up`)
     process.exit(2)
   }
-  const env = { ...process.env }
+  // Local-only: start from a minimal environment so no ambient credentials or hosted
+  // project settings can reach the matrix; the connection comes from stack.env alone.
+  const env = { PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR }
   for (const line of readFileSync(envFile, 'utf8').split('\n')) {
     const m = line.match(/^([A-Z_]+)="?(.*?)"?$/)
     if (m) env[m[1]] = m[2]
   }
+  if (env.API_URL !== 'http://127.0.0.1:56321') {
+    console.error('refusing to run: stack.env does not describe the disposable local stack (API_URL must be http://127.0.0.1:56321)')
+    process.exit(2)
+  }
+  env.KILO_MCP_SHOTS = join(evidence, 'screens')
+  mkdirSync(env.KILO_MCP_SHOTS, { recursive: true })
   env.KILO_MCP_SIGNING_KEYS = join(workdir, 'supabase/signing_keys.json')
   env.KILO_MCP_FUNCTIONS_LOG = join(workdir, 'functions.log')
   env.KILO_MCP_RESULTS = join(workdir, 'results.raw.json')
