@@ -145,7 +145,10 @@ configuration below is separate and is not recorded here as complete.
   `supabase functions deploy <name> --project-ref <ref>`, then confirm with an
   `OPTIONS` request carrying `Origin: https://kilofitnesstracker.com` that the
   response echoes that exact origin with `Vary: Origin`, and that an unauthenticated
-  `POST` still returns 401.
+  `POST` still returns 401. Post to `/functions/v1/<name>`, except
+  `android-restore-credentials`, which only routes `/v1/<route>`: post to
+  `/functions/v1/android-restore-credentials/v1/revoke` (the bare function
+  root returns 404).
 - **Storage and sessions are origin-bound.** `localStorage` and the Supabase
   session on `pages.dev` are invisible to `.com`, and a DNS redirect cannot move
   them. Before switching, signed-in users should confirm their data has synced
