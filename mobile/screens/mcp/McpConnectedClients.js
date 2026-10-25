@@ -27,6 +27,11 @@ export function McpConnectedClients({ userId, client }) {
   const seqRef = useRef(0);
   const userRef = useRef(userId);
   userRef.current = userId;
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const load = useCallback(async () => {
     const seq = ++seqRef.current;
@@ -55,9 +60,12 @@ export function McpConnectedClients({ userId, client }) {
     return () => { seqRef.current += 1; };
   }, [userId, load]);
 
-  const disconnect = useCallback(async (connection) => {
+  // `forUser` is the account that opened the confirmation. The dialog can outlive
+  // an account switch or unmount, so its callback must not revoke anything for a
+  // different (or no) current user.
+  const disconnect = useCallback(async (connection, forUser) => {
+    if (!mountedRef.current || !forUser || userRef.current !== forUser) return;
     const seq = ++seqRef.current;
-    const forUser = userRef.current;
     setPendingId(connection.clientId);
     setNotice('');
     const result = await revokeConnection(client, connection.clientId);
@@ -73,9 +81,10 @@ export function McpConnectedClients({ userId, client }) {
   }, [client]);
 
   const confirmDisconnect = (connection) => {
+    const forUser = userId;
     Alert.alert(COPY.confirmTitle, COPY.confirmBody(connection.name), [
       { text: COPY.cancel, style: 'cancel' },
-      { text: COPY.disconnect, style: 'destructive', onPress: () => disconnect(connection) },
+      { text: COPY.disconnect, style: 'destructive', onPress: () => disconnect(connection, forUser) },
     ]);
   };
 

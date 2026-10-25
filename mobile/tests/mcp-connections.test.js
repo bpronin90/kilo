@@ -174,6 +174,34 @@ describe('McpConnectedClients', () => {
     act(() => tree.unmount());
   });
 
+  test('a confirmation opened by User A cannot revoke after the account switches to User B', async () => {
+    const client = makeClient();
+    const tree = await mount(client, 'user-a');
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'Disconnect Claude Code' }).props.onPress(); });
+    const confirm = Alert.alert.mock.calls[0][2].find((b) => b.text === 'Disconnect');
+    // User B also holds a grant for the same client id.
+    await act(async () => { tree.update(<McpConnectedClients userId="user-b" client={client} />); });
+    await flush();
+    await act(async () => { confirm.onPress(); });
+    await flush();
+    expect(client.auth.oauth.revokeGrant).not.toHaveBeenCalled();
+    expect(textOf(tree.toJSON())).not.toContain('was disconnected');
+    act(() => tree.unmount());
+  });
+
+  test('a confirmation left open across unmount or sign-out revokes nothing', async () => {
+    const client = makeClient();
+    const tree = await mount(client, 'user-a');
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'Disconnect Claude Code' }).props.onPress(); });
+    const confirm = Alert.alert.mock.calls[0][2].find((b) => b.text === 'Disconnect');
+    await act(async () => { tree.update(<McpConnectedClients userId={null} client={client} />); });
+    await act(async () => { confirm.onPress(); });
+    expect(client.auth.oauth.revokeGrant).not.toHaveBeenCalled();
+    act(() => tree.unmount());
+    await act(async () => { confirm.onPress(); });
+    expect(client.auth.oauth.revokeGrant).not.toHaveBeenCalled();
+  });
+
   test('a list response arriving after unmount does not throw or update', async () => {
     const client = makeClient();
     let resolveList;
