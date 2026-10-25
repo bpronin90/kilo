@@ -5,7 +5,7 @@
 // disposable stack. Screenshots hold synthetic data only.
 
 import { chromium } from 'playwright-core'
-import { type Session } from './lib.ts'
+import { remember, type Session } from './lib.ts'
 
 export const WEB = 'http://localhost:8081'
 
@@ -40,6 +40,8 @@ export async function browserDecision(user: Session, authorizationUrl: URL, acti
       callback = route.request().url()
       return route.fulfill({ status: 200, contentType: 'text/html', body: '<p>client callback</p>' })
     })
+    // The authorization id is scrubbed from the page URL but travels in the Auth API paths.
+    page.on('request', (req) => { const m = req.url().match(/\/oauth\/authorizations\/([A-Za-z0-9]+)/); if (m) remember(m[1]) })
     const shot = async (name: string) => { if (shotsDir) await page.screenshot({ path: `${shotsDir}/${prefix}-${name}.png` }) }
 
     await page.goto(authorizationUrl.toString())

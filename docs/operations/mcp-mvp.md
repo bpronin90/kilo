@@ -159,8 +159,8 @@ dates and the lb-only unit; empty snapshots; cross-user cursors and arguments; d
 table, write, withdrawal and other-function attempts with an OAuth token; eleven bad
 token shapes; denied OAuth request; missing consent; refresh; disconnect and replay of
 an unexpired token; withdrawal before purge, regrant and reconnect; deleted account;
-gate, consent, session, page-RPC and limiter outages (each proving through function-call counters that no data RPC ran); a slow database; request-size,
-batch and method limits; per-user, data-quota and pre-auth rate limits; and a log scan.
+gate, consent, session, page-RPC and limiter outages (the first three prove through function-call counters that no data RPC ran; the page-RPC and limiter cases check the fixed error and the fail-closed 429); a slow database; request-size,
+batch and method limits; per-user, data-quota (with a second user unaffected) and pre-auth rate limits (one shared gateway address, so per-address isolation is not tested); and a log scan.
 
 ### Connecting a client (user guide)
 

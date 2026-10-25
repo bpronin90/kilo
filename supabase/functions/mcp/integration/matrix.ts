@@ -539,20 +539,24 @@ await check('Q1', 'AC4', 'per-user limits: the data quota and HTTP limit stop on
   for (let i = 0; i < 40; i++) if ((await L.call(t, 'whoami')).status === 429) http429++
   expect(http429 >= 1, 'per-user HTTP limit never applied')
   const other = await L.connect(await L.createUser('quota2').then(async (u) => { await L.grantConsent(u); return u }))
-  expect(other.kind === 'connected' && ok(await L.call(other.connection.accessToken(), 'whoami')), 'a second user was limited by the first user\'s traffic')
+  expect(other.kind === 'connected', 'no connection for the second user')
+  // The first user is out of data quota; a second user's own data reads must still be served.
+  const second = await L.call(other.connection.accessToken(), 'weight_entries_list', { limit: 1 })
+  expect(ok(second) && !L.isToolError(second, 'rate_limited') && ok(await L.call(other.connection.accessToken(), 'whoami')), 'a second user was limited by the first user\'s traffic')
   if (other.kind === 'connected') await other.connection.close()
   await o.connection.close()
   return `data served ${served} limited ${limited}; http 429 ${http429}; second user unaffected`
 })
 
-await check('Q2', 'AC4', 'pre-auth limit: 120 requests per minute per client address, then 429', async () => {
+await check('Q2', 'AC4', 'pre-auth limit: about 120 requests a minute from one address are challenged, then 429 (every caller shares the gateway address, so per-address isolation is not tested)', async () => {
   await new Promise((r) => setTimeout(r, 62_000))
   const statuses: number[] = []
   for (let i = 0; i < 125; i++) statuses.push((await L.raw(null, { jsonrpc: '2.0', id: i, method: 'tools/list' })).status)
   const firstDenied = statuses.indexOf(429)
   const allowed = statuses.filter((s) => s === 401).length
-  expect(allowed >= 118 && allowed <= 120 && firstDenied >= 118 && statuses.slice(0, 100).every((s) => s === 401), `allowed ${allowed}, first denied at ${firstDenied}`)
-  return `first 429 at request ${firstDenied + 1}; ${allowed} challenged; ${125 - allowed} denied`
+  expect(statuses.every((s) => s === 401 || s === 429), `unexpected statuses ${[...new Set(statuses)]}`)
+  expect(allowed >= 118 && allowed <= 120 && firstDenied === allowed && statuses.slice(firstDenied).every((s) => s === 429), `allowed ${allowed}, first denied at ${firstDenied}, denials not a contiguous suffix`)
+  return `first 429 at request ${firstDenied + 1}; ${allowed} challenged; ${125 - firstDenied} got 429`
 })
 
 // ---------- 11. minimal logs ----------

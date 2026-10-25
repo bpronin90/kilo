@@ -31,7 +31,7 @@ export const CONSENT_CATALOG_REVISION = 1
 // Every credential or protocol artifact the run handles, so the log scan (case G1) can
 // look for the real values instead of guessing at their shape.
 export const secrets = new Set<string>()
-const remember = (...values: unknown[]) => { for (const v of values) if (typeof v === 'string' && v.length >= 8) secrets.add(v) }
+export const remember = (...values: unknown[]) => { for (const v of values) if (typeof v === 'string' && v.length >= 8) secrets.add(v) }
 
 export interface Session {
   userId: string
@@ -357,7 +357,9 @@ export async function refresh(clientId: string, refreshToken: string) {
     headers: { 'content-type': 'application/x-www-form-urlencoded', apikey: ANON_KEY },
     body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId }),
   })
-  return { status: res.status, body: await json(res) }
+  const body = await json(res)
+  remember(body?.access_token, body?.refresh_token)
+  return { status: res.status, body }
 }
 
 // ---- result recording ----
