@@ -1,0 +1,901 @@
+{
+  "errors": [],
+  "measurements": [
+    {
+      "screen": "log",
+      "width": 320,
+      "mode": "light",
+      "stress": false,
+      "rail": {
+        "x": 34,
+        "y": 464,
+        "width": 244,
+        "height": 48,
+        "right": 278
+      },
+      "scrollWidth": 244,
+      "groups": [
+        {
+          "text": "95 lb10",
+          "x": 34,
+          "y": 464,
+          "width": 77.375,
+          "height": 24,
+          "right": 111.375,
+          "children": [
+            {
+              "text": "95 lb",
+              "x": 34,
+              "y": 464,
+              "width": 52.40625,
+              "height": 24,
+              "right": 86.40625
+            },
+            {
+              "text": "10",
+              "x": 90.40625,
+              "y": 464,
+              "width": 20.96875,
+              "height": 24,
+              "right": 111.375
+            }
+          ]
+        },
+        {
+          "text": "195 lb6, 6",
+          "x": 127.375,
+          "y": 464,
+          "width": 108.8125,
+          "height": 24,
+          "right": 236.1875,
+          "children": [
+            {
+              "text": "195 lb",
+              "x": 127.375,
+              "y": 464,
+              "width": 62.890625,
+              "height": 24,
+              "right": 190.265625
+            },
+            {
+              "text": "6, 6",
+              "x": 194.265625,
+              "y": 464,
+              "width": 41.921875,
+              "height": 24,
+              "right": 236.1875
+            }
+          ]
+        },
+        {
+          "text": "185 lb8",
+          "x": 34,
+          "y": 488,
+          "width": 77.375,
+          "height": 24,
+          "right": 111.375,
+          "children": [
+            {
+              "text": "185 lb",
+              "x": 34,
+              "y": 488,
+              "width": 62.890625,
+              "height": 24,
+              "right": 96.890625
+            },
+            {
+              "text": "8",
+              "x": 100.890625,
+              "y": 488,
+              "width": 10.484375,
+              "height": 24,
+              "right": 111.375
+            }
+          ]
+        },
+        {
+          "text": "LAST",
+          "x": 127.375,
+          "y": 493,
+          "width": 42,
+          "height": 18,
+          "right": 169.375,
+          "children": [
+            {
+              "text": "LAST",
+              "x": 133.375,
+              "y": 495,
+              "width": 30,
+              "height": 14,
+              "right": 163.375
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "screen": "history",
+      "width": 320,
+      "mode": "light",
+      "stress": false,
+      "rail": {
+        "x": 57,
+        "y": 574,
+        "width": 238,
+        "height": 48,
+        "right": 295
+      },
+      "scrollWidth": 238,
+      "groups": [
+        {
+          "text": "95 lb10",
+          "x": 57,
+          "y": 574,
+          "width": 77.375,
+          "height": 24,
+          "right": 134.375,
+          "children": [
+            {
+              "text": "95 lb",
+              "x": 57,
+              "y": 574,
+              "width": 52.40625,
+              "height": 24,
+              "right": 109.40625
+            },
+            {
+              "text": "10",
+              "x": 113.40625,
+              "y": 574,
+              "width": 20.96875,
+              "height": 24,
+              "right": 134.375
+            }
+          ]
+        },
+        {
+          "text": "195 lb6, 6",
+          "x": 150.375,
+          "y": 574,
+          "width": 108.8125,
+          "height": 24,
+          "right": 259.1875,
+          "children": [
+            {
+              "text": "195 lb",
+              "x": 150.375,
+              "y": 574,
+              "width": 62.890625,
+              "height": 24,
+              "right": 213.265625
+            },
+            {
+              "text": "6, 6",
+              "x": 217.265625,
+              "y": 574,
+              "width": 41.921875,
+              "height": 24,
+              "right": 259.1875
+            }
+          ]
+        },
+        {
+          "text": "185 lb8",
+          "x": 57,
+          "y": 598,
+          "width": 77.375,
+          "height": 24,
+          "right": 134.375,
+          "children": [
+            {
+              "text": "185 lb",
+              "x": 57,
+              "y": 598,
+              "width": 62.890625,
+              "height": 24,
+              "right": 119.890625
+            },
+            {
+              "text": "8",
+              "x": 123.890625,
+              "y": 598,
+              "width": 10.484375,
+              "height": 24,
+              "right": 134.375
+            }
+          ]
+        },
+        {
+          "text": "LAST",
+          "x": 150.375,
+          "y": 603,
+          "width": 42,
+          "height": 18,
+          "right": 192.375,
+          "children": [
+            {
+              "text": "LAST",
+              "x": 156.375,
+              "y": 605,
+              "width": 30,
+              "height": 14,
+              "right": 186.375
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "screen": "log",
+      "width": 320,
+      "mode": "dark",
+      "stress": false,
+      "rail": {
+        "x": 34,
+        "y": 464,
+        "width": 244,
+        "height": 48,
+        "right": 278
+      },
+      "scrollWidth": 244,
+      "groups": [
+        {
+          "text": "95 lb10",
+          "x": 34,
+          "y": 464,
+          "width": 77.375,
+          "height": 24,
+          "right": 111.375,
+          "children": [
+            {
+              "text": "95 lb",
+              "x": 34,
+              "y": 464,
+              "width": 52.40625,
+              "height": 24,
+              "right": 86.40625
+            },
+            {
+              "text": "10",
+              "x": 90.40625,
+              "y": 464,
+              "width": 20.96875,
+              "height": 24,
+              "right": 111.375
+            }
+          ]
+        },
+        {
+          "text": "195 lb6, 6",
+          "x": 127.375,
+          "y": 464,
+          "width": 108.8125,
+          "height": 24,
+          "right": 236.1875,
+          "children": [
+            {
+              "text": "195 lb",
+              "x": 127.375,
+              "y": 464,
+              "width": 62.890625,
+              "height": 24,
+              "right": 190.265625
+            },
+            {
+              "text": "6, 6",
+              "x": 194.265625,
+              "y": 464,
+              "width": 41.921875,
+              "height": 24,
+              "right": 236.1875
+            }
+          ]
+        },
+        {
+          "text": "185 lb8",
+          "x": 34,
+          "y": 488,
+          "width": 77.375,
+          "height": 24,
+          "right": 111.375,
+          "children": [
+            {
+              "text": "185 lb",
+              "x": 34,
+              "y": 488,
+              "width": 62.890625,
+              "height": 24,
+              "right": 96.890625
+            },
+            {
+              "text": "8",
+              "x": 100.890625,
+              "y": 488,
+              "width": 10.484375,
+              "height": 24,
+              "right": 111.375
+            }
+          ]
+        },
+        {
+          "text": "LAST",
+          "x": 127.375,
+          "y": 493,
+          "width": 42,
+          "height": 18,
+          "right": 169.375,
+          "children": [
+            {
+              "text": "LAST",
+              "x": 133.375,
+              "y": 495,
+              "width": 30,
+              "height": 14,
+              "right": 163.375
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "screen": "history",
+      "width": 320,
+      "mode": "dark",
+      "stress": false,
+      "rail": {
+        "x": 57,
+        "y": 574,
+        "width": 238,
+        "height": 48,
+        "right": 295
+      },
+      "scrollWidth": 238,
+      "groups": [
+        {
+          "text": "95 lb10",
+          "x": 57,
+          "y": 574,
+          "width": 77.375,
+          "height": 24,
+          "right": 134.375,
+          "children": [
+            {
+              "text": "95 lb",
+              "x": 57,
+              "y": 574,
+              "width": 52.40625,
+              "height": 24,
+              "right": 109.40625
+            },
+            {
+              "text": "10",
+              "x": 113.40625,
+              "y": 574,
+              "width": 20.96875,
+              "height": 24,
+              "right": 134.375
+            }
+          ]
+        },
+        {
+          "text": "195 lb6, 6",
+          "x": 150.375,
+          "y": 574,
+          "width": 108.8125,
+          "height": 24,
+          "right": 259.1875,
+          "children": [
+            {
+              "text": "195 lb",
+              "x": 150.375,
+              "y": 574,
+              "width": 62.890625,
+              "height": 24,
+              "right": 213.265625
+            },
+            {
+              "text": "6, 6",
+              "x": 217.265625,
+              "y": 574,
+              "width": 41.921875,
+              "height": 24,
+              "right": 259.1875
+            }
+          ]
+        },
+        {
+          "text": "185 lb8",
+          "x": 57,
+          "y": 598,
+          "width": 77.375,
+          "height": 24,
+          "right": 134.375,
+          "children": [
+            {
+              "text": "185 lb",
+              "x": 57,
+              "y": 598,
+              "width": 62.890625,
+              "height": 24,
+              "right": 119.890625
+            },
+            {
+              "text": "8",
+              "x": 123.890625,
+              "y": 598,
+              "width": 10.484375,
+              "height": 24,
+              "right": 134.375
+            }
+          ]
+        },
+        {
+          "text": "LAST",
+          "x": 150.375,
+          "y": 603,
+          "width": 42,
+          "height": 18,
+          "right": 192.375,
+          "children": [
+            {
+              "text": "LAST",
+              "x": 156.375,
+              "y": 605,
+              "width": 30,
+              "height": 14,
+              "right": 186.375
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "screen": "log",
+      "width": 390,
+      "mode": "light",
+      "stress": false,
+      "rail": {
+        "x": 34,
+        "y": 464,
+        "width": 314,
+        "height": 42,
+        "right": 348
+      },
+      "scrollWidth": 314,
+      "groups": [
+        {
+          "text": "95 lb10",
+          "x": 34,
+          "y": 464,
+          "width": 77.375,
+          "height": 24,
+          "right": 111.375,
+          "children": [
+            {
+              "text": "95 lb",
+              "x": 34,
+              "y": 464,
+              "width": 52.40625,
+              "height": 24,
+              "right": 86.40625
+            },
+            {
+              "text": "10",
+              "x": 90.40625,
+              "y": 464,
+              "width": 20.96875,
+              "height": 24,
+              "right": 111.375
+            }
+          ]
+        },
+        {
+          "text": "195 lb6, 6",
+          "x": 127.375,
+          "y": 464,
+          "width": 108.8125,
+          "height": 24,
+          "right": 236.1875,
+          "children": [
+            {
+              "text": "195 lb",
+              "x": 127.375,
+              "y": 464,
+              "width": 62.890625,
+              "height": 24,
+              "right": 190.265625
+            },
+            {
+              "text": "6, 6",
+              "x": 194.265625,
+              "y": 464,
+              "width": 41.921875,
+              "height": 24,
+              "right": 236.1875
+            }
+          ]
+        },
+        {
+          "text": "185 lb8",
+          "x": 252.1875,
+          "y": 464,
+          "width": 77.375,
+          "height": 24,
+          "right": 329.5625,
+          "children": [
+            {
+              "text": "185 lb",
+              "x": 252.1875,
+              "y": 464,
+              "width": 62.890625,
+              "height": 24,
+              "right": 315.078125
+            },
+            {
+              "text": "8",
+              "x": 319.078125,
+              "y": 464,
+              "width": 10.484375,
+              "height": 24,
+              "right": 329.5625
+            }
+          ]
+        },
+        {
+          "text": "LAST",
+          "x": 34,
+          "y": 488,
+          "width": 42,
+          "height": 18,
+          "right": 76,
+          "children": [
+            {
+              "text": "LAST",
+              "x": 40,
+              "y": 490,
+              "width": 30,
+              "height": 14,
+              "right": 70
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "screen": "history",
+      "width": 390,
+      "mode": "light",
+      "stress": false,
+      "rail": {
+        "x": 57,
+        "y": 580,
+        "width": 308,
+        "height": 42,
+        "right": 365
+      },
+      "scrollWidth": 308,
+      "groups": [
+        {
+          "text": "95 lb10",
+          "x": 57,
+          "y": 580,
+          "width": 77.375,
+          "height": 24,
+          "right": 134.375,
+          "children": [
+            {
+              "text": "95 lb",
+              "x": 57,
+              "y": 580,
+              "width": 52.40625,
+              "height": 24,
+              "right": 109.40625
+            },
+            {
+              "text": "10",
+              "x": 113.40625,
+              "y": 580,
+              "width": 20.96875,
+              "height": 24,
+              "right": 134.375
+            }
+          ]
+        },
+        {
+          "text": "195 lb6, 6",
+          "x": 150.375,
+          "y": 580,
+          "width": 108.8125,
+          "height": 24,
+          "right": 259.1875,
+          "children": [
+            {
+              "text": "195 lb",
+              "x": 150.375,
+              "y": 580,
+              "width": 62.890625,
+              "height": 24,
+              "right": 213.265625
+            },
+            {
+              "text": "6, 6",
+              "x": 217.265625,
+              "y": 580,
+              "width": 41.921875,
+              "height": 24,
+              "right": 259.1875
+            }
+          ]
+        },
+        {
+          "text": "185 lb8",
+          "x": 275.1875,
+          "y": 580,
+          "width": 77.375,
+          "height": 24,
+          "right": 352.5625,
+          "children": [
+            {
+              "text": "185 lb",
+              "x": 275.1875,
+              "y": 580,
+              "width": 62.890625,
+              "height": 24,
+              "right": 338.078125
+            },
+            {
+              "text": "8",
+              "x": 342.078125,
+              "y": 580,
+              "width": 10.484375,
+              "height": 24,
+              "right": 352.5625
+            }
+          ]
+        },
+        {
+          "text": "LAST",
+          "x": 57,
+          "y": 604,
+          "width": 42,
+          "height": 18,
+          "right": 99,
+          "children": [
+            {
+              "text": "LAST",
+              "x": 63,
+              "y": 606,
+              "width": 30,
+              "height": 14,
+              "right": 93
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "screen": "log",
+      "width": 390,
+      "mode": "dark",
+      "stress": false,
+      "rail": {
+        "x": 34,
+        "y": 464,
+        "width": 314,
+        "height": 42,
+        "right": 348
+      },
+      "scrollWidth": 314,
+      "groups": [
+        {
+          "text": "95 lb10",
+          "x": 34,
+          "y": 464,
+          "width": 77.375,
+          "height": 24,
+          "right": 111.375,
+          "children": [
+            {
+              "text": "95 lb",
+              "x": 34,
+              "y": 464,
+              "width": 52.40625,
+              "height": 24,
+              "right": 86.40625
+            },
+            {
+              "text": "10",
+              "x": 90.40625,
+              "y": 464,
+              "width": 20.96875,
+              "height": 24,
+              "right": 111.375
+            }
+          ]
+        },
+        {
+          "text": "195 lb6, 6",
+          "x": 127.375,
+          "y": 464,
+          "width": 108.8125,
+          "height": 24,
+          "right": 236.1875,
+          "children": [
+            {
+              "text": "195 lb",
+              "x": 127.375,
+              "y": 464,
+              "width": 62.890625,
+              "height": 24,
+              "right": 190.265625
+            },
+            {
+              "text": "6, 6",
+              "x": 194.265625,
+              "y": 464,
+              "width": 41.921875,
+              "height": 24,
+              "right": 236.1875
+            }
+          ]
+        },
+        {
+          "text": "185 lb8",
+          "x": 252.1875,
+          "y": 464,
+          "width": 77.375,
+          "height": 24,
+          "right": 329.5625,
+          "children": [
+            {
+              "text": "185 lb",
+              "x": 252.1875,
+              "y": 464,
+              "width": 62.890625,
+              "height": 24,
+              "right": 315.078125
+            },
+            {
+              "text": "8",
+              "x": 319.078125,
+              "y": 464,
+              "width": 10.484375,
+              "height": 24,
+              "right": 329.5625
+            }
+          ]
+        },
+        {
+          "text": "LAST",
+          "x": 34,
+          "y": 488,
+          "width": 42,
+          "height": 18,
+          "right": 76,
+          "children": [
+            {
+              "text": "LAST",
+              "x": 40,
+              "y": 490,
+              "width": 30,
+              "height": 14,
+              "right": 70
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "screen": "history",
+      "width": 390,
+      "mode": "dark",
+      "stress": false,
+      "rail": {
+        "x": 57,
+        "y": 580,
+        "width": 308,
+        "height": 42,
+        "right": 365
+      },
+      "scrollWidth": 308,
+      "groups": [
+        {
+          "text": "95 lb10",
+          "x": 57,
+          "y": 580,
+          "width": 77.375,
+          "height": 24,
+          "right": 134.375,
+          "children": [
+            {
+              "text": "95 lb",
+              "x": 57,
+              "y": 580,
+              "width": 52.40625,
+              "height": 24,
+              "right": 109.40625
+            },
+            {
+              "text": "10",
+              "x": 113.40625,
+              "y": 580,
+              "width": 20.96875,
+              "height": 24,
+              "right": 134.375
+            }
+          ]
+        },
+        {
+          "text": "195 lb6, 6",
+          "x": 150.375,
+          "y": 580,
+          "width": 108.8125,
+          "height": 24,
+          "right": 259.1875,
+          "children": [
+            {
+              "text": "195 lb",
+              "x": 150.375,
+              "y": 580,
+              "width": 62.890625,
+              "height": 24,
+              "right": 213.265625
+            },
+            {
+              "text": "6, 6",
+              "x": 217.265625,
+              "y": 580,
+              "width": 41.921875,
+              "height": 24,
+              "right": 259.1875
+            }
+          ]
+        },
+        {
+          "text": "185 lb8",
+          "x": 275.1875,
+          "y": 580,
+          "width": 77.375,
+          "height": 24,
+          "right": 352.5625,
+          "children": [
+            {
+              "text": "185 lb",
+              "x": 275.1875,
+              "y": 580,
+              "width": 62.890625,
+              "height": 24,
+              "right": 338.078125
+            },
+            {
+              "text": "8",
+              "x": 342.078125,
+              "y": 580,
+              "width": 10.484375,
+              "height": 24,
+              "right": 352.5625
+            }
+          ]
+        },
+        {
+          "text": "LAST",
+          "x": 57,
+          "y": 604,
+          "width": 42,
+          "height": 18,
+          "right": 99,
+          "children": [
+            {
+              "text": "LAST",
+              "x": 63,
+              "y": 606,
+              "width": 30,
+              "height": 14,
+              "right": 93
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,125 @@
+{
+  "errors": [],
+  "measurements": [
+    {
+      "screen": "log",
+      "width": 320,
+      "mode": "dark",
+      "stress": true,
+      "rail": {
+        "x": 34,
+        "y": 772,
+        "width": 244,
+        "height": 320,
+        "right": 278
+      },
+      "scrollWidth": 244,
+      "groups": [
+        {
+          "text": "187 lb (85kg)8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8",
+          "x": 34,
+          "y": 772,
+          "width": 244,
+          "height": 288,
+          "right": 278,
+          "children": [
+            {
+              "text": "187 lb (85kg)",
+              "x": 34,
+              "y": 772,
+              "width": 244,
+              "height": 96,
+              "right": 278
+            },
+            {
+              "text": "8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8",
+              "x": 34,
+              "y": 868,
+              "width": 244,
+              "height": 192,
+              "right": 278
+            }
+          ]
+        },
+        {
+          "text": "LAST",
+          "x": 34,
+          "y": 1060,
+          "width": 68.40625,
+          "height": 32,
+          "right": 102.40625,
+          "children": [
+            {
+              "text": "LAST",
+              "x": 40,
+              "y": 1062,
+              "width": 56.40625,
+              "height": 28,
+              "right": 96.40625
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "screen": "history",
+      "width": 320,
+      "mode": "dark",
+      "stress": true,
+      "rail": {
+        "x": 57,
+        "y": 477.921875,
+        "width": 238,
+        "height": 320,
+        "right": 295
+      },
+      "scrollWidth": 238,
+      "groups": [
+        {
+          "text": "187 lb (85kg)8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8",
+          "x": 57,
+          "y": 477.921875,
+          "width": 238,
+          "height": 288,
+          "right": 295,
+          "children": [
+            {
+              "text": "187 lb (85kg)",
+              "x": 57,
+              "y": 477.921875,
+              "width": 238,
+              "height": 96,
+              "right": 295
+            },
+            {
+              "text": "8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8",
+              "x": 57,
+              "y": 573.921875,
+              "width": 238,
+              "height": 192,
+              "right": 295
+            }
+          ]
+        },
+        {
+          "text": "LAST",
+          "x": 57,
+          "y": 765.921875,
+          "width": 68.40625,
+          "height": 32,
+          "right": 125.40625,
+          "children": [
+            {
+              "text": "LAST",
+              "x": 63,
+              "y": 767.921875,
+              "width": 56.40625,
+              "height": 28,
+              "right": 119.40625
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
