@@ -39,7 +39,7 @@ function textOf(node) {
 
 async function mount(client, userId = 'user-a') {
   let tree;
-  await act(async () => { tree = renderer.create(<McpConnectedClients userId={userId} getClient={() => client} />); });
+  await act(async () => { tree = renderer.create(<McpConnectedClients userId={userId} client={client} />); });
   await flush();
   return tree;
 }
@@ -166,7 +166,7 @@ describe('McpConnectedClients', () => {
     act(() => { tree.root.findByProps({ accessibilityLabel: 'Disconnect Claude Code' }).props.onPress(); });
     await act(async () => { Alert.alert.mock.calls[0][2].find((b) => b.text === 'Disconnect').onPress(); });
     client.auth.oauth.listGrants.mockResolvedValue({ data: [], error: null });
-    await act(async () => { tree.update(<McpConnectedClients userId="user-b" getClient={() => client} />); });
+    await act(async () => { tree.update(<McpConnectedClients userId="user-b" client={client} />); });
     await flush();
     await act(async () => { resolveRevoke({ data: null, error: null }); });
     await flush();

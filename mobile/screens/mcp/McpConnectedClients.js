@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Button } from '../../components/UI';
 import { Alert } from '../../lib/platformAlert';
-import { getSupabaseClient } from '../../lib/supabaseClient';
 import { listConnections, revokeConnection } from '../../lib/mcpAuthorization';
 import { useThemedStyles } from '../../theme/ThemeContext';
 import { TYPOGRAPHY } from '../../theme/typography';
@@ -18,7 +17,8 @@ import { CONNECTIONS_COPY as COPY } from './mcpCopy';
 // With no grants and no load error the section renders nothing, so accounts that
 // never used the feature (and builds whose Auth project has no OAuth server) see
 // no change in Account.
-export function McpConnectedClients({ userId, getClient = getSupabaseClient }) {
+// `client` is a test seam; the lib wrappers default to the app's Auth client.
+export function McpConnectedClients({ userId, client }) {
   const styles = useThemedStyles(createStyles);
   const [loadState, setLoadState] = useState('loading');
   const [connections, setConnections] = useState([]);
@@ -32,7 +32,7 @@ export function McpConnectedClients({ userId, getClient = getSupabaseClient }) {
     const seq = ++seqRef.current;
     const forUser = userRef.current;
     setLoadState('loading');
-    const result = await listConnections(getClient());
+    const result = await listConnections(client);
     if (seq !== seqRef.current || userRef.current !== forUser) return;
     if (result.ok) {
       setConnections(result.connections);
@@ -41,7 +41,7 @@ export function McpConnectedClients({ userId, getClient = getSupabaseClient }) {
       setConnections([]);
       setLoadState('failed');
     }
-  }, [getClient]);
+  }, [client]);
 
   useEffect(() => {
     setConnections([]);
@@ -60,7 +60,7 @@ export function McpConnectedClients({ userId, getClient = getSupabaseClient }) {
     const forUser = userRef.current;
     setPendingId(connection.clientId);
     setNotice('');
-    const result = await revokeConnection(getClient(), connection.clientId);
+    const result = await revokeConnection(client, connection.clientId);
     if (seq !== seqRef.current || userRef.current !== forUser) return;
     setPendingId(null);
     if (!result.ok) {
@@ -70,7 +70,7 @@ export function McpConnectedClients({ userId, getClient = getSupabaseClient }) {
     // Only now, after the server confirmed, does the row leave the list.
     setConnections((prev) => prev.filter((item) => item.clientId !== connection.clientId));
     setNotice(COPY.revoked(connection.name));
-  }, [getClient]);
+  }, [client]);
 
   const confirmDisconnect = (connection) => {
     Alert.alert(COPY.confirmTitle, COPY.confirmBody(connection.name), [

@@ -11,6 +11,8 @@
 // Nothing here logs or reports. The authorization id is the only request detail
 // persisted, and only in sessionStorage for the approved TTL.
 
+import { getSupabaseClient } from './supabaseClient';
+
 export const AUTHORIZATION_PATH = '/oauth/consent';
 export const PENDING_STORAGE_KEY = 'kilo.mcp.pendingAuthorization';
 // Matches the authorization-code lifetime (contract F10).
@@ -184,7 +186,7 @@ export async function submitAuthorizationDecision(client, authorizationId, appro
   }
 }
 
-export async function listConnections(client) {
+export async function listConnections(client = getSupabaseClient()) {
   const api = oauthApi(client);
   if (!api) return { ok: false };
   try {
@@ -206,7 +208,7 @@ export async function listConnections(client) {
 }
 
 // Success is reported only after Auth resolves without an error.
-export async function revokeConnection(client, clientId) {
+export async function revokeConnection(client = getSupabaseClient(), clientId) {
   const api = oauthApi(client);
   if (!api || typeof clientId !== 'string' || !clientId) return { ok: false };
   try {
