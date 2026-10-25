@@ -86,3 +86,25 @@ establish compatibility with another.
 Production blockers PB-1–PB-4 and open decision OD-1 in the architecture contract
 require a separate impact assessment with the co-tenant and explicit operator
 approval. This MVP does not authorize them.
+
+## F. Browser authorization and disconnect (#1626)
+
+The web app serves `/oauth/consent?authorization_id=<id>` from the SPA fallback
+(no `_redirects` file; Pages ignores that rule as a loop). The id is validated,
+kept in `sessionStorage` for 10 minutes (key `kilo.mcp.pendingAuthorization`),
+and removed from the visible URL. Nothing else about the request is stored,
+logged or sent to analytics. Approve/Deny call Auth with
+`skipBrowserRedirect: true` and Kilo navigates only to the returned URL when it is
+`https:` or loopback `http:`. Account → Connected AI clients lists `listGrants()`
+and calls `revokeGrant({ clientId })` for one client after an explicit
+confirmation; success shows only after Auth confirms.
+
+Evidence and capture steps: `docs/evidence/mcp-authorization/README.md`.
+
+Probe P5 (local stack, GoTrue v2.192.0, 2026-10-25): after a client was approved,
+a second authorization request from the same client returned only a
+`redirect_url` from `getAuthorizationDetails`, with no consent details. Auth
+therefore remembers approvals; the page follows that redirect (when safe) without
+showing the disclosure again. OD-1 is resolved: **accept** (operator decision on
+#1626). No grant revocation is added to the withdrawal flow, and enforcement
+(`consent_stale`, the session gate) is unaffected.

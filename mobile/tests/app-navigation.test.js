@@ -86,6 +86,14 @@ jest.mock('../hooks/entries/weightHooks', () => ({
 
 jest.mock('../hooks/useEntries');
 
+// The MCP authorization route (#1626) renders the existing sign-in surface for a
+// signed-out user; its own behavior is covered in account-lifecycle-ui.test.js.
+jest.mock('../screens/more/AccountScreen', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return { AccountScreen: () => React.createElement(View, { testID: 'account-sign-in' }) };
+});
+
 jest.mock('../components/ScreenShell', () => {
   const React = require('react');
   const { View } = require('react-native');
@@ -718,5 +726,65 @@ describe('App shell top safe-area inset (#1125)', () => {
     // used StatusBar.currentHeight || 30, which gives 30 in test env (currentHeight
     // is undefined). Seeing 0 confirms the inset context path is taken.
     expect(style.paddingTop).toBe(0);
+  });
+});
+
+describe('MCP authorization route (#1626)', () => {
+  let component;
+  let originalOS;
+  let originalWindow;
+  let backHandlerSpy;
+
+  function mount(location) {
+    global.window = { location, history: { replaceState: jest.fn() } };
+    global.sessionStorage = { getItem: () => null, setItem: jest.fn(), removeItem: jest.fn() };
+    renderer.act(() => { component = renderer.create(<App />); });
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(MOCK_NOW);
+    originalOS = Platform.OS;
+    originalWindow = global.window;
+    Platform.OS = 'web';
+    backHandlerSpy = jest.spyOn(BackHandler, 'addEventListener').mockImplementation(
+      (_event, handler) => ({ remove: jest.fn(), handler })
+    );
+    useEntries.useWeightEntries.mockReturnValue({ entries: [], loading: false, refresh: jest.fn(), remove: jest.fn(), update: jest.fn() });
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [], currentId: null, currentNote: null, deloadNotes: [], loading: false, error: null,
+      refresh: jest.fn(), selectCurrent: jest.fn(), update: jest.fn(), add: jest.fn(), remove: jest.fn(),
+    });
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: { raw_text: '' }, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+    useEntries.useUserProfile.mockReturnValue(null);
+    useEntries.useAutoSync.mockReturnValue({});
+  });
+
+  afterEach(() => {
+    renderer.act(() => { component?.unmount(); });
+    component = null;
+    backHandlerSpy.mockRestore();
+    Platform.OS = originalOS;
+    global.window = originalWindow;
+    delete global.sessionStorage;
+    jest.useRealTimers();
+  });
+
+  test('the authorization URL renders the request surface over the still-mounted tabs', () => {
+    mount({ pathname: '/oauth/consent', search: '?authorization_id=abc123', href: 'http://localhost/oauth/consent?authorization_id=abc123' });
+    const tree = component.toJSON();
+    expect(findByTestID(tree, 'mcp-authorization-screen')).not.toBeNull();
+    expect(findByTestID(tree, 'tab-content-Home')).not.toBeNull();
+  });
+
+  test('any other URL leaves the shell untouched', () => {
+    mount({ pathname: '/', search: '', href: 'http://localhost/' });
+    expect(findByTestID(component.toJSON(), 'mcp-authorization-screen')).toBeNull();
+    expect(findByTestID(component.toJSON(), 'tab-content-Home')).not.toBeNull();
   });
 });
