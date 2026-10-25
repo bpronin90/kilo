@@ -41,6 +41,47 @@ verify_dependency_lock() {
     || die "supabase/functions/deno.json (pinned import map) not found; refusing an unpinned deploy."
   [[ -s "supabase/functions/deno.lock" ]] \
     || die "supabase/functions/deno.lock not found or empty; refusing to deploy with floating dependencies."
+
+  # The CLI bundler does not fail on an incomplete lock: it silently resolves
+  # whatever the lock leaves out from floating ranges. Require the lock to cover
+  # every pinned import, every npm dependency edge and every remote import of
+  # the deployed entrypoints, so a stale or truncated lock stops the deploy.
+  node - "${FUNCTIONS[@]}" <<'NODE' \
+    || die "supabase/functions/deno.lock is incomplete or stale; regenerate it and review the dependency diff (docs/testing/automated-tests.md)."
+const fs = require('node:fs');
+const fail = (message) => { process.stderr.write(`${message}\n`); process.exit(1); };
+let config; let lock;
+try {
+  config = JSON.parse(fs.readFileSync('supabase/functions/deno.json', 'utf8'));
+  lock = JSON.parse(fs.readFileSync('supabase/functions/deno.lock', 'utf8'));
+} catch { fail('Dependency configuration or lock is not valid JSON.'); }
+const specifiers = lock.specifiers ?? {};
+const npm = lock.npm ?? {};
+const remote = lock.remote ?? {};
+const npmKeys = Object.keys(npm);
+for (const [alias, target] of Object.entries(config.imports ?? {})) {
+  if (!target.startsWith('npm:')) continue;
+  const resolved = specifiers[target];
+  if (!resolved) fail(`Lock does not resolve ${alias} (${target}).`);
+  if (!npmKeys.some((key) => key === `${target.slice(4).replace(/@[^@]*$/, '')}@${resolved.split('_')[0]}`)) {
+    fail(`Lock has no package entry for ${target}.`);
+  }
+}
+for (const [key, entry] of Object.entries(npm)) {
+  if (typeof entry.integrity !== 'string' || !entry.integrity.startsWith('sha512-')) fail(`Lock entry lacks integrity: ${key}.`);
+  for (const dependency of entry.dependencies ?? []) {
+    const exact = dependency.lastIndexOf('@') > 0;
+    const found = exact ? npm[dependency] !== undefined : npmKeys.some((candidate) => candidate.slice(0, candidate.lastIndexOf('@')) === dependency);
+    if (!found) fail(`Lock entry ${key} depends on ${dependency}, which the lock does not contain.`);
+  }
+}
+for (const name of process.argv.slice(2)) {
+  const source = fs.readFileSync(`supabase/functions/${name}/index.ts`, 'utf8');
+  for (const match of source.matchAll(/from\s+'(https:\/\/[^']+)'/g)) {
+    if (!remote[match[1]]) fail(`Lock has no integrity for ${match[1]} imported by ${name}.`);
+  }
+}
+NODE
 }
 
 verify_functions_active() {

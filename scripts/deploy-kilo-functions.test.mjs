@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -27,13 +27,20 @@ function run({ functions = activeFunctions, secrets = JSON.stringify(presentSecr
   const directory = mkdtempSync(join(tmpdir(), 'kilo-deploy-test-'));
   const binDirectory = join(directory, 'bin');
   mkdirSync(binDirectory);
-  // The script runs from a project root; model only the files it checks.
+  // The script runs from a project root; model the files it checks using the
+  // real pinned configuration, lock and entrypoint imports from this checkout.
   const projectDirectory = join(directory, 'project');
-  mkdirSync(join(projectDirectory, 'supabase/functions'), { recursive: true });
+  const functionsDirectory = join(projectDirectory, 'supabase/functions');
+  mkdirSync(functionsDirectory, { recursive: true });
   writeFileSync(join(projectDirectory, 'supabase/config.toml'), '');
-  if (importMap === 'present') writeFileSync(join(projectDirectory, 'supabase/functions/deno.json'), '{}');
-  if (lock === 'present') writeFileSync(join(projectDirectory, 'supabase/functions/deno.lock'), '{"version":"5"}');
-  if (lock === 'empty') writeFileSync(join(projectDirectory, 'supabase/functions/deno.lock'), '');
+  for (const slug of requiredFunctions) {
+    mkdirSync(join(functionsDirectory, slug));
+    copyFileSync(join(repoRoot, `supabase/functions/${slug}/index.ts`), join(functionsDirectory, slug, 'index.ts'));
+  }
+  if (importMap === 'present') copyFileSync(join(repoRoot, 'supabase/functions/deno.json'), join(functionsDirectory, 'deno.json'));
+  if (lock === 'present') copyFileSync(join(repoRoot, 'supabase/functions/deno.lock'), join(functionsDirectory, 'deno.lock'));
+  else if (lock === 'empty') writeFileSync(join(functionsDirectory, 'deno.lock'), '');
+  else if (typeof lock === 'function') writeFileSync(join(functionsDirectory, 'deno.lock'), JSON.stringify(lock(JSON.parse(readFileSync(join(repoRoot, 'supabase/functions/deno.lock'), 'utf8')))));
 
   try {
     writeExecutable(join(binDirectory, 'npx'), `#!/usr/bin/env bash
@@ -154,6 +161,19 @@ console.log('deploy-kilo-functions tests passed');
 // resolution fails before any prerequisite call or function deploy.
 for (const options of [{ lock: 'missing' }, { lock: 'empty' }]) {
   const { output, calls } = expectFailure(options, /deno\.lock not found or empty/);
+  assert.doesNotMatch(calls, /functions deploy|secrets list/);
+  assert.doesNotMatch(output, /Deploying kilo functions/);
+}
+// A lock that exists but does not cover the graph lets the bundler resolve
+// floating ranges (for example @peculiar/asn1-android 2.11.1) without failing.
+const incompleteLocks = [
+  [() => ({ version: '5' }), /Lock does not resolve @simplewebauthn\/server/],
+  [(l) => { delete l.npm['@peculiar/asn1-android@2.11.0']; return l; }, /depends on @peculiar\/asn1-android, which the lock does not contain/],
+  [(l) => { delete l.remote['https://deno.land/std@0.168.0/http/server.ts']; return l; }, /no integrity for https:\/\/deno\.land\/std@0\.168\.0\/http\/server\.ts imported by android-restore-credentials/],
+];
+for (const [lock, message] of incompleteLocks) {
+  const { output, calls } = expectFailure({ lock }, message);
+  assert.match(output, /deno\.lock is incomplete or stale/);
   assert.doesNotMatch(calls, /functions deploy|secrets list/);
   assert.doesNotMatch(output, /Deploying kilo functions/);
 }
