@@ -108,6 +108,14 @@ Deno.test('a 512-character multibyte/control id round-trips through a cursor', (
   assertEquals(decodeCursor(cursor)?.id, id)
 })
 
+Deno.test('an astral-character id (257 code points, 514 UTF-16 units) round-trips', async () => {
+  const id = '😀'.repeat(257)
+  const c = client(GATE_OK, () => page([row(id)], true))
+  const cursor = sc(await call(c, { limit: 1 })).next_cursor as string
+  assertEquals(decodeCursor(cursor)?.id, id)
+  assertEquals(decodeCursor(encodeCursor({ as_of: '2026-10-24T23:00:00Z', u: '2026-10-20T10:00:00Z', id: '😀'.repeat(513) })), null)
+})
+
 Deno.test('malformed or tampered cursors are invalid_cursor and reach no data RPC', async () => {
   const good = encodeCursor({ as_of: '2026-10-24T23:00:00Z', u: '2026-10-20T10:00:00Z', id: 'n1' })
   const forge = (o: unknown) => btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
@@ -239,4 +247,6 @@ Deno.test('tools/list advertises workout_notes_list read-only', async () => {
   const tool = msg.result.tools.find((x: { name: string }) => x.name === 'workout_notes_list')
   assertEquals(tool.annotations.readOnlyHint, true)
   assertEquals(tool.inputSchema.additionalProperties, false)
+  assertEquals(tool.outputSchema.additionalProperties, false)
+  assert(tool.outputSchema.required.includes('items'))
 })

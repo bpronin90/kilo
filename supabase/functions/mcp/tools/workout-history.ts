@@ -25,6 +25,37 @@ const INPUT = z
   })
   .strict()
 
+const ITEM = z
+  .object({
+    id: z.string(),
+    title: z.string().nullable(),
+    saved_at: z.string().nullable(),
+    updated_at: z.string(),
+    is_current: z.boolean(),
+    raw_text: z.string().nullable().optional(),
+    raw_text_chars: z.number().int().optional(),
+    raw_text_truncated: z.boolean().optional(),
+  })
+  .strict()
+
+const OUTPUT = z
+  .object({
+    schema: z.literal(WORKOUT_NOTES_SCHEMA),
+    provenance: z
+      .object({
+        source: z.literal('kilo_cloud_snapshot'),
+        coverage: z.literal('unknown'),
+        snapshot_as_of: z.string().nullable(),
+        note: z.string(),
+      })
+      .strict(),
+    result_state: z.enum(['records', 'no_cloud_records']),
+    item_semantics: z.string(),
+    items: z.array(ITEM),
+    next_cursor: z.string().nullable(),
+  })
+  .strict()
+
 interface Cursor {
   as_of: string
   u: string
@@ -64,7 +95,8 @@ export function decodeCursor(text: string): Cursor | null {
   const keys = Object.keys(v).sort().join(',')
   if (keys !== 'as_of,id,u,v' || v.v !== 1) return null
   if (!isInstant(v.as_of) || !isInstant(v.u)) return null
-  if (typeof v.id !== 'string' || v.id.length < 1 || v.id.length > MAX_ID_CHARS) return null
+  // Code points, not UTF-16 units: SQL char_length bounds ids the same way.
+  if (typeof v.id !== 'string' || [...v.id].length < 1 || [...v.id].length > MAX_ID_CHARS) return null
   return { as_of: v.as_of, u: v.u, id: v.id }
 }
 
@@ -112,6 +144,7 @@ export const workoutHistory: ToolModule = {
         description:
           'List workout notes this account has synced to Kilo Cloud, newest first. Each item is a notebook record that may contain several training sessions; saved_at and updated_at are save and modify times, not session dates. This is a partial cloud snapshot and may omit data that exists only on the user\'s devices. Raw note text is omitted unless include_raw_text is true.',
         inputSchema: INPUT,
+        outputSchema: OUTPUT,
         annotations: { readOnlyHint: true },
       },
       async (input: z.infer<typeof INPUT>): Promise<ToolResult> => {
