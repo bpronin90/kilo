@@ -76,7 +76,7 @@ const FIVE_SESSIONS = [
 ].join('\n');
 
 describe('Log presentation: inline sessions and the earlier-sessions fold', () => {
-  test('shows the newest three sessions, folds the rest in place, and marks the latest LAST', () => {
+  test('shows the newest three sessions, folds the rest in place, and bolds the latest session', () => {
     const { root } = renderLog(FIVE_SESSIONS);
     const lines = hostSetLines(root);
     // Four logged rows (the skip is a session too but has no set line).
@@ -85,7 +85,8 @@ describe('Log presentation: inline sessions and the earlier-sessions fold', () =
     expect(lines.map(isHidden)).toEqual([true, true, false, false]);
     expect(lines.filter(n => n.props.testID === 'log-set-line-last')).toHaveLength(1);
     expect(lines[3].props.testID).toBe('log-set-line-last');
-    expect(root.findAll(n => n.type === Text && textOf(n) === 'LAST').length).toBeGreaterThan(0);
+    expect(root.findAll(n => n.type === Text && textOf(n) === 'LAST')).toHaveLength(0);
+    expect(lines[3].props.accessibilityLabel).toBe('Latest session');
 
     const earlier = root.find(n => typeof n.type === 'string' && n.props.testID === 'log-exercise-0-0-0-earlier');
     expect(earlier.props.accessibilityLabel).toBe('2 earlier sessions of Bench');
@@ -162,7 +163,7 @@ const SQUAT_MULTI_WEIGHT = '-Squat 3x8\n95 10, 165 8,8,8\n95 10, 175 8,8,8\n-\n9
 const lineText = line => line.findAll(n => n.type === Text).map(textOf);
 
 describe('Multi-weight session layout', () => {
-  test('exact Squat fixture keeps five sessions, ordered groups and one latest badge in Log and history', () => {
+  test('exact Squat fixture keeps five sessions, ordered groups and bold-only latest session in Log and history', () => {
     const exercise = groupsFor(SQUAT_MULTI_WEIGHT)[0].sections[0].exercises[0];
     const history = buildExerciseHistory(exercise);
     expect(history.sessionCount).toBe(5);
@@ -176,15 +177,19 @@ describe('Multi-weight session layout', () => {
       ['95 lb', '10', '165 lb', '8, 8, 8'],
       ['95 lb', '10', '175 lb', '8, 8, 8'],
       ['95 lb', '10', '185 lb', '8, 8, 8'],
-      ['95 lb', '10', '195 lb', '6, 6', '185 lb', '8', 'LAST'],
+      ['95 lb', '10', '195 lb', '6, 6', '185 lb', '8'],
     ]);
     const latest = lines[3];
-    const badge = latest.find(n => typeof n.type !== 'string' && n.props.accessibilityLabel === 'Last session');
-    const groupRail = badge.parent;
-    // Badge participates in the same wrap flow, after every group; it does
-    // not reserve a separate column across all of the session's lines.
-    expect(groupRail.children[groupRail.children.length - 1]).toBe(badge);
+    const groupRail = latest.find(n => typeof n.type === 'string' && flat(n).columnGap === 16);
     expect(flat(groupRail)).toMatchObject({ flexWrap: 'wrap', columnGap: 16 });
+    expect(latest.props.accessibilityLabel).toBe('Latest session');
+    // Bold-only emphasis: one family, same size; the latest is bold, others regular.
+    const fam = line => new Set(line.findAll(n => n.type === Text).map(n => flat(n).fontFamily));
+    const size = line => new Set(line.findAll(n => n.type === Text).map(n => flat(n).fontSize));
+    expect([...fam(latest)]).toEqual(['SpaceGrotesk-Bold']);
+    expect([...fam(lines[2])]).toEqual(['SpaceGrotesk-Regular']);
+    expect([...size(latest)]).toEqual([15]);
+    expect([...size(lines[2])]).toEqual([15]);
     const weights = latest.findAll(n => n.type === Text && / lb$/.test(textOf(n)));
     weights.forEach(weight => {
       expect(flat(weight).minWidth).toBeUndefined();
@@ -201,6 +206,17 @@ describe('Multi-weight session layout', () => {
     expect(rows.map(n => n.props.testID)).toEqual([5, 4, 3, 2, 1].map(i => `exercise-history-session-${i}`));
     expect(lineText(hostSetLines(sheet)[0])).toEqual(lineText(latest));
     expect(hostSetLines(sheet).filter(n => n.props.testID === 'log-set-line-last')).toHaveLength(1);
+    expect(sheet.findAll(n => n.type === Text && textOf(n) === 'LAST')).toHaveLength(0);
+  });
+
+  test('day >= exercise >= session font sizes in Log', () => {
+    const { root } = renderLog(`Monday\n${SQUAT_MULTI_WEIGHT}`);
+    const size = n => flat(n).fontSize;
+    const day = size(root.find(n => n.type === Text && n.props.accessibilityRole === 'header'));
+    const exercise = size(root.find(n => n.type === Text && textOf(n) === 'Squat'));
+    const sessions = hostSetLines(root).flatMap(l => l.findAll(n => n.type === Text).map(size));
+    expect(day).toBeGreaterThanOrEqual(exercise);
+    expect(exercise).toBeGreaterThanOrEqual(Math.max(...sessions));
   });
 
   test('long groups may wrap internally without truncation; grouping metadata and existing ink survive', () => {
@@ -224,7 +240,7 @@ describe('Multi-weight session layout', () => {
     const reps = texts.find(n => textOf(n) === Array(60).fill(8).join(', '));
     expect(flat(reps)).toMatchObject({ maxWidth: '100%' });
     expect(flat(reps.parent.parent)).toMatchObject({ maxWidth: '100%', flexWrap: 'wrap' });
-    expect(flat(texts[0])).toMatchObject({ fontSize: 17, lineHeight: 24 });
+    expect(flat(texts[0])).toMatchObject({ fontSize: 15, lineHeight: 22, fontFamily: 'SpaceGrotesk-Bold' });
     render.act(() => { tree.update(<LogSetLine sets={sets} unit="kg" tone="old" />); });
     const old = tree.root.findAll(n => n.type === Text);
     expect(textOf(old[0])).toBe('43.1 kg');

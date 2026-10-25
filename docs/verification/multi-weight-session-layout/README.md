@@ -3,7 +3,9 @@
 The [reported Squat fixture and layout contract](https://github.com/bpronin90/kilo/issues/1647) are reproduced in the real Expo app, using its Log read view and exercise history sheet. The current routine is expanded to show every session. Captures use Chromium with mobile/touch emulation at **320 × 844** and **390 × 844** CSS pixels, DPR 1, in Hard Court light and dark modes. These are Android-sized phone viewports rendered by React Native Web; they are **not native Android screenshots**. The configured emulator has an older Kilo binary and was not used to claim native verification.
 
 Before revision: `ff90c93a01b4c2cc92587a75679378b500dcb933`.
-After rendering revision: `d403952cc19cbee97a8ee77865f1fa01613e3391` (implementation and regression tests). The subsequent evidence-only commit changes no application code, assets, dependencies or rendering configuration, so these captures also apply to its PR head.
+After rendering revision: the commit that adds the typography change to `mobile/components/log/LogExerciseRows.js` (the PR head's parent evidence commit; evidence files change no rendering). Captures were taken from the working tree of that commit on Expo web. Spacing-only captures from `d403952c` are superseded.
+
+Layout checklist (expanded contract): one Space Grotesk family; day 16 >= exercise 16 >= every session 15; latest session bold (SpaceGrotesk-Bold) with no LAST text or badge; older sessions regular and muted; same newest-three fold and order; 4/16dp group gaps; no overflow.
 
 ## Before/after comparison
 
@@ -18,7 +20,7 @@ After rendering revision: `d403952cc19cbee97a8ee77865f1fa01613e3391` (implementa
 | History, 390, light | [Before](before-history-390-light.png) | [After](after-history-390-light.png) |
 | History, 390, dark | [Before](before-history-390-dark.png) | [After](after-history-390-dark.png) |
 
-Before, the load column leaves excessive space before reps and crowds adjacent groups. After, each weight/reps pair uses a natural width with a 4px internal gap and 16px between groups. At 390, all three latest-session groups fit on one line, with LAST following below. At 320, the third complete group wraps with LAST following it. Both layouts keep every group within its original session. History shows five entries, including the skipped entry; Log shows the same entries in source order. Typography, muted older sessions, and emphasized latest-session text are unchanged. **Pass** against the issue's layout checklist in all eight after captures.
+Before, the load column leaves excessive space before reps and a larger LAST-tagged latest session. After, each weight/reps pair is natural-width (4dp internal, 16dp between groups) and all sessions use 15dp Space Grotesk; the latest is bold only, with no LAST badge. History shows five entries including the skipped one, with the latest bolded. Day-heading fixture captures ([Log 320 dark](day-log-320-dark.png), plus 320/390 light/dark `day-*`) show the full hierarchy; [measured sizes](day-results.json): day 16, exercise 16, session 15, latest family `SpaceGrotesk-Bold`. **Pass** in all captures (the script asserts no overflow, gaps, size hierarchy and absence of LAST).
 
 ![Before: Squat in Log at 390, light](before-log-390-light.png)
 ![After: Squat in Log at 390, light](after-log-390-light.png)
@@ -27,7 +29,7 @@ Before, the load column leaves excessive space before reps and crowds adjacent g
 
 The stress fixture appends one session containing `85kg` and sixteen reps. [Log](stress-log-320-dark.png) and [history](stress-history-320-dark.png) use 320 × 844 and 200% session text. Because web has no native accessibility font-size setting, the capture script doubles computed font sizes and line heights on rendered session text only. This is an explicit layout simulation, not native OS text-scale evidence.
 
-The long group wraps internally and remains within the session width. All data is retained; vertical scrolling remains available. The badge follows the group. [Measured bounds](stress-results.json) confirm no horizontal overflow. [Normal measurements](after-results.json) check each group stays intact, internal spacing is 4px, same-line group spacing is 16px, and text remains within the session rail. Both runs have no page errors. **Pass** for the tested browser layout constraints; native Yoga/font-scale behavior remains unverified.
+The long group wraps internally and remains within the session width. All data is retained; vertical scrolling remains available. [Measured bounds](stress-results.json) confirm no horizontal overflow. [Normal measurements](after-results.json) check each group stays intact, internal spacing is 4px, same-line group spacing is 16px, and text remains within the session rail. Both runs have no page errors. **Pass** for the tested browser layout constraints; native Yoga/font-scale behavior remains unverified.
 
 ## Reproduction and tests
 
@@ -44,6 +46,7 @@ From another shell at the repository root, with Playwright available:
 # Optional: set PLAYWRIGHT_MODULE to playwright-core's absolute index.mjs
 # and CHROMIUM_PATH to an installed Chromium executable.
 PHASE=after node docs/verification/multi-weight-session-layout/capture.mjs
+PHASE=day DAY=1 node docs/verification/multi-weight-session-layout/capture.mjs  # adds a 'Monday — Upper' heading
 PHASE=stress STRESS=1 node docs/verification/multi-weight-session-layout/capture.mjs
 ```
 
@@ -57,4 +60,4 @@ npm --prefix mobile test -- --runInBand \
   tests/parser.test.js
 ```
 
-All 520 targeted tests passed across these four suites after correcting the new test's host/composite-node lookup (the corrected structure suite was rerun: 14/14). Existing React test-renderer `act` warnings remain. The added tests pin five session entries, exact group ordering in both surfaces, LAST in the wrap flow, natural widths, explicit gaps, long text without truncation, converted-load grouping metadata, bodyweight, duration, marks and old/latest font sizes. No parser or stored-data implementation changed.
+Targeted suites (redesign-log-structure, log-exercise-history-sheet, log-presentation-refactor) pass: 39/39. Tests pin five sessions, group order in both surfaces, natural widths and gaps, no visible LAST (accessibility label "Latest session" kept), bold-only latest in one family at one size, and day >= exercise >= session sizes. Parser tests were not rerun; no parser change. Runtime: React Native Web in Chromium only; native Android/iOS rendering is unverified.

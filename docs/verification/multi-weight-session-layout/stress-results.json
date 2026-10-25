@@ -10,7 +10,7 @@
         "x": 34,
         "y": 772,
         "width": 244,
-        "height": 320,
+        "height": 176,
         "right": 278
       },
       "scrollWidth": 244,
@@ -20,42 +20,24 @@
           "x": 34,
           "y": 772,
           "width": 244,
-          "height": 288,
+          "height": 176,
           "right": 278,
           "children": [
             {
               "text": "187 lb (85kg)",
               "x": 34,
               "y": 772,
-              "width": 244,
-              "height": 96,
-              "right": 278
+              "width": 184.75,
+              "height": 44,
+              "right": 218.75
             },
             {
               "text": "8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8",
               "x": 34,
-              "y": 868,
+              "y": 816,
               "width": 244,
-              "height": 192,
+              "height": 132,
               "right": 278
-            }
-          ]
-        },
-        {
-          "text": "LAST",
-          "x": 34,
-          "y": 1060,
-          "width": 68.40625,
-          "height": 32,
-          "right": 102.40625,
-          "children": [
-            {
-              "text": "LAST",
-              "x": 40,
-              "y": 1062,
-              "width": 56.40625,
-              "height": 28,
-              "right": 96.40625
             }
           ]
         }
@@ -70,7 +52,7 @@
         "x": 57,
         "y": 477.921875,
         "width": 238,
-        "height": 320,
+        "height": 176,
         "right": 295
       },
       "scrollWidth": 238,
@@ -80,42 +62,24 @@
           "x": 57,
           "y": 477.921875,
           "width": 238,
-          "height": 288,
+          "height": 176,
           "right": 295,
           "children": [
             {
               "text": "187 lb (85kg)",
               "x": 57,
               "y": 477.921875,
-              "width": 238,
-              "height": 96,
-              "right": 295
+              "width": 184.75,
+              "height": 44,
+              "right": 241.75
             },
             {
               "text": "8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8",
               "x": 57,
-              "y": 573.921875,
+              "y": 521.921875,
               "width": 238,
-              "height": 192,
+              "height": 132,
               "right": 295
-            }
-          ]
-        },
-        {
-          "text": "LAST",
-          "x": 57,
-          "y": 765.921875,
-          "width": 68.40625,
-          "height": 32,
-          "right": 125.40625,
-          "children": [
-            {
-              "text": "LAST",
-              "x": 63,
-              "y": 767.921875,
-              "width": 56.40625,
-              "height": 28,
-              "right": 119.40625
             }
           ]
         }

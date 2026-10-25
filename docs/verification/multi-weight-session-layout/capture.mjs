@@ -7,6 +7,7 @@ const stress = process.env.STRESS === '1';
 const measurements = [];
 const out = fileURLToPath(new URL('./', import.meta.url));
 let fixture = '-Squat 3x8\n95 10, 165 8,8,8\n95 10, 175 8,8,8\n-\n95 10, 185 8,8,8\n95 10, 195 6,6 185 8';
+if (process.env.DAY === '1') fixture = 'Monday — Upper\n' + fixture;
 if (stress) fixture += '\n85kg ' + Array(16).fill('8').join(',');
 mkdirSync(out, { recursive: true });
 const browser = await chromium.launch({ headless: true,
@@ -49,6 +50,15 @@ if (errors.length) throw new Error(errors.join('\n'));
 async function inspect(page, screen, width, mode) {
   const scope = screen === 'history' ? page.getByTestId('exercise-history-sheet') : page;
   const line = scope.getByTestId('log-set-line-last');
+  if (screen === 'log' && process.env.DAY === '1') {
+    const size = async t => parseFloat(await page.getByTestId('log-exercise-0-0-0').getByText(t, { exact: true }).first().evaluate(n => getComputedStyle(n).fontSize));
+    const day = parseFloat(await page.getByRole('heading', { name: /Monday/i }).first().evaluate(n => getComputedStyle(n).fontSize));
+    const sizes = { day, exercise: await size('Squat'), session: await size('95 lb') };
+    const fam = await line.locator('[dir="auto"]').first().evaluate(n => getComputedStyle(n).fontFamily);
+    if (!(sizes.day >= sizes.exercise && sizes.exercise >= sizes.session)) throw new Error('Hierarchy ' + JSON.stringify(sizes));
+    if (await page.getByText('LAST', { exact: true }).count()) throw new Error('LAST visible');
+    measurements.push({ screen, width, mode, sizes, latestFontFamily: fam });
+  }
   if (stress) {
     // Web has no OS font scaling. Double the actual session text's font and
     // line-height to exercise the same layout constraints at 200% size.
