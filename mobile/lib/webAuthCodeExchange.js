@@ -11,13 +11,15 @@ let inflight = null;
 
 function takeCode() {
   if (typeof window === 'undefined') return null;
-  const match = /[?&]code=([^&#]+)/.exec(window.location?.search || '');
+  const match = /[?&]code=([^&#]*)/.exec(window.location?.search || '');
   if (!match) return null;
-  let code = null;
+  // '' marks a present-but-unusable code (empty or undecodable): still a
+  // callback, and a failed one, not "no callback".
+  let code = '';
   try {
     code = decodeURIComponent(match[1]);
   } catch (e) {
-    code = null;
+    code = '';
   }
   // Drop the single-use code from the address bar so a reload or share cannot
   // replay it. Best-effort: the exchange does not depend on it.
@@ -32,12 +34,16 @@ function takeCode() {
 }
 
 // Resolves to null when the page carries no code, else the exchange outcome
-// `{ session }` or `{ error }`. Memoized so a remount (or a second hook
+// `{ session }` or `{ error }` (a malformed or empty code is an error). Memoized so a remount (or a second hook
 // instance) reuses the one exchange instead of replaying the consumed code.
 export function exchangeWebCallbackCode(client) {
   if (inflight) return inflight;
   const code = takeCode();
-  if (!code || typeof client?.auth?.exchangeCodeForSession !== 'function') return Promise.resolve(null);
+  if (code === null || typeof client?.auth?.exchangeCodeForSession !== 'function') return Promise.resolve(null);
+  if (!code) {
+    inflight = Promise.resolve({ error: new Error('malformed code') });
+    return inflight;
+  }
   inflight = Promise.resolve()
     .then(() => client.auth.exchangeCodeForSession(code))
     .then(({ data, error }) => (error || !data?.session ? { error: error || new Error('no session') } : { session: data.session }))

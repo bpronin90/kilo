@@ -98,6 +98,14 @@ describe('web callback code exchange', () => {
     expect(store.has(RECOVERY_PENDING_KEY)).toBe(false);
   });
 
+  test.each(['?code=%E0%A4%A', '?code='])('a malformed or empty code (%s) is a failed link, not "no callback"', async (search) => {
+    installWindow({ search, seed: { [RECOVERY_PENDING_KEY]: String(Date.now()) } });
+    const ref = await mountHook({ stored: oldSession, exchange: recoveryExchange });
+    expect(mockAuth.exchangeCodeForSession).not.toHaveBeenCalled();
+    expect(ref.current.recoveryError).toMatch(/Request a new reset email/);
+    expect(ref.current.passwordRecovery).toBe(false);
+  });
+
   test('a thrown exchange is a failure too', async () => {
     installWindow({ search: '?code=abc', seed: { [RECOVERY_PENDING_KEY]: String(Date.now()) } });
     const ref = await mountHook({ exchange: async () => { throw new Error('network'); } });
