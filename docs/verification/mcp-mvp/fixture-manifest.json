@@ -4,14 +4,25 @@
     {
       "label": "a",
       "consent": "granted",
-      "data": "125 weights (120 dated hourly from 2026-01-01T00:00Z, 5 with logged_at null, two of those with date null), 31 workout notes (30 short, 1 with 6000-character raw text) and 1 tombstoned note",
+      "data": "125 weights (120 dated hourly from 2026-01-01T00:00Z, 5 with logged_at null, two of those with date null), 31 workout notes (30 short, one with saved_at set, 1 with 6000-character raw text) and 1 tombstoned note",
       "marker": "SYNA"
     },
     {
       "label": "b",
       "consent": "granted",
-      "data": "same shape, marker SYNB; used to prove cross-user isolation",
+      "data": "same shape, marker SYNB; second SDK client and cross-user isolation",
       "marker": "SYNB"
+    },
+    {
+      "label": "browser",
+      "consent": "granted",
+      "data": "12 weights, 4 notes (marker SYNR); signs in and approves through the real Kilo web build",
+      "marker": "SYNR"
+    },
+    {
+      "label": "deny",
+      "consent": "granted",
+      "data": "no rows; denies through the real Kilo web build"
     },
     {
       "label": "empty",
@@ -21,12 +32,12 @@
     {
       "label": "noconsent",
       "consent": "never granted",
-      "data": "one weight row inserted directly in the disposable database"
+      "data": "one weight row inserted directly in the disposable database (marker SYNC)"
     },
     {
       "label": "withdraw / deleted / outage / limits / quota / probe / replay",
       "consent": "as each case needs",
-      "data": "small per-case fixtures (SYNW, SYNU, SYNQ markers)"
+      "data": "small per-case fixtures (markers SYNW, SYNU, SYNQ)"
     }
   ],
   "gateMode": "consent_required (health_sync_config), so the armed gate is exercised",
@@ -58,6 +69,16 @@
       "title": "empty cloud snapshot is reported as no_cloud_records with unknown coverage"
     },
     {
+      "id": "B1",
+      "criterion": "AC2",
+      "title": "real browser: direct link, sign-in, disclosure, Approve; the SDK client then reads only that user's data"
+    },
+    {
+      "id": "C5",
+      "criterion": "AC2",
+      "title": "two users, two SDK clients: each reads only its own rows"
+    },
+    {
       "id": "X1",
       "criterion": "AC4",
       "title": "cross-user cursor and arguments cannot reach another user's rows"
@@ -75,7 +96,7 @@
     {
       "id": "O1",
       "criterion": "AC4",
-      "title": "denied OAuth request yields an error redirect and no usable code; the id cannot be replayed"
+      "title": "denied OAuth request (real browser) yields an error redirect and no code; the decided request id is recorded"
     },
     {
       "id": "M1",
@@ -115,17 +136,17 @@
     {
       "id": "F1",
       "criterion": "AC4",
-      "title": "gate lookup outage -> 503 with no query; recovery restores service"
+      "title": "gate lookup outage -> 503 and no data RPC runs; recovery restores service"
     },
     {
       "id": "F2",
       "criterion": "AC4",
-      "title": "consent lookup outage -> 503, never an implicit allow"
+      "title": "consent lookup outage -> 503 and no data RPC runs, never an implicit allow"
     },
     {
       "id": "F3",
       "criterion": "AC4",
-      "title": "auth session lookup outage -> 503, never an implicit allow"
+      "title": "OAuth grant/session lookup outage -> 503 and no data RPC runs, never an implicit allow"
     },
     {
       "id": "F4",
@@ -140,7 +161,7 @@
     {
       "id": "F6",
       "criterion": "AC4",
-      "title": "slow database: the 3 s call limit ends the read with a timeout error"
+      "title": "slow database: the read ends with a timeout tool error at the database-call limit, long before the 10 s request deadline"
     },
     {
       "id": "L1",
@@ -150,17 +171,17 @@
     {
       "id": "Q1",
       "criterion": "AC4",
-      "title": "durable limits: per-user MCP and per-user data quota"
+      "title": "per-user limits: the data quota and HTTP limit stop one user and leave another unaffected"
     },
     {
       "id": "Q2",
       "criterion": "AC4",
-      "title": "durable pre-auth limit per client address"
+      "title": "pre-auth limit: 120 requests per minute per client address, then 429"
     },
     {
       "id": "G1",
       "criterion": "AC6",
-      "title": "function logs hold no tokens, codes, cursors, authorization ids or health data"
+      "title": "function logs hold none of the tokens, codes, cursors, authorization ids or user ids the run handled"
     }
   ]
 }

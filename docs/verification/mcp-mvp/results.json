@@ -1,14 +1,14 @@
 {
   "environment": "local stack, project id kilo_mcp_staging (disposable; not production)",
   "date": "2026-10-25",
-  "testedSha": "af98840dd0ca31682f76cc4ce79f8c922fd1bfda",
+  "testedSha": "bdcd70418304f9f3144582cd8807aa6405cd46de",
   "testedTreeDirty": false,
   "supabaseCli": "2.117.0",
   "gotrue": "v2.196.0",
   "deno": "deno 2.9.1 (stable, release, x86_64-unknown-linux-gnu)",
   "node": "v24.14.0",
   "mcpClient": "@modelcontextprotocol/client 2.4.0 (official MCP TypeScript SDK client)",
-  "passed": 26,
+  "passed": 28,
   "total": 28,
   "cases": [
     {
@@ -127,8 +127,8 @@
       "id": "W1",
       "criterion": "AC3",
       "title": "withdrawal blocks reads immediately (before purge); regrant needs the approved reconnect",
-      "status": "fail",
-      "detail": "old session after regrant: 200"
+      "status": "pass",
+      "detail": "before-purge window blocked; old session 401 after regrant; reconnect works"
     },
     {
       "id": "A1",
@@ -175,9 +175,9 @@
     {
       "id": "F6",
       "criterion": "AC4",
-      "title": "slow database: the 3 s database-call limit ends the read with a timeout tool error",
-      "status": "fail",
-      "detail": "took 2457 ms; the 3 s call limit (not the 10 s request deadline) should have fired"
+      "title": "slow database: the read ends with a timeout tool error at the database-call limit, long before the 10 s request deadline",
+      "status": "pass",
+      "detail": "3027 ms"
     },
     {
       "id": "L1",
@@ -205,7 +205,7 @@
       "criterion": "AC6",
       "title": "function logs hold none of the tokens, codes, cursors, authorization ids or user ids the run handled",
       "status": "pass",
-      "detail": "118 handled artifacts absent from the log"
+      "detail": "122 handled artifacts absent from the log"
     }
   ]
 }

@@ -605,8 +605,13 @@ local `kilo_mcp_staging` stack and one client.
   blocker PB-4 evidence, acceptable only for synthetic staging users.
 - **Shared pre-auth bucket.** Behind the gateway the function sees one client address,
   so the 120 / 60 s pre-auth limit is shared by every caller of that gateway.
-- **Browser step.** The matrix performs the page's Auth calls (`getAuthorizationDetails`,
-  approve or deny) as the signed-in user; the page itself is evidenced by #1626's
-  renders, not re-rendered here.
-- **Time limits.** The 3 s database limit is exercised end to end (case F6); the 10 s
-  whole-request deadline is covered by unit tests only.
+- **Browser step.** Case B1 drives the real Kilo web build in Chromium: authorization
+  link, password sign-in (Cloudflare's always-pass Turnstile test key; the stack's Auth
+  does not enforce captcha), disclosure, Approve; the SDK client then reads. Other
+  cases perform the same Auth calls without a browser. Disconnect is exercised through
+  Auth's `revokeGrant`, not the Account screen.
+- **Time limits.** A slow database ends a read with a `timeout` tool error at the
+  3 s database-call limit (F6, measured 2.5–3.1 s client side); the 10 s whole-request
+  deadline is covered by unit tests only.
+- **No data RPC on rejection.** For gate, consent and session-lookup outages, function-call
+  counters show the data RPCs did not run (F1–F3), not just that the response looked safe.

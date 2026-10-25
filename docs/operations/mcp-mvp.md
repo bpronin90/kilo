@@ -133,11 +133,12 @@ Everything here is local and disposable. Nothing touches production
 Environment variable names (values come from the stack, none are committed):
 `API_URL`, `ANON_KEY`, `SERVICE_ROLE_KEY`, `JWT_SECRET` (local demo keys read from
 `stack.env`), `KILO_MCP_SIGNING_KEYS`, `KILO_MCP_FUNCTIONS_LOG`, `KILO_MCP_RESULTS`,
-`KILO_MCP_STACK_DIR`, `KILO_MCP_DB_CONTAINER`; function secret `MCP_AUTH_ISSUER`.
+`KILO_MCP_STACK_DIR`, `KILO_MCP_SHOTS`, `KILO_MCP_CHROMIUM`, `KILO_MCP_ONLY` (run chosen case ids while iterating); function secret `MCP_AUTH_ISSUER`. The runner starts from a minimal environment and refuses any `API_URL` other than `http://127.0.0.1:56321`; fault injection only ever targets the container `supabase_db_kilo_mcp_staging`.
 
 ```sh
 bash supabase/functions/mcp/integration/stack.sh up        # Postgres, Auth, PostgREST, migrations, mcp function
-node scripts/verify-mcp-mvp.mjs                             # ~6 minutes; writes docs/verification/mcp-mvp/results.json
+bash supabase/functions/mcp/integration/stack.sh web       # Kilo web build on 127.0.0.1:8081 (needs `npm --prefix mobile ci`)
+node scripts/verify-mcp-mvp.mjs                             # ~12 minutes, needs Chromium; writes docs/verification/mcp-mvp/results.json
 bash supabase/functions/mcp/integration/stack.sh serve      # re-snapshot supabase/functions after a code change
 bash supabase/functions/mcp/integration/stack.sh down       # teardown: containers, volumes, workdir
 ```
@@ -150,13 +151,15 @@ check (case list, recorded results, no credentials in evidence).
 
 The matrix covers, with assertions on response content and row access: discovery and
 anonymous challenge; SDK connect with dynamic registration, PKCE and explicit
-approval; `tools/list` (exactly `whoami`, `workout_notes_list`, `weight_entries_list`,
+approval, including a run where a real browser opens the authorization link, signs in
+through the Kilo web build and approves or denies (the web build uses Cloudflare's
+always-pass Turnstile test key and the local stack, never a hosted project); `tools/list` (exactly `whoami`, `workout_notes_list`, `weight_entries_list`,
 all read-only); workout and weight pagination, tombstones, raw-text bounds, unknown
 dates and the lb-only unit; empty snapshots; cross-user cursors and arguments; direct
 table, write, withdrawal and other-function attempts with an OAuth token; eleven bad
 token shapes; denied OAuth request; missing consent; refresh; disconnect and replay of
 an unexpired token; withdrawal before purge, regrant and reconnect; deleted account;
-gate, consent, session, page-RPC and limiter outages; a slow database; request-size,
+gate, consent, session, page-RPC and limiter outages (each proving through function-call counters that no data RPC ran); a slow database; request-size,
 batch and method limits; per-user, data-quota and pre-auth rate limits; and a log scan.
 
 ### Connecting a client (user guide)
@@ -181,14 +184,15 @@ batch and method limits; per-user, data-quota and pre-auth rate limits; and a lo
 | Every token gets 401 on a fresh stack | `MCP_AUTH_ISSUER` missing from the function env (see section A); `stack.sh serve` re-applies it |
 | 401 after the client worked | disconnected, signed out of Kilo everywhere, account deleted, or consent re-granted (`consent_stale`): reconnect through the browser flow |
 | Tool result `consent_required` | consent withdrawn or never granted; grant it in Kilo, then reconnect if it was re-granted |
-| 503 | session, consent or grant lookup failed; the request ran no data query. Retry; check Auth and Postgres health |
+| 503 | the session/grant, consent or gate lookup failed; the request ran no data RPC (verified by call counters, F1–F3). Retry; check Auth and Postgres health |
 | 429 | per-IP, per-user or data quota; honor `Retry-After` / `rate_limited`. Behind the local gateway all requests share one IP bucket (120 / 60 s) |
 | Client loops on refresh | a refresh token for a disconnected grant fails by design; reconnect |
 | Matrix says "pre-auth bucket busy" | a run finished less than a minute ago; the matrix waits |
 
 Minimal-log check: function logs contain `{"mcp": method, "tool", "status", "ms"}` only.
-The matrix scans the log for JWTs, `authorization_id`, user ids, fixture markers and
-cursors (case G1).
+Case G1 scans the log for every token, refresh token, authorization code, authorization
+id, cursor and user id the run handled (over a hundred values), plus JWT-shaped text,
+fixture markers and cursor field names.
 
 Rollback: nothing in production changed, so rollback is `stack.sh down`. For a hosted
 staging project, delete `kilo-mcp-staging`; never roll back by editing production.
