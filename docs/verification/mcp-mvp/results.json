@@ -1,7 +1,7 @@
 {
   "environment": "local stack, project id kilo_mcp_staging (disposable; not production)",
   "date": "2026-10-25",
-  "testedSha": "bdcd70418304f9f3144582cd8807aa6405cd46de",
+  "testedSha": "2ed2685dfc41890de2e056eb72803943f60a1b67",
   "testedTreeDirty": false,
   "supabaseCli": "2.117.0",
   "gotrue": "v2.196.0",
@@ -177,7 +177,7 @@
       "criterion": "AC4",
       "title": "slow database: the read ends with a timeout tool error at the database-call limit, long before the 10 s request deadline",
       "status": "pass",
-      "detail": "3027 ms"
+      "detail": "3020 ms"
     },
     {
       "id": "L1",
