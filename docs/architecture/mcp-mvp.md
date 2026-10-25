@@ -268,7 +268,8 @@ Both functions:
   first-party token, `MC001` (session or account no longer valid; surfaced as a
   retryable `internal` because the next request is rejected by the HTTP gate),
   `MC002` (`consent_required`, also when the gate mode is `paused`), `MC003`
-  (`invalid_arguments`) and `MC004` (`rate_limited`).
+  (`invalid_arguments`) and `MC004` (`rate_limited`). `mcp_weight_entries_page`
+  raises the same codes.
 - Filter `user_id = auth.uid()` explicitly; definer rights bypass RLS, so the
   owner filter is in the body.
 - Validate arguments: `p_limit` 1–100, or 1–25 when raw text is requested; the
@@ -420,7 +421,17 @@ never returned in v1. Order `(logged_at desc nulls last, id desc)`. With a range
 only rows whose `logged_at` falls in `[from, to)` match. Instants avoid any
 timezone day boundary, so rows with null `logged_at` are excluded from ranged
 queries and listed after dated rows in unranged ones. The cursor carries
-`{ v, phase: "dated"|"undated", l, id }`.
+`{ v, phase: "dated"|"undated", l, id }` (`l` is null exactly when the phase is
+`undated`; an `undated` cursor with a range is `invalid_cursor`).
+
+Range rules, enforced by both the tool and the RPC: `logged_from` and `logged_to`
+are given together or not at all, so the span is always bounded. `date` is a
+display field only and never decides range membership. The RPC returns `as_of`
+(its `now()`), used only for `provenance.snapshot_as_of`; the keyset on
+`(logged_at, id)` needs no snapshot cut-off. The response carries `item_semantics`
+(lb-normalized, original unit unavailable, null means unknown) and
+`result_state: "no_cloud_records"` only for an empty first page, which for a ranged
+query means no matching cloud rows.
 
 ### 7.4 `whoami` (#1625)
 
