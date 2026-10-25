@@ -13,6 +13,9 @@ import { WorkoutContentRenderer } from '../components/WorkoutContentRenderer';
 import { deriveLogDays, useLogDayNav, LogDayIndex } from '../screens/log/LogDayIndex';
 import { useLogRoutineActions } from '../components/log/LogRoutineActionSheet';
 import { LogRoutineHeaderActions } from '../screens/log/LogRoutineHeaderActions';
+import { LogSetLine } from '../components/log/LogExerciseRows';
+import { ThemeProvider } from '../theme/ThemeContext';
+import { buildExerciseHistory } from '../components/log/exerciseHistoryPresentation';
 import { LogActiveRoutineCard } from '../components/LogActiveRoutineCard';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -152,6 +155,81 @@ describe('Log presentation: inline sessions and the earlier-sessions fold', () =
     const { root } = renderLog('Monday\n-Bench\n135 5,5', { isDeload: true, onToggleTrack: jest.fn() });
     expect(root.findAll(n => n.type === Text && textOf(n) === 'LAST')).toHaveLength(0);
     expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Track')).toHaveLength(0);
+  });
+});
+
+const SQUAT_MULTI_WEIGHT = '-Squat 3x8\n95 10, 165 8,8,8\n95 10, 175 8,8,8\n-\n95 10, 185 8,8,8\n95 10, 195 6,6 185 8';
+const lineText = line => line.findAll(n => n.type === Text).map(textOf);
+
+describe('Multi-weight session layout', () => {
+  test('exact Squat fixture keeps five sessions, ordered groups and one latest badge in Log and history', () => {
+    const exercise = groupsFor(SQUAT_MULTI_WEIGHT)[0].sections[0].exercises[0];
+    const history = buildExerciseHistory(exercise);
+    expect(history.sessionCount).toBe(5);
+    expect(history.sessions.map(s => s.kind)).toEqual(['logged', 'logged', 'skipped', 'logged', 'logged']);
+    const { root } = renderLog(SQUAT_MULTI_WEIGHT);
+    press(root.find(n => typeof n.type === 'string' && n.props.testID === 'log-exercise-0-0-0-earlier'));
+    const lines = hostSetLines(root);
+    expect(lines).toHaveLength(4);
+    expect(lines.map(isHidden)).toEqual([false, false, false, false]);
+    expect(lines.map(lineText)).toEqual([
+      ['95 lb', '10', '165 lb', '8, 8, 8'],
+      ['95 lb', '10', '175 lb', '8, 8, 8'],
+      ['95 lb', '10', '185 lb', '8, 8, 8'],
+      ['95 lb', '10', '195 lb', '6, 6', '185 lb', '8', 'LAST'],
+    ]);
+    const latest = lines[3];
+    const badge = latest.find(n => typeof n.type !== 'string' && n.props.accessibilityLabel === 'Last session');
+    const groupRail = badge.parent;
+    // Badge participates in the same wrap flow, after every group; it does
+    // not reserve a separate column across all of the session's lines.
+    expect(groupRail.children[groupRail.children.length - 1]).toBe(badge);
+    expect(flat(groupRail)).toMatchObject({ flexWrap: 'wrap', columnGap: 16 });
+    const weights = latest.findAll(n => n.type === Text && / lb$/.test(textOf(n)));
+    weights.forEach(weight => {
+      expect(flat(weight).minWidth).toBeUndefined();
+      expect(flat(weight).width).toBeUndefined();
+      expect(flat(weight).marginRight).toBeUndefined();
+      expect(flat(weight.parent.parent)).toMatchObject({ columnGap: 4, maxWidth: '100%', flexWrap: 'wrap' });
+    });
+
+    let tree;
+    render.act(() => { tree = render.create(<ThemeProvider><WorkoutContentRenderer dayGroups={groupsFor(SQUAT_MULTI_WEIGHT)} presentation="log" /></ThemeProvider>); });
+    press(tree.root.find(n => typeof n.type === 'string' && n.props.accessibilityLabel === 'Squat history'));
+    const sheet = tree.root.find(n => typeof n.type === 'string' && n.props.testID === 'exercise-history-sheet');
+    const rows = sheet.findAll(n => typeof n.type === 'string' && /^exercise-history-session-/.test(n.props.testID || ''));
+    expect(rows.map(n => n.props.testID)).toEqual([5, 4, 3, 2, 1].map(i => `exercise-history-session-${i}`));
+    expect(lineText(hostSetLines(sheet)[0])).toEqual(lineText(latest));
+    expect(hostSetLines(sheet).filter(n => n.props.testID === 'log-set-line-last')).toHaveLength(1);
+  });
+
+  test('long groups may wrap internally without truncation; grouping metadata and existing ink survive', () => {
+    const sets = [
+      { weight_value: 95, rep_count: 10 },
+      { weight_value: 95, converted_from_kg: true, kg_value: 43, rep_count: 8 },
+      { weight_value: 95, converted_from_kg: true, kg_value: 44, skipped: true },
+      { weight_value: null, duration_seconds: 60 },
+      { weight_value: null, rep_count: 12 },
+      ...Array.from({ length: 60 }, () => ({ weight_value: 195, rep_count: 8 })),
+    ];
+    let tree;
+    render.act(() => { tree = render.create(<LogSetLine sets={sets} unit="lb" mark="steady" tone="last" />); });
+    const texts = tree.root.findAll(n => n.type === Text);
+    expect(texts.map(textOf).slice(0, 10)).toEqual(['95 lb', '10', '95 lb (43kg)', '8', '95 lb (44kg)', '-', 'BW', '60s, 12', '195 lb', Array(60).fill(8).join(', ')]);
+    expect(texts.map(textOf)).toContain('★ steady');
+    texts.forEach(n => {
+      expect(n.props.numberOfLines).toBeUndefined();
+      expect(n.props.ellipsizeMode).toBeUndefined();
+    });
+    const reps = texts.find(n => textOf(n) === Array(60).fill(8).join(', '));
+    expect(flat(reps)).toMatchObject({ maxWidth: '100%' });
+    expect(flat(reps.parent.parent)).toMatchObject({ maxWidth: '100%', flexWrap: 'wrap' });
+    expect(flat(texts[0])).toMatchObject({ fontSize: 17, lineHeight: 24 });
+    render.act(() => { tree.update(<LogSetLine sets={sets} unit="kg" tone="old" />); });
+    const old = tree.root.findAll(n => n.type === Text);
+    expect(textOf(old[0])).toBe('43.1 kg');
+    expect(flat(old[0])).toMatchObject({ fontSize: 15, lineHeight: 22 });
+    expect(old.map(textOf)).not.toContain('LAST');
   });
 });
 
