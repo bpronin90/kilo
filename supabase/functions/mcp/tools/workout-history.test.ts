@@ -116,6 +116,14 @@ Deno.test('an astral-character id (257 code points, 514 UTF-16 units) round-trip
   assertEquals(decodeCursor(encodeCursor({ as_of: '2026-10-24T23:00:00Z', u: '2026-10-20T10:00:00Z', id: '😀'.repeat(513) })), null)
 })
 
+Deno.test('an empty stored id is a valid page boundary', async () => {
+  const c = client(GATE_OK, () => page([row('')], true))
+  const cursor = sc(await call(c, { limit: 1 })).next_cursor as string
+  assertEquals(decodeCursor(cursor)?.id, '')
+  await call(c, { limit: 1, cursor })
+  assertEquals(c.calls.at(-1)!.args!.p_after_id, '')
+})
+
 Deno.test('malformed or tampered cursors are invalid_cursor and reach no data RPC', async () => {
   const good = encodeCursor({ as_of: '2026-10-24T23:00:00Z', u: '2026-10-20T10:00:00Z', id: 'n1' })
   const forge = (o: unknown) => btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
@@ -123,7 +131,6 @@ Deno.test('malformed or tampered cursors are invalid_cursor and reach no data RP
     'not base64!', good.slice(0, -4), forge({ v: 2, as_of: '2026-10-24T23:00:00Z', u: '2026-10-20T10:00:00Z', id: 'n1' }),
     forge({ v: 1, as_of: 'yesterday', u: '2026-10-20T10:00:00Z', id: 'n1' }),
     forge({ v: 1, as_of: '2026-10-24T23:00:00Z', u: '2026-10-20T10:00:00Z', id: 'n1', user_id: USER_B }),
-    forge({ v: 1, as_of: '2026-10-24T23:00:00Z', u: '2026-10-20T10:00:00Z', id: '' }),
     forge({ v: 1, as_of: '2026-10-24T23:00:00Z', u: '2026-10-20T10:00:00Z', id: 'x'.repeat(513) }),
     forge('string'), forge([1]), forge(null),
   ]

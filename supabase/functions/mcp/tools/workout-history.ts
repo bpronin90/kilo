@@ -96,7 +96,8 @@ export function decodeCursor(text: string): Cursor | null {
   if (keys !== 'as_of,id,u,v' || v.v !== 1) return null
   if (!isInstant(v.as_of) || !isInstant(v.u)) return null
   // Code points, not UTF-16 units: SQL char_length bounds ids the same way.
-  if (typeof v.id !== 'string' || [...v.id].length < 1 || [...v.id].length > MAX_ID_CHARS) return null
+  // The table permits an empty id, so an empty string is a valid position.
+  if (typeof v.id !== 'string' || [...v.id].length > MAX_ID_CHARS) return null
   return { as_of: v.as_of, u: v.u, id: v.id }
 }
 
