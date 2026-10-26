@@ -234,6 +234,29 @@ describe('useRestTimer — completion sound (#1651)', () => {
     expect(mockCancelRestTimer).not.toHaveBeenCalled();
   });
 
+  test('a superseded start resolving late never becomes the live timer', async () => {
+    mockReconcileRestTimer.mockResolvedValue({ record: null, justElapsed: false });
+    const h = mountHook();
+    await render.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    let resolveA;
+    let resolveB;
+    mockStartRestTimer
+      .mockImplementationOnce(() => new Promise((r) => { resolveA = r; }))
+      .mockImplementationOnce(() => new Promise((r) => { resolveB = r; }));
+    let pa;
+    let pb;
+    await render.act(async () => { pa = h.get().start(1); pb = h.get().start(90); });
+    await render.act(async () => { resolveA(runningRecord('a', 1000)); await pa; });
+    await render.act(async () => { jest.advanceTimersByTime(2000); });
+
+    expect(h.get().record).toBeNull();
+    expect(mockPlaySound).not.toHaveBeenCalled();
+    expect(mockCancelRestTimer).not.toHaveBeenCalled();
+
+    await render.act(async () => { resolveB(runningRecord('b', 90000)); await pb; });
+    expect(h.get().record.timerId).toBe('b');
+  });
+
   test('a timer that ended while the app was away does not replay on return', async () => {
     const { AppState } = require('react-native');
     let change;

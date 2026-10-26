@@ -32,6 +32,9 @@ export function useRestTimer() {
   // synchronously so a replaced or cancelled timer can never play or cancel
   // the newer timer's persisted state while that call is still in flight.
   const liveTimerIdRef = useRef(null);
+  // Operation generation: a start()/cancel() whose await resolves after a newer
+  // one began is superseded and must not apply its result.
+  const opRef = useRef(0);
 
   const reconcile = useCallback(async (wasActiveWhenElapsed) => {
     const { record: r, justElapsed: elapsed } = await reconcileRestTimer({ wasActiveWhenElapsed });
@@ -102,7 +105,9 @@ export function useRestTimer() {
   const start = useCallback(async (durationSec, exerciseLabel = null) => {
     setJustElapsed(false);
     liveTimerIdRef.current = null; // invalidate the timer being replaced
+    const op = ++opRef.current;
     const r = await startRestTimer({ durationSec, exerciseLabel });
+    if (op !== opRef.current) return;
     liveTimerIdRef.current = r ? r.timerId : null;
     setRecord(r);
     setRemaining(remainingMs(r));
@@ -110,7 +115,9 @@ export function useRestTimer() {
 
   const cancel = useCallback(async () => {
     liveTimerIdRef.current = null;
+    const op = ++opRef.current;
     await cancelRestTimer();
+    if (op !== opRef.current) return;
     setRecord(null);
     setRemaining(0);
   }, []);
