@@ -257,6 +257,25 @@ describe('useRestTimer — completion sound (#1651)', () => {
     expect(h.get().record.timerId).toBe('b');
   });
 
+  test('a reconciliation pass overtaken by a replacement never restores the old timer', async () => {
+    let resolveReconcile;
+    mockReconcileRestTimer.mockImplementationOnce(() => new Promise((r) => { resolveReconcile = r; }));
+    const h = mountHook();
+    let resolveB;
+    mockStartRestTimer.mockImplementationOnce(() => new Promise((r) => { resolveB = r; }));
+    let pb;
+    await render.act(async () => { pb = h.get().start(90); });
+    await render.act(async () => { resolveReconcile({ record: runningRecord('a', 1000), justElapsed: false }); });
+    await render.act(async () => { jest.advanceTimersByTime(2000); });
+
+    expect(h.get().record).toBeNull();
+    expect(mockPlaySound).not.toHaveBeenCalled();
+    expect(mockCancelRestTimer).not.toHaveBeenCalled();
+
+    await render.act(async () => { resolveB(runningRecord('b', 90000)); await pb; });
+    expect(h.get().record.timerId).toBe('b');
+  });
+
   test('a timer that ended while the app was away does not replay on return', async () => {
     const { AppState } = require('react-native');
     let change;

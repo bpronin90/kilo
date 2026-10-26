@@ -37,7 +37,10 @@ export function useRestTimer() {
   const opRef = useRef(0);
 
   const reconcile = useCallback(async (wasActiveWhenElapsed) => {
+    const op = opRef.current;
     const { record: r, justElapsed: elapsed } = await reconcileRestTimer({ wasActiveWhenElapsed });
+    // A start()/cancel() began while this pass was reading: its result is stale.
+    if (op !== opRef.current) return;
     // #577 review (Codex, post-freeze): reconcileRestTimer returns the
     // ELAPSED record purely for informational/logging purposes even when
     // it has already cleared storage and decided NOT to surface a banner
