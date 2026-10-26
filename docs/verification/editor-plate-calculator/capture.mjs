@@ -36,6 +36,16 @@ for (const width of [320, 390]) {
     await input.press('Control+End');
     await input.type('\n-Row 3x8');
     await page.waitForTimeout(300);
+    // Running rest timer (3:00 so it cannot expire mid-run) and a caret selection inside the note.
+    await page.getByRole('button', { name: 'Rest timer', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Start 180 second rest timer', exact: true }).click();
+    const timerLabel = async () => (await page.getByRole('button', { name: /^Rest timer, \d+:\d+ remaining/ }).first().getAttribute('aria-label'));
+    const remainingMs = async () => { const [, m, s] = (await timerLabel()).match(/(\d+):(\d+) remaining/); return (+m * 60 + +s) * 1000; };
+    const t1 = Date.now(); const r1 = await remainingMs();
+    await input.evaluate(n => { n.focus(); n.setSelectionRange(5, 9); });
+    // Software keyboards cannot be raised in desktop Chromium; a short viewport reproduces the space they leave.
+    await page.setViewportSize({ width, height: 500 });
+    await page.waitForTimeout(300);
     const before = await input.inputValue();
     const box = await plates.boundingBox();
     const done = await page.getByRole('button', { name: 'Done', exact: true }).boundingBox();
@@ -51,6 +61,13 @@ for (const width of [320, 390]) {
     await page.waitForTimeout(300);
     const after = await page.locator('textarea').first().inputValue();
     if (after !== before) throw new Error('Draft changed across calculator');
+    const t2 = Date.now(); const r2 = await remainingMs();
+    const drift = Math.abs((r1 - r2) - (t2 - t1));
+    if (drift > 2500) throw new Error(`Timer end time moved by ${drift}ms`);
+    const sel = await page.locator('textarea').first().evaluate(n => [n.selectionStart, n.selectionEnd]);
+    if (sel[0] !== 5 || sel[1] !== 9) throw new Error(`Selection changed: ${sel}`);
+    measurements.push({ width, mode, keyboardViewportHeight: 500, timerRemainingBeforeMs: r1, timerRemainingAfterMs: r2, elapsedMs: t2 - t1, driftMs: drift, selection: sel, timerControls: await page.getByRole('button', { name: /^Rest timer/ }).count() });
+    await page.locator('textarea').first().press('Control+End');
     await page.locator('textarea').first().type(' ok');
     if (!(await page.locator('textarea').first().inputValue()).endsWith('3x8 ok')) throw new Error('Typing after close failed');
     console.log(`${phase} ${width} ${mode}: ok`);
