@@ -8,6 +8,14 @@ import { Platform } from 'react-native';
 
 // Cleanup safety net if the player never reports it finished.
 const RELEASE_AFTER_MS = 5000;
+// How long to wait for an asynchronous playback-error event before reporting
+// success; browsers reject autoplay within a few milliseconds.
+const SETTLE_MS = 150;
+
+function failureReason(message) {
+  const blocked = Platform.OS === 'web' && /not allowed|gesture|interact/i.test(message);
+  return blocked ? 'autoplay-blocked' : 'error';
+}
 
 let lastPlayedTimerId = null;
 
@@ -29,19 +37,24 @@ export async function playRestTimerCompletionSound(timerId) {
     const { createAudioPlayer } = require('expo-audio');
     // eslint-disable-next-line global-require
     player = createAudioPlayer(require('../assets/sounds/rest-timer-complete.wav'));
+    let failure = null;
     const release = () => {
       try { player?.release?.(); } catch { /* already released */ }
     };
     player.addListener?.('playbackStatusUpdate', (status) => {
+      // expo-audio's web play() returns void and reports a rejected media
+      // promise (e.g. autoplay policy) only as a status event with `error`.
+      if (status?.error && !failure) failure = String(status.error);
       if (status?.didJustFinish) release();
     });
     setTimeout(release, RELEASE_AFTER_MS);
-    // On web play() returns a promise that rejects under autoplay policy.
     await player.play();
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+    if (failure) return { played: false, reason: failureReason(failure) };
     return { played: true };
   } catch (e) {
     try { player?.release?.(); } catch { /* ignore */ }
     const blocked = Platform.OS === 'web' && e?.name === 'NotAllowedError';
-    return { played: false, reason: blocked ? 'autoplay-blocked' : 'error' };
+    return { played: false, reason: blocked ? 'autoplay-blocked' : failureReason(String(e?.message ?? e)) };
   }
 }
