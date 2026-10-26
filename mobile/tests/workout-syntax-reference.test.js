@@ -32,7 +32,7 @@ describe('WorkoutSyntaxReference — parser round-trip (#584)', () => {
     expect(sections).toHaveLength(1);
     expect(sections[0].heading).toBe('Monday');
     expect(sections[0].subheading).toBe('Lifting');
-    expect(sections[0].exercises[0].name).toBe('Bench');
+    expect(sections[0].exercises[0].name).toBe('Barbell Bench Press');
   });
 
   test('produces the taught logged-set rows (135/140/145)', () => {
@@ -40,7 +40,7 @@ describe('WorkoutSyntaxReference — parser round-trip (#584)', () => {
     const bench = sections[0].exercises[0];
     expect(bench.rows).toHaveLength(3);
     const raws = bench.rows.map(r => r.raw);
-    expect(raws).toEqual(['135 5,5,5', '140 5,5', '145 5']);
+    expect(raws).toEqual(['135 5,5,5', '140 5,5 135 5', '145 5']);
   });
 
   test('the "-" line is recorded as a skipped session entry, not a logged set row', () => {
@@ -52,13 +52,22 @@ describe('WorkoutSyntaxReference — parser round-trip (#584)', () => {
     expect(bench.session_entries.some(e => e.skipped)).toBe(true);
   });
 
-  test('the three logged rows total 6 sets', () => {
+  test('the mixed-load line is one session: 2 sets at 140 then 1 at 135', () => {
+    const { sections } = parseWorkoutNote(WORKOUT_SYNTAX_EXAMPLE_TEXT);
+    const bench = sections[0].exercises[0];
+    const mixed = bench.rows.find(r => r.raw === '140 5,5 135 5');
+    expect(mixed.sets.map(set => [set.weight_value, set.rep_count])).toEqual([[140, 5], [140, 5], [135, 5]]);
+    // 135 row, mixed row, skip, 145 row: four session positions, one per line.
+    expect(bench.session_entries).toHaveLength(4);
+  });
+
+  test('the three logged rows total 7 sets', () => {
     const { sections } = parseWorkoutNote(WORKOUT_SYNTAX_EXAMPLE_TEXT);
     const bench = sections[0].exercises[0];
     const totalSets = bench.rows
       .filter(r => !r.skipped)
       .reduce((sum, r) => sum + (r.sets ? r.sets.length : 0), 0);
-    expect(totalSets).toBe(6);
+    expect(totalSets).toBe(7);
   });
 
   test('example lines join to the example text (single source of truth)', () => {

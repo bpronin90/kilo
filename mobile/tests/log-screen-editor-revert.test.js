@@ -390,15 +390,15 @@ describe('explicit editor rollback: integration tests (#851)', () => {
       return Array.isArray(child) ? child.join('') : String(child ?? '');
     });
 
-    // Assert that the displayed guide copy includes '-Bench' and '135 5,5,5'
-    const hasBench = flatTexts.some(txt => txt.includes('-Bench'));
+    // Assert that the displayed guide copy includes '-Barbell Bench Press' and '135 5,5,5'
+    const hasBench = flatTexts.some(txt => txt.includes('-Barbell Bench Press'));
     const hasSets = flatTexts.some(txt => txt.includes('135 5,5,5'));
 
     expect(hasBench).toBe(true);
     expect(hasSets).toBe(true);
   });
 
-  test('LogScreen TextInput placeholder contains the guide syntax (-Bench and 135 5,5,5)', () => {
+  test('LogScreen TextInput placeholder contains the guide syntax (-Barbell Bench Press and 135 5,5,5)', () => {
     let component;
     render.act(() => {
       component = render.create(
@@ -406,9 +406,9 @@ describe('explicit editor rollback: integration tests (#851)', () => {
       );
     });
     const textInputs = component.root.findAll(n => n.type === 'TextInput');
-    const editorInput = textInputs.find(ti => ti.props.placeholder && ti.props.placeholder.includes('-Bench'));
+    const editorInput = textInputs.find(ti => ti.props.placeholder && ti.props.placeholder.includes('-Barbell Bench Press'));
     expect(editorInput).toBeTruthy();
-    expect(editorInput.props.placeholder).toContain('-Bench');
+    expect(editorInput.props.placeholder).toContain('-Barbell Bench Press');
     expect(editorInput.props.placeholder).toContain('135 5,5,5');
   });
 
