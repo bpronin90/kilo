@@ -216,6 +216,24 @@ describe('useRestTimer — completion sound (#1651)', () => {
     expect(mockPlaySound).not.toHaveBeenCalled();
   });
 
+  test('a replaced timer never plays or cancels while the replacement start is still pending', async () => {
+    mockReconcileRestTimer.mockResolvedValue({ record: runningRecord('a', 1000), justElapsed: false });
+    const h = mountHook();
+    await render.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    let resolveStart;
+    mockStartRestTimer.mockImplementationOnce(() => new Promise((r) => { resolveStart = r; }));
+    let startPromise;
+    await render.act(async () => { startPromise = h.get().start(90); });
+    await render.act(async () => { jest.advanceTimersByTime(1500); });
+
+    expect(mockPlaySound).not.toHaveBeenCalled();
+    expect(mockCancelRestTimer).not.toHaveBeenCalled();
+
+    await render.act(async () => { resolveStart(runningRecord('b', 90000)); await startPromise; });
+    expect(h.get().record.timerId).toBe('b');
+    expect(mockCancelRestTimer).not.toHaveBeenCalled();
+  });
+
   test('a timer that ended while the app was away does not replay on return', async () => {
     const { AppState } = require('react-native');
     let change;

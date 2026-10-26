@@ -28,6 +28,10 @@ export function useRestTimer() {
   // foreground cue must not replay on return (#1651).
   const activeSinceRef = useRef(Date.now());
   const soundedTimerIdRef = useRef(null);
+  // Identity of the timer allowed to complete. start()/cancel() clear it
+  // synchronously so a replaced or cancelled timer can never play or cancel
+  // the newer timer's persisted state while that call is still in flight.
+  const liveTimerIdRef = useRef(null);
 
   const reconcile = useCallback(async (wasActiveWhenElapsed) => {
     const { record: r, justElapsed: elapsed } = await reconcileRestTimer({ wasActiveWhenElapsed });
@@ -71,11 +75,12 @@ export function useRestTimer() {
   // Foreground tick: recomputes remaining from the wall clock every 250ms
   // while a timer is running; never an authoritative interval counter.
   useEffect(() => {
+    liveTimerIdRef.current = record ? record.timerId : null;
     if (!record) return undefined;
     const id = setInterval(() => {
       const left = remainingMs(record);
       setRemaining(left);
-      if (left === 0 && wasActiveRef.current) {
+      if (left === 0 && wasActiveRef.current && liveTimerIdRef.current === record.timerId) {
         // Elapsed while the app stayed foregrounded the whole time — the OS
         // notification was suppressed for this case, so show the in-app
         // banner directly rather than waiting for a background→active
@@ -96,12 +101,15 @@ export function useRestTimer() {
 
   const start = useCallback(async (durationSec, exerciseLabel = null) => {
     setJustElapsed(false);
+    liveTimerIdRef.current = null; // invalidate the timer being replaced
     const r = await startRestTimer({ durationSec, exerciseLabel });
+    liveTimerIdRef.current = r ? r.timerId : null;
     setRecord(r);
     setRemaining(remainingMs(r));
   }, []);
 
   const cancel = useCallback(async () => {
+    liveTimerIdRef.current = null;
     await cancelRestTimer();
     setRecord(null);
     setRemaining(0);
