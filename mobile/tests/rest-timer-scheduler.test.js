@@ -40,6 +40,7 @@ describe('startRestTimer', () => {
     const [call] = mockNotifications.scheduleNotificationAsync.mock.calls;
     expect(call[0].content.data).toEqual({ kind: REST_TIMER_KIND, timerId: record.timerId });
     expect(call[0].trigger.type).toBe('date');
+    expect(call[0].content.sound).toBe('default'); // #1651 audible background alert
   });
 
   test('starting a new timer cancels the previous one (replace, never stack)', async () => {

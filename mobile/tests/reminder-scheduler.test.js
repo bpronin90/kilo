@@ -8,7 +8,7 @@ const mockNotifications = {
   getAllScheduledNotificationsAsync: jest.fn(async () => []),
   scheduleNotificationAsync: jest.fn(async () => 'id'),
   cancelScheduledNotificationAsync: jest.fn(async () => {}),
-  AndroidImportance: { DEFAULT: 3 },
+  AndroidImportance: { DEFAULT: 3, HIGH: 4 },
 };
 
 jest.mock('expo-notifications', () => mockNotifications);
@@ -31,6 +31,8 @@ const {
   installForegroundHandler,
   setNotificationHandlerAppActive,
   REST_TIMER_KIND,
+  REST_TIMER_CHANNEL_ID,
+  scheduleRequests,
   __resetNotificationHandlerPreparedForTests,
 } = require('../lib/reminderScheduler');
 
@@ -558,5 +560,34 @@ describe('foreground notification suppression (#577)', () => {
       shouldSetBadge: false,
     });
     expect(inactiveResult).toEqual(activeResult);
+  });
+});
+
+// #1651: the rest timer alerts audibly through its own channel; the shared
+// reminders channel and its sound behavior are untouched.
+describe('rest-timer audible channel (#1651)', () => {
+  const { Platform } = require('react-native');
+  const original = Platform.OS;
+  afterEach(() => { Platform.OS = original; });
+
+  test('android creates a separate high-importance rest-timer channel and keeps the reminders channel', async () => {
+    Platform.OS = 'android';
+    __resetNotificationHandlerPreparedForTests();
+    await installForegroundHandler();
+    const calls = mockNotifications.setNotificationChannelAsync.mock.calls;
+    const reminders = calls.find((c) => c[0] === 'kilo-reminders');
+    const rest = calls.find((c) => c[0] === REST_TIMER_CHANNEL_ID);
+    expect(reminders[1].sound).toBeUndefined();
+    expect(rest[1]).toMatchObject({ importance: mockNotifications.AndroidImportance.HIGH, sound: 'default' });
+  });
+
+  test('a request naming a channel routes there; others keep the reminders channel', async () => {
+    Platform.OS = 'android';
+    __resetNotificationHandlerPreparedForTests();
+    const trigger = { type: 'date', date: new Date(Date.now() + 1000) };
+    await scheduleRequests([{ content: {}, trigger, channelId: REST_TIMER_CHANNEL_ID }]);
+    await scheduleRequests([{ content: {}, trigger }]);
+    const sent = mockNotifications.scheduleNotificationAsync.mock.calls.map((c) => c[0].trigger.channelId);
+    expect(sent).toEqual([REST_TIMER_CHANNEL_ID, 'kilo-reminders']);
   });
 });

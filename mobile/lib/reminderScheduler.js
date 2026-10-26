@@ -27,6 +27,11 @@ const ANDROID_CHANNEL_ID = 'kilo-reminders';
 // to cancel only the rest timer's own scheduled notification.
 export const REST_TIMER_KIND = 'rest-timer';
 
+// Dedicated high-importance Android channel (#1651) so the rest-timer alert is
+// audible without changing the existing 'kilo-reminders' channel, whose
+// settings Android will not let an app alter once created.
+export const REST_TIMER_CHANNEL_ID = 'kilo-rest-timer';
+
 function getNotificationsModule() {
   // Lazy require keeps expo-notifications out of the app's startup import
   // graph; it is only loaded when a reminder toggle is actually used.
@@ -92,6 +97,11 @@ async function prepareNotifications(Notifications) {
       name: 'Reminders',
       importance: Notifications.AndroidImportance.DEFAULT,
     });
+    await Notifications.setNotificationChannelAsync(REST_TIMER_CHANNEL_ID, {
+      name: 'Rest timer',
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: 'default',
+    });
   }
   prepared = true;
 }
@@ -150,7 +160,7 @@ export async function scheduleRequests(requests) {
   await withStep('channel', () => prepareNotifications(Notifications));
   for (const request of requests) {
     const trigger = Platform.OS === 'android'
-      ? { ...request.trigger, channelId: ANDROID_CHANNEL_ID }
+      ? { ...request.trigger, channelId: request.channelId ?? ANDROID_CHANNEL_ID }
       : request.trigger;
     // Sequential on purpose: at most 8 requests (7 weekdays + 1 daily), and
     // some platforms misbehave with concurrent schedule calls.

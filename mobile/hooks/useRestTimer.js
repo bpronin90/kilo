@@ -14,6 +14,7 @@ import {
 } from '../lib/restTimerScheduler';
 import { remainingMs, isElapsed } from '../lib/restTimer';
 import { setNotificationHandlerAppActive } from '../lib/reminderScheduler';
+import { playRestTimerCompletionSound } from '../lib/restTimerSound';
 
 const TICK_MS = 250;
 
@@ -22,6 +23,11 @@ export function useRestTimer() {
   const [justElapsed, setJustElapsed] = useState(false);
   const [remaining, setRemaining] = useState(0);
   const wasActiveRef = useRef(AppState.currentState === 'active');
+  // When the app last became active. A timer that ended before this moment
+  // already alerted through the OS notification while we were away, so the
+  // foreground cue must not replay on return (#1651).
+  const activeSinceRef = useRef(Date.now());
+  const soundedTimerIdRef = useRef(null);
 
   const reconcile = useCallback(async (wasActiveWhenElapsed) => {
     const { record: r, justElapsed: elapsed } = await reconcileRestTimer({ wasActiveWhenElapsed });
@@ -56,6 +62,7 @@ export function useRestTimer() {
       if (!wasActive && isActive) {
         reconcile(false).catch(() => {});
       }
+      if (!wasActive && isActive) activeSinceRef.current = Date.now();
       wasActiveRef.current = isActive;
     });
     return () => sub.remove();
@@ -73,6 +80,12 @@ export function useRestTimer() {
         // notification was suppressed for this case, so show the in-app
         // banner directly rather than waiting for a background→active
         // transition that will never come.
+        if (activeSinceRef.current <= record.endsAtMs && soundedTimerIdRef.current !== record.timerId) {
+          // Guarded per timerId here (duplicate ticks before the rerender) and
+          // again inside the helper; never rejects.
+          soundedTimerIdRef.current = record.timerId;
+          playRestTimerCompletionSound(record.timerId).catch(() => {});
+        }
         setJustElapsed(true);
         setRecord(null);
         cancelRestTimer().catch(() => {});

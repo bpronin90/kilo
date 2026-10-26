@@ -29,7 +29,7 @@ test('native builds isolate OTA channels and Android OS backup stays disabled', 
   const priorAppEnv = process.env.APP_ENV;
   process.env.APP_ENV = 'preview';
   try {
-    assert.equal(resolveAppConfig({ config: app.expo }).runtimeVersion, 'preview-14');
+    assert.equal(resolveAppConfig({ config: app.expo }).runtimeVersion, 'preview-15');
   } finally {
     if (priorAppEnv === undefined) delete process.env.APP_ENV;
     else process.env.APP_ENV = priorAppEnv;
@@ -137,7 +137,7 @@ test('preview, simulator, development, and local config stay unsigned even with 
       if (certificate) vars.KILO_OTA_CODE_SIGNING_CERTIFICATE = certificate;
       const resolved = withEnv(vars, () => resolveAppConfig({ config: app.expo }));
       assert.deepEqual(resolved.updates, app.expo.updates);
-      assert.deepEqual(resolved.runtimeVersion, appEnv === 'preview' ? 'preview-14' : { policy: 'appVersion' });
+      assert.deepEqual(resolved.runtimeVersion, appEnv === 'preview' ? 'preview-15' : { policy: 'appVersion' });
     }
   }
   for (const [name, profile] of Object.entries(eas.build)) {

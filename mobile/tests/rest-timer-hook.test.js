@@ -13,6 +13,11 @@ jest.mock('../lib/restTimerScheduler', () => ({
   remindersSupported: () => true,
 }));
 
+const mockPlaySound = jest.fn(async () => ({ played: true }));
+jest.mock('../lib/restTimerSound', () => ({
+  playRestTimerCompletionSound: (...args) => mockPlaySound(...args),
+}));
+
 jest.mock('../lib/reminderScheduler', () => ({
   setNotificationHandlerAppActive: jest.fn(),
 }));
@@ -144,5 +149,92 @@ describe('useRestTimer.start() surfaces a persisted timer even when scheduling f
     expect(h.get().record).toEqual(persistedButUnscheduled);
     expect(h.get().isRunning).toBe(true);
     expect(h.get().backgroundAlertAvailable).toBe(false);
+  });
+});
+
+// #1651: the foreground completion cue is owned by the timer lifecycle.
+describe('useRestTimer — completion sound (#1651)', () => {
+  function runningRecord(timerId, endsInMs) {
+    return {
+      version: 1,
+      timerId,
+      startedAtMs: Date.now(),
+      durationSec: 1,
+      endsAtMs: Date.now() + endsInMs,
+      exerciseLabel: null,
+      notificationId: null,
+      notificationScheduled: true,
+    };
+  }
+
+  const { AppState: RNAppState } = require('react-native');
+  const originalState = RNAppState.currentState;
+  beforeEach(() => {
+    jest.useFakeTimers();
+    RNAppState.currentState = 'active';
+  });
+  afterEach(() => { RNAppState.currentState = originalState; jest.useRealTimers(); });
+
+  test('plays exactly once when an active timer completes in the foreground', async () => {
+    mockReconcileRestTimer.mockResolvedValue({ record: runningRecord('s1', 1000), justElapsed: false });
+    const h = mountHook();
+    await render.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await render.act(async () => { jest.advanceTimersByTime(3000); });
+
+    expect(mockPlaySound).toHaveBeenCalledTimes(1);
+    expect(mockPlaySound).toHaveBeenCalledWith('s1');
+    expect(h.get().justElapsed).toBe(true);
+    expect(h.get().record).toBeNull();
+  });
+
+  test('a rejecting sound call never blocks completion UI or leaks a rejection', async () => {
+    mockPlaySound.mockRejectedValueOnce(new Error('boom'));
+    mockReconcileRestTimer.mockResolvedValue({ record: runningRecord('s2', 500), justElapsed: false });
+    const h = mountHook();
+    await render.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await render.act(async () => { jest.advanceTimersByTime(2000); });
+
+    expect(h.get().justElapsed).toBe(true);
+  });
+
+  test('cancelling before the end never plays', async () => {
+    mockReconcileRestTimer.mockResolvedValue({ record: runningRecord('s3', 5000), justElapsed: false });
+    const h = mountHook();
+    await render.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await render.act(async () => { await h.get().cancel(); });
+    await render.act(async () => { jest.advanceTimersByTime(10000); });
+
+    expect(mockPlaySound).not.toHaveBeenCalled();
+  });
+
+  test('a cold-start elapsed record never plays', async () => {
+    mockReconcileRestTimer.mockResolvedValue({ record: runningRecord('s4', -60000), justElapsed: false });
+    mountHook();
+    await render.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await render.act(async () => { jest.advanceTimersByTime(2000); });
+
+    expect(mockPlaySound).not.toHaveBeenCalled();
+  });
+
+  test('a timer that ended while the app was away does not replay on return', async () => {
+    const { AppState } = require('react-native');
+    let change;
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_e, cb) => {
+      change = cb;
+      return { remove: () => {} };
+    });
+    const record = runningRecord('s5', 2000);
+    mockReconcileRestTimer.mockResolvedValue({ record, justElapsed: false });
+    const h = mountHook();
+    await render.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(h.get().record).toEqual(record);
+
+    await render.act(async () => { change('background'); });
+    jest.setSystemTime(Date.now() + 10000); // ended while away; OS alert owned it
+    await render.act(async () => { change('active'); });
+    await render.act(async () => { jest.advanceTimersByTime(1000); });
+
+    expect(mockPlaySound).not.toHaveBeenCalled();
+    AppState.addEventListener.mockRestore();
   });
 });

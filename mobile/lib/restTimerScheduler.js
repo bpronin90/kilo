@@ -9,6 +9,7 @@
 import * as Storage from '../storage/entries';
 import {
   REST_TIMER_KIND,
+  REST_TIMER_CHANNEL_ID,
   cancelReminders,
   scheduleRequests,
   requestReminderPermission,
@@ -23,8 +24,12 @@ function buildNotificationRequest(record) {
     content: {
       title: 'Rest over',
       body: record.exerciseLabel ? `Back to ${record.exerciseLabel}.` : 'Time to get back to it.',
+      // Explicit audible alert for background/locked completion (#1651); the
+      // OS still applies mute, volume and Do Not Disturb.
+      sound: 'default',
       data: { kind: REST_TIMER_KIND, timerId: record.timerId },
     },
+    channelId: REST_TIMER_CHANNEL_ID,
     // Wall-clock date trigger (not relative seconds) so backgrounding or an
     // app kill never resets it — it is anchored to the same endsAtMs the
     // in-app countdown uses.
