@@ -1,0 +1,89 @@
+{
+  "errors": [],
+  "measurements": [
+    {
+      "screen": "log",
+      "width": 320,
+      "mode": "dark",
+      "stress": true,
+      "rail": {
+        "x": 34,
+        "y": 772,
+        "width": 244,
+        "height": 176,
+        "right": 278
+      },
+      "scrollWidth": 244,
+      "groups": [
+        {
+          "text": "187 lb (85kg)8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8",
+          "x": 34,
+          "y": 772,
+          "width": 244,
+          "height": 176,
+          "right": 278,
+          "children": [
+            {
+              "text": "187 lb (85kg)",
+              "x": 34,
+              "y": 772,
+              "width": 184.75,
+              "height": 44,
+              "right": 218.75
+            },
+            {
+              "text": "8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8",
+              "x": 34,
+              "y": 816,
+              "width": 244,
+              "height": 132,
+              "right": 278
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "screen": "history",
+      "width": 320,
+      "mode": "dark",
+      "stress": true,
+      "rail": {
+        "x": 57,
+        "y": 477.921875,
+        "width": 238,
+        "height": 176,
+        "right": 295
+      },
+      "scrollWidth": 238,
+      "groups": [
+        {
+          "text": "187 lb (85kg)8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8",
+          "x": 57,
+          "y": 477.921875,
+          "width": 238,
+          "height": 176,
+          "right": 295,
+          "children": [
+            {
+              "text": "187 lb (85kg)",
+              "x": 57,
+              "y": 477.921875,
+              "width": 184.75,
+              "height": 44,
+              "right": 241.75
+            },
+            {
+              "text": "8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8",
+              "x": 57,
+              "y": 521.921875,
+              "width": 238,
+              "height": 132,
+              "right": 295
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

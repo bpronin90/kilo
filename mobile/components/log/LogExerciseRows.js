@@ -52,8 +52,9 @@ export function LogBlockLabel({ children }) {
 
 // One logged session: the same grouping, kg suffix, BW, duration and skipped
 // set ink as `SetLine` (components/ui/workout.js), laid out as the design's
-// load | reps | tag grid. `tone` is 'old' (muted), 'last' (bold, LAST tag) or
-// 'lead' (bold, no tag: a deload's prescribed line is not a logged session).
+// compact weight/reps groups. `tone` is 'old' (muted), 'last' (bold, the latest
+// logged session; no visible label) or 'lead' (bold: a deload's prescribed line).
+// Every tone shares Space Grotesk at one size; only bold and ink differ.
 export function LogSetLine({ sets, unit, mark, tone = 'old' }) {
   const styles = useThemedStyles(createStyles);
   const typography = useKuaTypography();
@@ -70,9 +71,14 @@ export function LogSetLine({ sets, unit, mark, tone = 'old' }) {
     current.reps.push(set.skipped ? '-' : (set.duration_seconds != null ? `${set.duration_seconds}s` : set.rep_count));
   }
   const last = tone === 'last' || tone === 'lead';
-  const text = [typography['label-lg'], last ? styles.lastText : styles.oldText, last ? { fontFamily: typography['metric-display-mobile'].fontFamily, fontWeight: typography['metric-display-mobile'].fontWeight } : null];
+  const bold = typography['headline-xl-mobile'];
+  const text = [typography['body-lg'], last ? styles.lastText : styles.oldText, last ? { fontFamily: bold.fontFamily, fontWeight: bold.fontWeight } : null];
   return (
-    <View style={styles.setLine} testID={tone === 'last' ? 'log-set-line-last' : 'log-set-line'}>
+    <View
+      style={styles.setLine}
+      testID={tone === 'last' ? 'log-set-line-last' : 'log-set-line'}
+      accessibilityLabel={tone === 'last' ? 'Latest session' : undefined}
+    >
       <View style={styles.setGroups}>
         {groups.map((group, i) => (
           <View key={i} style={styles.setGroup}>
@@ -83,18 +89,13 @@ export function LogSetLine({ sets, unit, mark, tone = 'old' }) {
                   : `${formatLiftWeightValue(group.weight, unit)} ${unit}`)
                 : 'BW'}
             </Text>
-            <Text selectable style={text}>{group.reps.join(', ')}</Text>
+            <Text selectable style={[text, styles.setReps]}>{group.reps.join(', ')}</Text>
           </View>
         ))}
         {mark ? (
           <Text selectable style={[text, styles.setMark]} accessibilityLabel={`Marked: ${mark}`}>{`★ ${mark}`}</Text>
         ) : null}
       </View>
-      {tone === 'last' ? (
-        <View style={styles.lastTag} accessibilityLabel="Last session">
-          <Text style={[typography['label-sm'], styles.lastTagText]}>LAST</Text>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -193,7 +194,7 @@ const createStyles = (colors, kua = null) => {
     dayHeading: { flexDirection: 'row', alignItems: 'stretch', gap: 10, paddingTop: 20, paddingBottom: 2 },
     dayHeadingFirst: { paddingTop: 8 },
     dayRail: { width: 3, borderRadius: 2, backgroundColor: mark },
-    dayHeadingText: { flex: 1, fontSize: 15, lineHeight: 20, letterSpacing: 0.6, textTransform: 'uppercase', color: on },
+    dayHeadingText: { flex: 1, fontSize: 16, lineHeight: 22, letterSpacing: 0.6, textTransform: 'uppercase', color: on },
     dayCount: { alignSelf: 'center', color: muted },
     blockLabel: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 14, paddingBottom: 2 },
     blockLabelText: { letterSpacing: 1.2, textTransform: 'uppercase', color: kua ? kua.primaryOnContainer : colors.accentText },
@@ -213,15 +214,15 @@ const createStyles = (colors, kua = null) => {
     earlier: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, alignSelf: 'flex-start', paddingRight: 8 },
     earlierText: { fontSize: 13, color: muted },
     folded: { display: 'none' },
-    setLine: { flexDirection: 'row', alignItems: 'center', minHeight: 30, paddingRight: 8, gap: 8 },
-    setGroups: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 14 },
-    setGroup: { flexDirection: 'row', alignItems: 'baseline' },
-    // A fixed load column; long kg-converted loads push the reps right, never touch them.
-    setWeight: { minWidth: 80, marginRight: 12 },
+    setLine: { minHeight: 30, paddingRight: 8, justifyContent: 'center' },
+    setGroups: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 16 },
+    // Each natural-width group wraps as one item in the session rail. Only a
+    // group wider than the whole rail wraps its own text as a fallback.
+    setGroup: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 4, maxWidth: '100%' },
+    setWeight: { maxWidth: '100%' },
+    setReps: { maxWidth: '100%' },
     oldText: { fontSize: 15, lineHeight: 22, color: muted },
-    lastText: { fontSize: 17, lineHeight: 24, color: on },
-    setMark: { fontSize: 13 },
-    lastTag: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: GEOMETRY['radius-sm'] ?? 4, backgroundColor: kua ? kua.primaryContainer : colors.chipBackground },
-    lastTagText: { fontWeight: '700', letterSpacing: 0.9, color: kua ? kua.primaryOnContainer : colors.chipAccentText },
+    lastText: { fontSize: 15, lineHeight: 22, color: on },
+    setMark: { maxWidth: '100%' },
   });
 };
