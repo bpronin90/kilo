@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.34.1 - 2026-10-26
+
+- Issue #1655: Clarify first-use workout guidance: the syntax help now shows how to log different weights in the same session, the starter example uses Barbell Bench Press so it appears in the Training breakdown, and a saved routine that isn't current is now described as saved.
+
 ## 1.34.0 - 2026-10-26
 
 - Issue #1651: The rest timer now plays an audible cue when it finishes, including while editing a workout note, and its background alert uses a dedicated audible notification channel.
