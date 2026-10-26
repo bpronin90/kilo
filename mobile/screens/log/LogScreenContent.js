@@ -169,7 +169,7 @@ export function LogScreenContent(props) {
               <Card style={styles.firstUseCard}>
                 <Text style={styles.firstUseTitle}>Start logging this routine</Text>
                 <Text style={styles.firstUseBody}>
-                  "{adoptableRoutine.title || 'Untitled Routine'}" is saved but is not your current routine yet, so nothing you log will land in it.
+                  "{adoptableRoutine.title || 'Untitled Routine'}" is saved. Make it current to keep it at the top of Log.
                 </Text>
                 {otherEditor.adoptionError ? (
                   <Text style={styles.firstUseError}>{otherEditor.adoptionError}</Text>

@@ -23,6 +23,8 @@ import {
   WORKOUT_SYNTAX_EXAMPLE_TEXT,
 } from '../components/WorkoutSyntaxReference';
 import { parseWorkoutNote } from '../lib/parser';
+import { getExerciseMetadata } from '../lib/data/exerciseMetadata';
+import { deriveTrainingBreakdown } from '../lib/data/trainingBreakdown';
 
 jest.mock('@react-native-community/datetimepicker', () => {
   const React = require('react');
@@ -361,13 +363,26 @@ describe('empty workout note seed example (#785)', () => {
     expect(parsed.ok).toBe(true);
     const exercises = parsed.sections.flatMap(s => s.exercises);
     expect(exercises).toHaveLength(1);
-    expect(exercises[0].name).toBe('Bench');
+    expect(exercises[0].name).toBe('Barbell Bench Press');
     expect(exercises[0].session_entries).toHaveLength(1);
     expect(exercises[0].unparsed_rows).toHaveLength(0);
   });
 
+  test('the seed exercise is an exact library match and classifies in Training (#1655)', () => {
+    const meta = getExerciseMetadata('Barbell Bench Press');
+    expect(meta.matchType).toBe('exact');
+    expect(meta.exerciseId).toBe('barbell_bench_press');
+    const { sections } = parseWorkoutNote(WORKOUT_SEED_EXAMPLE_TEXT);
+    const breakdown = deriveTrainingBreakdown({ allSections: sections });
+    expect(breakdown.totals.completedSets).toBe(3);
+    expect(breakdown.movement.unclassified).toBeNull();
+    expect(breakdown.movement.groups.map(g => [g.id, g.sets])).toEqual([['horizontal_push', 3]]);
+    expect(breakdown.muscles.primary.map(g => g.id)).toEqual(['pectoralis_major']);
+    expect(breakdown.equipment.items.map(g => g.id).sort()).toEqual(['barbell', 'flat_bench']);
+  });
+
   test('the seed constant is separate from, and shorter than, the teaching example', () => {
-    expect(WORKOUT_SEED_EXAMPLE_TEXT).toBe('Monday\n+Lifting\n-Bench\n135 5,5,5');
+    expect(WORKOUT_SEED_EXAMPLE_TEXT).toBe('Monday\n+Lifting\n-Barbell Bench Press\n135 5,5,5');
     expect(WORKOUT_SEED_EXAMPLE_TEXT).not.toBe(WORKOUT_SYNTAX_EXAMPLE_TEXT);
     // The teaching example remains byte-unchanged: seven lines, untouched.
     expect(WORKOUT_SYNTAX_EXAMPLE_LINES).toHaveLength(7);

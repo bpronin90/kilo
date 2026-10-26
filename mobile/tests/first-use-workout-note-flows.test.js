@@ -372,6 +372,8 @@ describe('post-save adoption prompt (#745 Part 4 §A1)', () => {
     // C1: `Not now` lands exactly in F1's state, so the S1 card must be there.
     render.act(() => { findPressableByText(root, 'Done').props.onPress(); });
     expect(hasText(root, 'Start logging this routine')).toBe(true);
+    expect(hasText(root, '"Push Day" is saved. Make it current to keep it at the top of Log.')).toBe(true);
+    expect(hasText(root, 'nothing you log will land in it')).toBe(false);
     expect(findPressableByText(root, 'Use this routine')).toBeTruthy();
   });
 
@@ -702,6 +704,7 @@ describe('truthful teaching copy', () => {
     }
     // The two rows the empty state used to drop (finding F4).
     expect(hasText(root, 'each new line is a new session')).toBe(true);
+    expect(hasText(root, 'in the same session')).toBe(true);
     expect(hasText(root, 'bodyweight exercises')).toBe(true);
   });
 
@@ -710,7 +713,7 @@ describe('truthful teaching copy', () => {
     expect(parsed.ok).toBe(true);
     const exercises = parsed.sections.flatMap(s => s.exercises);
     expect(exercises).toHaveLength(1);
-    expect(exercises[0].name).toBe('Bench');
+    expect(exercises[0].name).toBe('Barbell Bench Press');
     expect(exercises[0].session_entries).toHaveLength(4);
   });
 });

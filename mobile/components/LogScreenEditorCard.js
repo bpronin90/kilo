@@ -436,7 +436,7 @@ export function LogScreenEditorCard({
                   // caret move can never be forced back to the requested range.
                   setProblemSelectionRequest(null);
                 }}
-                placeholder="e.g.&#10;Monday&#10;+Lifting&#10;-Bench&#10;135 5,5,5"
+                placeholder="e.g.&#10;Monday&#10;+Lifting&#10;-Barbell Bench Press&#10;135 5,5,5"
                 placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
                 multiline
                 autoCorrect={false}

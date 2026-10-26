@@ -17,9 +17,9 @@ import { GEOMETRY } from '../theme/spacing';
 export const WORKOUT_SYNTAX_EXAMPLE_LINES = [
   'Monday',
   '+Lifting',
-  '-Bench',
+  '-Barbell Bench Press',
   '135 5,5,5',
-  '140 5,5',
+  '140 5,5 135 5',
   '-',
   '145 5',
 ];
@@ -30,14 +30,14 @@ export const WORKOUT_SYNTAX_EXAMPLE_TEXT = WORKOUT_SYNTAX_EXAMPLE_LINES.join('\n
 // separate, shorter constant from the teaching example above: this one is
 // inserted verbatim into the draft on tap, so it must stay exactly the
 // four lines the acceptance criteria specify.
-export const WORKOUT_SEED_EXAMPLE_TEXT = 'Monday\n+Lifting\n-Bench\n135 5,5,5';
+export const WORKOUT_SEED_EXAMPLE_TEXT = 'Monday\n+Lifting\n-Barbell Bench Press\n135 5,5,5';
 
 // Row explanations shown under "How it works". Kept as data so both
 // consumers render identical copy.
 export const WORKOUT_SYNTAX_ROW_EXPLANATIONS = [
-  { code: '-Bench', desc: 'Declares the exercise name (starts with a dash)' },
+  { code: '-Barbell Bench Press', desc: 'Declares the exercise name (starts with a dash)' },
   { code: '135 5,5,5', desc: 'Logs 3 sets at 135 lbs for 5 reps (separated by commas)' },
-  { code: '140 5,5', desc: 'Logs 2 sets at 140 lbs for 5 reps (each new line is a new session)' },
+  { code: '140 5,5 135 5', desc: 'Logs 2 sets at 140 lbs and 1 at 135 lbs in the same session (keep weight changes on one line; each new line is a new session)' },
   { code: '-', desc: 'A single dash on a set line marks that session as skipped' },
   { code: '12,12', desc: 'Logs bodyweight exercises (reps only, no weight prefix)' },
   { code: '-- felt strong today', desc: 'Two dashes start a note, never parsed as a set' },
@@ -48,7 +48,7 @@ export function WorkoutSyntaxReference() {
   return (
     <View>
       <Text style={styles.helpText}>
-        Each workout note is plain text. Declare an exercise with a dash (<Text style={styles.bold}>-</Text>), then write your sets (weight followed by reps) on the lines below it.
+        Each workout note is plain text. Declare an exercise with a dash (<Text style={styles.bold}>-</Text>), then write your sets (weight followed by reps) on the lines below it. A note keeps adding up your history: each new line under an exercise is another session.
       </Text>
 
       <View style={styles.codeBlock}>
