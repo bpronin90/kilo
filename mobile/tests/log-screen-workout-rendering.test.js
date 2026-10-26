@@ -620,12 +620,12 @@ describe('LogEmptyState workout syntax example parses correctly (#585)', () => {
     expect(result.ok).toBe(true);
   });
 
-  test('example produces one section Monday/Lifting/Bench', () => {
+  test('example produces one section Monday/Lifting/Barbell Bench Press', () => {
     const { sections } = parseWorkoutNote(WORKOUT_SYNTAX_EXAMPLE);
     expect(sections).toHaveLength(1);
     expect(sections[0].heading).toBe('Monday');
     expect(sections[0].subheading).toBe('Lifting');
-    expect(sections[0].exercises[0].name).toBe('Bench');
+    expect(sections[0].exercises[0].name).toBe('Barbell Bench Press');
   });
 
   test('example has 3 session rows (135/140/145)', () => {
@@ -633,14 +633,14 @@ describe('LogEmptyState workout syntax example parses correctly (#585)', () => {
     const bench = sections[0].exercises[0];
     expect(bench.rows).toHaveLength(3);
     const sessionWeights = bench.rows.map(r => r.raw);
-    expect(sessionWeights).toEqual(['135 5,5,5', '140 5,5', '145 5']);
+    expect(sessionWeights).toEqual(['135 5,5,5', '140 5,5 135 5', '145 5']);
   });
 
-  test('example logs 6 total sets across 3 sessions', () => {
+  test('example logs 7 total sets across 3 sessions', () => {
     const { sections } = parseWorkoutNote(WORKOUT_SYNTAX_EXAMPLE);
     const bench = sections[0].exercises[0];
     const totalSets = bench.rows.reduce((sum, r) => sum + r.sets.length, 0);
-    expect(totalSets).toBe(6);
+    expect(totalSets).toBe(7);
   });
 
   test('example has no unparsed entries', () => {
