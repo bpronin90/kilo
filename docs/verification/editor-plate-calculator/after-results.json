@@ -1,0 +1,77 @@
+{
+  "errors": [],
+  "measurements": [
+    {
+      "width": 320,
+      "mode": "light",
+      "plates": {
+        "x": 125.296875,
+        "y": 68,
+        "width": 106,
+        "height": 44
+      },
+      "done": {
+        "x": 239.296875,
+        "y": 68,
+        "width": 64.703125,
+        "height": 44
+      },
+      "rightEdge": 320
+    },
+    {
+      "width": 320,
+      "mode": "dark",
+      "plates": {
+        "x": 125.296875,
+        "y": 68,
+        "width": 106,
+        "height": 44
+      },
+      "done": {
+        "x": 239.296875,
+        "y": 68,
+        "width": 64.703125,
+        "height": 44
+      },
+      "rightEdge": 320
+    },
+    {
+      "width": 390,
+      "mode": "light",
+      "plates": {
+        "x": 195.296875,
+        "y": 68,
+        "width": 106,
+        "height": 44
+      },
+      "done": {
+        "x": 309.296875,
+        "y": 68,
+        "width": 64.703125,
+        "height": 44
+      },
+      "rightEdge": 390
+    },
+    {
+      "width": 390,
+      "mode": "dark",
+      "plates": {
+        "x": 195.296875,
+        "y": 68,
+        "width": 106,
+        "height": 44
+      },
+      "done": {
+        "x": 309.296875,
+        "y": 68,
+        "width": 64.703125,
+        "height": 44
+      },
+      "rightEdge": 390
+    },
+    {
+      "enlarged": true,
+      "scrollWidth": 320
+    }
+  ]
+}

@@ -4,7 +4,7 @@
 // index store, and builds the current-routine card's props from the state LogScreen
 // already holds. Nothing here reads or writes storage or re-parses the note.
 import React, { useMemo } from 'react';
-import { useLogRoutineActions } from '../../components/log/LogRoutineActionSheet';
+import { useLogRoutineActions, RoutinePlateCalculator } from '../../components/log/LogRoutineActionSheet';
 import { LogRoutineHeaderActions } from './LogRoutineHeaderActions';
 import { deriveLogDays, useLogDayNav } from './LogDayIndex';
 
@@ -49,6 +49,8 @@ export function useLogRoutineReadView({
     onApplyProgression: ce.handleApplyProgressionSuggestion,
     routineActions, dayNav,
   };
-  const headerActions = <LogRoutineHeaderActions actions={routineActions} />;
-  return { cardProps, headerActions, dayNav, days };
+  const headerActions = <LogRoutineHeaderActions actions={routineActions} hostsCalculator={false} />;
+  // #1650: mounted by LogScreen in both modes; the editor's Plates opens it.
+  const plateCalculator = <RoutinePlateCalculator actions={routineActions} />;
+  return { cardProps, headerActions, plateCalculator, openPlates: routineActions.openPlates, dayNav, days };
 }

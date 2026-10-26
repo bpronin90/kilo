@@ -11,7 +11,7 @@ import { GEOMETRY } from '../../theme/spacing';
 import { LogRoutineActionSheet } from '../../components/log/LogRoutineActionSheet';
 import { RootHeader } from '../../components/RootHeader';
 
-export function LogRoutineHeaderActions({ actions, style }) {
+export function LogRoutineHeaderActions({ actions, style, hostsCalculator = true }) {
   const styles = useThemedStyles(createStyles);
   const typography = useKuaTypography();
   const { colors } = useTheme();
@@ -19,7 +19,7 @@ export function LogRoutineHeaderActions({ actions, style }) {
   const ink = kua ? kua.onSurface : colors.text;
   return (
     <View style={[styles.row, style]}>
-      <LogRoutineActionSheet actions={actions} />
+      <LogRoutineActionSheet actions={actions} hostsCalculator={hostsCalculator} />
       <Pressable
         onPress={actions.openPlates}
         style={styles.plates}
@@ -45,6 +45,29 @@ export function LogRoutineHeaderActions({ actions, style }) {
         <MaterialIcons name="more-horiz" size={26} color={ink} accessible={false} />
       </Pressable>
     </View>
+  );
+}
+
+// #1650: the note editor's Plates entry, in the editor header beside Done (not
+// the tool row, which the rest timer, syntax help and problem badge share).
+export function EditorPlatesButton({ onPress }) {
+  const styles = useThemedStyles(createStyles);
+  const typography = useKuaTypography();
+  const { colors } = useTheme();
+  const kua = useKuaStyle();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={styles.plates}
+      android_ripple={{ color: kua ? kua.selection : colors.chipBackground }}
+      accessibilityRole="button"
+      accessibilityLabel="Plate calculator"
+      accessibilityHint="Calculate plates without leaving your edit"
+      testID="editor-plate-calculator-button"
+    >
+      <MaterialIcons name="calculate" size={18} color={kua ? kua.onSurface : colors.text} accessible={false} />
+      <Text style={[typography['label-lg'], styles.platesText]}>Plates</Text>
+    </Pressable>
   );
 }
 

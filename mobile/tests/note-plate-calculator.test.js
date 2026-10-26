@@ -9,6 +9,11 @@ import { parseWorkoutNote } from '../lib/parser';
 import { WorkoutContentRenderer } from '../components/WorkoutContentRenderer';
 import { LogActiveRoutineCard } from '../components/LogActiveRoutineCard';
 import { SetLine } from '../components/UI';
+import { PlateCalculatorModal } from '../components/PlateCalculatorModal';
+import { ThemeProvider } from '../theme/ThemeContext';
+import { useLogRoutineActions, RoutinePlateCalculator } from '../components/log/LogRoutineActionSheet';
+import { LogRoutineHeaderActions } from '../screens/log/LogRoutineHeaderActions';
+import { EditorHeaderActions } from '../screens/log/LogScreenContent';
 
 jest.mock('@expo/vector-icons/MaterialIcons', () => ({ __esModule: true, default: () => null }));
 jest.mock('../storage/entries', () => ({
@@ -203,5 +208,61 @@ describe('active routine card', () => {
     act(() => { second.root.unmount(); });
     roots = roots.filter(r => r !== second.root);
     expect(() => act(() => { jest.advanceTimersByTime(1000); })).not.toThrow();
+  });
+});
+
+// #1650: the note editor opens the same calculator from its header. LogScreen
+// hosts the one modal outside the read-view header, which unmounts in edit mode.
+describe('editor Plates entry', () => {
+  let setMode;
+  function Screen() {
+    const [mode, setModeState] = React.useState('read');
+    setMode = setModeState;
+    const [draft] = React.useState({ text: 'unsaved draft' });
+    const actions = useLogRoutineActions({
+      workoutNoteTitle: 'Routine', routineRawText: NOTE, activeEditText: NOTE, enterCurrentEditor: jest.fn(),
+      isCollapsed: false, toggleCollapsed: jest.fn(),
+    });
+    const noop = {};
+    return (
+      <ThemeProvider>
+        {mode === 'read' && <LogRoutineHeaderActions actions={actions} hostsCalculator={false} />}
+        {mode === 'edit' && (
+          <EditorHeaderActions
+            otherEditor={noop} deloadEditor={{ deloadMode: null }} currentEditor={{ handleDoneCurrent: jest.fn() }}
+            onOpenPlates={actions.openPlates}
+          />
+        )}
+        <Text testID="draft">{draft.text}</Text>
+        <RoutinePlateCalculator actions={actions} />
+      </ThemeProvider>
+    );
+  }
+  const plates = (root) => root.root.findAll(n => n.props && n.props.testID === 'editor-plate-calculator-button' && n.props.onPress)[0];
+  const calcModals = (root) => root.root.findAll(n => n.type === Modal && n.props.visible
+    && n.findAll(c => c.props && c.props.accessibilityLabel === 'Close plate calculator').length > 0);
+
+  test('opens and closes one calculator from edit mode without touching the draft', async () => {
+    const root = mount(<Screen />);
+    expect(plates(root)).toBeUndefined();
+    act(() => setMode('edit'));
+    expect(plates(root).props.accessibilityLabel).toBe('Plate calculator');
+    expect(calcModals(root)).toHaveLength(0);
+    act(() => plates(root).props.onPress());
+    await flush();
+    expect(calcModals(root)).toHaveLength(1);
+    act(() => { byLabel(root, 'Close plate calculator').props.onPress(); });
+    expect(calcModals(root)).toHaveLength(0);
+    expect(root.root.findByProps({ testID: 'draft' }).props.children).toBe('unsaved draft');
+  });
+
+  test('stays open across a mode switch and never duplicates the modal', async () => {
+    const root = mount(<Screen />);
+    act(() => setMode('edit'));
+    act(() => plates(root).props.onPress());
+    await flush();
+    act(() => setMode('read'));
+    expect(calcModals(root)).toHaveLength(1);
+    expect(root.root.findAllByType(PlateCalculatorModal)).toHaveLength(1);
   });
 });

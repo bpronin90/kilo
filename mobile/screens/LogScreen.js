@@ -533,7 +533,7 @@ export function LogScreen({
         }
         headerRight={
           <View style={styles.editorHeaderActions}>
-            <EditorHeaderActions otherEditor={otherEditor} deloadEditor={deloadEditor} currentEditor={currentEditor} />
+            <EditorHeaderActions otherEditor={otherEditor} deloadEditor={deloadEditor} currentEditor={currentEditor} onOpenPlates={restTimerDocked ? routineView.openPlates : undefined} />
           </View>
         }
         keyboardShouldPersistTaps="handled"
@@ -552,6 +552,7 @@ export function LogScreen({
           unmount it. #1006: it is now the only bottom banner in this flow,
           so it always carries the tab-bar/safe-area clearance exactly once
           (the compact rest-timer control above reserves none). */}
+      {routineView.plateCalculator}
       <PRMomentBanner
         moment={currentEditor.prMoment} onDismiss={currentEditor.clearPRMoment} style={{ marginBottom: bottomBannerClearance }}
       />

@@ -92,7 +92,14 @@ export function useLogRoutineActions({
   };
 }
 
-export function LogRoutineActionSheet({ actions }) {
+// The one plate calculator for a `useLogRoutineActions` owner. #1650: the Log
+// screen hosts it outside the read-view header (which unmounts while editing),
+// so the note editor's Plates control can open the same modal and state.
+export function RoutinePlateCalculator({ actions }) {
+  return <PlateCalculatorModal visible={actions.plateCalculator.visible} editableTarget onClose={actions.plateCalculator.close} />;
+}
+
+export function LogRoutineActionSheet({ actions, hostsCalculator = true }) {
   const reduceMotion = useReducedMotion();
   const styles = useThemedStyles(createStyles);
   const typography = useKuaTypography();
@@ -105,7 +112,7 @@ export function LogRoutineActionSheet({ actions }) {
   return (
     <>
       {imageShare && <RoutineShareModal {...imageShare} onClose={() => setImageShare(null)} />}
-      <PlateCalculatorModal visible={plateCalculator.visible} editableTarget onClose={plateCalculator.close} />
+      {hostsCalculator && <RoutinePlateCalculator actions={actions} />}
       {/* #1244: a sheet over a dismissable scrim, so opening it never shifts content. */}
       <Modal
         visible={menuOpen}

@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { ScreenShell } from '../../components/ScreenShell';
 import { LogDayIndexOverlay } from './LogDayIndex';
-import { LogRootHeader } from './LogRoutineHeaderActions';
+import { LogRootHeader, EditorPlatesButton } from './LogRoutineHeaderActions';
 import { ErrorBanner, Card, Button } from '../../components/UI';
 import { LogEmptyState } from '../../components/LogEmptyState';
 import { LogDeloadSection } from '../../components/LogDeloadSection';
@@ -553,11 +553,12 @@ export function buildLogRecovery(deps) {
 
 // Editor header actions beside the compact rest timer: the A/B week toggle,
 // Merge weeks, and Done (RestTimerBanner stays in LogScreen).
-export function EditorHeaderActions({ otherEditor, deloadEditor, currentEditor }) {
+export function EditorHeaderActions({ otherEditor, deloadEditor, currentEditor, onOpenPlates }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = React.useMemo(() => createStyles(colors, kua), [colors, kua]);
   return (
     <>
+      {onOpenPlates && <EditorPlatesButton onPress={onOpenPlates} />}
       {otherEditor.editingNoteId && otherEditor.editingHasABWeeks && (
         <Pressable
           onPress={otherEditor.handleToggleEditingWeek}
