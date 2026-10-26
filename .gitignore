@@ -13,8 +13,20 @@ CLAUDE.md
 GEMINI.md
 
 # Local-only agent workflow tooling
+.agents/
+.agent-workflows/
+.codex/
+mobile/.codex/
+skills-lock.json
 scripts/close-issue.sh
+scripts/check-scope.sh
 docs/archive/closeout-script-spec.md
+
+# Scratch captures; durable review evidence belongs in docs/evidence/.
+/.visual-evidence/
+
+# Windows download metadata
+*:Zone.Identifier
 
 # Local-only audit evidence containing production health data
 docs/ux-friction-audit.md
