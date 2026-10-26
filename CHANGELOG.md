@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.34.0 - 2026-10-26
+
+- Issue #1651: The rest timer now plays an audible cue when it finishes, including while editing a workout note, and its background alert uses a dedicated audible notification channel.
+
+## 1.33.8 - 2026-10-26
+
+- Issue #1650: Add a Plates button to the workout-note editor header, beside Done, that opens the plate calculator without leaving editing or disturbing your unsaved draft or rest timer.
+
+## 1.33.7 - 2026-10-26
+
+- Issue #1647: Improve workout-note readability in Log and exercise history: compact natural-width weight/reps groups with clearer spacing, one consistent font family with day ≥ exercise ≥ session sizes, and the latest session shown in bold instead of a LAST badge.
+
+## 1.33.6 - 2026-10-26
+
+- Issue #1645: Removed obsolete screenshot bulk and unused image experiments from the current repository tree while preserving historical evidence through commit-pinned links and retaining current design and app assets.
+
+## 1.33.5 - 2026-10-26
+
+- Issue #1643: Organized original design exports beside their specification, clarified repository evidence boundaries, and repaired the Log design-reference link.
+
 ## 1.33.4 - 2026-10-25
 
 - Issue #1640: Signed-out users now see a Sign in button on the Home header instead of a Cloud Sync icon, and opening a password-reset link on the web now shows the set-new-password step (or a clear retry message if the link failed) even when you were already signed in.
