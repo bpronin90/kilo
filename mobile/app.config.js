@@ -52,7 +52,10 @@ const path = require('node:path');
 //   0.88, AGP 9). Every native module changes, so preview-13 installs must not
 //   receive SDK 58 bundles and need a fresh preview build (installed over
 //   preview-13; no data is cleared).
-const PREVIEW_RUNTIME = 'preview-14';
+// preview-15: #1651 adds expo-audio (new native module) for the rest-timer
+//   completion cue and a dedicated rest-timer notification channel, so
+//   preview-14 installs lack the native audio code and need a fresh build.
+const PREVIEW_RUNTIME = 'preview-15';
 
 // Large-screen resizing (#1126). The SDK 54 template's MainActivity already
 // handles orientation|screenSize|screenLayout itself, but not

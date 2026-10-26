@@ -138,7 +138,7 @@ Gradle 9.4.1, and Kotlin 2.2.0 with `android.builtInKotlin=false` and
 References: [RN 0.87 (AGP 9)](https://reactnative.dev/blog/2026/08/11/react-native-0.87),
 [Expo SDK 58](https://expo.dev/changelog/sdk-58).
 
-Runtime and rollout: preview binaries use `preview-14`; signed production uses
+Runtime and rollout: preview binaries use `preview-15 (#1651 adds expo-audio)`; signed production uses
 `<version>-sdk58-signed`, so no SDK 58 bundle can reach an SDK 54 binary of the
 same version (those use `<version>-signed`). Preview and production installs
 need a fresh native build; JavaScript cannot repair an older binary.

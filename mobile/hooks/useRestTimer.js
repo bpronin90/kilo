@@ -14,6 +14,7 @@ import {
 } from '../lib/restTimerScheduler';
 import { remainingMs, isElapsed } from '../lib/restTimer';
 import { setNotificationHandlerAppActive } from '../lib/reminderScheduler';
+import { playRestTimerCompletionSound } from '../lib/restTimerSound';
 
 const TICK_MS = 250;
 
@@ -22,9 +23,24 @@ export function useRestTimer() {
   const [justElapsed, setJustElapsed] = useState(false);
   const [remaining, setRemaining] = useState(0);
   const wasActiveRef = useRef(AppState.currentState === 'active');
+  // When the app last became active. A timer that ended before this moment
+  // already alerted through the OS notification while we were away, so the
+  // foreground cue must not replay on return (#1651).
+  const activeSinceRef = useRef(Date.now());
+  const soundedTimerIdRef = useRef(null);
+  // Identity of the timer allowed to complete. start()/cancel() clear it
+  // synchronously so a replaced or cancelled timer can never play or cancel
+  // the newer timer's persisted state while that call is still in flight.
+  const liveTimerIdRef = useRef(null);
+  // Operation generation: a start()/cancel() whose await resolves after a newer
+  // one began is superseded and must not apply its result.
+  const opRef = useRef(0);
 
   const reconcile = useCallback(async (wasActiveWhenElapsed) => {
+    const op = opRef.current;
     const { record: r, justElapsed: elapsed } = await reconcileRestTimer({ wasActiveWhenElapsed });
+    // A start()/cancel() began while this pass was reading: its result is stale.
+    if (op !== opRef.current) return;
     // #577 review (Codex, post-freeze): reconcileRestTimer returns the
     // ELAPSED record purely for informational/logging purposes even when
     // it has already cleared storage and decided NOT to surface a banner
@@ -56,6 +72,7 @@ export function useRestTimer() {
       if (!wasActive && isActive) {
         reconcile(false).catch(() => {});
       }
+      if (!wasActive && isActive) activeSinceRef.current = Date.now();
       wasActiveRef.current = isActive;
     });
     return () => sub.remove();
@@ -64,15 +81,22 @@ export function useRestTimer() {
   // Foreground tick: recomputes remaining from the wall clock every 250ms
   // while a timer is running; never an authoritative interval counter.
   useEffect(() => {
+    liveTimerIdRef.current = record ? record.timerId : null;
     if (!record) return undefined;
     const id = setInterval(() => {
       const left = remainingMs(record);
       setRemaining(left);
-      if (left === 0 && wasActiveRef.current) {
+      if (left === 0 && wasActiveRef.current && liveTimerIdRef.current === record.timerId) {
         // Elapsed while the app stayed foregrounded the whole time — the OS
         // notification was suppressed for this case, so show the in-app
         // banner directly rather than waiting for a background→active
         // transition that will never come.
+        if (activeSinceRef.current <= record.endsAtMs && soundedTimerIdRef.current !== record.timerId) {
+          // Guarded per timerId here (duplicate ticks before the rerender) and
+          // again inside the helper; never rejects.
+          soundedTimerIdRef.current = record.timerId;
+          playRestTimerCompletionSound(record.timerId).catch(() => {});
+        }
         setJustElapsed(true);
         setRecord(null);
         cancelRestTimer().catch(() => {});
@@ -83,13 +107,20 @@ export function useRestTimer() {
 
   const start = useCallback(async (durationSec, exerciseLabel = null) => {
     setJustElapsed(false);
+    liveTimerIdRef.current = null; // invalidate the timer being replaced
+    const op = ++opRef.current;
     const r = await startRestTimer({ durationSec, exerciseLabel });
+    if (op !== opRef.current) return;
+    liveTimerIdRef.current = r ? r.timerId : null;
     setRecord(r);
     setRemaining(remainingMs(r));
   }, []);
 
   const cancel = useCallback(async () => {
+    liveTimerIdRef.current = null;
+    const op = ++opRef.current;
     await cancelRestTimer();
+    if (op !== opRef.current) return;
     setRecord(null);
     setRemaining(0);
   }, []);
