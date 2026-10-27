@@ -1,8 +1,8 @@
 // Redesign v3 More and Settings grouped panels (#1608).
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { Text } from 'react-native';
-import { MoreScreen } from '../screens/MoreScreen';
+import { Linking, Text } from 'react-native';
+import { MoreScreen, FEEDBACK_URL } from '../screens/MoreScreen';
 import { accountSummary } from '../screens/more/MoreMenuPanels';
 import { CloudSyncContext } from '../hooks/useEntries';
 import pkg from '../package.json';
@@ -67,14 +67,26 @@ describe('More menu', () => {
   test('renders the three groups in order with all eight destinations', () => {
     const tree = renderMore(SIGNED_IN, { hasLastSuccess: true, statusLabel: 'Synced' });
     const all = texts(tree.root);
-    const order = ['Preferences', 'Settings', 'User profile', 'Account & data', 'Account', 'Data and backup', 'Import routine', 'Tools & help', 'Routine prompt tools', 'App Guide', 'About Kilo'];
+    const order = ['Preferences', 'Settings', 'User profile', 'Account & data', 'Account', 'Data and backup', 'Import routine', 'Tools & help', 'Routine prompt tools', 'App Guide', 'Send Feedback', 'About Kilo'];
     const positions = order.map((t) => all.indexOf(t));
     positions.forEach((p) => expect(p).toBeGreaterThanOrEqual(0));
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
     expect(all).toContain(`Version ${pkg.version}`);
-    ['Settings', 'User Profile', 'Account', 'Data and Backup', 'Import Routine', 'Routine prompt tools', 'App Guide', 'About Kilo'].forEach((label) => {
+    ['Settings', 'User Profile', 'Account', 'Data and Backup', 'Import Routine', 'Routine prompt tools', 'App Guide', 'Send Feedback', 'About Kilo'].forEach((label) => {
       expect(pressable(tree.root, label)).toBeTruthy();
     });
+    act(() => tree.unmount());
+  });
+
+  test('Send Feedback is one accessible row that opens the feedback mailto', () => {
+    const tree = renderMore(SIGNED_IN, { hasLastSuccess: true, statusLabel: 'Synced' });
+    expect(texts(tree.root).filter((t) => t === 'Send Feedback')).toHaveLength(1);
+    const canOpen = jest.spyOn(Linking, 'canOpenURL').mockResolvedValue(true);
+    const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
+    act(() => { pressable(tree.root, 'Send Feedback').props.onPress(); });
+    expect(canOpen).toHaveBeenCalledWith(FEEDBACK_URL);
+    canOpen.mockRestore();
+    open.mockRestore();
     act(() => tree.unmount());
   });
 
