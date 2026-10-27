@@ -129,6 +129,9 @@ Supported repository build paths are:
   pending owner configuration (see the Web Deployment custom-domain section).
 - iOS simulator and device profiles documented in the mobile build runbook.
 
+On web, More includes a “Download on Google Play” link to the Android app,
+opening the listing in a new tab while keeping the web app available.
+
 Remote EAS Update publication is intentionally blocked while update-signing key
 custody is unresolved. Native build replacement is the supported delivery path;
 the exact runtime and build procedure lives in
