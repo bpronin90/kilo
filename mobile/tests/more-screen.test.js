@@ -56,7 +56,7 @@ describe('Send Feedback email action (#1658)', () => {
   test('URL targets only the address with the fixed subject and no body', () => {
     const url = new URL(FEEDBACK_URL);
     expect(url.protocol).toBe('mailto:');
-    expect(decodeURIComponent(url.pathname)).toBe('bpronin90@gmail.com');
+    expect(decodeURIComponent(url.pathname)).toBe('support@kilofitnesstracker.com');
     expect([...url.searchParams.keys()]).toEqual(['subject']);
     expect(url.searchParams.get('subject')).toBe('Kilo feedback');
     expect(FEEDBACK_URL).toContain('subject=Kilo%20feedback');
@@ -75,7 +75,7 @@ describe('Send Feedback email action (#1658)', () => {
     expect(deps.linking.openURL).toHaveBeenCalledWith(FEEDBACK_URL);
     expect(deps.alert).toHaveBeenCalledTimes(1);
     const [, message, buttons] = deps.alert.mock.calls[0];
-    expect(message).toContain('bpronin90@gmail.com');
+    expect(message).toContain('support@kilofitnesstracker.com');
     expect(buttons.map(b => b.text)).toEqual(['Copy address', 'Dismiss']);
   });
 
@@ -88,7 +88,7 @@ describe('Send Feedback email action (#1658)', () => {
     await sendFeedback(deps);
     expect(deps.alert).toHaveBeenCalledTimes(1);
     const [, message, buttons] = deps.alert.mock.calls[0];
-    expect(message).toContain('bpronin90@gmail.com');
+    expect(message).toContain('support@kilofitnesstracker.com');
     expect(buttons.map(b => b.text)).toEqual(['Copy address', 'Dismiss']);
   });
 
@@ -100,7 +100,7 @@ describe('Send Feedback email action (#1658)', () => {
     });
     await sendFeedback(deps);
     const press = deps.alert.mock.calls[0][2][0].onPress();
-    expect(deps.copy).toHaveBeenCalledWith('bpronin90@gmail.com');
+    expect(deps.copy).toHaveBeenCalledWith('support@kilofitnesstracker.com');
     expect(deps.alert).toHaveBeenCalledTimes(1);
     resolveCopy();
     await press;
@@ -129,6 +129,6 @@ describe('Send Feedback email action (#1658)', () => {
     const [title, message] = deps.alert.mock.calls[1];
     expect(title).toBe('Could not copy');
     expect(title).not.toMatch(/copied/i);
-    expect(message).toContain('bpronin90@gmail.com');
+    expect(message).toContain('support@kilofitnesstracker.com');
   });
 });
