@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
 import { useKuaTypography } from '../../theme/typography';
 import { GEOMETRY } from '../../theme/spacing';
@@ -52,14 +52,14 @@ export function accountSummary(auth, cloudSync) {
   return { title: 'Not signed in', status: 'Optional · sign in to sync to the cloud', tone: 'muted', icon: 'cloud-off' };
 }
 
-function MenuRow({ icon, title, subtitle, onPress, a11yLabel, first, last, leading = null, statusIcon = null, statusStyle = null, testID }) {
+function MenuRow({ icon, title, subtitle, onPress, href, a11yLabel, first, last, leading = null, statusIcon = null, statusStyle = null, testID }) {
   const styles = useThemedStyles(createStyles);
   const typography = useKuaTypography();
   const { colors, kuaPalette: kua } = useTheme();
   const muted = kua ? kua.onSurfaceVariant : colors.textMuted;
   const rowStyle = [styles.row, first ? styles.rowFirst : styles.rowFollowing, last ? styles.rowLast : null];
   return (
-    <Pressable testID={testID} style={rowStyle} onPress={onPress} accessibilityRole="button" accessibilityLabel={a11yLabel}>
+    <Pressable testID={testID} style={rowStyle} onPress={onPress} href={href} hrefAttrs={href ? { target: '_blank', rel: 'noopener noreferrer' } : undefined} accessibilityRole={href ? 'link' : 'button'} accessibilityLabel={a11yLabel}>
       {({ pressed }) => (
         <View style={[styles.rowBody, pressed ? styles.pressed : null]}>
           {leading || <Icon name={icon} size={22} color={kua ? kua.primary : colors.accent} />}
@@ -147,6 +147,11 @@ export function MoreMenuPanels({ auth, onOpen, onSendFeedback }) {
           { icon: 'help-outline', title: 'App Guide', subtitle: 'Syntax and walkthrough', onPress: () => onOpen('help'), a11yLabel: 'App Guide' },
           { icon: 'mail-outline', title: 'Send Feedback', subtitle: 'Email the developer', onPress: onSendFeedback, a11yLabel: 'Send Feedback' },
           { icon: 'info-outline', title: 'About Kilo', subtitle: `Version ${pkg.version}`, onPress: () => onOpen('about'), a11yLabel: 'About Kilo' },
+          ...(Platform.OS === 'web' ? [{
+            icon: 'shop', title: 'Download on Google Play', subtitle: 'Get the Android app',
+            href: 'https://play.google.com/store/apps/details?id=com.benpronin.kilo',
+            a11yLabel: 'Download on Google Play',
+          }] : []),
         ]}
       />
     </>

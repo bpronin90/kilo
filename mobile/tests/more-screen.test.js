@@ -1,6 +1,30 @@
 import React from 'react';
 import render, { act } from 'react-test-renderer';
+import { Platform } from 'react-native';
 import { MoreScreen, sendFeedback, FEEDBACK_URL } from '../screens/MoreScreen';
+import { MoreMenuPanels } from '../screens/more/MoreMenuPanels';
+
+describe('Google Play download option', () => {
+  const originalOS = Platform.OS;
+  afterEach(() => { Platform.OS = originalOS; });
+
+  test.each(['web', 'android', 'ios'])('%s menu exposes the download only on web', (platform) => {
+    Platform.OS = platform;
+    let tree;
+    act(() => { tree = render.create(<MoreMenuPanels onOpen={jest.fn()} />); });
+    const links = tree.root.findAll(node => node.props.accessibilityRole === 'link'
+      && node.props.accessibilityLabel === 'Download on Google Play');
+    if (platform === 'web') {
+      expect(links.length).toBeGreaterThan(0);
+      expect(links[0].props.href).toBe('https://play.google.com/store/apps/details?id=com.benpronin.kilo');
+      expect(links[0].props.hrefAttrs).toEqual({ target: '_blank', rel: 'noopener noreferrer' });
+    } else {
+      expect(links).toHaveLength(0);
+      expect(tree.root.findAll(node => node.props.href)).toHaveLength(0);
+    }
+    act(() => tree.unmount());
+  });
+});
 
 function button(root, label) {
   return root.findAll(node => node.props?.accessibilityLabel === label && typeof node.props.onPress === 'function')[0];
