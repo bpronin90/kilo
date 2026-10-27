@@ -1,5 +1,5 @@
 import React, { useState, useLayoutEffect, useEffect, useRef } from 'react';
-import { Linking } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { RootHeader } from '../components/RootHeader';
 import { useTheme } from '../theme/ThemeContext';
@@ -52,20 +52,33 @@ export async function sendFeedback(deps = {}) {
     alert: (...args) => Alert.alert(...args),
     copy: copyTextToClipboard,
     systemConfirms: systemConfirmsClipboardWrite,
+    platform: Platform.OS,
     ...deps,
   };
+  let launched = false;
   try {
     if (await d.linking.canOpenURL(FEEDBACK_URL)) {
       await d.linking.openURL(FEEDBACK_URL);
-      return;
+      launched = true;
     }
   } catch {
     // Fall through to the address fallback below.
   }
-  d.alert('Email not available', `Kilo could not open an email app. Send your feedback to ${FEEDBACK_ADDRESS}.`, [
-    { text: 'Copy address', onPress: () => copyFeedbackAddress(d) },
-    { text: 'Dismiss', style: 'cancel' },
-  ]);
+  // Web resolves openURL even when no mail handler took the link or the popup
+  // was blocked (window.open with `noopener` returns null), so a launch there
+  // cannot be confirmed; keep the address reachable instead of going silent.
+  if (launched && d.platform !== 'web') return;
+  const unconfirmed = launched;
+  d.alert(
+    unconfirmed ? 'Email not opening?' : 'Email not available',
+    unconfirmed
+      ? `If your email app did not open, send your feedback to ${FEEDBACK_ADDRESS}.`
+      : `Kilo could not open an email app. Send your feedback to ${FEEDBACK_ADDRESS}.`,
+    [
+      { text: 'Copy address', onPress: () => copyFeedbackAddress(d) },
+      { text: 'Dismiss', style: 'cancel' },
+    ],
+  );
 }
 
 export function MoreScreen({

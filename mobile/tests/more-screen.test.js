@@ -24,6 +24,7 @@ describe('Send Feedback email action (#1658)', () => {
       alert: jest.fn(),
       copy: jest.fn().mockResolvedValue(undefined),
       systemConfirms: jest.fn().mockReturnValue(false),
+      platform: 'ios',
       ...overrides,
     };
   }
@@ -42,6 +43,16 @@ describe('Send Feedback email action (#1658)', () => {
     await sendFeedback(deps);
     expect(deps.linking.openURL).toHaveBeenCalledWith(FEEDBACK_URL);
     expect(deps.alert).not.toHaveBeenCalled();
+  });
+
+  test('web cannot confirm a launch, so it also offers the address', async () => {
+    const deps = makeDeps({ platform: 'web' });
+    await sendFeedback(deps);
+    expect(deps.linking.openURL).toHaveBeenCalledWith(FEEDBACK_URL);
+    expect(deps.alert).toHaveBeenCalledTimes(1);
+    const [, message, buttons] = deps.alert.mock.calls[0];
+    expect(message).toContain('bpronin90@gmail.com');
+    expect(buttons.map(b => b.text)).toEqual(['Copy address', 'Dismiss']);
   });
 
   test.each([
