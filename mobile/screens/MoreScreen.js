@@ -28,7 +28,7 @@ export { AccountLifecycle } from './more/AccountLifecycle';
 // stray intent yank the user out of a sub-view they are already using.
 const NAV_SUBVIEWS = new Set(['help', 'about', 'backup', 'settings', 'profile', 'account', 'import-routine', 'routine-prompts']);
 
-export const FEEDBACK_ADDRESS = 'bpronin90@gmail.com';
+export const FEEDBACK_ADDRESS = 'support@kilofitnesstracker.com';
 export const FEEDBACK_URL = `mailto:${FEEDBACK_ADDRESS}?subject=${encodeURIComponent('Kilo feedback')}`;
 
 async function copyFeedbackAddress(deps) {
