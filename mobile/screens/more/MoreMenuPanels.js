@@ -91,7 +91,7 @@ function MenuGroup({ label, rows }) {
   );
 }
 
-export function MoreMenuPanels({ auth, onOpen }) {
+export function MoreMenuPanels({ auth, onOpen, onSendFeedback }) {
   const styles = useThemedStyles(createStyles);
   const typography = useKuaTypography();
   const { themeSelection, preference } = useTheme();
@@ -145,6 +145,7 @@ export function MoreMenuPanels({ auth, onOpen }) {
           { icon: 'auto-awesome', title: 'Routine prompt tools', subtitle: 'Copy local templates for an external LLM', onPress: () => onOpen('routine-prompts'), a11yLabel: 'Routine prompt tools' },
           // Visible "App Guide" kept: existing Log-tab tests open it by that text.
           { icon: 'help-outline', title: 'App Guide', subtitle: 'Syntax and walkthrough', onPress: () => onOpen('help'), a11yLabel: 'App Guide' },
+          { icon: 'mail-outline', title: 'Send Feedback', subtitle: 'Email the developer', onPress: onSendFeedback, a11yLabel: 'Send Feedback' },
           { icon: 'info-outline', title: 'About Kilo', subtitle: `Version ${pkg.version}`, onPress: () => onOpen('about'), a11yLabel: 'About Kilo' },
         ]}
       />

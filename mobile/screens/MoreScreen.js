@@ -1,8 +1,11 @@
 import React, { useState, useLayoutEffect, useEffect, useRef } from 'react';
+import { Linking, Platform } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { RootHeader } from '../components/RootHeader';
 import { useTheme } from '../theme/ThemeContext';
 import { MoreMenuPanels } from './more/MoreMenuPanels';
+import { Alert } from '../lib/platformAlert';
+import { copyTextToClipboard, systemConfirmsClipboardWrite } from '../lib/platformClipboard';
 
 import { HelpScreen } from '../components/HelpScreen';
 import { AboutScreen } from '../components/AboutScreen';
@@ -24,6 +27,59 @@ export { AccountLifecycle } from './more/AccountLifecycle';
 // just an ordinary More tab press, and accepting it as a target would let a
 // stray intent yank the user out of a sub-view they are already using.
 const NAV_SUBVIEWS = new Set(['help', 'about', 'backup', 'settings', 'profile', 'account', 'import-routine', 'routine-prompts']);
+
+export const FEEDBACK_ADDRESS = 'bpronin90@gmail.com';
+export const FEEDBACK_URL = `mailto:${FEEDBACK_ADDRESS}?subject=${encodeURIComponent('Kilo feedback')}`;
+
+async function copyFeedbackAddress(deps) {
+  try {
+    await deps.copy(FEEDBACK_ADDRESS);
+  } catch {
+    deps.alert('Could not copy', `Kilo could not copy the address. Send your feedback to ${FEEDBACK_ADDRESS}.`);
+    return;
+  }
+  // Android 13+ already shows its own clipboard popup; skip the in-app one there.
+  if (!deps.systemConfirms()) deps.alert('Address copied', `${FEEDBACK_ADDRESS} was copied to the clipboard.`);
+}
+
+// Opens a blank-bodied draft in the device email app (#1658). Only the address
+// and a fixed subject are prefilled; Kilo never sends mail itself. When no email
+// app can be opened the address stays reachable through a copy fallback.
+// `deps` follows routineShare.js: the app uses the real platform modules.
+export async function sendFeedback(deps = {}) {
+  const d = {
+    linking: Linking,
+    alert: (...args) => Alert.alert(...args),
+    copy: copyTextToClipboard,
+    systemConfirms: systemConfirmsClipboardWrite,
+    platform: Platform.OS,
+    ...deps,
+  };
+  let launched = false;
+  try {
+    if (await d.linking.canOpenURL(FEEDBACK_URL)) {
+      await d.linking.openURL(FEEDBACK_URL);
+      launched = true;
+    }
+  } catch {
+    // Fall through to the address fallback below.
+  }
+  // Web resolves openURL even when no mail handler took the link or the popup
+  // was blocked (window.open with `noopener` returns null), so a launch there
+  // cannot be confirmed; keep the address reachable instead of going silent.
+  if (launched && d.platform !== 'web') return;
+  const unconfirmed = launched;
+  d.alert(
+    unconfirmed ? 'Email not opening?' : 'Email not available',
+    unconfirmed
+      ? `If your email app did not open, send your feedback to ${FEEDBACK_ADDRESS}.`
+      : `Kilo could not open an email app. Send your feedback to ${FEEDBACK_ADDRESS}.`,
+    [
+      { text: 'Copy address', onPress: () => copyFeedbackAddress(d) },
+      { text: 'Dismiss', style: 'cancel' },
+    ],
+  );
+}
 
 export function MoreScreen({
   isActive = true,
@@ -180,6 +236,7 @@ export function MoreScreen({
     <ScreenShell header={<RootHeader title="More" />} style={kua ? { backgroundColor: kua.background } : undefined}>
       <MoreMenuPanels
         auth={auth}
+        onSendFeedback={() => sendFeedback()}
         onOpen={(view) => {
           // The menu's prompt-tools row opens the tool list itself, not the
           // import → normalize handoff, so its back returns to the menu.
