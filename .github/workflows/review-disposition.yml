@@ -27,7 +27,7 @@ jobs:
       || (github.event.comment.author_association == 'OWNER'
       && (contains(github.event.comment.body, 'UPDATE=')
       || contains(github.event.comment.body, 'VERDICT=')
-      || contains(github.event.comment.body, 'STATUS=OWNER_OVERRIDE')))
+      || contains(github.event.comment.body, 'STATUS=')))
       || github.event.comment.author_association == ''
     # One repository-wide group serializes every admitted evaluation. It is
     # job-level so a skipped job never enters it and cannot displace a queued

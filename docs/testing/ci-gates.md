@@ -36,7 +36,7 @@ longer holds).
 Job admission skips the evaluator, before any runner is allocated, only for a
 created comment whose author association is known and not `OWNER`, or whose
 known non-empty body contains none of `UPDATE=`, `VERDICT=`, or
-`STATUS=OWNER_OVERRIDE` (case-insensitive). Edited and deleted comments,
+`STATUS=` (case-insensitive). Edited and deleted comments,
 missing association or body data, and all other events always evaluate.
 Because concurrency is job-level, a skipped job never enters the group and
 cannot displace a queued evaluation. A skipped job's check is not the required

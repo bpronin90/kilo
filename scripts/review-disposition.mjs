@@ -469,8 +469,9 @@ export function groupPulls(pulls) {
 // Job admission, mirrored by the review-disposition workflow `if:`. Only a
 // created comment with a known non-OWNER author association, or a known body
 // with no record marker, is skipped; anything missing or uncertain evaluates.
-// Markers match case-insensitively, as GitHub's contains() does.
-export const ADMISSION_MARKERS = ['UPDATE=', 'VERDICT=', 'STATUS=OWNER_OVERRIDE'];
+// Markers match case-insensitively, as GitHub's contains() does. `STATUS=` is
+// matched alone because the parser trims its value (`STATUS= OWNER_OVERRIDE`).
+export const ADMISSION_MARKERS = ['UPDATE=', 'VERDICT=', 'STATUS='];
 
 export function shouldEvaluateEvent(eventName, event) {
   if (eventName !== 'issue_comment' || event?.action !== 'created') return true;

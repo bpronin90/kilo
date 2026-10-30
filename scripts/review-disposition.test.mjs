@@ -770,6 +770,8 @@ test('admission skips only conclusively irrelevant created comments', () => {
     ['owner feedback verdict', owner('VERDICT=FEEDBACK')],
     ['owner blocked verdict', owner('VERDICT=BLOCKED')],
     ['owner override', owner('STATUS=OWNER_OVERRIDE\nReason: r')],
+    ['owner override with whitespace the parser trims', owner('STATUS= \tOWNER_OVERRIDE\nReason: r')],
+    ['owner carry-forward marker', owner('STATUS=REVIEW_CARRIED_FORWARD\nPR: #12')],
     ['owner replacement handoff', owner('UPDATE=FEEDBACK_ADDRESSED')],
     ['malformed duplicate fields', owner('VERDICT=APPROVED\nVERDICT=FEEDBACK')],
     ['marker mid-line', owner('see VERDICT=APPROVED above')],
@@ -784,12 +786,26 @@ test('admission skips only conclusively irrelevant created comments', () => {
 
   const skip = [
     ['owner prose', owner('Thanks, looks good.')],
-    ['owner carry-forward marker', owner('STATUS=REVIEW_CARRIED_FORWARD\nPR: #12')],
     ['non-owner handoff', created({ author_association: 'MEMBER', body: handoff })],
     ['bot-like contributor verdict', created({ author_association: 'NONE', body: 'VERDICT=APPROVED' })],
     ['collaborator override', created({ author_association: 'COLLABORATOR', body: 'STATUS=OWNER_OVERRIDE' })],
   ];
   for (const [name, event] of skip) assert.equal(shouldEvaluateEvent('issue_comment', event), false, name);
+});
+
+test('every comment the parsers accept is admitted when created', () => {
+  const base = { id: 7, author_association: 'OWNER', created_at: 't', updated_at: 't' };
+  const bodies = [
+    ['UPDATE=IMPLEMENTED', 'PR: #12', `Commit: ${HEAD}`, 'Summary: s', 'Verification: v', 'Remaining: none'],
+    ['UPDATE= FEEDBACK_ADDRESSED', 'PR: #12', `Commit: ${HEAD}`, 'Summary: s', 'Verification: v', 'Remaining: none'],
+    ['VERDICT=\tAPPROVED', 'PR: #12', `Commit: ${HEAD}`, 'Findings: none'],
+    ['STATUS=  OWNER_OVERRIDE', 'PR: #12', `Commit: ${HEAD}`, 'Reason: r'],
+  ];
+  for (const lines of bodies) {
+    const comment = { ...base, body: lines.join('\r\n') };
+    assert.ok(parseHandoff(comment) || parseDisposition(comment), lines[0]);
+    assert.equal(shouldEvaluateEvent('issue_comment', { action: 'created', comment }), true, lines[0]);
+  }
 });
 
 test('admission never filters edits, deletes, or non-comment events', () => {
