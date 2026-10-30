@@ -355,7 +355,13 @@ async function getAllPages(gh, path) {
   const values = [];
   for (let page = 1; ; page += 1) {
     const separator = path.includes('?') ? '&' : '?';
-    const batch = await gh.request(`${path}${separator}per_page=100&page=${page}`);
+    let batch;
+    try {
+      batch = await gh.request(`${path}${separator}per_page=100&page=${page}`);
+    } catch (error) {
+      error.partial = values; // already-discovered items stay actionable
+      throw error;
+    }
     values.push(...batch);
     if (batch.length < 100) return values;
   }
@@ -534,9 +540,14 @@ export async function reconcile({ gh, repository, event = null, runUrl, proveObj
   try {
     pulls = await getOpenPulls(gh, repository);
   } catch (error) {
+    // Error every head discovered before the failure, plus the event's own PR.
+    const targets = new Map((error.partial ?? []).map((pr) => [pr.head.sha, pr]));
     const fallback = event?.pull_request;
     if (fallback?.state === 'open' && SHA_RE.test(String(fallback.head?.sha ?? '').toLowerCase())) {
-      await publishStatus(gh, repository, fallback, 'error', 'open PR discovery failed; rerun required', runUrl)
+      targets.set(fallback.head.sha, fallback);
+    }
+    for (const pr of targets.values()) {
+      await publishStatus(gh, repository, pr, 'error', 'open PR discovery failed; rerun required', runUrl)
         .catch((publishError) => failures.push(publishError));
     }
     throw new AggregateError([error, ...failures], 'open PR discovery failed');

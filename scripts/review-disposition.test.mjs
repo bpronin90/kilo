@@ -628,6 +628,19 @@ test('scenario 4: open PR discovery failure errors the event PR rather than keep
   assert.equal(fake.latest(HEAD).state, 'error');
 });
 
+test('scenario 4: a later discovery page failure errors every already discovered head', async () => {
+  const pulls = Array.from({ length: 100 }, (_, index) => openPr({ number: index + 1, head: index.toString(16).padStart(40, '0') }));
+  const statuses = Object.assign({}, ...pulls.map((pull) => success(pull.head.sha)));
+  const fake = fakeGithub({ pulls, statuses });
+  const request = fake.gh.request;
+  fake.gh.request = (path, options) => {
+    if (path.includes('/pulls?state=open&per_page=100&page=2')) return Promise.reject(Object.assign(new Error('502'), { status: 502 }));
+    return request(path, options);
+  };
+  await assert.rejects(run(fake, { event: { action: 'deleted', issue: { number: 600 } } }));
+  for (const pull of pulls) assert.equal(fake.latest(pull.head.sha).state, 'error');
+});
+
 test('scenario 5: relinks, closure of a competitor, and base advance reevaluate affected PRs', async () => {
   const comments = { 600: [
     handoff({ prNumber: 41 }),
