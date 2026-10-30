@@ -2,9 +2,11 @@ name: Review Disposition
 
 on:
   pull_request_target:
-    types: [opened, reopened, synchronize, edited]
+    types: [opened, reopened, synchronize, edited, closed]
   issue_comment:
     types: [created, edited, deleted]
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -12,15 +14,18 @@ permissions:
   pull-requests: read
   statuses: write
 
+# One repository-wide group serializes every evaluation. A running job is never
+# canceled; GitHub may replace a queued job with a newer one, which is safe
+# because every run reconciles all open PRs (scripts/review-disposition.mjs).
 concurrency:
-  group: review-disposition-${{ github.event.pull_request.number || github.event.issue.number }}
-  cancel-in-progress: true
+  group: review-disposition
+  cancel-in-progress: false
 
 jobs:
   evaluate:
     name: evaluate current head review disposition
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout trusted evaluator
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
