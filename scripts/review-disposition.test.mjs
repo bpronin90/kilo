@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  ADMISSION_MARKERS,
   affectedPullNumbers,
   carryForwardRecordBody,
   controllingDisposition,
@@ -22,6 +23,7 @@ import {
   reconcile,
   createGithub,
   selectAuthoritativeEvidence,
+  shouldEvaluateEvent,
   validateParentDisposition,
   verifyRefreshObjects,
 } from './review-disposition.mjs';
@@ -564,7 +566,8 @@ test('scenario 2: unserialized overlap can publish a stale success; the serializ
 
 test('workflow serializes every trigger in one non-canceling repository-wide group', () => {
   const workflow = readFileSync('.github/workflows/review-disposition.yml', 'utf8');
-  assert.match(workflow, /concurrency:\n  group: review-disposition\n  cancel-in-progress: false\n/);
+  assert.match(workflow, /\n    concurrency:\n      group: review-disposition\n      cancel-in-progress: false\n/);
+  assert.doesNotMatch(workflow, /^concurrency:/m, 'workflow-level concurrency would let skipped runs displace queued work');
   assert.match(workflow, /types: \[opened, reopened, synchronize, edited, closed\]/);
   assert.match(workflow, /push:\n    branches: \[main\]/);
   assert.match(workflow, /statuses: write/);
@@ -754,4 +757,82 @@ test('the GitHub client retries transient failures but not rejections or comment
   const once = createGithub({ token: 't', fetchImpl: async () => { posts += 1; return { ok: false, status: 502, text: async () => '' }; }, sleep: async () => {} });
   await assert.rejects(once.request('/x', { method: 'POST' }, { retry: false }));
   assert.equal(posts, 1);
+});
+
+const created = (comment) => ({ action: 'created', comment });
+const owner = (body) => created({ author_association: 'OWNER', body });
+
+test('admission skips only conclusively irrelevant created comments', () => {
+  const handoff = ['UPDATE=IMPLEMENTED', 'PR: #12', `Commit: ${HEAD}`, 'Summary: s', 'Verification: v', 'Remaining: none'].join('\r\n');
+  const evaluate = [
+    ['owner handoff with CRLF', owner(handoff)],
+    ['owner verdict for an old head', owner(`VERDICT=APPROVED\nPR: #12\nCommit: ${NEXT}\nFindings: none`)],
+    ['owner feedback verdict', owner('VERDICT=FEEDBACK')],
+    ['owner blocked verdict', owner('VERDICT=BLOCKED')],
+    ['owner override', owner('STATUS=OWNER_OVERRIDE\nReason: r')],
+    ['owner override with whitespace the parser trims', owner('STATUS= \tOWNER_OVERRIDE\nReason: r')],
+    ['owner carry-forward marker', owner('STATUS=REVIEW_CARRIED_FORWARD\nPR: #12')],
+    ['owner replacement handoff', owner('UPDATE=FEEDBACK_ADDRESSED')],
+    ['malformed duplicate fields', owner('VERDICT=APPROVED\nVERDICT=FEEDBACK')],
+    ['marker mid-line', owner('see VERDICT=APPROVED above')],
+    ['lowercase marker', owner('update=implemented')],
+    ['missing association', created({ body: 'hello' })],
+    ['empty association', created({ author_association: '', body: 'hello' })],
+    ['missing body', created({ author_association: 'NONE' })],
+    ['empty body', created({ author_association: 'NONE', body: '' })],
+    ['missing comment', { action: 'created' }],
+  ];
+  for (const [name, event] of evaluate) assert.equal(shouldEvaluateEvent('issue_comment', event), true, name);
+
+  const skip = [
+    ['owner prose', owner('Thanks, looks good.')],
+    ['non-owner handoff', created({ author_association: 'MEMBER', body: handoff })],
+    ['bot-like contributor verdict', created({ author_association: 'NONE', body: 'VERDICT=APPROVED' })],
+    ['collaborator override', created({ author_association: 'COLLABORATOR', body: 'STATUS=OWNER_OVERRIDE' })],
+  ];
+  for (const [name, event] of skip) assert.equal(shouldEvaluateEvent('issue_comment', event), false, name);
+});
+
+test('every comment the parsers accept is admitted when created', () => {
+  const base = { id: 7, author_association: 'OWNER', created_at: 't', updated_at: 't' };
+  const bodies = [
+    ['UPDATE=IMPLEMENTED', 'PR: #12', `Commit: ${HEAD}`, 'Summary: s', 'Verification: v', 'Remaining: none'],
+    ['UPDATE= FEEDBACK_ADDRESSED', 'PR: #12', `Commit: ${HEAD}`, 'Summary: s', 'Verification: v', 'Remaining: none'],
+    ['VERDICT=\tAPPROVED', 'PR: #12', `Commit: ${HEAD}`, 'Findings: none'],
+    ['STATUS=  OWNER_OVERRIDE', 'PR: #12', `Commit: ${HEAD}`, 'Reason: r'],
+  ];
+  for (const lines of bodies) {
+    const comment = { ...base, body: lines.join('\r\n') };
+    assert.ok(parseHandoff(comment) || parseDisposition(comment), lines[0]);
+    assert.equal(shouldEvaluateEvent('issue_comment', { action: 'created', comment }), true, lines[0]);
+  }
+});
+
+test('admission never filters edits, deletes, or non-comment events', () => {
+  const withdrawal = { author_association: 'NONE', body: 'withdrawn' };
+  assert.equal(shouldEvaluateEvent('issue_comment', { action: 'edited', comment: withdrawal }), true);
+  assert.equal(shouldEvaluateEvent('issue_comment', { action: 'deleted', comment: withdrawal }), true);
+  assert.equal(shouldEvaluateEvent('issue_comment', { comment: withdrawal }), true);
+  for (const name of ['pull_request_target', 'push']) assert.equal(shouldEvaluateEvent(name, { action: 'created' }), true);
+});
+
+test('admission keeps agent-mediated owner records for linked, issue-free, and Dependabot PRs', () => {
+  for (const pr of [12, 13]) {
+    const body = `VERDICT=APPROVED\nPR: #${pr}\nCommit: ${HEAD}\nFindings: none`;
+    assert.equal(shouldEvaluateEvent('issue_comment', { ...owner(body), issue: { number: pr, pull_request: {} }, sender: { login: 'dependabot[bot]', type: 'Bot' } }), true);
+  }
+});
+
+test('workflow admission condition is the same predicate as shouldEvaluateEvent', () => {
+  const workflow = readFileSync('.github/workflows/review-disposition.yml', 'utf8');
+  const condition = workflow.match(/\n    if: >-\n((?:      .*\n)+)/)[1].replace(/\s+/g, ' ').trim();
+  const markers = ADMISSION_MARKERS.map((marker) => `contains(github.event.comment.body, '${marker}')`).join(' || ');
+  assert.equal(condition, [
+    "github.event_name != 'issue_comment'",
+    "|| github.event.action != 'created'",
+    "|| github.event.comment.body == ''",
+    `|| (github.event.comment.author_association == 'OWNER' && (${markers}))`,
+    "|| github.event.comment.author_association == ''",
+  ].join(' '));
+  assert.doesNotMatch(condition, /sender|actor|login|\.type/, 'admission must use the comment author association only');
 });

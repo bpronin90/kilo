@@ -466,6 +466,23 @@ export function groupPulls(pulls) {
   return [...groups.values()];
 }
 
+// Job admission, mirrored by the review-disposition workflow `if:`. Only a
+// created comment with a known non-OWNER author association, or a known body
+// with no record marker, is skipped; anything missing or uncertain evaluates.
+// Markers match case-insensitively, as GitHub's contains() does. `STATUS=` is
+// matched alone because the parser trims its value (`STATUS= OWNER_OVERRIDE`).
+export const ADMISSION_MARKERS = ['UPDATE=', 'VERDICT=', 'STATUS='];
+
+export function shouldEvaluateEvent(eventName, event) {
+  if (eventName !== 'issue_comment' || event?.action !== 'created') return true;
+  const body = event.comment?.body;
+  const association = event.comment?.author_association;
+  if (typeof body !== 'string' || body === '') return true;
+  if (typeof association !== 'string' || association === '') return true;
+  const upper = body.toUpperCase();
+  return association === 'OWNER' && ADMISSION_MARKERS.some((marker) => upper.includes(marker));
+}
+
 // PRs directly touched by the event, including both sides of an Issue relink.
 // They are invalidated first so an interrupted run leaves them fail-closed.
 export function affectedPullNumbers(event, pulls) {

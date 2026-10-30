@@ -25,13 +25,24 @@ missing ordinary approval all fail closed. Exact-head review, owner override,
 self-review rejection, and branch-protection enforcement are unaffected.
 
 Evaluation is serialized and reconciles every open PR on each run. The
-workflow uses one repository-wide concurrency group with
+evaluator job uses one repository-wide, job-level concurrency group with
 `cancel-in-progress: false`, so runs never overlap and a running job is never
 canceled; GitHub may replace a queued job with a newer one, which is safe
 because the replacement reevaluates all open PRs. Runs trigger on PR
 open/reopen/synchronize/edit/close, issue/PR comment create/edit/delete, and
 pushes to `main` (which can retract a carried approval whose base proof no
-longer holds). Each run first retracts any prior success to `pending` on every
+longer holds).
+
+Job admission skips the evaluator, before any runner is allocated, only for a
+created comment whose author association is known and not `OWNER`, or whose
+known non-empty body contains none of `UPDATE=`, `VERDICT=`, or
+`STATUS=` (case-insensitive). Edited and deleted comments,
+missing association or body data, and all other events always evaluate.
+Because concurrency is job-level, a skipped job never enters the group and
+cannot displace a queued evaluation. A skipped job's check is not the required
+custom status and never publishes approval. `shouldEvaluateEvent` in the
+evaluator mirrors the workflow condition, and the test suite asserts they
+match. Each run first retracts any prior success to `pending` on every
 open head, starting with the PRs the event touched, before reading any
 evidence. It then publishes a terminal state per head; an exception during
 evidence retrieval or Git proof publishes `error` for that issue's PRs, never
