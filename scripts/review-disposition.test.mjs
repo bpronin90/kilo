@@ -687,6 +687,20 @@ test('scenario 5: relinks, closure of a competitor, and base advance reevaluate 
   assert.equal(carried.latest(NEXT).state, 'failure');
 });
 
+test('open PRs sharing a head SHA cannot authorize each other through the shared status', async () => {
+  const fake = fakeGithub({
+    pulls: [openPr({ number: 2, issue: null }), openPr({ number: 1, issue: null })],
+    comments: { 1: [handoff({ prNumber: 1 }), verdict({ prNumber: 1 })], 2: [] },
+  });
+  await run(fake, { event: { pull_request: { number: 2 } } });
+  assert.equal(fake.latest(HEAD).state, 'failure');
+  assert.match(fake.latest(HEAD).description, /^PR #2: /);
+  assert.ok(fake.state.writes.every((write) => write.state !== 'success'));
+  fake.state.comments[2].push(handoff({ prNumber: 2 }), verdict({ id: 3, prNumber: 2 }));
+  await run(fake);
+  assert.equal(fake.latest(HEAD).state, 'success');
+});
+
 test('removing one record reevaluates surviving evidence instead of forcing failure', async () => {
   const fake = fakeGithub({
     pulls: [openPr()],

@@ -526,6 +526,30 @@ async function evaluateGroup({ gh, repository, group, proveObjects }) {
   }));
 }
 
+const STATE_RANK = { error: 0, failure: 1, pending: 2, success: 3 };
+
+// The required status is scoped to a commit SHA, not a PR. When open PRs share
+// a head, the shared status is success only if every one of them succeeds; the
+// first-ordered worst outcome is published, naming its PR when they disagree.
+export function aggregateBySha(outcomes) {
+  const bySha = new Map();
+  for (const outcome of outcomes) {
+    const sha = outcome.pr.head.sha.toLowerCase();
+    if (!bySha.has(sha)) bySha.set(sha, []);
+    bySha.get(sha).push(outcome);
+  }
+  return [...bySha.values()].map((members) => {
+    const worst = members.reduce((left, right) => (
+      STATE_RANK[right.result.state] < STATE_RANK[left.result.state] ? right : left
+    ));
+    const agree = members.every((member) => member.result.state === worst.result.state);
+    const result = members.length > 1 && !agree
+      ? { state: worst.result.state, description: `PR #${worst.pr.number}: ${worst.result.description}` }
+      : worst.result;
+    return { pr: worst.pr, result, members };
+  });
+}
+
 const INVALIDATING = 'pending';
 const INVALIDATING_DESCRIPTION = 'evaluating current PR head review disposition';
 
@@ -580,29 +604,32 @@ export async function reconcile({ gh, repository, event = null, runUrl, proveObj
     Math.min(...left.pulls.map((pr) => affectedFirst.get(pr.number)))
     - Math.min(...right.pulls.map((pr) => affectedFirst.get(pr.number)))
   ));
+  const outcomes = [];
   for (const group of groups) {
-    let outcomes;
     try {
-      outcomes = await evaluateGroup({ gh, repository, group, proveObjects });
+      outcomes.push(...await evaluateGroup({ gh, repository, group, proveObjects }));
     } catch (error) {
       failures.push(error);
-      outcomes = group.pulls.map((pr) => ({ pr, result: { state: 'error', description: 'review disposition evaluation failed; rerun required' } }));
+      outcomes.push(...group.pulls.map((pr) => ({ pr, result: { state: 'error', description: 'review disposition evaluation failed; rerun required' } })));
     }
-    for (const { pr, result, carryForward, comments, recordIssue } of outcomes) {
-      const prior = previous.get(pr.number);
-      if (prior?.state !== result.state || prior?.description !== result.description.slice(0, 140)) {
-        try {
-          await publishStatus(gh, repository, pr, result.state, result.description, runUrl);
-        } catch (error) {
-          failures.push(error);
-          continue;
-        }
+  }
+  for (const shared of aggregateBySha(outcomes)) {
+    const { pr, result } = shared;
+    const prior = previous.get(pr.number);
+    if (prior?.state !== result.state || prior?.description !== result.description.slice(0, 140)) {
+      try {
+        await publishStatus(gh, repository, pr, result.state, result.description, runUrl);
+      } catch (error) {
+        failures.push(error);
+        continue;
       }
-      if (result.state === 'success' && carryForward?.state === 'success') {
-        await postCarryForwardRecord(gh, repository, recordIssue, pr, carryForward, comments)
+    }
+    for (const item of shared.members) {
+      if (result.state === 'success' && item.carryForward?.state === 'success') {
+        await postCarryForwardRecord(gh, repository, item.recordIssue, item.pr, item.carryForward, item.comments)
           .catch((error) => failures.push(error));
       }
-      log(`PR #${pr.number}: ${result.state} — ${result.description}`);
+      log(`PR #${item.pr.number}: ${item.result.state} — ${item.result.description}`);
     }
   }
   if (failures.length > 0) throw new AggregateError(failures, `${failures.length} review disposition operation(s) failed`);
