@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  affectedPullNumbers,
   carryForwardRecordBody,
   controllingDisposition,
   evaluateDisposition,
@@ -12,13 +13,14 @@ import {
   exactOverrideDescription,
   hasImmutableCarryForwardRecord,
   implicitDependabotHandoff,
-  issueNumbersForPullEvent,
   isMatchingExactApprovalStatus,
   latestHandoff,
   parseDisposition,
   parseHandoff,
   parseIssueReference,
   pullsForIssue,
+  reconcile,
+  createGithub,
   selectAuthoritativeEvidence,
   validateParentDisposition,
   verifyRefreshObjects,
@@ -214,10 +216,10 @@ test('links only open PR bodies that name the issue', () => {
   assert.deepEqual(pullsForIssue(pulls, 600).map((pull) => pull.number), [1]);
 });
 
-test('reevaluates both sides when a PR changes its linked issue', () => {
-  assert.deepEqual(issueNumbersForPullEvent({
-    changes: { body: { from: 'Issue: #600' } },
-  }, 'Issue: #601'), [601, 600]);
+test('treats both sides of an issue relink as affected', () => {
+  const pulls = [pr({ number: 1, issue: 601 }), pr({ number: 2, issue: 600 }), pr({ number: 3, issue: 602 })];
+  const event = { pull_request: { number: 1, body: 'Issue: #601' }, changes: { body: { from: 'Issue: #600' } } };
+  assert.deepEqual([...affectedPullNumbers(event, pulls)].sort(), [1, 2]);
 });
 
 test('keeps PR-head tests unprivileged and the production evaluator on trusted base code', () => {
@@ -428,4 +430,328 @@ test('carry record preserves disposition identity and deduplicates only immutabl
     author_association: 'NONE',
     user: { login: 'github-actions[bot]', type: 'User' },
   }], body), false);
+});
+
+// ---- API-mocked reconciliation: failure injection and deterministic schedules ----
+
+const OTHER = 'c'.repeat(40);
+const BASE = 'd'.repeat(40);
+const CONTEXT = 'review disposition accepted';
+
+function openPr(options = {}) {
+  return { ...pr(options), state: 'open', base: { sha: options.base ?? BASE } };
+}
+
+// In-memory GitHub. `hooks.before(method, path)` may throw (failure injection)
+// or return a promise (barrier) to pause a request at a deterministic point.
+function fakeGithub({ pulls = [], comments = {}, statuses = {} } = {}) {
+  const state = { pulls, comments, statuses, posted: [], writes: [] };
+  const hooks = { before: null };
+  const gh = {
+    async request(path, options = {}) {
+      const method = options.method ?? 'GET';
+      const route = path.replace(/[?&]per_page=100&page=\d+$/, '').replace(/\?per_page=100&page=\d+$/, '');
+      if (hooks.before) await hooks.before(method, route);
+      const page = Number(path.match(/page=(\d+)$/)?.[1] ?? 1);
+      const paged = (values) => (page === 1 ? structuredClone(values) : []);
+      let match;
+      if (method === 'GET' && route === '/repos/o/r/pulls?state=open') return paged(state.pulls);
+      if (method === 'GET' && (match = route.match(/^\/repos\/o\/r\/issues\/(\d+)\/comments$/))) {
+        return paged(state.comments[match[1]] ?? []);
+      }
+      if (method === 'GET' && (match = route.match(/^\/repos\/o\/r\/commits\/(\w+)\/statuses$/))) {
+        return paged(state.statuses[match[1]] ?? []);
+      }
+      if (method === 'POST' && (match = route.match(/^\/repos\/o\/r\/statuses\/(\w+)$/))) {
+        const body = JSON.parse(options.body);
+        state.statuses[match[1]] = [body, ...(state.statuses[match[1]] ?? [])];
+        state.writes.push({ sha: match[1], ...body });
+        return body;
+      }
+      if (method === 'POST' && (match = route.match(/^\/repos\/o\/r\/issues\/(\d+)\/comments$/))) {
+        state.posted.push({ issue: Number(match[1]), body: JSON.parse(options.body).body });
+        return {};
+      }
+      throw new Error(`unexpected ${method} ${route}`);
+    },
+  };
+  const latest = (sha) => state.statuses[sha]?.find((status) => status.context === CONTEXT) ?? null;
+  return { gh, state, hooks, latest };
+}
+
+function success(sha, id = 2) {
+  return { [sha]: [{ context: CONTEXT, state: 'success', description: exactApprovalDescription(id) }] };
+}
+
+function barrier() {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  return { gate, release };
+}
+
+const noProof = () => ({ state: 'failure', description: 'refresh head must have exactly two parents' });
+const run = (fake, extra = {}) => reconcile({
+  gh: fake.gh, repository: 'o/r', runUrl: 'run', proveObjects: noProof, log: () => {}, ...extra,
+});
+
+test('scenario 1: a comments read failure after approval withdrawal invalidates the prior success', async () => {
+  const fake = fakeGithub({
+    pulls: [openPr()],
+    comments: { 600: [handoff(), verdict({ updated: '2026-07-16T12:05:00Z' })] },
+    statuses: success(HEAD),
+  });
+  fake.hooks.before = (method, path) => {
+    if (path.endsWith('/issues/600/comments')) throw Object.assign(new Error('502 pagination'), { status: 502 });
+  };
+  await assert.rejects(run(fake, { event: { issue: { number: 600 } } }));
+  assert.equal(fake.latest(HEAD).state, 'error');
+  assert.equal(fake.state.writes[0].state, 'pending');
+});
+
+test('scenario 1: a Git proof exception never becomes success', async () => {
+  const fake = fakeGithub({
+    pulls: [openPr({ head: NEXT })],
+    comments: { 600: [handoff(), verdict()] },
+    statuses: success(NEXT),
+  });
+  await assert.rejects(run(fake, { proveObjects: () => { throw new Error('git fetch failed'); } }));
+  assert.equal(fake.latest(NEXT).state, 'error');
+});
+
+test('scenario 2: unserialized overlap can publish a stale success; the serialized order cannot', async () => {
+  const approved = () => ({
+    pulls: [openPr()],
+    comments: { 600: [handoff(), verdict()] },
+    statuses: {},
+  });
+  // Hazard: A reads the approval, B evaluates the withdrawal, A publishes last.
+  const overlap = fakeGithub(approved());
+  const paused = barrier();
+  let posts = 0;
+  overlap.hooks.before = async (method) => {
+    if (method === 'POST' && ++posts === 2) await paused.gate; // A holds its final write
+  };
+  const runA = run(overlap);
+  for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(posts, 2);
+  overlap.state.comments[600][1].updated_at = '2026-07-16T12:09:00Z';
+  await run(overlap);
+  paused.release();
+  await runA;
+  assert.equal(overlap.latest(HEAD).state, 'success', 'the race the workflow concurrency group exists to prevent');
+
+  // Serialized (one repository-wide group, no in-progress cancellation): B starts after A.
+  for (const withdraw of [
+    (comments) => { comments[1].updated_at = '2026-07-16T12:09:00Z'; },
+    (comments) => { comments.push(handoff({ id: 9, created: '2026-07-16T12:09:00Z' })); },
+    (comments) => { comments.splice(1, 1, verdict({ id: 3, ownerOverride: true, updated: '2026-07-16T12:09:00Z' })); },
+  ]) {
+    const fake = fakeGithub(approved());
+    const snapshot = barrier();
+    let writes = 0;
+    fake.hooks.before = async (method) => {
+      if (method === 'POST' && ++writes === 2) await snapshot.gate;
+    };
+    const runA2 = run(fake);
+    for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setImmediate(resolve));
+    withdraw(fake.state.comments[600]);
+    snapshot.release();
+    await runA2;
+    await run(fake);
+    assert.notEqual(fake.latest(HEAD).state, 'success');
+  }
+});
+
+test('workflow serializes every trigger in one non-canceling repository-wide group', () => {
+  const workflow = readFileSync('.github/workflows/review-disposition.yml', 'utf8');
+  assert.match(workflow, /concurrency:\n  group: review-disposition\n  cancel-in-progress: false\n/);
+  assert.match(workflow, /types: \[opened, reopened, synchronize, edited, closed\]/);
+  assert.match(workflow, /push:\n    branches: \[main\]/);
+  assert.match(workflow, /statuses: write/);
+});
+
+test('scenario 3: any trigger reconciles both competing PRs and transfers authority', async () => {
+  for (const event of [{ issue: { number: 600 } }, { issue: { number: 41, pull_request: {} } }, { pull_request: { number: 42 } }, {}]) {
+    const fake = fakeGithub({
+      pulls: [openPr({ number: 41 }), openPr({ number: 42, head: OTHER })],
+      comments: { 600: [
+        handoff({ prNumber: 41 }),
+        verdict({ prNumber: 41 }),
+        handoff({ id: 5, prNumber: 42, commit: OTHER, created: '2026-07-16T12:03:00Z' }),
+      ] },
+      statuses: { ...success(HEAD), ...success(OTHER, 99) },
+    });
+    await run(fake, { event });
+    assert.match(fake.latest(HEAD).description, /not the authoritative/);
+    assert.equal(fake.latest(OTHER).state, 'failure');
+  }
+});
+
+test('scenario 4: a write failure on the second PR leaves it invalidated, not successful', async () => {
+  const fake = fakeGithub({
+    pulls: [openPr({ number: 41, issue: null }), openPr({ number: 42, head: OTHER, issue: null })],
+    comments: {
+      41: [handoff({ prNumber: 41 }), verdict({ prNumber: 41 })],
+      42: [handoff({ prNumber: 42, commit: OTHER }), verdict({ prNumber: 42, commit: OTHER })],
+    },
+    statuses: { ...success(HEAD, 1), ...success(OTHER, 1) },
+  });
+  fake.hooks.before = (method, path) => {
+    if (method === 'POST' && path.endsWith(`/statuses/${OTHER}`) && fake.latest(OTHER).state === 'pending') {
+      throw Object.assign(new Error('503'), { status: 503 });
+    }
+  };
+  await assert.rejects(run(fake));
+  assert.equal(fake.latest(HEAD).state, 'success');
+  assert.equal(fake.latest(OTHER).state, 'pending');
+});
+
+test('scenario 4: cancellation after invalidation leaves every target fail-closed', async () => {
+  const fake = fakeGithub({
+    pulls: [openPr({ number: 41, issue: null }), openPr({ number: 42, head: OTHER })],
+    comments: { 41: [handoff({ prNumber: 41 }), verdict({ prNumber: 41 })] },
+    statuses: { ...success(HEAD), ...success(OTHER) },
+  });
+  fake.hooks.before = (method, path) => (path.includes('/comments') ? new Promise(() => {}) : undefined);
+  run(fake);
+  for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(fake.latest(HEAD).state, 'pending');
+  assert.equal(fake.latest(OTHER).state, 'pending');
+});
+
+test('scenario 4: open PR discovery failure errors the event PR rather than keeping success', async () => {
+  const fake = fakeGithub({ statuses: success(HEAD) });
+  fake.hooks.before = (method, path) => {
+    if (path.includes('/pulls')) throw Object.assign(new Error('404'), { status: 404 });
+  };
+  await assert.rejects(run(fake, { event: { pull_request: openPr() } }));
+  assert.equal(fake.latest(HEAD).state, 'error');
+});
+
+test('scenario 4: a later discovery page failure errors every already discovered head', async () => {
+  const pulls = Array.from({ length: 100 }, (_, index) => openPr({ number: index + 1, head: index.toString(16).padStart(40, '0') }));
+  const statuses = Object.assign({}, ...pulls.map((pull) => success(pull.head.sha)));
+  const fake = fakeGithub({ pulls, statuses });
+  const request = fake.gh.request;
+  fake.gh.request = (path, options) => {
+    if (path.includes('/pulls?state=open&per_page=100&page=2')) return Promise.reject(Object.assign(new Error('502'), { status: 502 }));
+    return request(path, options);
+  };
+  await assert.rejects(run(fake, { event: { action: 'deleted', issue: { number: 600 } } }));
+  for (const pull of pulls) assert.equal(fake.latest(pull.head.sha).state, 'error');
+});
+
+test('scenario 5: relinks, closure of a competitor, and base advance reevaluate affected PRs', async () => {
+  const comments = { 600: [
+    handoff({ prNumber: 41 }),
+    verdict({ prNumber: 41 }),
+    handoff({ id: 5, prNumber: 42, commit: OTHER, created: '2026-07-16T12:03:00Z' }),
+    verdict({ id: 6, prNumber: 42, commit: OTHER, created: '2026-07-16T12:04:00Z' }),
+  ] };
+  const fake = fakeGithub({ pulls: [openPr({ number: 41 }), openPr({ number: 42, head: OTHER })], comments });
+  await run(fake);
+  assert.equal(fake.latest(HEAD).state, 'failure');
+  assert.equal(fake.latest(OTHER).state, 'success');
+
+  // PR 42 relinks to Issue: none (or closes): PR 41 regains authority on its issue.
+  fake.state.pulls[1].body = 'Issue: none';
+  await run(fake, { event: { pull_request: { number: 42, body: 'Issue: none' }, changes: { body: { from: 'Issue: #600' } } } });
+  assert.equal(fake.latest(HEAD).state, 'success');
+  assert.equal(fake.latest(OTHER).state, 'failure');
+  fake.state.pulls[1].body = 'Issue: #600';
+  await run(fake);
+  assert.equal(fake.latest(HEAD).state, 'failure');
+  fake.state.pulls.pop();
+  await run(fake, { event: { action: 'closed', pull_request: { number: 42 } } });
+  assert.equal(fake.latest(HEAD).state, 'success');
+
+  // Invalid relink fails closed.
+  fake.state.pulls[0].body = 'Issue: #600\nIssue: #601';
+  await run(fake);
+  assert.match(fake.latest(HEAD).description, /exactly one Issue/);
+
+  // Carry-forward holds only while it merges the current base.
+  const carried = fakeGithub({
+    pulls: [openPr({ head: NEXT })],
+    comments: { 600: [handoff(), verdict()] },
+    statuses: success(HEAD),
+  });
+  const proveObjects = ({ base }) => (base === BASE
+    ? { state: 'success', reviewedHead: HEAD }
+    : { state: 'failure', description: 'refresh does not merge the current PR base' });
+  await run(carried, { proveObjects });
+  assert.match(carried.latest(NEXT).description, /^carried APPROVED; comment=2/);
+  assert.equal(carried.state.posted.length, 1);
+  carried.state.pulls[0].base.sha = OTHER;
+  await run(carried, { proveObjects, event: { ref: 'refs/heads/main' } });
+  assert.equal(carried.latest(NEXT).state, 'failure');
+});
+
+test('open PRs sharing a head SHA cannot authorize each other through the shared status', async () => {
+  const fake = fakeGithub({
+    pulls: [openPr({ number: 2, issue: null }), openPr({ number: 1, issue: null })],
+    comments: { 1: [handoff({ prNumber: 1 }), verdict({ prNumber: 1 })], 2: [] },
+  });
+  await run(fake, { event: { pull_request: { number: 2 } } });
+  assert.equal(fake.latest(HEAD).state, 'failure');
+  assert.match(fake.latest(HEAD).description, /^PR #2: /);
+  assert.ok(fake.state.writes.every((write) => write.state !== 'success'));
+  fake.state.comments[2].push(handoff({ prNumber: 2 }), verdict({ id: 3, prNumber: 2 }));
+  await run(fake);
+  assert.equal(fake.latest(HEAD).state, 'success');
+});
+
+test('removing one record reevaluates surviving evidence instead of forcing failure', async () => {
+  const fake = fakeGithub({
+    pulls: [openPr()],
+    comments: { 600: [handoff(), verdict(), verdict({ id: 3, created: '2026-07-16T12:02:00Z' })] },
+  });
+  await run(fake);
+  assert.match(fake.latest(HEAD).description, /review=3/);
+  fake.state.comments[600].pop(); // a non-owner deletes the newest owner approval
+  await run(fake, { event: { action: 'deleted', issue: { number: 600 } } });
+  assert.deepEqual([fake.latest(HEAD).state, fake.latest(HEAD).description], ['success', exactApprovalDescription(2)]);
+  fake.state.comments[600].pop();
+  await run(fake);
+  assert.equal(fake.latest(HEAD).state, 'failure');
+});
+
+test('issue-free and Dependabot PRs reconcile from their own conversation', async () => {
+  const fake = fakeGithub({
+    pulls: [openPr({ number: 7, issue: null }), openPr({ number: 8, head: OTHER, issue: null, login: 'dependabot[bot]' })],
+    comments: { 7: [handoff({ prNumber: 7 }), verdict({ prNumber: 7 })], 8: [] },
+  });
+  await run(fake);
+  assert.equal(fake.latest(HEAD).state, 'success');
+  assert.equal(fake.latest(OTHER).state, 'failure');
+  fake.state.comments[8].push(verdict({ prNumber: 8, commit: OTHER }));
+  await run(fake);
+  assert.equal(fake.latest(OTHER).state, 'success');
+});
+
+test('unchanged non-success results are not rewritten on every run', async () => {
+  const fake = fakeGithub({ pulls: [openPr()], comments: { 600: [] } });
+  await run(fake);
+  const writes = fake.state.writes.length;
+  await run(fake);
+  assert.equal(fake.state.writes.length, writes);
+});
+
+test('the GitHub client retries transient failures but not rejections or comment posts', async () => {
+  const responses = [
+    { ok: false, status: 502, text: async () => 'bad gateway' },
+    { ok: true, status: 201, json: async () => ({ ok: 1 }) },
+  ];
+  const calls = [];
+  const fetchImpl = async (url) => { calls.push(url); return responses.shift(); };
+  const gh = createGithub({ token: 't', fetchImpl, sleep: async () => {} });
+  assert.deepEqual(await gh.request('/x', { method: 'POST' }), { ok: 1 });
+  assert.equal(calls.length, 2);
+
+  const rejected = createGithub({ token: 't', fetchImpl: async () => ({ ok: false, status: 422, text: async () => 'no' }), sleep: async () => {} });
+  await assert.rejects(rejected.request('/x'), /422/);
+  let posts = 0;
+  const once = createGithub({ token: 't', fetchImpl: async () => { posts += 1; return { ok: false, status: 502, text: async () => '' }; }, sleep: async () => {} });
+  await assert.rejects(once.request('/x', { method: 'POST' }, { retry: false }));
+  assert.equal(posts, 1);
 });

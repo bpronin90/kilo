@@ -24,6 +24,27 @@ chained refreshes, changed deltas, path overlap, manufactured trees, or a
 missing ordinary approval all fail closed. Exact-head review, owner override,
 self-review rejection, and branch-protection enforcement are unaffected.
 
+Evaluation is serialized and reconciles every open PR on each run. The
+workflow uses one repository-wide concurrency group with
+`cancel-in-progress: false`, so runs never overlap and a running job is never
+canceled; GitHub may replace a queued job with a newer one, which is safe
+because the replacement reevaluates all open PRs. Runs trigger on PR
+open/reopen/synchronize/edit/close, issue/PR comment create/edit/delete, and
+pushes to `main` (which can retract a carried approval whose base proof no
+longer holds). Each run first retracts any prior success to `pending` on every
+open head, starting with the PRs the event touched, before reading any
+evidence. It then publishes a terminal state per head; an exception during
+evidence retrieval or Git proof publishes `error` for that issue's PRs, never
+success. Transient API failures are retried a bounded number of times.
+
+Outage limits: no script can write a status when GitHub rejects every write,
+when an event is not delivered, or when a job never starts. In those cases the
+last written status stands until the next run; a failed or canceled evaluator
+job does not itself replace an existing successful custom status. A run that
+is interrupted after its retraction phase leaves heads `pending` (fail-closed);
+one interrupted during that phase may leave unreached heads at their previous
+state. Any later event, or a rerun of the failed job, reconciles all PRs.
+
 Review disposition is independent from CI: an
 override cannot satisfy a pending or failed test, audit, version, or migration
 check. Dependabot PRs derive their implementation execution from the bot and

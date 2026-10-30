@@ -308,56 +308,89 @@ export function verifyRefreshObjects({ head, base }) {
   return { state: 'success', reviewedHead };
 }
 
-async function githubRequest(path, options = {}) {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) throw new Error('GITHUB_TOKEN is required');
-  const response = await fetch(`https://api.github.com${path}`, {
-    ...options,
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token}`,
-      'X-GitHub-Api-Version': '2022-11-28',
-      ...options.headers,
-    },
-  });
-  if (!response.ok) throw new Error(`${options.method ?? 'GET'} ${path} failed: ${response.status} ${await response.text()}`);
-  return response.status === 204 ? null : response.json();
+const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+
+class GithubError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+  }
 }
 
-async function getAllPages(path) {
+// Bounded retry for transient failures. Retries cannot overcome a sustained
+// write outage; the caller reports that as a job failure.
+export function createGithub({ token, fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), attempts = 3 }) {
+  if (!token) throw new Error('GITHUB_TOKEN is required');
+  async function once(path, options) {
+    const response = await fetchImpl(`https://api.github.com${path}`, {
+      ...options,
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+        ...options.headers,
+      },
+    });
+    if (!response.ok) {
+      throw new GithubError(`${options.method ?? 'GET'} ${path} failed: ${response.status} ${await response.text()}`, response.status);
+    }
+    return response.status === 204 ? null : response.json();
+  }
+  return {
+    async request(path, options = {}, { retry = true } = {}) {
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          return await once(path, options);
+        } catch (error) {
+          const transient = error.status === undefined || RETRYABLE_STATUS.has(error.status);
+          if (!retry || !transient || attempt >= attempts) throw error;
+          await sleep(1000 * attempt);
+        }
+      }
+    },
+  };
+}
+
+async function getAllPages(gh, path) {
   const values = [];
   for (let page = 1; ; page += 1) {
     const separator = path.includes('?') ? '&' : '?';
-    const batch = await githubRequest(`${path}${separator}per_page=100&page=${page}`);
+    let batch;
+    try {
+      batch = await gh.request(`${path}${separator}per_page=100&page=${page}`);
+    } catch (error) {
+      error.partial = values; // already-discovered items stay actionable
+      throw error;
+    }
     values.push(...batch);
     if (batch.length < 100) return values;
   }
 }
 
-async function getAllComments(repository, issueNumber) {
-  return getAllPages(`/repos/${repository}/issues/${issueNumber}/comments`);
+async function getAllComments(gh, repository, issueNumber) {
+  return getAllPages(gh, `/repos/${repository}/issues/${issueNumber}/comments`);
 }
 
-async function getOpenPulls(repository) {
-  return getAllPages(`/repos/${repository}/pulls?state=open`);
+async function getOpenPulls(gh, repository) {
+  return getAllPages(gh, `/repos/${repository}/pulls?state=open`);
 }
 
-async function latestReviewStatus(repository, sha) {
-  const statuses = await getAllPages(`/repos/${repository}/commits/${sha}/statuses`);
+async function latestReviewStatus(gh, repository, sha) {
+  const statuses = await getAllPages(gh, `/repos/${repository}/commits/${sha}/statuses`);
   return statuses.find((status) => status.context === REVIEW_CONTEXT) ?? null;
 }
 
-async function proveCarryForward({ repository, pr, comments }) {
+async function proveCarryForward({ gh, repository, pr, comments, proveObjects }) {
   const head = pr.head.sha.toLowerCase();
   const base = pr.base.sha.toLowerCase();
-  const objectProof = verifyRefreshObjects({ head, base });
+  const objectProof = proveObjects({ head, base });
   if (objectProof.state !== 'success') return objectProof;
   const { reviewedHead } = objectProof;
   const parentHandoff = pr.user?.login === 'dependabot[bot]'
     ? implicitDependabotHandoff(pr.number, reviewedHead)
     : latestHandoff(comments, pr.number, reviewedHead);
   if (!parentHandoff) return { state: 'failure', description: 'reviewed parent lacks a valid implementation handoff' };
-  const exactStatus = await latestReviewStatus(repository, reviewedHead);
+  const exactStatus = await latestReviewStatus(gh, repository, reviewedHead);
   const dispositionProof = validateParentDisposition({
     comments, prNumber: pr.number, reviewedHead, handoff: parentHandoff, exactStatus,
   });
@@ -373,15 +406,13 @@ async function proveCarryForward({ repository, pr, comments }) {
   };
 }
 
-async function publishStatus(repository, pr, state, description) {
-  const runUrl = `${process.env.GITHUB_SERVER_URL}/${repository}/actions/runs/${process.env.GITHUB_RUN_ID}`;
-  return githubRequest(`/repos/${repository}/statuses/${pr.head.sha}`, {
+async function publishStatus(gh, repository, pr, state, description, runUrl) {
+  return gh.request(`/repos/${repository}/statuses/${pr.head.sha}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ state, context: REVIEW_CONTEXT, description: description.slice(0, 140), target_url: runUrl }),
   });
 }
-
 export function carryForwardRecordBody(pr, carry) {
   return [
     'STATUS=REVIEW_CARRIED_FORWARD',
@@ -406,114 +437,218 @@ export function hasImmutableCarryForwardRecord(comments, marker) {
   ));
 }
 
-async function postCarryForwardRecord(repository, issueNumber, pr, carry, comments) {
+async function postCarryForwardRecord(gh, repository, issueNumber, pr, carry, comments) {
   if (!issueNumber) return;
   const marker = carryForwardRecordBody(pr, carry);
   if (hasImmutableCarryForwardRecord(comments, marker)) return;
-  await githubRequest(`/repos/${repository}/issues/${issueNumber}/comments`, {
+  await gh.request(`/repos/${repository}/issues/${issueNumber}/comments`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ body: marker }),
-  });
+  }, { retry: false });
 }
+
 
 export function pullsForIssue(pulls, issueNumber) {
   return pulls.filter((pr) => parseIssueReference(pr.body)?.number === issueNumber);
 }
 
-export function issueNumbersForPullEvent(event, currentBody) {
-  const numbers = new Set();
-  const current = parseIssueReference(currentBody);
-  const previous = parseIssueReference(event?.changes?.body?.from);
-  if (current?.kind === 'issue') numbers.add(current.number);
-  if (previous?.kind === 'issue') numbers.add(previous.number);
-  return [...numbers];
+// Every open PR is evaluated on every run. Groups share one comment snapshot:
+// PRs linked to the same issue compete for authority; all others stand alone.
+export function groupPulls(pulls) {
+  const groups = new Map();
+  for (const pr of pulls) {
+    const issue = parseIssueReference(pr.body);
+    const key = issue?.kind === 'issue' ? `issue:${issue.number}` : `pr:${pr.number}`;
+    if (!groups.has(key)) groups.set(key, { issueNumber: issue?.kind === 'issue' ? issue.number : null, pulls: [] });
+    groups.get(key).pulls.push(pr);
+  }
+  return [...groups.values()];
 }
 
-async function evaluateIssuePulls(repository, issueNumber, pulls) {
-  const comments = await getAllComments(repository, issueNumber);
-  const evidence = [];
+// PRs directly touched by the event, including both sides of an Issue relink.
+// They are invalidated first so an interrupted run leaves them fail-closed.
+export function affectedPullNumbers(event, pulls) {
+  const affected = new Set();
+  const issues = new Set();
+  const prNumber = event?.pull_request?.number ?? (event?.issue?.pull_request ? event.issue.number : null);
+  if (prNumber) affected.add(prNumber);
+  if (event?.issue && !event.issue.pull_request) issues.add(event.issue.number);
+  for (const body of [event?.pull_request?.body, event?.changes?.body?.from]) {
+    const issue = parseIssueReference(body);
+    if (issue?.kind === 'issue') issues.add(issue.number);
+  }
   for (const pr of pulls) {
+    if (pr.number === prNumber) {
+      const issue = parseIssueReference(pr.body);
+      if (issue?.kind === 'issue') issues.add(issue.number);
+    }
+  }
+  for (const issueNumber of issues) {
+    for (const pr of pullsForIssue(pulls, issueNumber)) affected.add(pr.number);
+  }
+  return affected;
+}
+
+async function evaluateGroup({ gh, repository, group, proveObjects }) {
+  const evidenceIssue = group.issueNumber ?? group.pulls[0].number;
+  const comments = await getAllComments(gh, repository, evidenceIssue);
+  if (!group.issueNumber) {
+    const [pr] = group.pulls;
+    const dependabot = pr.user?.login === 'dependabot[bot]';
+    if (!dependabot && parseIssueReference(pr.body)?.kind !== 'none') {
+      return [{ pr, result: { state: 'failure', description: 'PR body requires exactly one Issue: #number or Issue: none field' } }];
+    }
     const head = pr.head.sha.toLowerCase();
-    const handoff = latestHandoff(comments, pr.number, head);
-    let carryForward = null;
-    if (!handoff) carryForward = await proveCarryForward({ repository, pr, comments });
+    const handoff = dependabot ? implicitDependabotHandoff(pr.number, head) : latestHandoff(comments, pr.number, head);
+    const carryForward = handoff ? null : await proveCarryForward({ gh, repository, pr, comments, proveObjects });
+    return [{ pr, carryForward, comments, recordIssue: pr.number, result: evaluateDisposition({ pr, comments, handoff, carryForward }) }];
+  }
+  const evidence = [];
+  for (const pr of group.pulls) {
+    const handoff = latestHandoff(comments, pr.number, pr.head.sha.toLowerCase());
+    const carryForward = handoff ? null : await proveCarryForward({ gh, repository, pr, comments, proveObjects });
     evidence.push({ pr, handoff: handoff ?? carryForward?.handoff ?? null, exactHandoff: handoff, carryForward });
   }
   const authoritative = selectAuthoritativeEvidence(evidence);
-  for (const item of evidence) {
-    await publishStatus(repository, item.pr, 'pending', 'evaluating current PR head review disposition');
-    const result = evaluateDisposition({
+  return evidence.map((item) => ({
+    pr: item.pr,
+    carryForward: item.carryForward,
+    comments,
+    recordIssue: group.issueNumber,
+    result: evaluateDisposition({
       pr: item.pr,
       comments,
       handoff: item.exactHandoff,
       authoritative: authoritative?.pr.number === item.pr.number,
       carryForward: item.carryForward,
-    });
-    await publishStatus(repository, item.pr, result.state, result.description);
-    if (result.state === 'success' && item.carryForward?.state === 'success') {
-      await postCarryForwardRecord(repository, issueNumber, item.pr, item.carryForward, comments);
+    }),
+  }));
+}
+
+const STATE_RANK = { error: 0, failure: 1, pending: 2, success: 3 };
+
+// The required status is scoped to a commit SHA, not a PR. When open PRs share
+// a head, the shared status is success only if every one of them succeeds; the
+// first-ordered worst outcome is published, naming its PR when they disagree.
+export function aggregateBySha(outcomes) {
+  const bySha = new Map();
+  for (const outcome of outcomes) {
+    const sha = outcome.pr.head.sha.toLowerCase();
+    if (!bySha.has(sha)) bySha.set(sha, []);
+    bySha.get(sha).push(outcome);
+  }
+  return [...bySha.values()].map((members) => {
+    const worst = members.reduce((left, right) => (
+      STATE_RANK[right.result.state] < STATE_RANK[left.result.state] ? right : left
+    ));
+    const agree = members.every((member) => member.result.state === worst.result.state);
+    const result = members.length > 1 && !agree
+      ? { state: worst.result.state, description: `PR #${worst.pr.number}: ${worst.result.description}` }
+      : worst.result;
+    return { pr: worst.pr, result, members };
+  });
+}
+
+const INVALIDATING = 'pending';
+const INVALIDATING_DESCRIPTION = 'evaluating current PR head review disposition';
+
+// Reconciles every open PR. Runs are serialized by the workflow's single
+// concurrency group, so a later run always observes and overwrites an earlier
+// run's publication. Phase 1 retracts any prior success before fallible
+// evidence reads; phase 2 publishes a terminal state for every discovered head,
+// mapping evaluation exceptions to `error`, never to success.
+export async function reconcile({ gh, repository, event = null, runUrl, proveObjects = verifyRefreshObjects, log = console.log }) {
+  const failures = [];
+  let pulls;
+  try {
+    pulls = await getOpenPulls(gh, repository);
+  } catch (error) {
+    // Error every head discovered before the failure, plus the event's own PR.
+    const targets = new Map((error.partial ?? []).map((pr) => [pr.head.sha, pr]));
+    const fallback = event?.pull_request;
+    if (fallback?.state === 'open' && SHA_RE.test(String(fallback.head?.sha ?? '').toLowerCase())) {
+      targets.set(fallback.head.sha, fallback);
     }
-    console.log(`PR #${item.pr.number}: ${result.state} — ${result.description}`);
+    for (const pr of targets.values()) {
+      await publishStatus(gh, repository, pr, 'error', 'open PR discovery failed; rerun required', runUrl)
+        .catch((publishError) => failures.push(publishError));
+    }
+    throw new AggregateError([error, ...failures], 'open PR discovery failed');
   }
+
+  const affected = affectedPullNumbers(event, pulls);
+  const ordered = [...pulls].sort((left, right) => Number(affected.has(right.number)) - Number(affected.has(left.number)));
+  const previous = new Map();
+  for (const pr of ordered) {
+    let latest = null;
+    try {
+      latest = await latestReviewStatus(gh, repository, pr.head.sha);
+    } catch (error) {
+      failures.push(error);
+    }
+    if (latest && latest.state !== 'success') {
+      previous.set(pr.number, latest);
+      continue;
+    }
+    try {
+      await publishStatus(gh, repository, pr, INVALIDATING, INVALIDATING_DESCRIPTION, runUrl);
+      previous.set(pr.number, { state: INVALIDATING, description: INVALIDATING_DESCRIPTION });
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+
+  const affectedFirst = new Map(ordered.map((pr, index) => [pr.number, index]));
+  const groups = groupPulls(pulls).sort((left, right) => (
+    Math.min(...left.pulls.map((pr) => affectedFirst.get(pr.number)))
+    - Math.min(...right.pulls.map((pr) => affectedFirst.get(pr.number)))
+  ));
+  const outcomes = [];
+  for (const group of groups) {
+    try {
+      outcomes.push(...await evaluateGroup({ gh, repository, group, proveObjects }));
+    } catch (error) {
+      failures.push(error);
+      outcomes.push(...group.pulls.map((pr) => ({ pr, result: { state: 'error', description: 'review disposition evaluation failed; rerun required' } })));
+    }
+  }
+  for (const shared of aggregateBySha(outcomes)) {
+    const { pr, result } = shared;
+    const prior = previous.get(pr.number);
+    if (prior?.state !== result.state || prior?.description !== result.description.slice(0, 140)) {
+      try {
+        await publishStatus(gh, repository, pr, result.state, result.description, runUrl);
+      } catch (error) {
+        failures.push(error);
+        continue;
+      }
+    }
+    for (const item of shared.members) {
+      if (result.state === 'success' && item.carryForward?.state === 'success') {
+        await postCarryForwardRecord(gh, repository, item.recordIssue, item.pr, item.carryForward, item.comments)
+          .catch((error) => failures.push(error));
+      }
+      log(`PR #${item.pr.number}: ${item.result.state} — ${item.result.description}`);
+    }
+  }
+  if (failures.length > 0) throw new AggregateError(failures, `${failures.length} review disposition operation(s) failed`);
 }
 
-async function evaluatePullConversation(repository, pr) {
-  const comments = await getAllComments(repository, pr.number);
-  const head = pr.head.sha.toLowerCase();
-  if (pr.user?.login !== 'dependabot[bot]' && parseIssueReference(pr.body)?.kind !== 'none') {
-    await publishStatus(repository, pr, 'failure', 'PR body requires exactly one Issue: #number or Issue: none field');
-    return;
-  }
-  const handoff = pr.user?.login === 'dependabot[bot]'
-    ? implicitDependabotHandoff(pr.number, head)
-    : latestHandoff(comments, pr.number, head);
-  const carryForward = handoff ? null : await proveCarryForward({ repository, pr, comments });
-  await publishStatus(repository, pr, 'pending', 'evaluating current PR head review disposition');
-  const result = evaluateDisposition({ pr, comments, handoff, carryForward });
-  await publishStatus(repository, pr, result.state, result.description);
-  if (result.state === 'success' && carryForward?.state === 'success') {
-    await postCarryForwardRecord(repository, pr.number, pr, carryForward, comments);
-  }
-  console.log(`PR #${pr.number}: ${result.state} — ${result.description}`);
-}
-
-async function applyStatus() {
+async function main() {
   const repository = process.env.GITHUB_REPOSITORY;
   const eventPath = process.env.GITHUB_EVENT_PATH;
   if (!repository || !eventPath) throw new Error('GITHUB_REPOSITORY and GITHUB_EVENT_PATH are required');
   const { readFile } = await import('node:fs/promises');
   const event = JSON.parse(await readFile(eventPath, 'utf8'));
-
-  if (event.issue && !event.issue.pull_request) {
-    const pulls = pullsForIssue(await getOpenPulls(repository), event.issue.number);
-    if (pulls.length === 0) return console.log(`Issue #${event.issue.number} has no linked open PRs.`);
-    return evaluateIssuePulls(repository, event.issue.number, pulls);
-  }
-
-  const prNumber = event.pull_request?.number ?? (event.issue?.pull_request ? event.issue.number : null);
-  if (!prNumber) return console.log('Event is not associated with an issue or pull request.');
-  const pr = await githubRequest(`/repos/${repository}/pulls/${prNumber}`);
-  const issue = parseIssueReference(pr.body);
-  if (event.pull_request) {
-    const openPulls = await getOpenPulls(repository);
-    for (const issueNumber of issueNumbersForPullEvent(event, pr.body)) {
-      const pulls = pullsForIssue(openPulls, issueNumber);
-      if (pulls.length > 0) await evaluateIssuePulls(repository, issueNumber, pulls);
-    }
-    if (issue?.kind === 'issue') return;
-    return evaluatePullConversation(repository, pr);
-  }
-  if (issue?.kind === 'issue') {
-    const pulls = pullsForIssue(await getOpenPulls(repository), issue.number);
-    return evaluateIssuePulls(repository, issue.number, pulls);
-  }
-  return evaluatePullConversation(repository, pr);
+  const runUrl = `${process.env.GITHUB_SERVER_URL}/${repository}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+  await reconcile({ gh: createGithub({ token: process.env.GITHUB_TOKEN }), repository, event, runUrl });
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  applyStatus().catch((error) => {
+  main().catch((error) => {
     console.error(error);
+    for (const inner of error.errors ?? []) console.error(inner);
     process.exit(1);
   });
 }
