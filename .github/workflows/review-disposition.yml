@@ -14,16 +14,28 @@ permissions:
   pull-requests: read
   statuses: write
 
-# One repository-wide group serializes every evaluation. A running job is never
-# canceled; GitHub may replace a queued job with a newer one, which is safe
-# because every run reconciles all open PRs (scripts/review-disposition.mjs).
-concurrency:
-  group: review-disposition
-  cancel-in-progress: false
-
 jobs:
   evaluate:
     name: evaluate current head review disposition
+    # Admission (mirrored by shouldEvaluateEvent in scripts/review-disposition.mjs):
+    # skip only created comments that conclusively cannot carry an OWNER record.
+    # Edits, deletes, missing association/body, and every other event evaluate.
+    if: >-
+      github.event_name != 'issue_comment'
+      || github.event.action != 'created'
+      || github.event.comment.body == ''
+      || (github.event.comment.author_association == 'OWNER'
+      && (contains(github.event.comment.body, 'UPDATE=')
+      || contains(github.event.comment.body, 'VERDICT=')
+      || contains(github.event.comment.body, 'STATUS=OWNER_OVERRIDE')))
+      || github.event.comment.author_association == ''
+    # One repository-wide group serializes every admitted evaluation. It is
+    # job-level so a skipped job never enters it and cannot displace a queued
+    # run. A running job is never canceled; GitHub may replace a queued job with
+    # a newer admitted one, which is safe because every run reconciles all open PRs.
+    concurrency:
+      group: review-disposition
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
