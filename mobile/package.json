@@ -74,6 +74,7 @@
     "compression": "^1.8.2",
     "source-map-js": "^1.2.2",
     "shell-quote": "^1.11.0",
+    "test-exclude@6": "^7.0.2",
     "glob": "^14.0.2",
     "minimatch": "^11.0.1"
   },
